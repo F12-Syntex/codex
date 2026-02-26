@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Minus, Square, X, Copy } from "lucide-react";
 import Image from "next/image";
+import { APP_VERSION } from "@/lib/version";
 
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
@@ -28,7 +29,7 @@ export function TitleBar() {
             Codex
           </span>
           <span className="rounded bg-white/[0.06] px-1.5 py-px text-[10px] font-medium text-white/20">
-            v0.5.0
+            v{APP_VERSION}
           </span>
         </div>
 

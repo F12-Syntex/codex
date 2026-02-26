@@ -10,6 +10,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LibraryData } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 
 export type Section = "books" | "comic";
 
@@ -146,7 +147,7 @@ export function AppSidebar({
           <span className="text-[10px] text-white/[0.08]">
             {totalItems} item{totalItems !== 1 ? "s" : ""}
           </span>
-          <span className="text-[10px] text-white/[0.08]">v0.5.0</span>
+          <span className="text-[10px] text-white/[0.08]">v{APP_VERSION}</span>
         </div>
       </div>
     </div>

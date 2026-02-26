@@ -33,6 +33,7 @@ import {
 } from "@/lib/theme";
 import { HexColorPicker } from "react-colorful";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 
 type DockModal = "theme" | "shortcuts" | "settings" | null;
 type ThemeTab = "colors" | "appearance" | "background";
@@ -510,6 +511,13 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
 
 /* ── Settings modal ──────────────────────────────────────── */
 function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [autoScan, setAutoScan] = useState(true);
+  const [defaultZoom, setDefaultZoom] = useState<"fit-page" | "fit-width" | "100%">("fit-page");
+  const [direction, setDirection] = useState<"LTR" | "RTL">("LTR");
+  const [libraryPath, setLibraryPath] = useState("~/Documents/Codex");
+
+  const zoomOptions = ["fit-page", "fit-width", "100%"] as const;
+
   return (
     <ModalShell title="Settings" onClose={onClose} width="320px">
       <div className="flex flex-col gap-3 p-4">
@@ -518,14 +526,30 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between py-1">
               <span className="text-[13px] text-white/60">Library path</span>
-              <span className="text-[11px] text-white/30">~/Documents/Codex</span>
+              <button
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.webkitdirectory = true;
+                  input.onchange = () => {
+                    const files = input.files;
+                    if (files && files.length > 0) {
+                      const path = files[0].webkitRelativePath.split("/")[0];
+                      setLibraryPath(path);
+                    }
+                  };
+                  input.click();
+                }}
+                className="rounded-lg bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
+              >
+                {libraryPath}
+              </button>
             </div>
-            <div className="flex items-center justify-between py-1">
-              <span className="text-[13px] text-white/60">Auto-scan</span>
-              <div className="relative h-4 w-7 cursor-pointer rounded-full bg-[var(--bg-elevated)]">
-                <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white/40 transition-all" />
-              </div>
-            </div>
+            <ToggleRow
+              label="Auto-scan on launch"
+              checked={autoScan}
+              onChange={setAutoScan}
+            />
           </div>
         </div>
         <div>
@@ -533,11 +557,41 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between py-1">
               <span className="text-[13px] text-white/60">Default zoom</span>
-              <span className="text-[11px] text-white/30">Fit page</span>
+              <div className="flex gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
+                {zoomOptions.map((z) => (
+                  <button
+                    key={z}
+                    onClick={() => setDefaultZoom(z)}
+                    className={cn(
+                      "rounded-md px-2 py-0.5 text-[10px] transition-all",
+                      defaultZoom === z
+                        ? "bg-white/[0.08] text-white/70"
+                        : "text-white/25 hover:text-white/40"
+                    )}
+                  >
+                    {z === "fit-page" ? "Page" : z === "fit-width" ? "Width" : "100%"}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex items-center justify-between py-1">
               <span className="text-[13px] text-white/60">Reading direction</span>
-              <span className="text-[11px] text-white/30">LTR</span>
+              <div className="flex gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
+                {(["LTR", "RTL"] as const).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDirection(d)}
+                    className={cn(
+                      "rounded-md px-2.5 py-0.5 text-[10px] font-medium transition-all",
+                      direction === d
+                        ? "bg-white/[0.08] text-white/70"
+                        : "text-white/25 hover:text-white/40"
+                    )}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -545,7 +599,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">About</p>
           <div className="flex items-center justify-between py-1">
             <span className="text-[13px] text-white/60">Version</span>
-            <span className="text-[11px] text-white/30">0.1.0</span>
+            <span className="text-[11px] text-white/30">{APP_VERSION}</span>
           </div>
         </div>
       </div>
