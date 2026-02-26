@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Search, ArrowRight, BookOpen, Hash } from "lucide-react";
-import { bookData, mangaData, type MockItem } from "@/lib/mock-data";
+import { initialBookData, initialComicData, type MockItem } from "@/lib/mock-data";
 
 interface SearchOverlayProps {
   open: boolean;
@@ -17,11 +17,11 @@ interface SearchResult {
 
 function getAllItems(): SearchResult[] {
   const results: SearchResult[] = [];
-  for (const items of Object.values(bookData)) {
+  for (const items of Object.values(initialBookData)) {
     if (items) items.forEach((item) => results.push({ section: "Books", item }));
   }
-  for (const items of Object.values(mangaData)) {
-    if (items) items.forEach((item) => results.push({ section: "Manga", item }));
+  for (const items of Object.values(initialComicData)) {
+    if (items) items.forEach((item) => results.push({ section: "Comics", item }));
   }
   const seen = new Set<string>();
   return results.filter((r) => {

@@ -10,10 +10,10 @@ import {
   BookOpen,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { bookData, mangaData } from "@/lib/mock-data";
+import type { LibraryData } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-export type Section = "books" | "manga";
+export type Section = "books" | "comic";
 
 export type NavView =
   | "bookshelf"
@@ -30,6 +30,7 @@ interface AppSidebarProps {
   onSectionChange: (section: Section) => void;
   activeView: NavView;
   onViewChange: (view: NavView) => void;
+  data: LibraryData;
 }
 
 const bookNavItems = [
@@ -40,7 +41,7 @@ const bookNavItems = [
   { id: "finished" as const, label: "Finished", icon: CheckCircle },
 ];
 
-const mangaNavItems = [
+const comicNavItems = [
   { id: "series" as const, label: "Series", icon: Layers },
   { id: "chapters" as const, label: "Chapters", icon: BookOpen },
   { id: "read-later" as const, label: "Read Later", icon: Clock },
@@ -48,24 +49,20 @@ const mangaNavItems = [
   { id: "completed" as const, label: "Completed", icon: CheckCircle },
 ];
 
-function getCount(section: Section, view: NavView): number {
-  const data = section === "books" ? bookData : mangaData;
-  return data[view]?.length ?? 0;
-}
-
 export function AppSidebar({
   activeSection,
   onSectionChange,
   activeView,
   onViewChange,
+  data,
 }: AppSidebarProps) {
-  const navItems = activeSection === "books" ? bookNavItems : mangaNavItems;
+  const navItems = activeSection === "books" ? bookNavItems : comicNavItems;
 
   return (
     <div className="flex h-full flex-col bg-[var(--bg-surface)]">
       {/* Section tabs */}
       <div className="flex gap-6 px-5 pt-5">
-        {(["books", "manga"] as const).map((s) => {
+        {(["books", "comic"] as const).map((s) => {
           const active = activeSection === s;
           return (
             <button
@@ -76,7 +73,7 @@ export function AppSidebar({
                 active ? "text-foreground" : "text-white/25 hover:text-white/45"
               )}
             >
-              {s === "books" ? "Books" : "Manga"}
+              {s === "books" ? "Books" : "Comics"}
               {active && (
                 <div
                   className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
@@ -102,7 +99,7 @@ export function AppSidebar({
         <div className="flex flex-col">
           {navItems.map((item) => {
             const active = activeView === item.id;
-            const count = getCount(activeSection, item.id);
+            const count = data[item.id]?.length ?? 0;
             return (
               <button
                 key={item.id}
@@ -114,7 +111,6 @@ export function AppSidebar({
                     : "text-white/30 hover:text-white/50"
                 )}
               >
-                {/* Accent dot for active */}
                 <div
                   className={cn(
                     "h-[5px] w-[5px] shrink-0 rounded-full transition-opacity",

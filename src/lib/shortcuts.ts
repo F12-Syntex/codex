@@ -10,7 +10,7 @@ export const SHORTCUT_REGISTRY: ShortcutDefinition[] = [
   { id: "import", label: "Import", keys: "Ctrl+I", category: "General" },
   { id: "toggle-sidebar", label: "Toggle Sidebar", keys: "Ctrl+B", category: "Navigation" },
   { id: "switch-books", label: "Switch to Books", keys: "Ctrl+1", category: "Navigation" },
-  { id: "switch-manga", label: "Switch to Manga", keys: "Ctrl+2", category: "Navigation" },
+  { id: "switch-comic", label: "Switch to Comics", keys: "Ctrl+2", category: "Navigation" },
   { id: "grid-view", label: "Grid View", keys: "Ctrl+Shift+G", category: "View" },
   { id: "list-view", label: "List View", keys: "Ctrl+Shift+L", category: "View" },
 ];

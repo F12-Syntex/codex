@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { ContentToolbar } from "@/components/content/content-toolbar";
-import type { ViewMode } from "@/components/content/content-toolbar";
+import type { ViewMode, SortField, SortDir, FormatFilter } from "@/components/content/content-toolbar";
 import { ContentGrid } from "@/components/content/content-grid";
 import { Dock } from "@/components/dock";
 import { SearchOverlay } from "@/components/search-overlay";
@@ -15,7 +15,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
-import { bookData, mangaData } from "@/lib/mock-data";
+import { initialBookData, initialComicData, type LibraryData } from "@/lib/mock-data";
 import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
 
 const viewLabelMap: Record<NavView, string> = {
@@ -43,6 +43,11 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME);
+  const [sortField, setSortField] = useState<SortField>("title");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
+  const [bookData, setBookData] = useState<LibraryData>(initialBookData);
+  const [comicData, setComicData] = useState<LibraryData>(initialComicData);
 
   const handleThemeChange = useCallback((patch: Partial<ThemeConfig>) => {
     setTheme((prev) => ({ ...prev, ...patch }));
@@ -51,7 +56,35 @@ export default function Home() {
   const handleSectionChange = useCallback((section: Section) => {
     setActiveSection(section);
     setActiveView(section === "books" ? "bookshelf" : "series");
+    setFormatFilter("all");
   }, []);
+
+  const handleSortChange = useCallback((field: SortField, dir: SortDir) => {
+    setSortField(field);
+    setSortDir(dir);
+  }, []);
+
+  /** Move an item from its current view to a target view */
+  const moveItem = useCallback((title: string, targetView: NavView) => {
+    const setter = activeSection === "books" ? setBookData : setComicData;
+    setter((prev) => {
+      const next = { ...prev };
+      // Find and remove the item from its current view
+      let item = null;
+      for (const [view, items] of Object.entries(next)) {
+        const idx = items?.findIndex((i) => i.title === title) ?? -1;
+        if (idx !== -1 && items) {
+          item = items[idx];
+          next[view as NavView] = items.filter((_, i) => i !== idx);
+          break;
+        }
+      }
+      if (!item) return prev;
+      // Add to target view
+      next[targetView] = [...(next[targetView] ?? []), item];
+      return next;
+    });
+  }, [activeSection]);
 
   useEffect(() => {
     const parsed = SHORTCUT_REGISTRY.map((s) => ({
@@ -76,8 +109,8 @@ export default function Home() {
             case "switch-books":
               handleSectionChange("books");
               break;
-            case "switch-manga":
-              handleSectionChange("manga");
+            case "switch-comic":
+              handleSectionChange("comic");
               break;
             case "grid-view":
               setViewMode("grid");
@@ -96,21 +129,35 @@ export default function Home() {
   }, [handleSectionChange]);
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
-  const data = activeSection === "books" ? bookData : mangaData;
-  const currentItems = data[activeView] ?? [];
-  const itemCount = currentItems.length;
+  const data = activeSection === "books" ? bookData : comicData;
+  const rawItems = data[activeView] ?? [];
+
+  // Apply filter + sort
+  const processedItems = useMemo(() => {
+    let items = [...rawItems];
+    if (formatFilter !== "all") {
+      items = items.filter((item) => item.format === formatFilter);
+    }
+    items.sort((a, b) => {
+      const aVal = a[sortField].toLowerCase();
+      const bVal = b[sortField].toLowerCase();
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return items;
+  }, [rawItems, formatFilter, sortField, sortDir]);
 
   // Compute dynamic styles from theme
   const rootStyle = useMemo(() => {
     const s: Record<string, string> = {
       fontFamily: fontFamilyMap[theme.fontFamily] ?? fontFamilyMap.geist,
     };
-    // Custom accent: inject CSS variables inline
     if (theme.accent === "custom" && theme.customAccentColor) {
       const hex = theme.customAccentColor;
       s["--accent-brand"] = hex;
-      s["--accent-brand-dim"] = `${hex}26`; // ~15% opacity
-      s["--accent-brand-subtle"] = `${hex}14`; // ~8% opacity
+      s["--accent-brand-dim"] = `${hex}26`;
+      s["--accent-brand-subtle"] = `${hex}14`;
       s["--accent-brand-fg"] = "#fafafa";
     }
     return s as React.CSSProperties;
@@ -157,6 +204,7 @@ export default function Home() {
                   onSectionChange={handleSectionChange}
                   activeView={activeView}
                   onViewChange={setActiveView}
+                  data={data}
                 />
               </ResizablePanel>
               <ResizableHandle />
@@ -178,14 +226,20 @@ export default function Home() {
                   viewMode={viewMode}
                   onViewModeChange={setViewMode}
                   viewLabel={viewLabel}
-                  itemCount={itemCount}
+                  itemCount={processedItems.length}
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  onSortChange={handleSortChange}
+                  formatFilter={formatFilter}
+                  onFormatFilterChange={setFormatFilter}
                 />
                 <ContentGrid
-                  activeView={activeView}
-                  section={activeSection}
+                  items={processedItems}
                   viewMode={viewMode}
                   coverStyle={theme.coverStyle}
                   showFormatBadge={theme.showFormatBadge}
+                  onMoveItem={moveItem}
+                  activeView={activeView}
                 />
                 <Dock
                   theme={theme}

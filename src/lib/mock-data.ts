@@ -10,7 +10,9 @@ export type MockItem = {
   format: BookFormat;
 };
 
-export const bookData: Partial<Record<NavView, MockItem[]>> = {
+export type LibraryData = Partial<Record<NavView, MockItem[]>>;
+
+export const initialBookData: LibraryData = {
   bookshelf: [
     { title: "The Great Gatsby", author: "F. Scott Fitzgerald", gradient: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", cover: "https://picsum.photos/seed/gatsby/300/450", format: "EPUB" },
     { title: "1984", author: "George Orwell", gradient: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", cover: "https://picsum.photos/seed/1984/300/450", format: "PDF" },
@@ -32,7 +34,7 @@ export const bookData: Partial<Record<NavView, MockItem[]>> = {
   ],
 };
 
-export const mangaData: Partial<Record<NavView, MockItem[]>> = {
+export const initialComicData: LibraryData = {
   series: [
     { title: "One Piece", author: "Eiichiro Oda", gradient: "linear-gradient(135deg, #e14fad 0%, #f9d423 100%)", cover: "https://picsum.photos/seed/onepiece/300/450", format: "CBZ" },
     { title: "Chainsaw Man", author: "Tatsuki Fujimoto", gradient: "linear-gradient(135deg, #c31432 0%, #240b36 100%)", cover: "https://picsum.photos/seed/chainsaw/300/450", format: "CBR" },
