@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { ContentToolbar } from "@/components/content/content-toolbar";
@@ -14,9 +14,9 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
-import { DEFAULT_ACCENT, type AccentId } from "@/lib/accent";
 import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
 import { bookData, mangaData } from "@/lib/mock-data";
+import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
 
 const viewLabelMap: Record<NavView, string> = {
   bookshelf: "Bookshelf",
@@ -29,14 +29,24 @@ const viewLabelMap: Record<NavView, string> = {
   completed: "Completed",
 };
 
+const fontFamilyMap: Record<string, string> = {
+  geist: "var(--font-geist-sans)",
+  inter: "'Inter', sans-serif",
+  mono: "var(--font-geist-mono)",
+  system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+};
+
 export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>("books");
   const [activeView, setActiveView] = useState<NavView>("bookshelf");
-  const [accent, setAccent] = useState<AccentId>(DEFAULT_ACCENT);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME);
+
+  const handleThemeChange = useCallback((patch: Partial<ThemeConfig>) => {
+    setTheme((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   const handleSectionChange = useCallback((section: Section) => {
     setActiveSection(section);
@@ -90,20 +100,57 @@ export default function Home() {
   const currentItems = data[activeView] ?? [];
   const itemCount = currentItems.length;
 
+  // Compute dynamic styles from theme
+  const rootStyle = useMemo(() => {
+    const s: Record<string, string> = {
+      fontFamily: fontFamilyMap[theme.fontFamily] ?? fontFamilyMap.geist,
+    };
+    // Custom accent: inject CSS variables inline
+    if (theme.accent === "custom" && theme.customAccentColor) {
+      const hex = theme.customAccentColor;
+      s["--accent-brand"] = hex;
+      s["--accent-brand-dim"] = `${hex}26`; // ~15% opacity
+      s["--accent-brand-subtle"] = `${hex}14`; // ~8% opacity
+      s["--accent-brand-fg"] = "#fafafa";
+    }
+    return s as React.CSSProperties;
+  }, [theme.fontFamily, theme.accent, theme.customAccentColor]);
+
+  const contentStyle = useMemo(() => {
+    const s: React.CSSProperties = {};
+    if (theme.backgroundImage) {
+      s.backgroundImage = `url(${theme.backgroundImage})`;
+      s.backgroundSize = "cover";
+      s.backgroundPosition = "center";
+    }
+    return s;
+  }, [theme.backgroundImage]);
+
+  const overlayStyle = useMemo(() => {
+    if (!theme.backgroundImage) return undefined;
+    const s: React.CSSProperties = {
+      backgroundColor: `oklch(0.145 0 0 / ${theme.backgroundOpacity}%)`,
+      backdropFilter: theme.backgroundBlur > 0 ? `blur(${theme.backgroundBlur}px)` : undefined,
+    };
+    return s;
+  }, [theme.backgroundImage, theme.backgroundOpacity, theme.backgroundBlur]);
+
   return (
     <TooltipProvider>
       <div
         className="flex h-full"
-        data-accent={accent}
-        style={backgroundImage ? { "--bg-image": `url(${backgroundImage})` } as React.CSSProperties : undefined}
+        data-accent={theme.accent}
+        data-appearance={theme.appearance}
+        data-tint={theme.tintSurfaces ? "true" : undefined}
+        style={rootStyle}
       >
-        <ResizablePanelGroup orientation="horizontal" className="flex-1">
+        <ResizablePanelGroup key={theme.sidebarWidth} orientation="horizontal" className="flex-1">
           {!sidebarCollapsed && (
             <>
               <ResizablePanel
-                defaultSize="20%"
+                defaultSize={`${theme.sidebarWidth}%`}
                 minSize="180px"
-                maxSize="350px"
+                maxSize="400px"
               >
                 <AppSidebar
                   activeSection={activeSection}
@@ -115,17 +162,16 @@ export default function Home() {
               <ResizableHandle />
             </>
           )}
-          <ResizablePanel defaultSize={sidebarCollapsed ? "100%" : "80%"}>
+          <ResizablePanel defaultSize={sidebarCollapsed ? "100%" : `${100 - theme.sidebarWidth}%`}>
             <div
               className="relative flex h-full flex-col overflow-hidden"
-              style={backgroundImage ? {
-                backgroundImage: `url(${backgroundImage})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              } : undefined}
+              style={contentStyle}
             >
-              {backgroundImage && (
-                <div className="pointer-events-none absolute inset-0 bg-background/70" />
+              {theme.backgroundImage && (
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={overlayStyle}
+                />
               )}
               <div className="relative flex h-full flex-col">
                 <ContentToolbar
@@ -138,13 +184,13 @@ export default function Home() {
                   activeView={activeView}
                   section={activeSection}
                   viewMode={viewMode}
+                  coverStyle={theme.coverStyle}
+                  showFormatBadge={theme.showFormatBadge}
                 />
                 <Dock
-                  accent={accent}
-                  onAccentChange={setAccent}
+                  theme={theme}
+                  onThemeChange={handleThemeChange}
                   onSearchOpen={() => setSearchOpen(true)}
-                  backgroundImage={backgroundImage}
-                  onBackgroundImageChange={setBackgroundImage}
                 />
               </div>
             </div>
