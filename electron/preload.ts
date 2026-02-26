@@ -10,4 +10,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(maximized)
     );
   },
+  checkForUpdates: () => ipcRenderer.invoke("update:check"),
+  installUpdate: () => ipcRenderer.send("update:install"),
+  onUpdateStatus: (
+    callback: (event: { status: string; data?: unknown }) => void
+  ) => {
+    ipcRenderer.on("update:status", (_event, payload) => callback(payload));
+  },
 });

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol, net } from "electron";
 import path from "path";
 import { pathToFileURL } from "url";
+import { initUpdater } from "./updater";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -53,6 +54,7 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:3000");
   } else {
     mainWindow.loadURL("app://./index.html");
+    initUpdater(mainWindow);
   }
 }
 
