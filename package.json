@@ -9,9 +9,9 @@
     "start": "next start",
     "lint": "eslint",
     "electron:compile": "tsc -p electron/tsconfig.json",
-    "electron:dev": "concurrently --kill-others \"cross-env NODE_ENV=development npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development npm run electron:compile && cross-env NODE_ENV=development electron dist-electron/main.js\"",
-    "electron:build": "npm run build && npm run electron:compile && electron-builder",
-    "electron:preview": "npm run build && npm run electron:compile && cross-env NODE_ENV=production electron dist-electron/main.js"
+    "electron:dev": "concurrently --kill-others \"cross-env NODE_ENV=development yarn dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development yarn electron:compile && cross-env NODE_ENV=development electron dist-electron/main.js\"",
+    "electron:build": "yarn build && yarn electron:compile && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "electron:preview": "yarn build && yarn electron:compile && cross-env NODE_ENV=production electron dist-electron/main.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -51,9 +51,11 @@
       "out/**/*"
     ],
     "icon": "build/icon.png",
+    "forceCodeSigning": false,
     "win": {
       "target": "nsis",
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
     },
     "mac": {
       "target": "dmg",
