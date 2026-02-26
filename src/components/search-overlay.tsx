@@ -200,7 +200,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
                                 <p className="truncate text-[11px] text-white/30">
                                   {highlightMatch(r.item.author, query)}
                                 </p>
-                                <span className="shrink-0 rounded bg-white/[0.05] px-1 py-px text-[10px] text-white/20">
+                                <span className="shrink-0 rounded-[4px] bg-white/[0.06] px-1.5 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-white/30">
                                   {r.item.format}
                                 </span>
                               </div>

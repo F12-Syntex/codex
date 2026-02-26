@@ -20,12 +20,10 @@ import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
 
 const viewLabelMap: Record<NavView, string> = {
   bookshelf: "Bookshelf",
-  repository: "Repository",
   "read-later": "Read Later",
   reading: "Reading",
   finished: "Finished",
   series: "Series",
-  chapters: "Chapters",
   completed: "Completed",
 };
 
@@ -240,6 +238,7 @@ export default function Home() {
                   showFormatBadge={theme.showFormatBadge}
                   onMoveItem={moveItem}
                   activeView={activeView}
+                  section={activeSection}
                 />
                 <Dock
                   theme={theme}

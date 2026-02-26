@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ViewMode } from "./content-toolbar";
 import type { CoverStyle } from "@/lib/theme";
 import type { MockItem } from "@/lib/mock-data";
-import type { NavView } from "@/components/sidebar/app-sidebar";
+import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 
 interface ContentGridProps {
   items: MockItem[];
@@ -16,12 +16,19 @@ interface ContentGridProps {
   showFormatBadge: boolean;
   onMoveItem: (title: string, targetView: NavView) => void;
   activeView: NavView;
+  section: Section;
 }
 
-const moveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
+const bookMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
   { view: "read-later", label: "Read Later", icon: Clock },
   { view: "reading", label: "Reading", icon: BookOpenCheck },
   { view: "finished", label: "Finished", icon: CheckCircle },
+];
+
+const comicMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
+  { view: "read-later", label: "Read Later", icon: Clock },
+  { view: "reading", label: "Reading", icon: BookOpenCheck },
+  { view: "completed", label: "Completed", icon: CheckCircle },
 ];
 
 function ContextMenu({
@@ -29,6 +36,7 @@ function ContextMenu({
   y,
   title,
   activeView,
+  section,
   onMove,
   onClose,
 }: {
@@ -36,6 +44,7 @@ function ContextMenu({
   y: number;
   title: string;
   activeView: NavView;
+  section: Section;
   onMove: (title: string, view: NavView) => void;
   onClose: () => void;
 }) {
@@ -56,7 +65,8 @@ function ContextMenu({
     };
   }, [onClose]);
 
-  const targets = moveTargets.filter((t) => t.view !== activeView);
+  const allTargets = section === "books" ? bookMoveTargets : comicMoveTargets;
+  const targets = allTargets.filter((t) => t.view !== activeView);
 
   return (
     <div
@@ -82,7 +92,7 @@ function ContextMenu({
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, activeView }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, activeView, section }: ContentGridProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const [ctx, setCtx] = useState<{ x: number; y: number; title: string } | null>(null);
 
@@ -122,7 +132,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                   <p className="truncate text-xs text-muted-foreground">{item.author}</p>
                 </div>
                 {showFormatBadge && (
-                  <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-[11px] text-white/30">
+                  <span className="shrink-0 rounded-[4px] bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
                     {item.format}
                   </span>
                 )}
@@ -136,6 +146,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             y={ctx.y}
             title={ctx.title}
             activeView={activeView}
+            section={section}
             onMove={onMoveItem}
             onClose={() => setCtx(null)}
           />
@@ -173,7 +184,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                   </div>
                   <div className="flex items-center gap-2">
                     {showFormatBadge && (
-                      <span className="rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/30">
+                      <span className="rounded-[4px] bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
                         {item.format}
                       </span>
                     )}
@@ -190,6 +201,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             y={ctx.y}
             title={ctx.title}
             activeView={activeView}
+            section={section}
             onMove={onMoveItem}
             onClose={() => setCtx(null)}
           />
@@ -220,6 +232,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           y={ctx.y}
           title={ctx.title}
           activeView={activeView}
+          section={section}
           onMove={onMoveItem}
           onClose={() => setCtx(null)}
         />
