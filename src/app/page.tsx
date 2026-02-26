@@ -15,7 +15,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
-import { initialBookData, initialComicData, type LibraryData } from "@/lib/mock-data";
+import { initialBookData, initialComicData, fileToMockItem, type LibraryData } from "@/lib/mock-data";
 import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
 
 const viewLabelMap: Record<NavView, string> = {
@@ -82,6 +82,30 @@ export default function Home() {
       next[targetView] = [...(next[targetView] ?? []), item];
       return next;
     });
+  }, [activeSection]);
+
+  /** Import files via Electron file dialog */
+  const handleImport = useCallback(async () => {
+    const files = await window.electronAPI?.importFiles();
+    if (!files || files.length === 0) return;
+    const items = files.map(fileToMockItem);
+    const setter = activeSection === "books" ? setBookData : setComicData;
+    setter((prev) => ({
+      ...prev,
+      [activeView]: [...(prev[activeView] ?? []), ...items],
+    }));
+  }, [activeSection, activeView]);
+
+  /** Import items from folder scan (called from Settings) */
+  const handleImportItems = useCallback((files: ImportedFile[]) => {
+    if (files.length === 0) return;
+    const items = files.map(fileToMockItem);
+    const setter = activeSection === "books" ? setBookData : setComicData;
+    const defaultView = activeSection === "books" ? "bookshelf" : "series";
+    setter((prev) => ({
+      ...prev,
+      [defaultView]: [...(prev[defaultView] ?? []), ...items],
+    }));
   }, [activeSection]);
 
   useEffect(() => {
@@ -232,6 +256,7 @@ export default function Home() {
                   onSortChange={handleSortChange}
                   formatFilter={formatFilter}
                   onFormatFilterChange={setFormatFilter}
+                  onImport={handleImport}
                 />
                 <ContentGrid
                   items={processedItems}
@@ -246,12 +271,13 @@ export default function Home() {
                   theme={theme}
                   onThemeChange={handleThemeChange}
                   onSearchOpen={() => setSearchOpen(true)}
+                  onImportItems={handleImportItems}
                 />
               </div>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
-        <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} bookData={bookData} comicData={comicData} />
       </div>
     </TooltipProvider>
   );

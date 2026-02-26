@@ -1,3 +1,10 @@
+interface ImportedFile {
+  name: string;
+  filePath: string;
+  format: string;
+  size: number;
+}
+
 interface UpdateEvent {
   status:
     | "checking"
@@ -22,6 +29,9 @@ interface ElectronAPI {
   maximize: () => void;
   close: () => void;
   onMaximized: (callback: (maximized: boolean) => void) => void;
+  importFiles: () => Promise<ImportedFile[]>;
+  selectFolder: () => Promise<string | null>;
+  scanFolder: (folderPath: string) => Promise<ImportedFile[]>;
   checkForUpdates: () => Promise<unknown>;
   installUpdate: () => void;
   onUpdateStatus: (callback: (event: UpdateEvent) => void) => void;

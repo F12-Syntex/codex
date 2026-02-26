@@ -42,6 +42,7 @@ interface DockProps {
   theme: ThemeConfig;
   onThemeChange: (patch: Partial<ThemeConfig>) => void;
   onSearchOpen: () => void;
+  onImportItems: (items: ImportedFile[]) => void;
 }
 
 /* ── Shared modal chrome ─────────────────────────────────── */
@@ -510,41 +511,78 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ── Settings modal ──────────────────────────────────────── */
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({
+  onClose,
+  onImportItems,
+}: {
+  onClose: () => void;
+  onImportItems: (items: ImportedFile[]) => void;
+}) {
   const [autoScan, setAutoScan] = useState(true);
   const [defaultZoom, setDefaultZoom] = useState<"fit-page" | "fit-width" | "100%">("fit-page");
   const [direction, setDirection] = useState<"LTR" | "RTL">("LTR");
-  const [libraryPath, setLibraryPath] = useState("~/Documents/Codex");
+  const [libraryPath, setLibraryPath] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [lastScanCount, setLastScanCount] = useState<number | null>(null);
 
   const zoomOptions = ["fit-page", "fit-width", "100%"] as const;
 
+  const handleSelectFolder = async () => {
+    const folder = await window.electronAPI?.selectFolder();
+    if (folder) setLibraryPath(folder);
+  };
+
+  const handleScan = async () => {
+    if (!libraryPath) return;
+    setScanning(true);
+    setLastScanCount(null);
+    try {
+      const files = await window.electronAPI?.scanFolder(libraryPath);
+      if (files && files.length > 0) {
+        onImportItems(files);
+        setLastScanCount(files.length);
+      } else {
+        setLastScanCount(0);
+      }
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return (
-    <ModalShell title="Settings" onClose={onClose} width="320px">
+    <ModalShell title="Settings" onClose={onClose} width="340px">
       <div className="flex flex-col gap-3 p-4">
         <div>
           <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">Library</p>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between py-1">
               <span className="text-[13px] text-white/60">Library path</span>
               <button
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.webkitdirectory = true;
-                  input.onchange = () => {
-                    const files = input.files;
-                    if (files && files.length > 0) {
-                      const path = files[0].webkitRelativePath.split("/")[0];
-                      setLibraryPath(path);
-                    }
-                  };
-                  input.click();
-                }}
-                className="rounded-lg bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
+                onClick={handleSelectFolder}
+                className="max-w-[180px] truncate rounded-lg bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
               >
-                {libraryPath}
+                {libraryPath ?? "Select folder..."}
               </button>
             </div>
+            {libraryPath && (
+              <button
+                onClick={handleScan}
+                disabled={scanning}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-colors",
+                  scanning
+                    ? "bg-white/[0.04] text-white/20"
+                    : "bg-white/[0.06] text-white/50 hover:bg-white/[0.10] hover:text-white/70"
+                )}
+              >
+                {scanning ? "Scanning..." : "Scan Now"}
+              </button>
+            )}
+            {lastScanCount !== null && (
+              <span className="text-[11px] text-white/25">
+                {lastScanCount === 0 ? "No supported files found" : `Found ${lastScanCount} file${lastScanCount !== 1 ? "s" : ""}`}
+              </span>
+            )}
             <ToggleRow
               label="Auto-scan on launch"
               checked={autoScan}
@@ -608,7 +646,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ── Dock ─────────────────────────────────────────────────── */
-export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
+export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems }: DockProps) {
   const [activeModal, setActiveModal] = useState<DockModal>(null);
 
   const toggle = (modal: DockModal) => setActiveModal((v) => (v === modal ? null : modal));
@@ -625,7 +663,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
           <ThemeModal theme={theme} onThemeChange={onThemeChange} onClose={close} />
         )}
         {activeModal === "shortcuts" && <ShortcutsModal onClose={close} />}
-        {activeModal === "settings" && <SettingsModal onClose={close} />}
+        {activeModal === "settings" && <SettingsModal onClose={close} onImportItems={onImportItems} />}
 
         <div className="relative flex items-center gap-1 rounded-full border border-white/[0.06] bg-[var(--bg-surface)] px-2 py-1.5 shadow-lg shadow-black/30">
           <Tooltip delayDuration={300}>

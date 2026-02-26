@@ -3,11 +3,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Search, ArrowRight, BookOpen, Hash } from "lucide-react";
-import { initialBookData, initialComicData, type MockItem } from "@/lib/mock-data";
+import type { MockItem, LibraryData } from "@/lib/mock-data";
 
 interface SearchOverlayProps {
   open: boolean;
   onClose: () => void;
+  bookData: LibraryData;
+  comicData: LibraryData;
 }
 
 interface SearchResult {
@@ -15,12 +17,12 @@ interface SearchResult {
   item: MockItem;
 }
 
-function getAllItems(): SearchResult[] {
+function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResult[] {
   const results: SearchResult[] = [];
-  for (const items of Object.values(initialBookData)) {
+  for (const items of Object.values(bookData)) {
     if (items) items.forEach((item) => results.push({ section: "Books", item }));
   }
-  for (const items of Object.values(initialComicData)) {
+  for (const items of Object.values(comicData)) {
     if (items) items.forEach((item) => results.push({ section: "Comics", item }));
   }
   const seen = new Set<string>();
@@ -30,8 +32,6 @@ function getAllItems(): SearchResult[] {
     return true;
   });
 }
-
-const allItems = getAllItems();
 
 function highlightMatch(text: string, query: string) {
   if (!query.trim()) return text;
@@ -48,11 +48,13 @@ function highlightMatch(text: string, query: string) {
   );
 }
 
-export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
+export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOverlayProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return [];

@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(maximized)
     );
   },
+  importFiles: () => ipcRenderer.invoke("library:import-files"),
+  selectFolder: () => ipcRenderer.invoke("library:select-folder"),
+  scanFolder: (folderPath: string) => ipcRenderer.invoke("library:scan-folder", folderPath),
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.send("update:install"),
   onUpdateStatus: (

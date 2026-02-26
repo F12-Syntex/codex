@@ -33,6 +33,7 @@ interface ContentToolbarProps {
   onSortChange: (field: SortField, dir: SortDir) => void;
   formatFilter: FormatFilter;
   onFormatFilterChange: (f: FormatFilter) => void;
+  onImport: () => void;
 }
 
 const viewModes: { id: ViewMode; icon: typeof List; tip: string }[] = [
@@ -92,6 +93,7 @@ export function ContentToolbar({
   onSortChange,
   formatFilter,
   onFormatFilterChange,
+  onImport,
 }: ContentToolbarProps) {
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -200,7 +202,10 @@ export function ContentToolbar({
         ))}
       </div>
 
-      <button className="flex h-7 items-center gap-1.5 rounded-lg bg-white/[0.08] px-3 text-xs font-medium text-foreground transition-colors hover:bg-white/[0.12]">
+      <button
+        onClick={onImport}
+        className="flex h-7 items-center gap-1.5 rounded-lg bg-white/[0.08] px-3 text-xs font-medium text-foreground transition-colors hover:bg-white/[0.12]"
+      >
         <Plus className="h-3.5 w-3.5" />
         Import
       </button>
