@@ -23,6 +23,15 @@ Codex is an Electron + Next.js 16 desktop app for organizing books and manga. Da
 - Keep the import button the same radius as everything else (`rounded-lg`).
 - Run `npx next build` to verify after changes.
 
+## Versioning
+
+On every commit, increment the version in `package.json` following SemVer:
+- **patch** (0.1.0 → 0.1.1): bug fixes, small tweaks, styling adjustments
+- **minor** (0.1.0 → 0.2.0): new features, new components, significant UI additions
+- **major** (0.1.0 → 1.0.0): breaking changes, full rewrites, major architectural shifts
+
+Also update the version badge in `src/components/title-bar.tsx` to match.
+
 ## Stack
 
 - Next.js 16 (Turbopack)

@@ -28,7 +28,7 @@ export function TitleBar() {
             Codex
           </span>
           <span className="rounded bg-white/[0.06] px-1.5 py-px text-[10px] font-medium text-white/20">
-            v0.1.0
+            v0.2.0
           </span>
         </div>
 

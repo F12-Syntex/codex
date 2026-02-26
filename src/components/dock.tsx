@@ -33,7 +33,7 @@ import { HexColorPicker } from "react-colorful";
 import { cn } from "@/lib/utils";
 
 type DockModal = "theme" | "shortcuts" | "settings" | null;
-type ThemeTab = "colors" | "appearance" | "background" | "layout";
+type ThemeTab = "colors" | "appearance" | "background";
 
 interface DockProps {
   theme: ThemeConfig;
@@ -149,7 +149,6 @@ function ThemeModal({
     { id: "colors", label: "Colors" },
     { id: "appearance", label: "Style" },
     { id: "background", label: "Wallpaper" },
-    { id: "layout", label: "Layout" },
   ];
 
   return (
@@ -421,22 +420,6 @@ function ThemeModal({
           </div>
         )}
 
-        {/* ── Layout tab ──────────────────────────── */}
-        {tab === "layout" && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Sidebar</p>
-              <SliderRow
-                label="Width"
-                value={theme.sidebarWidth}
-                min={15}
-                max={35}
-                suffix="%"
-                onChange={(v) => onThemeChange({ sidebarWidth: v })}
-              />
-            </div>
-          </div>
-        )}
       </div>
     </ModalShell>
   );

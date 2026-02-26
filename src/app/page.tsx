@@ -144,7 +144,7 @@ export default function Home() {
         data-tint={theme.tintSurfaces ? "true" : undefined}
         style={rootStyle}
       >
-        <ResizablePanelGroup key={theme.sidebarWidth} orientation="horizontal" className="flex-1">
+        <ResizablePanelGroup orientation="horizontal" className="flex-1">
           {!sidebarCollapsed && (
             <>
               <ResizablePanel

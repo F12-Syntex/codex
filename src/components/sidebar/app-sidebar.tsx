@@ -9,7 +9,6 @@ import {
   Layers,
   BookOpen,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -58,74 +57,91 @@ export function AppSidebar({
 
   return (
     <div className="flex h-full flex-col bg-[var(--bg-surface)]">
-      {/* Segmented control */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex gap-0.5 rounded-lg bg-[var(--bg-inset)] p-1">
-          <button
-            onClick={() => onSectionChange("books")}
-            className={cn(
-              "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-              activeSection === "books"
-                ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Books
-          </button>
-          <button
-            onClick={() => onSectionChange("manga")}
-            className={cn(
-              "flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-              activeSection === "manga"
-                ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Manga
-          </button>
+      {/* Section switcher */}
+      <div className="px-3 pt-3 pb-1">
+        <div className="flex rounded-lg bg-[var(--bg-inset)] p-0.5">
+          {(["books", "manga"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => onSectionChange(s)}
+              className={cn(
+                "relative flex-1 rounded-md py-1.5 text-[12px] font-medium transition-all",
+                activeSection === s
+                  ? "text-foreground"
+                  : "text-white/30 hover:text-white/50"
+              )}
+            >
+              {activeSection === s && (
+                <div className="absolute inset-0 rounded-md bg-[var(--bg-elevated)] shadow-sm" />
+              )}
+              <span className="relative">{s === "books" ? "Books" : "Manga"}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Nav list */}
-      <ScrollArea className="flex-1 px-2">
-        <div className="flex flex-col gap-0.5 py-1">
+      {/* Section label */}
+      <div className="px-4 pt-4 pb-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-white/15">
+          Library
+        </span>
+      </div>
+
+      {/* Nav items */}
+      <ScrollArea className="min-h-0 flex-1 px-2">
+        <div className="flex flex-col gap-px py-0.5">
           {navItems.map((item) => {
             const isActive = activeView === item.id;
             return (
-              <Button
+              <button
                 key={item.id}
-                variant="ghost"
-                className={cn(
-                  "h-8 w-full justify-start gap-2 rounded-lg pl-3 pr-3 text-sm",
-                  isActive && "font-medium text-foreground"
-                )}
-                style={
-                  isActive
-                    ? { backgroundColor: "var(--accent-brand-dim)" }
-                    : undefined
-                }
                 onClick={() => onViewChange(item.id)}
+                className={cn(
+                  "group relative flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13px] transition-colors",
+                  isActive
+                    ? "font-medium text-foreground"
+                    : "text-white/40 hover:bg-white/[0.03] hover:text-white/60"
+                )}
               >
+                {/* Active indicator bar */}
+                {isActive && (
+                  <div
+                    className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full"
+                    style={{ backgroundColor: "var(--accent-brand)" }}
+                  />
+                )}
+
+                {/* Active background */}
+                {isActive && (
+                  <div
+                    className="absolute inset-0 rounded-lg"
+                    style={{ backgroundColor: "var(--accent-brand-subtle)" }}
+                  />
+                )}
+
                 <item.icon
-                  className="h-3.5 w-3.5 shrink-0"
-                  style={
-                    isActive
-                      ? { color: "var(--accent-brand)" }
-                      : undefined
-                  }
+                  className="relative h-4 w-4 shrink-0"
+                  strokeWidth={isActive ? 2 : 1.5}
+                  style={isActive ? { color: "var(--accent-brand)" } : undefined}
                 />
-                {item.label}
-              </Button>
+                <span className="relative">{item.label}</span>
+              </button>
             );
           })}
         </div>
       </ScrollArea>
 
-      {/* Footer — library info */}
-      <div className="border-t border-white/[0.04] px-3 py-2">
-        <p className="text-[11px] text-white/20">
-          {activeSection === "books" ? "Books" : "Manga"} Library
-        </p>
+      {/* Footer */}
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: "var(--accent-brand)" }}
+          />
+          <span className="text-[11px] text-white/20">
+            {activeSection === "books" ? "5 books" : "5 series"}
+          </span>
+        </div>
       </div>
     </div>
   );
