@@ -86,7 +86,8 @@ export default function Home() {
 
   /** Import files via Electron file dialog */
   const handleImport = useCallback(async () => {
-    const files = await window.electronAPI?.importFiles();
+    if (!window.electronAPI?.importFiles) return;
+    const files = await window.electronAPI.importFiles();
     if (!files || files.length === 0) return;
     const items = files.map(fileToMockItem);
     const setter = activeSection === "books" ? setBookData : setComicData;
@@ -229,6 +230,7 @@ export default function Home() {
                   activeView={activeView}
                   onViewChange={setActiveView}
                   data={data}
+                  onImport={handleImport}
                 />
               </ResizablePanel>
               <ResizableHandle />

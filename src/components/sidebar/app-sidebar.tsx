@@ -1,11 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import {
   Library,
   Clock,
   BookOpenCheck,
   CheckCircle,
   Layers,
+  Plus,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LibraryData } from "@/lib/mock-data";
@@ -28,6 +30,7 @@ interface AppSidebarProps {
   activeView: NavView;
   onViewChange: (view: NavView) => void;
   data: LibraryData;
+  onImport: () => void;
 }
 
 const bookNavItems = [
@@ -50,6 +53,7 @@ export function AppSidebar({
   activeView,
   onViewChange,
   data,
+  onImport,
 }: AppSidebarProps) {
   const navItems = activeSection === "books" ? bookNavItems : comicNavItems;
 
@@ -60,9 +64,42 @@ export function AppSidebar({
 
   return (
     <div className="flex h-full flex-col bg-[var(--bg-surface)]">
-      {/* Header — pill section switcher */}
-      <div className="px-4 pt-4 pb-3">
-        <div className="flex rounded-lg bg-white/[0.04] p-0.5">
+      {/* Brand */}
+      <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+        <Image
+          src="/icon.png"
+          alt="Codex"
+          width={22}
+          height={22}
+          className="rounded-[5px]"
+          draggable={false}
+        />
+        <span className="text-[14px] font-semibold tracking-tight text-white/80">
+          Codex
+        </span>
+        <span className="rounded-full bg-white/[0.06] px-1.5 py-px text-[9px] font-medium text-white/20">
+          {APP_VERSION}
+        </span>
+      </div>
+
+      {/* Import action */}
+      <div className="px-3 pb-3">
+        <button
+          onClick={onImport}
+          className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[12px] font-medium transition-all"
+          style={{
+            backgroundColor: "var(--accent-brand)",
+            color: "var(--accent-brand-fg)",
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+          Import
+        </button>
+      </div>
+
+      {/* Section switcher */}
+      <div className="px-3 pb-2">
+        <div className="flex rounded-lg bg-white/[0.03] p-[3px]">
           {(["books", "comic"] as const).map((s) => {
             const active = activeSection === s;
             return (
@@ -70,10 +107,10 @@ export function AppSidebar({
                 key={s}
                 onClick={() => onSectionChange(s)}
                 className={cn(
-                  "flex-1 rounded-md py-1.5 text-[12px] font-medium transition-all",
+                  "flex-1 rounded-md py-[5px] text-[11px] font-medium transition-all",
                   active
-                    ? "bg-white/[0.08] text-white/80 shadow-sm shadow-black/10"
-                    : "text-white/25 hover:text-white/40"
+                    ? "bg-white/[0.07] text-white/75 shadow-sm shadow-black/10"
+                    : "text-white/20 hover:text-white/35"
                 )}
               >
                 {s === "books" ? "Books" : "Comics"}
@@ -84,15 +121,15 @@ export function AppSidebar({
       </div>
 
       {/* Section label */}
-      <div className="px-5 pt-2 pb-1.5">
-        <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-white/[0.10]">
+      <div className="px-5 pt-3 pb-1">
+        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-white/[0.10]">
           Library
         </span>
       </div>
 
       {/* Nav items */}
-      <ScrollArea className="min-h-0 flex-1 px-3">
-        <div className="flex flex-col gap-0.5">
+      <ScrollArea className="min-h-0 flex-1 px-2">
+        <div className="flex flex-col gap-px">
           {navItems.map((item) => {
             const active = activeView === item.id;
             const count = data[item.id]?.length ?? 0;
@@ -101,35 +138,42 @@ export function AppSidebar({
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-2.5 py-[9px] transition-colors",
+                  "group flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
                   active
-                    ? "font-medium"
-                    : "text-white/30 hover:text-white/50"
+                    ? "bg-white/[0.06]"
+                    : "hover:bg-white/[0.03]"
                 )}
               >
-                <div
-                  className={cn(
-                    "h-[5px] w-[5px] shrink-0 rounded-full transition-opacity",
-                    active ? "opacity-100" : "opacity-0"
-                  )}
-                  style={{ backgroundColor: "var(--accent-brand)" }}
-                />
-
                 <item.icon
-                  className="h-[15px] w-[15px] shrink-0"
+                  className={cn(
+                    "h-[16px] w-[16px] shrink-0 transition-colors",
+                    active ? "" : "text-white/25 group-hover:text-white/40"
+                  )}
                   strokeWidth={1.5}
                   style={active ? { color: "var(--accent-brand)" } : undefined}
                 />
 
                 <span
-                  className="flex-1 text-left text-[13px]"
+                  className={cn(
+                    "flex-1 text-left text-[13px] transition-colors",
+                    active
+                      ? "font-medium"
+                      : "text-white/35 group-hover:text-white/50"
+                  )}
                   style={active ? { color: "var(--accent-brand)" } : undefined}
                 >
                   {item.label}
                 </span>
 
                 {count > 0 && (
-                  <span className="text-[11px] tabular-nums text-white/[0.12]">
+                  <span
+                    className={cn(
+                      "min-w-[18px] rounded-full px-1.5 py-px text-center text-[10px] font-medium tabular-nums",
+                      active
+                        ? "bg-[var(--accent-brand-dim)] text-[var(--accent-brand)]"
+                        : "text-white/15"
+                    )}
+                  >
                     {count}
                   </span>
                 )}
@@ -140,14 +184,12 @@ export function AppSidebar({
       </ScrollArea>
 
       {/* Footer */}
-      <div className="flex flex-col gap-2 px-4 pb-4 pt-2">
+      <div className="px-4 pb-4 pt-2">
         <div className="h-px bg-white/[0.04]" />
-
-        <div className="flex items-center justify-between px-1.5">
+        <div className="flex items-center justify-between px-1 pt-2.5">
           <span className="text-[10px] text-white/[0.08]">
             {totalItems} item{totalItems !== 1 ? "s" : ""}
           </span>
-          <span className="text-[10px] text-white/[0.08]">v{APP_VERSION}</span>
         </div>
       </div>
     </div>

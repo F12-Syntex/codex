@@ -519,13 +519,10 @@ function SettingsModal({
   onImportItems: (items: ImportedFile[]) => void;
 }) {
   const [autoScan, setAutoScan] = useState(true);
-  const [defaultZoom, setDefaultZoom] = useState<"fit-page" | "fit-width" | "100%">("fit-page");
-  const [direction, setDirection] = useState<"LTR" | "RTL">("LTR");
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [lastScanCount, setLastScanCount] = useState<number | null>(null);
 
-  const zoomOptions = ["fit-page", "fit-width", "100%"] as const;
 
   const handleSelectFolder = async () => {
     const folder = await window.electronAPI?.selectFolder();
@@ -588,49 +585,6 @@ function SettingsModal({
               checked={autoScan}
               onChange={setAutoScan}
             />
-          </div>
-        </div>
-        <div>
-          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">Reader</p>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between py-1">
-              <span className="text-[13px] text-white/60">Default zoom</span>
-              <div className="flex gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
-                {zoomOptions.map((z) => (
-                  <button
-                    key={z}
-                    onClick={() => setDefaultZoom(z)}
-                    className={cn(
-                      "rounded-md px-2 py-0.5 text-[10px] transition-all",
-                      defaultZoom === z
-                        ? "bg-white/[0.08] text-white/70"
-                        : "text-white/25 hover:text-white/40"
-                    )}
-                  >
-                    {z === "fit-page" ? "Page" : z === "fit-width" ? "Width" : "100%"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-1">
-              <span className="text-[13px] text-white/60">Reading direction</span>
-              <div className="flex gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
-                {(["LTR", "RTL"] as const).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setDirection(d)}
-                    className={cn(
-                      "rounded-md px-2.5 py-0.5 text-[10px] font-medium transition-all",
-                      direction === d
-                        ? "bg-white/[0.08] text-white/70"
-                        : "text-white/25 hover:text-white/40"
-                    )}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
         <div>
