@@ -187,6 +187,7 @@ export default function Home() {
         data-accent={theme.accent}
         data-appearance={theme.appearance}
         data-tint={theme.tintSurfaces ? "true" : undefined}
+        data-cursor={theme.cursorStyle !== "default" ? theme.cursorStyle : undefined}
         style={rootStyle}
       >
         <ResizablePanelGroup orientation="horizontal" className="flex-1">

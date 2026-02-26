@@ -3,6 +3,7 @@ import type { AccentId } from "./accent";
 export type AppearanceMode = "dark" | "light" | "dim";
 export type FontFamily = "geist" | "inter" | "mono" | "system";
 export type CoverStyle = "rounded" | "sharp";
+export type CursorStyle = "default" | "dot" | "circle" | "crosshair";
 
 export interface ThemeConfig {
   accent: AccentId;
@@ -14,6 +15,7 @@ export interface ThemeConfig {
   surfaceOpacity: number;       // 50–100 (how opaque surfaces are)
   fontFamily: FontFamily;
   coverStyle: CoverStyle;
+  cursorStyle: CursorStyle;
   showFormatBadge: boolean;
   sidebarWidth: number;         // default panel % (15–35)
   tintSurfaces: boolean;        // tint surfaces with accent color
@@ -29,6 +31,7 @@ export const DEFAULT_THEME: ThemeConfig = {
   surfaceOpacity: 100,
   fontFamily: "geist",
   coverStyle: "rounded",
+  cursorStyle: "default",
   showFormatBadge: true,
   sidebarWidth: 20,
   tintSurfaces: false,

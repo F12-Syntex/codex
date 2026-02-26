@@ -15,6 +15,10 @@ import {
   Layers,
   Square,
   RectangleHorizontal,
+  MousePointer2,
+  Circle,
+  Crosshair,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +32,7 @@ import {
   APPEARANCE_OPTIONS,
   FONT_OPTIONS,
   type ThemeConfig,
+  type CursorStyle,
 } from "@/lib/theme";
 import { HexColorPicker } from "react-colorful";
 import { cn } from "@/lib/utils";
@@ -327,6 +332,32 @@ function ThemeModal({
                   checked={theme.showFormatBadge}
                   onChange={(v) => onThemeChange({ showFormatBadge: v })}
                 />
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Cursor</p>
+              <div className="grid grid-cols-4 gap-1">
+                {([
+                  { id: "default" as CursorStyle, label: "Default", icon: MousePointer2 },
+                  { id: "dot" as CursorStyle, label: "Dot", icon: Circle },
+                  { id: "circle" as CursorStyle, label: "Circle", icon: Target },
+                  { id: "crosshair" as CursorStyle, label: "Cross", icon: Crosshair },
+                ]).map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => onThemeChange({ cursorStyle: c.id })}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 rounded-lg py-2.5 text-[10px] transition-all",
+                      theme.cursorStyle === c.id
+                        ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
+                        : "text-white/30 hover:text-white/50"
+                    )}
+                  >
+                    <c.icon className="h-4 w-4" strokeWidth={1.5} />
+                    {c.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

@@ -146,7 +146,7 @@ export function AppSidebar({
           <span className="text-[10px] text-white/[0.08]">
             {totalItems} item{totalItems !== 1 ? "s" : ""}
           </span>
-          <span className="text-[10px] text-white/[0.08]">v0.4.0</span>
+          <span className="text-[10px] text-white/[0.08]">v0.5.0</span>
         </div>
       </div>
     </div>
