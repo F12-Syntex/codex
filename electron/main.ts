@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -9,6 +9,8 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    frame: false,
+    titleBarStyle: "hidden",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -16,9 +18,25 @@ function createWindow() {
     },
   });
 
+  ipcMain.on("window:minimize", () => mainWindow.minimize());
+  ipcMain.on("window:maximize", () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+  ipcMain.on("window:close", () => mainWindow.close());
+
+  mainWindow.on("maximize", () => {
+    mainWindow.webContents.send("window:maximized", true);
+  });
+  mainWindow.on("unmaximize", () => {
+    mainWindow.webContents.send("window:maximized", false);
+  });
+
   if (isDev) {
     mainWindow.loadURL("http://localhost:3000");
-    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../out/index.html"));
   }
