@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import {
   LayoutGrid,
   List,
@@ -15,6 +14,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { BookFormat } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -50,39 +56,6 @@ const sortOptions: { field: SortField; label: string }[] = [
 
 const formatOptions: FormatFilter[] = ["all", "EPUB", "PDF", "CBZ", "CBR", "MOBI"];
 
-/* ── Dropdown menu ───────────────────────────── */
-function Dropdown({
-  open,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      ref={ref}
-      className="absolute right-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] py-1 shadow-xl shadow-black/40"
-    >
-      {children}
-    </div>
-  );
-}
-
 export function ContentToolbar({
   viewMode,
   onViewModeChange,
@@ -95,9 +68,6 @@ export function ContentToolbar({
   onFormatFilterChange,
   onImport,
 }: ContentToolbarProps) {
-  const [sortOpen, setSortOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
-
   return (
     <div className="flex items-center gap-3 border-b border-white/[0.04] px-4 py-2">
       <h1 className="text-sm font-semibold">{viewLabel}</h1>
@@ -106,22 +76,23 @@ export function ContentToolbar({
       <div className="flex-1" />
 
       {/* Sort */}
-      <div className="relative">
-        <button
-          onClick={() => { setSortOpen((v) => !v); setFilterOpen(false); }}
-          className={cn(
-            "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:text-foreground",
-            sortOpen && "bg-white/[0.06] text-foreground"
-          )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:text-foreground data-[state=open]:bg-white/[0.06] data-[state=open]:text-foreground"
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            Sort
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="min-w-[140px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]"
         >
-          <ArrowUpDown className="h-3.5 w-3.5" />
-          Sort
-        </button>
-        <Dropdown open={sortOpen} onClose={() => setSortOpen(false)}>
           {sortOptions.map((opt) => {
             const active = sortField === opt.field;
             return (
-              <button
+              <DropdownMenuItem
                 key={opt.field}
                 onClick={() => {
                   if (active) {
@@ -130,7 +101,7 @@ export function ContentToolbar({
                     onSortChange(opt.field, "asc");
                   }
                 }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white/80"
+                className="gap-2 text-[13px] text-white/60"
               >
                 <Check className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-0")} />
                 {opt.label}
@@ -139,46 +110,46 @@ export function ContentToolbar({
                     {sortDir === "asc" ? "A→Z" : "Z→A"}
                   </span>
                 )}
-              </button>
+              </DropdownMenuItem>
             );
           })}
-        </Dropdown>
-      </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Filter */}
-      <div className="relative">
-        <button
-          onClick={() => { setFilterOpen((v) => !v); setSortOpen(false); }}
-          className={cn(
-            "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors",
-            filterOpen
-              ? "bg-white/[0.06] text-foreground"
-              : formatFilter !== "all"
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className={cn(
+              "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors data-[state=open]:bg-white/[0.06] data-[state=open]:text-foreground",
+              formatFilter !== "all"
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground"
-          )}
+            )}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            {formatFilter === "all" ? "Filter" : formatFilter}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="min-w-[140px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]"
         >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {formatFilter === "all" ? "Filter" : formatFilter}
-        </button>
-        <Dropdown open={filterOpen} onClose={() => setFilterOpen(false)}>
           {formatOptions.map((f) => {
             const active = formatFilter === f;
             return (
-              <button
+              <DropdownMenuItem
                 key={f}
-                onClick={() => {
-                  onFormatFilterChange(f);
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white/80"
+                onClick={() => onFormatFilterChange(f)}
+                className="gap-2 text-[13px] text-white/60"
               >
                 <Check className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-0")} />
                 {f === "all" ? "All formats" : f}
-              </button>
+              </DropdownMenuItem>
             );
           })}
-        </Dropdown>
-      </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* View toggle */}
       <div className="flex gap-0.5 rounded-lg bg-[var(--bg-inset)] p-0.5">

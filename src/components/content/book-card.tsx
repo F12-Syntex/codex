@@ -82,7 +82,7 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
             <img
               src={cover}
               alt={title}
-              className="absolute inset-0 h-full w-full object-contain bg-black/20"
+              className="absolute inset-0 h-full w-full object-cover"
               style={{ imageRendering: "auto" }}
               loading="lazy"
               onLoad={handleImageLoad}

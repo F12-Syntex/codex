@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft } from "lucide-react";
 import { BookCard } from "./book-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import type { ViewMode } from "./content-toolbar";
 import type { CoverStyle } from "@/lib/theme";
 import type { MockItem } from "@/lib/mock-data";
@@ -33,108 +40,68 @@ const comicMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] =
   { view: "completed", label: "Completed", icon: CheckCircle },
 ];
 
-function ContextMenu({
-  x,
-  y,
+/* ── Item context menu wrapper ──────────────────────────── */
+function ItemContextMenu({
   itemId,
   activeView,
   section,
   onMove,
   onDelete,
   onTransfer,
-  onClose,
+  children,
 }: {
-  x: number;
-  y: number;
   itemId: number;
   activeView: NavView;
   section: Section;
   onMove: (id: number, view: NavView) => void;
   onDelete: (id: number) => void;
   onTransfer: (id: number, targetSection: Section) => void;
-  onClose: () => void;
+  children: React.ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    document.addEventListener("keydown", keyHandler);
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      document.removeEventListener("keydown", keyHandler);
-    };
-  }, [onClose]);
-
   const allTargets = section === "books" ? bookMoveTargets : comicMoveTargets;
   const targets = allTargets.filter((t) => t.view !== activeView);
-
   const transferLabel = section === "books" ? "Move to Comics" : "Move to Books";
   const transferSection: Section = section === "books" ? "comic" : "books";
 
   return (
-    <div
-      ref={ref}
-      className="fixed z-50 min-w-[180px] overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] py-1 shadow-xl shadow-black/40"
-      style={{ left: x, top: y }}
-    >
-      <div className="px-3 py-1.5 text-[11px] text-white/20">Move to</div>
-      {targets.map((t) => (
-        <button
-          key={t.view}
-          onClick={() => {
-            onMove(itemId, t.view);
-            onClose();
-          }}
-          className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white/80"
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="min-w-[180px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]">
+        <ContextMenuLabel className="text-[11px] text-white/20">Move to</ContextMenuLabel>
+        {targets.map((t) => (
+          <ContextMenuItem
+            key={t.view}
+            onClick={() => onMove(itemId, t.view)}
+            className="gap-2 text-[13px] text-white/60"
+          >
+            <t.icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+            {t.label}
+          </ContextMenuItem>
+        ))}
+        <ContextMenuSeparator className="bg-white/[0.06]" />
+        <ContextMenuItem
+          onClick={() => onTransfer(itemId, transferSection)}
+          className="gap-2 text-[13px] text-white/60"
         >
-          <t.icon className="h-3.5 w-3.5" strokeWidth={1.5} />
-          {t.label}
-        </button>
-      ))}
-
-      <div className="mx-2 my-1 h-px bg-white/[0.06]" />
-
-      <button
-        onClick={() => {
-          onTransfer(itemId, transferSection);
-          onClose();
-        }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white/80"
-      >
-        <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
-        {transferLabel}
-      </button>
-
-      <div className="mx-2 my-1 h-px bg-white/[0.06]" />
-
-      <button
-        onClick={() => {
-          onDelete(itemId);
-          onClose();
-        }}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-red-400/80 transition-colors hover:bg-red-500/[0.08] hover:text-red-400"
-      >
-        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-        Delete
-      </button>
-    </div>
+          <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
+          {transferLabel}
+        </ContextMenuItem>
+        <ContextMenuSeparator className="bg-white/[0.06]" />
+        <ContextMenuItem
+          variant="destructive"
+          onClick={() => onDelete(itemId)}
+          className="gap-2 text-[13px]"
+        >
+          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
 export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, activeView, section }: ContentGridProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
-  const [ctx, setCtx] = useState<{ x: number; y: number; itemId: number } | null>(null);
-
-  const handleContextMenu = (e: React.MouseEvent, itemId: number) => {
-    e.preventDefault();
-    setCtx({ x: e.clientX, y: e.clientY, itemId });
-  };
 
   if (items.length === 0) {
     return (
@@ -150,32 +117,16 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
     );
   }
 
-  const contextMenu = ctx && (
-    <ContextMenu
-      x={ctx.x}
-      y={ctx.y}
-      itemId={ctx.itemId}
-      activeView={activeView}
-      section={section}
-      onMove={onMoveItem}
-      onDelete={onDeleteItem}
-      onTransfer={onTransferItem}
-      onClose={() => setCtx(null)}
-    />
-  );
+  const ctxProps = { activeView, section, onMove: onMoveItem, onDelete: onDeleteItem, onTransfer: onTransferItem };
 
   /* ── List view ──────────────────────────────── */
   if (viewMode === "list") {
     return (
-      <>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-0.5 p-3">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                onContextMenu={(e) => handleContextMenu(e, item.id)}
-                className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5"
-              >
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-0.5 p-3">
+          {items.map((item) => (
+            <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+              <div className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{item.title}</p>
                   <p className="truncate text-xs text-muted-foreground">{item.author}</p>
@@ -186,33 +137,28 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                   </span>
                 )}
               </div>
-            ))}
-          </div>
-        </ScrollArea>
-        {contextMenu}
-      </>
+            </ItemContextMenu>
+          ))}
+        </div>
+      </ScrollArea>
     );
   }
 
   /* ── Detail view ────────────────────────────── */
   if (viewMode === "detail") {
     return (
-      <>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3 p-5">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                onContextMenu={(e) => handleContextMenu(e, item.id)}
-                className="group flex gap-4 rounded-lg bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]"
-              >
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3 p-5">
+          {items.map((item) => (
+            <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+              <div className="group flex gap-4 rounded-lg bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]">
                 <div className="relative shrink-0">
                   <div className={`relative h-32 w-[85px] overflow-hidden ${radius}`}>
                     {item.cover ? (
                       <img
                         src={item.cover}
                         alt={item.title}
-                        className="absolute inset-0 h-full w-full object-contain bg-black/20"
+                        className="absolute inset-0 h-full w-full object-cover"
                         loading="lazy"
                       />
                     ) : (
@@ -238,31 +184,29 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </ScrollArea>
-        {contextMenu}
-      </>
+            </ItemContextMenu>
+          ))}
+        </div>
+      </ScrollArea>
     );
   }
 
   /* ── Grid view ──────────────────────────────── */
   return (
-    <>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
-          {items.map((item) => (
-            <div key={item.id} onContextMenu={(e) => handleContextMenu(e, item.id)}>
+    <ScrollArea className="min-h-0 flex-1">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
+        {items.map((item) => (
+          <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+            <div>
               <BookCard
                 {...item}
                 coverStyle={coverStyle}
                 showFormatBadge={showFormatBadge}
               />
             </div>
-          ))}
-        </div>
-      </ScrollArea>
-      {contextMenu}
-    </>
+          </ItemContextMenu>
+        ))}
+      </div>
+    </ScrollArea>
   );
 }
