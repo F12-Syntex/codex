@@ -78,14 +78,18 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
         <div
           className={`relative aspect-[2/3] overflow-hidden outline-none border-0 ${radius} transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:scale-[1.02]`}
         >
-          <img
-            src={cover}
-            alt={title}
-            className="absolute inset-0 h-full w-full object-cover"
-            crossOrigin="anonymous"
-            loading="lazy"
-            onLoad={handleImageLoad}
-          />
+          {cover ? (
+            <img
+              src={cover}
+              alt={title}
+              className="absolute inset-0 h-full w-full object-cover"
+              crossOrigin="anonymous"
+              loading="lazy"
+              onLoad={handleImageLoad}
+            />
+          ) : (
+            <div className="absolute inset-0" style={{ background: gradient }} />
+          )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/30 to-transparent" />
 
           {showFormatBadge && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { ContentToolbar } from "@/components/content/content-toolbar";
@@ -15,7 +15,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
-import { initialBookData, initialComicData, fileToMockItem, type LibraryData } from "@/lib/mock-data";
+import { groupByView, libraryItemToMockItem, type LibraryData, type MockItem } from "@/lib/mock-data";
 import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
 
 const viewLabelMap: Record<NavView, string> = {
@@ -44,11 +44,80 @@ export default function Home() {
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
-  const [bookData, setBookData] = useState<LibraryData>(initialBookData);
-  const [comicData, setComicData] = useState<LibraryData>(initialComicData);
+  const [bookData, setBookData] = useState<LibraryData>({});
+  const [comicData, setComicData] = useState<LibraryData>({});
+  const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load data from database on mount ──────────────
+
+  useEffect(() => {
+    if (!window.electronAPI?.getItems) return;
+    Promise.all([
+      window.electronAPI.getItems("books"),
+      window.electronAPI.getItems("comic"),
+    ]).then(([books, comics]) => {
+      setBookData(groupByView(books));
+      setComicData(groupByView(comics));
+    });
+  }, []);
+
+  // ── Load settings from database on mount ──────────
+
+  useEffect(() => {
+    if (!window.electronAPI?.getAllSettings) return;
+    window.electronAPI.getAllSettings().then((settings) => {
+      if (settings.theme) {
+        try {
+          const saved = JSON.parse(settings.theme) as Partial<ThemeConfig>;
+          setTheme((prev) => ({ ...prev, ...saved }));
+        } catch { /* ignore invalid JSON */ }
+      }
+    });
+  }, []);
+
+  // ── Auto-scan on launch ───────────────────────────
+
+  useEffect(() => {
+    if (!window.electronAPI?.getSetting || !window.electronAPI?.scanFolder) return;
+    Promise.all([
+      window.electronAPI.getSetting("autoScan"),
+      window.electronAPI.getSetting("libraryPath"),
+    ]).then(([autoScan, libraryPath]) => {
+      if (autoScan === "true" && libraryPath) {
+        // Scan both sections
+        Promise.all([
+          window.electronAPI.scanFolder(libraryPath, "books", "bookshelf"),
+          window.electronAPI.scanFolder(libraryPath, "comic", "series"),
+        ]).then(([newBooks, newComics]) => {
+          if (newBooks?.length) {
+            setBookData((prev) => {
+              const items = newBooks.map(libraryItemToMockItem);
+              return { ...prev, bookshelf: [...(prev.bookshelf ?? []), ...items] };
+            });
+          }
+          if (newComics?.length) {
+            setComicData((prev) => {
+              const items = newComics.map(libraryItemToMockItem);
+              return { ...prev, series: [...(prev.series ?? []), ...items] };
+            });
+          }
+        });
+      }
+    });
+  }, []);
+
+  // ── Save theme to database (debounced) ────────────
 
   const handleThemeChange = useCallback((patch: Partial<ThemeConfig>) => {
-    setTheme((prev) => ({ ...prev, ...patch }));
+    setTheme((prev) => {
+      const next = { ...prev, ...patch };
+      // Debounce save to DB
+      if (themeDebounceRef.current) clearTimeout(themeDebounceRef.current);
+      themeDebounceRef.current = setTimeout(() => {
+        window.electronAPI?.setSetting("theme", JSON.stringify(next));
+      }, 500);
+      return next;
+    });
   }, []);
 
   const handleSectionChange = useCallback((section: Section) => {
@@ -62,15 +131,15 @@ export default function Home() {
     setSortDir(dir);
   }, []);
 
-  /** Move an item from its current view to a target view */
-  const moveItem = useCallback((title: string, targetView: NavView) => {
+  /** Move an item to a different view within the same section */
+  const handleMoveItem = useCallback((id: number, targetView: NavView) => {
+    window.electronAPI?.moveItem(id, targetView);
     const setter = activeSection === "books" ? setBookData : setComicData;
     setter((prev) => {
       const next = { ...prev };
-      // Find and remove the item from its current view
-      let item = null;
+      let item: MockItem | null = null;
       for (const [view, items] of Object.entries(next)) {
-        const idx = items?.findIndex((i) => i.title === title) ?? -1;
+        const idx = items?.findIndex((i) => i.id === id) ?? -1;
         if (idx !== -1 && items) {
           item = items[idx];
           next[view as NavView] = items.filter((_, i) => i !== idx);
@@ -78,34 +147,84 @@ export default function Home() {
         }
       }
       if (!item) return prev;
-      // Add to target view
       next[targetView] = [...(next[targetView] ?? []), item];
       return next;
     });
   }, [activeSection]);
 
+  /** Delete an item */
+  const handleDeleteItem = useCallback((id: number) => {
+    window.electronAPI?.deleteItem(id);
+    const setter = activeSection === "books" ? setBookData : setComicData;
+    setter((prev) => {
+      const next = { ...prev };
+      for (const [view, items] of Object.entries(next)) {
+        const idx = items?.findIndex((i) => i.id === id) ?? -1;
+        if (idx !== -1 && items) {
+          next[view as NavView] = items.filter((_, i) => i !== idx);
+          return next;
+        }
+      }
+      return prev;
+    });
+  }, [activeSection]);
+
+  /** Transfer an item between books and comics */
+  const handleTransferItem = useCallback((id: number, targetSection: Section) => {
+    const defaultView = targetSection === "books" ? "bookshelf" : "series";
+    window.electronAPI?.transferItem(id, targetSection, defaultView);
+
+    const sourceSetter = activeSection === "books" ? setBookData : setComicData;
+    const targetSetter = targetSection === "books" ? setBookData : setComicData;
+
+    // Find and remove from source
+    let transferredItem: MockItem | null = null;
+    sourceSetter((prev) => {
+      const next = { ...prev };
+      for (const [view, items] of Object.entries(next)) {
+        const idx = items?.findIndex((i) => i.id === id) ?? -1;
+        if (idx !== -1 && items) {
+          transferredItem = items[idx];
+          next[view as NavView] = items.filter((_, i) => i !== idx);
+          return next;
+        }
+      }
+      return prev;
+    });
+
+    // Add to target (use setTimeout to ensure source state update completes first)
+    setTimeout(() => {
+      if (!transferredItem) return;
+      targetSetter((prev) => ({
+        ...prev,
+        [defaultView]: [...(prev[defaultView] ?? []), transferredItem!],
+      }));
+    }, 0);
+  }, [activeSection]);
+
   /** Import files via Electron file dialog */
   const handleImport = useCallback(async () => {
     if (!window.electronAPI?.importFiles) return;
-    const files = await window.electronAPI.importFiles();
-    if (!files || files.length === 0) return;
-    const items = files.map(fileToMockItem);
+    const defaultView = activeView;
+    const items = await window.electronAPI.importFiles(activeSection, defaultView);
+    if (!items || items.length === 0) return;
+    const mockItems = items.map(libraryItemToMockItem);
     const setter = activeSection === "books" ? setBookData : setComicData;
     setter((prev) => ({
       ...prev,
-      [activeView]: [...(prev[activeView] ?? []), ...items],
+      [activeView]: [...(prev[activeView] ?? []), ...mockItems],
     }));
   }, [activeSection, activeView]);
 
   /** Import items from folder scan (called from Settings) */
-  const handleImportItems = useCallback((files: ImportedFile[]) => {
-    if (files.length === 0) return;
-    const items = files.map(fileToMockItem);
+  const handleImportItems = useCallback((items: LibraryItem[]) => {
+    if (items.length === 0) return;
+    const mockItems = items.map(libraryItemToMockItem);
     const setter = activeSection === "books" ? setBookData : setComicData;
     const defaultView = activeSection === "books" ? "bookshelf" : "series";
     setter((prev) => ({
       ...prev,
-      [defaultView]: [...(prev[defaultView] ?? []), ...items],
+      [defaultView]: [...(prev[defaultView] ?? []), ...mockItems],
     }));
   }, [activeSection]);
 
@@ -265,7 +384,9 @@ export default function Home() {
                   viewMode={viewMode}
                   coverStyle={theme.coverStyle}
                   showFormatBadge={theme.showFormatBadge}
-                  onMoveItem={moveItem}
+                  onMoveItem={handleMoveItem}
+                  onDeleteItem={handleDeleteItem}
+                  onTransferItem={handleTransferItem}
                   activeView={activeView}
                   section={activeSection}
                 />
@@ -274,6 +395,7 @@ export default function Home() {
                   onThemeChange={handleThemeChange}
                   onSearchOpen={() => setSearchOpen(true)}
                   onImportItems={handleImportItems}
+                  activeSection={activeSection}
                 />
               </div>
             </div>

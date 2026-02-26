@@ -11,9 +11,12 @@
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "concurrently --kill-others \"cross-env NODE_ENV=development yarn dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development yarn electron:compile && cross-env NODE_ENV=development electron dist-electron/main.js\"",
     "electron:build": "yarn build && yarn electron:compile && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
-    "electron:preview": "yarn build && yarn electron:compile && cross-env NODE_ENV=production electron dist-electron/main.js"
+    "electron:preview": "yarn build && yarn electron:compile && cross-env NODE_ENV=production electron dist-electron/main.js",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 || true"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
+    "better-sqlite3": "^12.6.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.3",
@@ -28,6 +31,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/adm-zip": "^0.5.7",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -52,6 +57,9 @@
     "files": [
       "dist-electron/**/*",
       "out/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
     ],
     "icon": "build/icon.png",
     "forceCodeSigning": false,

@@ -42,7 +42,8 @@ interface DockProps {
   theme: ThemeConfig;
   onThemeChange: (patch: Partial<ThemeConfig>) => void;
   onSearchOpen: () => void;
-  onImportItems: (items: ImportedFile[]) => void;
+  onImportItems: (items: LibraryItem[]) => void;
+  activeSection: string;
 }
 
 /* ── Shared modal chrome ─────────────────────────────────── */
@@ -514,30 +515,57 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
 function SettingsModal({
   onClose,
   onImportItems,
+  activeSection,
 }: {
   onClose: () => void;
-  onImportItems: (items: ImportedFile[]) => void;
+  onImportItems: (items: LibraryItem[]) => void;
+  activeSection: string;
 }) {
-  const [autoScan, setAutoScan] = useState(true);
+  const [autoScan, setAutoScan] = useState(false);
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [lastScanCount, setLastScanCount] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
+  const api = typeof window !== "undefined" ? window.electronAPI : undefined;
+  const hasApi = !!(api?.getSetting && api?.setSetting && api?.scanFolder);
+
+  // Load saved settings on mount
+  useState(() => {
+    if (!hasApi) return;
+    Promise.all([
+      api!.getSetting("libraryPath"),
+      api!.getSetting("autoScan"),
+    ]).then(([path, scan]) => {
+      if (path) setLibraryPath(path);
+      if (scan) setAutoScan(scan === "true");
+      setLoaded(true);
+    });
+  });
 
   const handleSelectFolder = async () => {
-    const folder = await window.electronAPI?.selectFolder();
-    if (folder) setLibraryPath(folder);
+    const folder = await api?.selectFolder?.();
+    if (folder) {
+      setLibraryPath(folder);
+      if (hasApi) api!.setSetting("libraryPath", folder);
+    }
+  };
+
+  const handleAutoScanChange = (v: boolean) => {
+    setAutoScan(v);
+    if (hasApi) api!.setSetting("autoScan", String(v));
   };
 
   const handleScan = async () => {
-    if (!libraryPath) return;
+    if (!libraryPath || !hasApi) return;
     setScanning(true);
     setLastScanCount(null);
+    const defaultView = activeSection === "books" ? "bookshelf" : "series";
     try {
-      const files = await window.electronAPI?.scanFolder(libraryPath);
-      if (files && files.length > 0) {
-        onImportItems(files);
-        setLastScanCount(files.length);
+      const items = await api!.scanFolder(libraryPath, activeSection, defaultView);
+      if (items && items.length > 0) {
+        onImportItems(items);
+        setLastScanCount(items.length);
       } else {
         setLastScanCount(0);
       }
@@ -583,7 +611,7 @@ function SettingsModal({
             <ToggleRow
               label="Auto-scan on launch"
               checked={autoScan}
-              onChange={setAutoScan}
+              onChange={handleAutoScanChange}
             />
           </div>
         </div>
@@ -600,7 +628,7 @@ function SettingsModal({
 }
 
 /* ── Dock ─────────────────────────────────────────────────── */
-export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems }: DockProps) {
+export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems, activeSection }: DockProps) {
   const [activeModal, setActiveModal] = useState<DockModal>(null);
 
   const toggle = (modal: DockModal) => setActiveModal((v) => (v === modal ? null : modal));
@@ -617,7 +645,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems }: Dock
           <ThemeModal theme={theme} onThemeChange={onThemeChange} onClose={close} />
         )}
         {activeModal === "shortcuts" && <ShortcutsModal onClose={close} />}
-        {activeModal === "settings" && <SettingsModal onClose={close} onImportItems={onImportItems} />}
+        {activeModal === "settings" && <SettingsModal onClose={close} onImportItems={onImportItems} activeSection={activeSection} />}
 
         <div className="relative flex items-center gap-1 rounded-full border border-white/[0.06] bg-[var(--bg-surface)] px-2 py-1.5 shadow-lg shadow-black/30">
           <Tooltip delayDuration={300}>

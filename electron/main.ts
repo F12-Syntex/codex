@@ -3,22 +3,65 @@ import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
+import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings } from "./database";
+import { extractMetadata } from "./metadata";
+import type { LibraryItem } from "./database";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
-
-interface ImportedFile {
-  name: string;
-  filePath: string;
-  format: string;
-  size: number;
-}
 
 function getFormat(ext: string): string {
   return ext.slice(1).toUpperCase(); // ".epub" -> "EPUB"
 }
 
-function scanDirectory(dirPath: string): ImportedFile[] {
-  const results: ImportedFile[] = [];
+// Gradient palette for imported items (cycles through these)
+const GRADIENTS = [
+  "linear-gradient(135deg, #667eea, #764ba2)",
+  "linear-gradient(135deg, #f093fb, #f5576c)",
+  "linear-gradient(135deg, #4facfe, #00f2fe)",
+  "linear-gradient(135deg, #43e97b, #38f9d7)",
+  "linear-gradient(135deg, #fa709a, #fee140)",
+  "linear-gradient(135deg, #a18cd1, #fbc2eb)",
+  "linear-gradient(135deg, #ff9a9e, #fad0c4)",
+  "linear-gradient(135deg, #84fab0, #8fd3f4)",
+];
+let gradientIndex = 0;
+
+function nextGradient(): string {
+  const g = GRADIENTS[gradientIndex % GRADIENTS.length];
+  gradientIndex++;
+  return g;
+}
+
+interface EnrichedFile {
+  id?: number;
+  name: string;
+  filePath: string;
+  format: string;
+  size: number;
+  title: string;
+  author: string;
+  coverBase64: string;
+  gradient: string;
+}
+
+function enrichFile(fp: string): EnrichedFile {
+  const ext = path.extname(fp).toLowerCase();
+  const stat = fs.statSync(fp);
+  const meta = extractMetadata(fp);
+  return {
+    name: path.basename(fp, ext),
+    filePath: fp,
+    format: getFormat(ext),
+    size: stat.size,
+    title: meta.title,
+    author: meta.author,
+    coverBase64: meta.cover,
+    gradient: nextGradient(),
+  };
+}
+
+function scanDirectory(dirPath: string): EnrichedFile[] {
+  const results: EnrichedFile[] = [];
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     for (const entry of entries) {
@@ -28,13 +71,7 @@ function scanDirectory(dirPath: string): ImportedFile[] {
       } else {
         const ext = path.extname(entry.name).toLowerCase();
         if (SUPPORTED_EXTENSIONS.includes(ext)) {
-          const stat = fs.statSync(fullPath);
-          results.push({
-            name: path.basename(entry.name, ext),
-            filePath: fullPath,
-            format: getFormat(ext),
-            size: stat.size,
-          });
+          results.push(enrichFile(fullPath));
         }
       }
     }
@@ -59,6 +96,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function createWindow() {
+  // Initialize database before setting up IPC
+  initDatabase();
+
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -84,8 +124,9 @@ function createWindow() {
   });
   ipcMain.on("window:close", () => mainWindow.close());
 
-  // Library: import files via dialog
-  ipcMain.handle("library:import-files", async () => {
+  // ── Library: import files via dialog ──────────────
+
+  ipcMain.handle("library:import-files", async (_event, section: string, view: string) => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Import files",
       filters: [
@@ -94,19 +135,27 @@ function createWindow() {
       properties: ["openFile", "multiSelections"],
     });
     if (result.canceled) return [];
-    return result.filePaths.map((fp) => {
-      const ext = path.extname(fp).toLowerCase();
-      const stat = fs.statSync(fp);
-      return {
-        name: path.basename(fp, ext),
-        filePath: fp,
-        format: getFormat(ext),
-        size: stat.size,
-      } as ImportedFile;
-    });
+
+    const enriched = result.filePaths.map((fp) => enrichFile(fp));
+
+    // Save to database
+    const dbItems = enriched.map((f) => ({
+      title: f.title,
+      author: f.author,
+      cover: f.coverBase64,
+      gradient: f.gradient,
+      format: f.format,
+      filePath: f.filePath,
+      size: f.size,
+      section,
+      view,
+    }));
+
+    return addItems(dbItems);
   });
 
-  // Library: select folder
+  // ── Library: select folder ────────────────────────
+
   ipcMain.handle("library:select-folder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Select library folder",
@@ -116,10 +165,65 @@ function createWindow() {
     return result.filePaths[0];
   });
 
-  // Library: scan folder recursively
-  ipcMain.handle("library:scan-folder", (_event, folderPath: string) => {
-    return scanDirectory(folderPath);
+  // ── Library: scan folder recursively ──────────────
+
+  ipcMain.handle("library:scan-folder", (_event, folderPath: string, section: string, view: string) => {
+    const enriched = scanDirectory(folderPath);
+
+    const dbItems = enriched.map((f) => ({
+      title: f.title,
+      author: f.author,
+      cover: f.coverBase64,
+      gradient: f.gradient,
+      format: f.format,
+      filePath: f.filePath,
+      size: f.size,
+      section,
+      view,
+    }));
+
+    return addItems(dbItems);
   });
+
+  // ── Library: get items from database ──────────────
+
+  ipcMain.handle("library:get-items", (_event, section: string) => {
+    return getAllItems(section);
+  });
+
+  // ── Library: delete item ──────────────────────────
+
+  ipcMain.handle("library:delete-item", (_event, id: number) => {
+    deleteItem(id);
+  });
+
+  // ── Library: move item (change view) ──────────────
+
+  ipcMain.handle("library:move-item", (_event, id: number, targetView: string) => {
+    moveItem(id, targetView);
+  });
+
+  // ── Library: transfer item (change section + view) ─
+
+  ipcMain.handle("library:transfer-item", (_event, id: number, targetSection: string, targetView: string) => {
+    transferItem(id, targetSection, targetView);
+  });
+
+  // ── Settings ──────────────────────────────────────
+
+  ipcMain.handle("library:get-setting", (_event, key: string) => {
+    return getSetting(key);
+  });
+
+  ipcMain.handle("library:set-setting", (_event, key: string, value: string) => {
+    setSetting(key, value);
+  });
+
+  ipcMain.handle("library:get-all-settings", () => {
+    return getAllSettings();
+  });
+
+  // ── Window events ─────────────────────────────────
 
   mainWindow.on("maximize", () => {
     mainWindow.webContents.send("window:maximized", true);

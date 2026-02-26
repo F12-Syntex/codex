@@ -185,12 +185,19 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                           >
                             {/* Cover thumbnail */}
                             <div className="relative h-11 w-8 shrink-0 overflow-hidden rounded-md">
-                              <img
-                                src={r.item.cover}
-                                alt={r.item.title}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
+                              {r.item.cover ? (
+                                <img
+                                  src={r.item.cover}
+                                  alt={r.item.title}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div
+                                  className="h-full w-full"
+                                  style={{ background: r.item.gradient }}
+                                />
+                              )}
                             </div>
 
                             {/* Text */}
