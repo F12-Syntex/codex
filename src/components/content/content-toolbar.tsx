@@ -127,7 +127,6 @@ export function ContentToolbar({
                   } else {
                     onSortChange(opt.field, "asc");
                   }
-                  setSortOpen(false);
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white/80"
               >
@@ -168,7 +167,6 @@ export function ContentToolbar({
                 key={f}
                 onClick={() => {
                   onFormatFilterChange(f);
-                  setFilterOpen(false);
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-white/[0.04] hover:text-white/80"
               >
