@@ -52,7 +52,7 @@ function extractDominantColor(img: HTMLImageElement): string {
 }
 
 export function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge }: BookCardProps) {
-  const radius = coverStyle === "rounded" ? "rounded-xl" : "rounded-none";
+  const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const [glowColor, setGlowColor] = useState<string>(gradient);
   const extracted = useRef(false);
 

@@ -10,6 +10,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { bookData, mangaData } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export type Section = "books" | "manga";
@@ -47,6 +48,11 @@ const mangaNavItems = [
   { id: "completed" as const, label: "Completed", icon: CheckCircle },
 ];
 
+function getCount(section: Section, view: NavView): number {
+  const data = section === "books" ? bookData : mangaData;
+  return data[view]?.length ?? 0;
+}
+
 export function AppSidebar({
   activeSection,
   onSectionChange,
@@ -57,92 +63,89 @@ export function AppSidebar({
 
   return (
     <div className="flex h-full flex-col bg-[var(--bg-surface)]">
-      {/* Section switcher */}
-      <div className="px-3 pt-3 pb-1">
-        <div className="flex rounded-lg bg-[var(--bg-inset)] p-0.5">
-          {(["books", "manga"] as const).map((s) => (
+      {/* Section tabs */}
+      <div className="flex gap-6 px-5 pt-5">
+        {(["books", "manga"] as const).map((s) => {
+          const active = activeSection === s;
+          return (
             <button
               key={s}
               onClick={() => onSectionChange(s)}
               className={cn(
-                "relative flex-1 rounded-md py-1.5 text-[12px] font-medium transition-all",
-                activeSection === s
-                  ? "text-foreground"
-                  : "text-white/30 hover:text-white/50"
+                "relative pb-2 text-[13px] font-medium transition-colors",
+                active ? "text-foreground" : "text-white/25 hover:text-white/45"
               )}
             >
-              {activeSection === s && (
-                <div className="absolute inset-0 rounded-md bg-[var(--bg-elevated)] shadow-sm" />
+              {s === "books" ? "Books" : "Manga"}
+              {active && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
+                  style={{ backgroundColor: "var(--accent-brand)" }}
+                />
               )}
-              <span className="relative">{s === "books" ? "Books" : "Manga"}</span>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
+      <div className="mx-4 mt-1 h-px bg-white/[0.04]" />
+
       {/* Section label */}
-      <div className="px-4 pt-4 pb-1.5">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-white/15">
+      <div className="px-5 pt-5 pb-2">
+        <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-white/[0.12]">
           Library
         </span>
       </div>
 
       {/* Nav items */}
-      <ScrollArea className="min-h-0 flex-1 px-2">
-        <div className="flex flex-col gap-px py-0.5">
+      <ScrollArea className="min-h-0 flex-1 px-3">
+        <div className="flex flex-col">
           {navItems.map((item) => {
-            const isActive = activeView === item.id;
+            const active = activeView === item.id;
+            const count = getCount(activeSection, item.id);
             return (
               <button
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
                 className={cn(
-                  "group relative flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13px] transition-colors",
-                  isActive
-                    ? "font-medium text-foreground"
-                    : "text-white/40 hover:bg-white/[0.03] hover:text-white/60"
+                  "flex items-center gap-2.5 px-2 py-[9px] transition-colors",
+                  active
+                    ? "font-medium"
+                    : "text-white/30 hover:text-white/50"
                 )}
               >
-                {/* Active indicator bar */}
-                {isActive && (
-                  <div
-                    className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full"
-                    style={{ backgroundColor: "var(--accent-brand)" }}
-                  />
-                )}
-
-                {/* Active background */}
-                {isActive && (
-                  <div
-                    className="absolute inset-0 rounded-lg"
-                    style={{ backgroundColor: "var(--accent-brand-subtle)" }}
-                  />
-                )}
+                {/* Accent dot for active */}
+                <div
+                  className={cn(
+                    "h-[5px] w-[5px] shrink-0 rounded-full transition-opacity",
+                    active ? "opacity-100" : "opacity-0"
+                  )}
+                  style={{ backgroundColor: "var(--accent-brand)" }}
+                />
 
                 <item.icon
-                  className="relative h-4 w-4 shrink-0"
-                  strokeWidth={isActive ? 2 : 1.5}
-                  style={isActive ? { color: "var(--accent-brand)" } : undefined}
+                  className="h-[15px] w-[15px] shrink-0"
+                  strokeWidth={1.5}
+                  style={active ? { color: "var(--accent-brand)" } : undefined}
                 />
-                <span className="relative">{item.label}</span>
+
+                <span
+                  className="flex-1 text-left text-[13px]"
+                  style={active ? { color: "var(--accent-brand)" } : undefined}
+                >
+                  {item.label}
+                </span>
+
+                {count > 0 && (
+                  <span className="text-[11px] tabular-nums text-white/[0.12]">
+                    {count}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       </ScrollArea>
-
-      {/* Footer */}
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: "var(--accent-brand)" }}
-          />
-          <span className="text-[11px] text-white/20">
-            {activeSection === "books" ? "5 books" : "5 series"}
-          </span>
-        </div>
-      </div>
     </div>
   );
 }

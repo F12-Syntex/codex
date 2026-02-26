@@ -126,7 +126,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[var(--bg-overlay)] shadow-2xl shadow-black/40">
+        <div className="overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] shadow-2xl shadow-black/40">
           {/* Search input */}
           <div className="flex items-center gap-3 px-5 py-4">
             <Search className="h-5 w-5 shrink-0 text-white/20" />
@@ -150,7 +150,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
                 {/* No results */}
                 {hasQuery && !hasResults && (
                   <div className="flex flex-col items-center gap-2 px-4 py-10">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.04]">
                       <Search className="h-4 w-4 text-white/15" />
                     </div>
                     <p className="text-[13px] text-white/30">
@@ -247,7 +247,7 @@ export function SearchOverlay({ open, onClose }: SearchOverlayProps) {
             <>
               <div className="mx-4 h-px bg-white/[0.06]" />
               <div className="flex flex-col items-center gap-2 px-4 py-10">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.04]">
                   <BookOpen className="h-4 w-4 text-white/15" />
                 </div>
                 <p className="text-[13px] text-white/25">Search by title or author</p>

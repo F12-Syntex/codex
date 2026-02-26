@@ -7,7 +7,7 @@ Codex is an Electron + Next.js 16 desktop app for organizing books and manga. Da
 ## Design System
 
 **Always read `conventions.md` before making any UI changes.** It defines:
-- Border radius tokens (one radius for everything, `rounded-lg`)
+- Border radius tokens (one radius for everything, `rounded-lg` = 8px)
 - Spacing scale
 - Surface color variables (`--bg-surface`, `--bg-inset`, `--bg-elevated`, `--bg-overlay`)
 - Typography scale (11px, 12px, 13px, 14px only)
@@ -17,7 +17,7 @@ Codex is an Electron + Next.js 16 desktop app for organizing books and manga. Da
 ## Rules
 
 - Never hardcode `oklch()` values in Tailwind classes. Use CSS variables from `globals.css`.
-- Never use arbitrary border-radius values like `rounded-[5px]` or `rounded-2xl`. Use `rounded-lg`.
+- Never use arbitrary border-radius values like `rounded-[5px]`, `rounded-xl`, or `rounded-2xl`. Use `rounded-lg` (8px).
 - The dock is the only element that uses `rounded-full`.
 - All modals float centered above the dock, not as Radix popovers.
 - Keep the import button the same radius as everything else (`rounded-lg`).

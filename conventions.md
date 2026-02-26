@@ -8,11 +8,11 @@ One radius for all UI elements. The dock is the only exception (`rounded-full`).
 
 | Token             | Value   | Use                                      |
 |-------------------|---------|------------------------------------------|
-| `--radius` (base) | `10px`  | Everything: cards, buttons, inputs, modals, panels, thumbnails, badges |
+| `--radius` (base) | `8px`   | Everything: cards, buttons, inputs, modals, panels, thumbnails, badges |
 | `rounded-full`    | `9999px`| Dock container only, avatar circles       |
 
-In Tailwind: use `rounded-lg` (maps to `--radius-lg` = `var(--radius)` = `10px`).
-Never use `rounded-md`, `rounded-xl`, `rounded-2xl`, `rounded-[5px]`, or any arbitrary radius on UI elements.
+In Tailwind: use `rounded-lg` (maps to `--radius-lg` = `var(--radius)` = `8px`).
+Never use `rounded-xl`, `rounded-2xl`, `rounded-[5px]`, or any arbitrary radius on UI elements.
 
 ## Spacing
 
