@@ -82,15 +82,14 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
             <img
               src={cover}
               alt={title}
-              className="absolute inset-0 h-full w-full object-cover"
-              crossOrigin="anonymous"
+              className="absolute inset-0 h-full w-full object-contain bg-black/20"
+              style={{ imageRendering: "auto" }}
               loading="lazy"
               onLoad={handleImageLoad}
             />
           ) : (
             <div className="absolute inset-0" style={{ background: gradient }} />
           )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/30 to-transparent" />
 
           {showFormatBadge && (
             <div className="absolute bottom-1.5 right-1.5 rounded-[4px] bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold uppercase leading-none tracking-wide text-white/80 backdrop-blur-md">

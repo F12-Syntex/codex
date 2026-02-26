@@ -528,7 +528,7 @@ function SettingsModal({
   const [loaded, setLoaded] = useState(false);
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
-  const hasApi = !!(api?.getSetting && api?.setSetting && api?.scanFolder);
+  const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
 
   // Load saved settings on mount
   useState(() => {

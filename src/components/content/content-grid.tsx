@@ -212,7 +212,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                       <img
                         src={item.cover}
                         alt={item.title}
-                        className="absolute inset-0 h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full object-contain bg-black/20"
                         loading="lazy"
                       />
                     ) : (

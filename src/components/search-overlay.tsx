@@ -189,7 +189,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                                 <img
                                   src={r.item.cover}
                                   alt={r.item.title}
-                                  className="h-full w-full object-cover"
+                                  className="h-full w-full object-contain bg-black/20"
                                   loading="lazy"
                                 />
                               ) : (
