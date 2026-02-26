@@ -150,6 +150,7 @@ export default function Home() {
   const rootStyle = useMemo(() => {
     const s: Record<string, string> = {
       fontFamily: fontFamilyMap[theme.fontFamily] ?? fontFamilyMap.geist,
+      "--radius": `${theme.borderRadius / 16}rem`,
     };
     if (theme.accent === "custom" && theme.customAccentColor) {
       const hex = theme.customAccentColor;
@@ -159,7 +160,7 @@ export default function Home() {
       s["--accent-brand-fg"] = "#fafafa";
     }
     return s as React.CSSProperties;
-  }, [theme.fontFamily, theme.accent, theme.customAccentColor]);
+  }, [theme.fontFamily, theme.accent, theme.customAccentColor, theme.borderRadius]);
 
   const contentStyle = useMemo(() => {
     const s: React.CSSProperties = {};

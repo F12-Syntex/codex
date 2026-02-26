@@ -16,9 +16,6 @@ import {
   Square,
   RectangleHorizontal,
   MousePointer2,
-  Circle,
-  Crosshair,
-  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,7 +90,7 @@ function SliderRow({
 }) {
   return (
     <div className="flex items-center gap-3 py-1">
-      <span className="w-24 shrink-0 text-[13px] text-white/60">{label}</span>
+      {label && <span className="w-24 shrink-0 text-[13px] text-white/60">{label}</span>}
       <input
         type="range"
         min={min}
@@ -176,7 +173,7 @@ function ThemeModal({
         ))}
       </div>
 
-      <div className="min-h-[260px] p-4">
+      <div className="h-[340px] p-4 overflow-y-auto">
         {/* ── Colors tab ──────────────────────────── */}
         {tab === "colors" && (
           <div className="flex flex-col gap-4">
@@ -339,10 +336,10 @@ function ThemeModal({
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Cursor</p>
               <div className="grid grid-cols-4 gap-1">
                 {([
-                  { id: "default" as CursorStyle, label: "Default", icon: MousePointer2 },
-                  { id: "dot" as CursorStyle, label: "Dot", icon: Circle },
-                  { id: "circle" as CursorStyle, label: "Circle", icon: Target },
-                  { id: "crosshair" as CursorStyle, label: "Cross", icon: Crosshair },
+                  { id: "default" as CursorStyle, label: "System" },
+                  { id: "modern" as CursorStyle, label: "Modern" },
+                  { id: "classic" as CursorStyle, label: "Classic" },
+                  { id: "dark" as CursorStyle, label: "Dark" },
                 ]).map((c) => (
                   <button
                     key={c.id}
@@ -354,8 +351,36 @@ function ThemeModal({
                         : "text-white/30 hover:text-white/50"
                     )}
                   >
-                    <c.icon className="h-4 w-4" strokeWidth={1.5} />
+                    <MousePointer2 className="h-4 w-4" strokeWidth={1.5} />
                     {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Border Radius</p>
+              <SliderRow
+                label=""
+                value={theme.borderRadius}
+                min={0}
+                max={16}
+                suffix="px"
+                onChange={(v) => onThemeChange({ borderRadius: v })}
+              />
+              <div className="mt-1.5 flex gap-1.5">
+                {[0, 4, 8, 12, 16].map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => onThemeChange({ borderRadius: v })}
+                    className={cn(
+                      "flex-1 rounded-lg py-1.5 text-[10px] transition-all",
+                      theme.borderRadius === v
+                        ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
+                        : "text-white/25 hover:text-white/40"
+                    )}
+                  >
+                    {v}px
                   </button>
                 ))}
               </div>

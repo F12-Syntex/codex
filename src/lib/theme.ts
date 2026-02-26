@@ -3,7 +3,7 @@ import type { AccentId } from "./accent";
 export type AppearanceMode = "dark" | "light" | "dim";
 export type FontFamily = "geist" | "inter" | "mono" | "system";
 export type CoverStyle = "rounded" | "sharp";
-export type CursorStyle = "default" | "dot" | "circle" | "crosshair";
+export type CursorStyle = "default" | "modern" | "classic" | "dark";
 
 export interface ThemeConfig {
   accent: AccentId;
@@ -16,6 +16,7 @@ export interface ThemeConfig {
   fontFamily: FontFamily;
   coverStyle: CoverStyle;
   cursorStyle: CursorStyle;
+  borderRadius: number;         // 0–16px
   showFormatBadge: boolean;
   sidebarWidth: number;         // default panel % (15–35)
   tintSurfaces: boolean;        // tint surfaces with accent color
@@ -32,6 +33,7 @@ export const DEFAULT_THEME: ThemeConfig = {
   fontFamily: "geist",
   coverStyle: "rounded",
   cursorStyle: "default",
+  borderRadius: 8,
   showFormatBadge: true,
   sidebarWidth: 20,
   tintSurfaces: false,
