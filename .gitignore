@@ -17,8 +17,7 @@
 /.next/
 /out/
 
-# production
-/build
+# production (Next.js output handled by /out above)
 
 # misc
 .DS_Store
