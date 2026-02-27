@@ -48,18 +48,15 @@ interface DockProps {
 function ModalShell({
   title,
   onClose,
-  width,
   children,
 }: {
   title: string;
   onClose: () => void;
-  width?: string;
   children: React.ReactNode;
 }) {
   return (
     <div
-      className="overlay-panel absolute right-full top-1/2 z-50 mr-3 -translate-y-1/2 rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
-      style={width ? { width } : undefined}
+      className="overlay-panel absolute bottom-full right-0 z-50 mb-3 w-[340px] rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between px-4 pt-3 pb-0">
@@ -134,7 +131,7 @@ function ThemeModal({
   onClose: () => void;
 }) {
   return (
-    <ModalShell title="Appearance" onClose={onClose} width="340px">
+    <ModalShell title="Appearance" onClose={onClose}>
       <Tabs defaultValue="colors" className="gap-0">
         <TabsList className="mx-4 mt-3 w-fit gap-0.5 bg-transparent p-0">
           <TabsTrigger
@@ -469,7 +466,7 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
   const categories = [...new Set(SHORTCUT_REGISTRY.map((s) => s.category))];
 
   return (
-    <ModalShell title="Shortcuts" onClose={onClose} width="280px">
+    <ModalShell title="Shortcuts" onClose={onClose}>
       <div className="flex max-h-[380px] flex-col gap-3 overflow-y-auto p-4">
         {categories.map((cat) => (
           <div key={cat}>
@@ -504,14 +501,19 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
         <div className="overlay-backdrop absolute inset-0 z-40" onClick={close} />
       )}
 
-      <div className="absolute right-4 top-1/2 z-50 -translate-y-1/2">
+      <div className="absolute bottom-4 right-4 z-50">
         <div className="relative">
           {activeModal === "theme" && (
             <ThemeModal theme={theme} onThemeChange={onThemeChange} onClose={close} />
           )}
           {activeModal === "shortcuts" && <ShortcutsModal onClose={close} />}
 
-          <div className="flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[var(--bg-surface)] px-1.5 py-2 shadow-lg shadow-black/30">
+          <div
+            className="relative flex items-center gap-1 rounded-full border border-white/[0.08] bg-[var(--bg-surface)] px-2 py-1.5"
+            style={{
+              boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.3)",
+            }}
+          >
             <Tooltip delayDuration={300}>
               <TooltipTrigger asChild>
                 <Button
@@ -523,7 +525,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
                   <Palette className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left">Appearance</TooltipContent>
+              <TooltipContent side="top">Appearance</TooltipContent>
             </Tooltip>
 
             <Tooltip delayDuration={300}>
@@ -537,7 +539,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
                   <Search className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left">Search</TooltipContent>
+              <TooltipContent side="top">Search</TooltipContent>
             </Tooltip>
 
             <Tooltip delayDuration={300}>
@@ -551,7 +553,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
                   <Keyboard className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="left">Shortcuts</TooltipContent>
+              <TooltipContent side="top">Shortcuts</TooltipContent>
             </Tooltip>
           </div>
         </div>
