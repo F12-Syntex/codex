@@ -30,12 +30,14 @@ interface ContentGridProps {
 }
 
 const bookMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
+  { view: "bookshelf", label: "Bookshelf", icon: BookOpen },
   { view: "read-later", label: "Read Later", icon: Clock },
   { view: "reading", label: "Reading", icon: BookOpenCheck },
   { view: "finished", label: "Finished", icon: CheckCircle },
 ];
 
 const comicMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
+  { view: "series", label: "Series", icon: BookOpen },
   { view: "read-later", label: "Read Later", icon: Clock },
   { view: "reading", label: "Reading", icon: BookOpenCheck },
   { view: "completed", label: "Completed", icon: CheckCircle },
