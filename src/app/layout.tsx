@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { TitleBar } from "@/components/title-bar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,8 +29,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased select-none`}
       >
         <div className="flex h-screen flex-col overflow-hidden">
-          <TitleBar />
-          <div className="flex-1 overflow-hidden">{children}</div>
+          {children}
         </div>
       </body>
     </html>

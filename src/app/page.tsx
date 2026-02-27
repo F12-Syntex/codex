@@ -6,6 +6,7 @@ import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { ContentToolbar } from "@/components/content/content-toolbar";
 import type { ViewMode, SortField, SortDir, FormatFilter } from "@/components/content/content-toolbar";
 import { ContentGrid } from "@/components/content/content-grid";
+import { TitleBar } from "@/components/title-bar";
 import { Dock } from "@/components/dock";
 import { SearchOverlay } from "@/components/search-overlay";
 import { SettingsPage } from "@/components/pages/settings-page";
@@ -29,6 +30,11 @@ const viewLabelMap: Record<NavView, string> = {
   completed: "Completed",
   settings: "Settings",
   changelog: "What's New",
+};
+
+const sectionLabelMap: Record<string, string> = {
+  books: "Books",
+  comic: "Comics",
 };
 
 const fontFamilyMap: Record<string, string> = {
@@ -329,17 +335,26 @@ export default function Home() {
     return s;
   }, [theme.backgroundImage, theme.backgroundOpacity, theme.backgroundBlur]);
 
+  const breadcrumb = useMemo(() => {
+    if (activeView === "settings") return ["Settings"];
+    if (activeView === "changelog") return ["What's New"];
+    const sectionLabel = sectionLabelMap[activeSection] ?? activeSection;
+    const vLabel = viewLabelMap[activeView] ?? activeView;
+    return [sectionLabel, vLabel];
+  }, [activeSection, activeView]);
+
   return (
     <TooltipProvider>
       <div
-        className="flex h-full"
+        className="flex h-full flex-col"
         data-accent={theme.accent}
         data-appearance={theme.appearance}
         data-tint={theme.tintSurfaces ? "true" : undefined}
         data-cursor={theme.cursorStyle !== "default" ? theme.cursorStyle : undefined}
         style={rootStyle}
       >
-        <ResizablePanelGroup orientation="horizontal" className="flex-1">
+        <TitleBar breadcrumb={breadcrumb} />
+        <ResizablePanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
           {!sidebarCollapsed && (
             <>
               <ResizablePanel

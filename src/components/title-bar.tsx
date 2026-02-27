@@ -5,12 +5,18 @@ import { Minus, Square, X, Copy } from "lucide-react";
 import Image from "next/image";
 import { APP_VERSION } from "@/lib/version";
 
-export function TitleBar() {
+interface TitleBarProps {
+  breadcrumb?: string[];
+}
+
+export function TitleBar({ breadcrumb }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
     window.electronAPI?.onMaximized(setMaximized);
   }, []);
+
+  const segments = breadcrumb && breadcrumb.length > 0 ? breadcrumb : ["Library"];
 
   return (
     <header className="flex h-10 shrink-0 select-none items-center border-b border-white/[0.04] bg-[var(--bg-surface)]">
@@ -33,10 +39,22 @@ export function TitleBar() {
           </span>
         </div>
 
-        {/* Breadcrumb / context hint */}
-        <div className="ml-3 flex items-center gap-1.5 text-white/15">
-          <span className="text-[11px]">/</span>
-          <span className="text-[11px]">Library</span>
+        {/* Breadcrumb */}
+        <div className="ml-3 flex items-center gap-1.5">
+          {segments.map((segment, i) => (
+            <span key={i} className="flex items-center gap-1.5">
+              <span className="text-[11px] text-white/15">/</span>
+              <span
+                className={
+                  i === segments.length - 1
+                    ? "text-[11px] text-white/35"
+                    : "text-[11px] text-white/25"
+                }
+              >
+                {segment}
+              </span>
+            </span>
+          ))}
         </div>
       </div>
 
