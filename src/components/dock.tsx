@@ -511,7 +511,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
           <div
             className="relative flex items-center gap-1 rounded-full border border-white/[0.08] bg-[var(--bg-surface)] px-2 py-1.5"
             style={{
-              boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.3)",
+              boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset",
             }}
           >
             <Tooltip delayDuration={300}>
