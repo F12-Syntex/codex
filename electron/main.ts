@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
-import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark } from "./database";
+import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark, getExcludedPaths } from "./database";
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
 import type { LibraryItem } from "./database";
@@ -217,12 +217,15 @@ function createWindow() {
     }));
   });
 
-  ipcMain.handle("tts:synthesize", async (_event, text: string, voice: string, rate: string) => {
+  ipcMain.handle("tts:synthesize", async (_event, text: string, voice: string, rate: string, pitch?: string, volume?: string) => {
     const tts = new EdgeTTS();
-    await tts.synthesize(text, voice, { rate });
+    const options: { rate: string; pitch?: string; volume?: string } = { rate };
+    if (pitch) options.pitch = pitch;
+    if (volume) options.volume = volume;
+    await tts.synthesize(text, voice, options);
     const buffer = tts.toBuffer();
-    // Return as base64 for safe IPC transfer
-    return buffer.toString("base64");
+    const wordBoundaries = tts.getWordBoundaries();
+    return { audio: buffer.toString("base64"), wordBoundaries };
   });
 
   // ── Library: import files via dialog ──────────────
@@ -270,18 +273,21 @@ function createWindow() {
 
   ipcMain.handle("library:scan-folder", (_event, folderPath: string, section: string, view: string) => {
     const enriched = scanDirectory(folderPath);
+    const excluded = getExcludedPaths();
 
-    const dbItems = enriched.map((f) => ({
-      title: f.title,
-      author: f.author,
-      cover: f.coverBase64,
-      gradient: f.gradient,
-      format: f.format,
-      filePath: f.filePath,
-      size: f.size,
-      section,
-      view,
-    }));
+    const dbItems = enriched
+      .filter((f) => !excluded.has(f.filePath))
+      .map((f) => ({
+        title: f.title,
+        author: f.author,
+        cover: f.coverBase64,
+        gradient: f.gradient,
+        format: f.format,
+        filePath: f.filePath,
+        size: f.size,
+        section,
+        view,
+      }));
 
     return addItems(dbItems);
   });

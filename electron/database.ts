@@ -53,6 +53,11 @@ export function initDatabase(): void {
       label TEXT NOT NULL,
       createdAt TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS excluded_paths (
+      filePath TEXT PRIMARY KEY NOT NULL,
+      excludedAt TEXT DEFAULT (datetime('now'))
+    );
   `);
 }
 
@@ -94,7 +99,21 @@ export function addItems(items: Omit<LibraryItem, "id" | "addedAt">[]): LibraryI
 }
 
 export function deleteItem(id: number): void {
+  // Record the file path as excluded so auto-scan won't re-add it
+  const item = db.prepare("SELECT filePath FROM items WHERE id = ?").get(id) as { filePath: string } | undefined;
+  if (item) {
+    db.prepare("INSERT OR IGNORE INTO excluded_paths (filePath) VALUES (?)").run(item.filePath);
+  }
   db.prepare("DELETE FROM items WHERE id = ?").run(id);
+}
+
+export function getExcludedPaths(): Set<string> {
+  const rows = db.prepare("SELECT filePath FROM excluded_paths").all() as { filePath: string }[];
+  return new Set(rows.map((r) => r.filePath));
+}
+
+export function removeExcludedPath(filePath: string): void {
+  db.prepare("DELETE FROM excluded_paths WHERE filePath = ?").run(filePath);
 }
 
 export function moveItem(id: number, targetView: string): void {
