@@ -337,3 +337,11 @@
   cursor: url("/cursors/modern-dark.svg") 6 3, auto !important;
 }
 
+/* Group card hover — fan spreads wider + lift + glow */
+.group-card:hover .group-card-cover {
+  transform: var(--hover-transform) !important;
+}
+.group-card:hover > div:first-child > div:first-child {
+  opacity: 0.6;
+}
+

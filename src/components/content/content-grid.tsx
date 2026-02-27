@@ -1,6 +1,7 @@
 "use client";
 
-import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft } from "lucide-react";
+import { useState, useMemo } from "react";
+import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft, X } from "lucide-react";
 import { BookCard } from "./book-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -100,6 +101,88 @@ function ItemContextMenu({
   );
 }
 
+/* ── Group card — fanned covers for multi-book authors ── */
+function GroupCard({
+  items,
+  author,
+  coverStyle,
+}: {
+  items: MockItem[];
+  author: string;
+  coverStyle: CoverStyle;
+}) {
+  const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
+  const count = items.length;
+  const covers = items.slice(0, 3);
+
+  const layers =
+    covers.length === 2
+      ? [
+          { r: -5, x: -6, s: 0.96, z: 1 },
+          { r: 3, x: 4, s: 1, z: 2 },
+        ]
+      : [
+          { r: -7, x: -8, s: 0.93, z: 1 },
+          { r: 0, x: 0, s: 0.96, z: 2 },
+          { r: 5, x: 6, s: 1, z: 3 },
+        ];
+
+  return (
+    <div className="group-card flex flex-col gap-2.5">
+      <div className="relative" style={{ margin: "0 12px" }}>
+        {/* Glow under the stack */}
+        <div
+          className="absolute inset-x-2 -bottom-2 h-6 rounded-lg opacity-0 blur-xl transition-opacity duration-300"
+          style={{ background: items[0].gradient }}
+        />
+
+        <div className="relative aspect-[2/3]">
+          {covers.map((item, i) => {
+            const l = layers[i];
+            return (
+              <div
+                key={item.id}
+                className={`group-card-cover absolute inset-0 overflow-hidden ${radius} shadow-md transition-all duration-300 ease-out`}
+                style={{
+                  transform: `translateX(${l.x}px) rotate(${l.r}deg) scale(${l.s})`,
+                  zIndex: l.z,
+                  transformOrigin: "bottom center",
+                  "--hover-transform": `translateX(${l.x * 1.8}px) rotate(${l.r * 1.4}deg) scale(${l.s}) translateY(-4px)`,
+                } as React.CSSProperties}
+              >
+                {item.cover ? (
+                  <img
+                    src={item.cover}
+                    alt={item.title}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{ imageRendering: "auto" }}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="absolute inset-0" style={{ background: item.gradient }} />
+                )}
+              </div>
+            );
+          })}
+
+          {/* Count badge */}
+          <div
+            className="absolute bottom-1.5 right-1.5 rounded-[4px] bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-white/80 backdrop-blur-md"
+            style={{ zIndex: 10 }}
+          >
+            {count}
+          </div>
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-medium leading-tight">{author}</p>
+        <p className="mt-0.5 truncate text-xs text-white/40">{count} books</p>
+      </div>
+    </div>
+  );
+}
+
 export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, activeView, section }: ContentGridProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
 
@@ -191,6 +274,19 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
     );
   }
 
+  /* ── Group view ─────────────────────────────── */
+  if (viewMode === "group") {
+    return (
+      <GroupView
+        items={items}
+        radius={radius}
+        coverStyle={coverStyle}
+        showFormatBadge={showFormatBadge}
+        ctxProps={ctxProps}
+      />
+    );
+  }
+
   /* ── Grid view ──────────────────────────────── */
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -206,6 +302,109 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             </div>
           </ItemContextMenu>
         ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+/* ── Group view component ────────────────────────────── */
+function GroupView({
+  items,
+  radius,
+  coverStyle,
+  showFormatBadge,
+  ctxProps,
+}: {
+  items: MockItem[];
+  radius: string;
+  coverStyle: CoverStyle;
+  showFormatBadge: boolean;
+  ctxProps: {
+    activeView: NavView;
+    section: Section;
+    onMove: (id: number, view: NavView) => void;
+    onDelete: (id: number) => void;
+    onTransfer: (id: number, targetSection: Section) => void;
+  };
+}) {
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+
+  const groups = useMemo(() => {
+    const map = new Map<string, MockItem[]>();
+    for (const item of items) {
+      const key = item.author || "Unknown";
+      const list = map.get(key);
+      if (list) list.push(item);
+      else map.set(key, [item]);
+    }
+    return Array.from(map.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0])
+    );
+  }, [items]);
+
+  if (expandedGroup) {
+    const groupItems = groups.find(([author]) => author === expandedGroup)?.[1] ?? [];
+    return (
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="p-5">
+          <div className="rounded-lg bg-white/[0.02] p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] font-medium">{expandedGroup}</h2>
+                <span className="text-[11px] text-white/30">
+                  {groupItems.length} {groupItems.length === 1 ? "book" : "books"}
+                </span>
+              </div>
+              <button
+                onClick={() => setExpandedGroup(null)}
+                className="rounded-lg p-1 text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/60"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
+              {groupItems.map((item) => (
+                <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+                  <div>
+                    <BookCard
+                      {...item}
+                      coverStyle={coverStyle}
+                      showFormatBadge={showFormatBadge}
+                    />
+                  </div>
+                </ItemContextMenu>
+              ))}
+            </div>
+          </div>
+        </div>
+      </ScrollArea>
+    );
+  }
+
+  return (
+    <ScrollArea className="min-h-0 flex-1">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
+        {groups.map(([author, groupItems]) =>
+          groupItems.length === 1 ? (
+            <ItemContextMenu key={author} itemId={groupItems[0].id} {...ctxProps}>
+              <div>
+                <BookCard
+                  {...groupItems[0]}
+                  coverStyle={coverStyle}
+                  showFormatBadge={showFormatBadge}
+                />
+              </div>
+            </ItemContextMenu>
+          ) : (
+            <button
+              key={author}
+              onClick={() => setExpandedGroup(author)}
+              className="cursor-pointer text-left"
+            >
+              <GroupCard items={groupItems} author={author} coverStyle={coverStyle} />
+            </button>
+          )
+        )}
       </div>
     </ScrollArea>
   );

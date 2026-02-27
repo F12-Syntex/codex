@@ -4,6 +4,7 @@ import {
   LayoutGrid,
   List,
   LayoutList,
+  Layers,
   ArrowUpDown,
   Plus,
   SlidersHorizontal,
@@ -24,7 +25,7 @@ import {
 import type { BookFormat } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-export type ViewMode = "list" | "grid" | "detail";
+export type ViewMode = "list" | "grid" | "detail" | "group";
 export type SortField = "title" | "author" | "format";
 export type SortDir = "asc" | "desc";
 export type FormatFilter = BookFormat | "all";
@@ -46,6 +47,7 @@ const viewModes: { id: ViewMode; icon: typeof List; tip: string }[] = [
   { id: "list", icon: List, tip: "List" },
   { id: "grid", icon: LayoutGrid, tip: "Grid" },
   { id: "detail", icon: LayoutList, tip: "Detail" },
+  { id: "group", icon: Layers, tip: "Group" },
 ];
 
 const sortOptions: { field: SortField; label: string }[] = [
