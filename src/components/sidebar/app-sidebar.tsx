@@ -6,6 +6,8 @@ import {
   BookOpenCheck,
   CheckCircle,
   Layers,
+  Settings,
+  Gift,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LibraryData } from "@/lib/mock-data";
@@ -20,7 +22,9 @@ export type NavView =
   | "reading"
   | "finished"
   | "series"
-  | "completed";
+  | "completed"
+  | "settings"
+  | "changelog";
 
 interface AppSidebarProps {
   activeSection: Section;
@@ -43,6 +47,11 @@ const comicNavItems = [
   { id: "read-later" as const, label: "Read Later", icon: Clock },
   { id: "reading" as const, label: "Reading", icon: BookOpenCheck },
   { id: "completed" as const, label: "Completed", icon: CheckCircle },
+];
+
+const generalNavItems = [
+  { id: "changelog" as const, label: "What's New", icon: Gift },
+  { id: "settings" as const, label: "Settings", icon: Settings },
 ];
 
 export function AppSidebar({
@@ -139,6 +148,49 @@ export function AppSidebar({
           })}
         </div>
       </ScrollArea>
+
+      {/* General section */}
+      <div className="px-5 pt-3 pb-1.5">
+        <span className="text-[10px] font-medium uppercase tracking-[0.1em] text-white/[0.10]">
+          General
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5 px-3 pb-2">
+        {generalNavItems.map((item) => {
+          const active = activeView === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onViewChange(item.id)}
+              className={cn(
+                "flex items-center gap-2.5 rounded-lg px-2.5 py-[9px] transition-colors",
+                active
+                  ? "font-medium"
+                  : "text-white/30 hover:text-white/50"
+              )}
+            >
+              <div
+                className={cn(
+                  "h-[5px] w-[5px] shrink-0 rounded-full transition-opacity",
+                  active ? "opacity-100" : "opacity-0"
+                )}
+                style={{ backgroundColor: "var(--accent-brand)" }}
+              />
+              <item.icon
+                className="h-[15px] w-[15px] shrink-0"
+                strokeWidth={1.5}
+                style={active ? { color: "var(--accent-brand)" } : undefined}
+              />
+              <span
+                className="flex-1 text-left text-[13px]"
+                style={active ? { color: "var(--accent-brand)" } : undefined}
+              >
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Footer */}
       <div className="flex flex-col gap-2 px-4 pb-4 pt-2">

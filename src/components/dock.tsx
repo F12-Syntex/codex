@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   Palette,
-  Settings,
   Search,
   Keyboard,
   X,
@@ -12,7 +11,6 @@ import {
   Moon,
   Monitor,
   Type,
-  Layers,
   Square,
   RectangleHorizontal,
   MousePointer2,
@@ -37,16 +35,13 @@ import {
 } from "@/lib/theme";
 import { HexColorPicker } from "react-colorful";
 import { cn } from "@/lib/utils";
-import { APP_VERSION } from "@/lib/version";
 
-type DockModal = "theme" | "shortcuts" | "settings" | null;
+type DockModal = "theme" | "shortcuts" | null;
 
 interface DockProps {
   theme: ThemeConfig;
   onThemeChange: (patch: Partial<ThemeConfig>) => void;
   onSearchOpen: () => void;
-  onImportItems: (items: LibraryItem[]) => void;
-  activeSection: string;
 }
 
 /* ── Shared modal chrome ─────────────────────────────────── */
@@ -497,124 +492,8 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* ── Settings modal ──────────────────────────────────────── */
-function SettingsModal({
-  onClose,
-  onImportItems,
-  activeSection,
-}: {
-  onClose: () => void;
-  onImportItems: (items: LibraryItem[]) => void;
-  activeSection: string;
-}) {
-  const [autoScan, setAutoScan] = useState(false);
-  const [libraryPath, setLibraryPath] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [lastScanCount, setLastScanCount] = useState<number | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  const api = typeof window !== "undefined" ? window.electronAPI : undefined;
-  const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
-
-  // Load saved settings on mount
-  useState(() => {
-    if (!hasApi) return;
-    Promise.all([
-      api!.getSetting("libraryPath"),
-      api!.getSetting("autoScan"),
-    ]).then(([path, scan]) => {
-      if (path) setLibraryPath(path);
-      if (scan) setAutoScan(scan === "true");
-      setLoaded(true);
-    });
-  });
-
-  const handleSelectFolder = async () => {
-    const folder = await api?.selectFolder?.();
-    if (folder) {
-      setLibraryPath(folder);
-      if (hasApi) api!.setSetting("libraryPath", folder);
-    }
-  };
-
-  const handleAutoScanChange = (v: boolean) => {
-    setAutoScan(v);
-    if (hasApi) api!.setSetting("autoScan", String(v));
-  };
-
-  const handleScan = async () => {
-    if (!libraryPath || !hasApi) return;
-    setScanning(true);
-    setLastScanCount(null);
-    const defaultView = activeSection === "books" ? "bookshelf" : "series";
-    try {
-      const items = await api!.scanFolder(libraryPath, activeSection, defaultView);
-      if (items && items.length > 0) {
-        onImportItems(items);
-        setLastScanCount(items.length);
-      } else {
-        setLastScanCount(0);
-      }
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  return (
-    <ModalShell title="Settings" onClose={onClose} width="340px">
-      <div className="flex flex-col gap-3 p-4">
-        <div>
-          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">Library</p>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between py-1">
-              <span className="text-[13px] text-white/60">Library path</span>
-              <button
-                onClick={handleSelectFolder}
-                className="max-w-[180px] truncate rounded-lg bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
-              >
-                {libraryPath ?? "Select folder..."}
-              </button>
-            </div>
-            {libraryPath && (
-              <button
-                onClick={handleScan}
-                disabled={scanning}
-                className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-colors",
-                  scanning
-                    ? "bg-white/[0.04] text-white/20"
-                    : "bg-white/[0.06] text-white/50 hover:bg-white/[0.10] hover:text-white/70"
-                )}
-              >
-                {scanning ? "Scanning..." : "Scan Now"}
-              </button>
-            )}
-            {lastScanCount !== null && (
-              <span className="text-[11px] text-white/25">
-                {lastScanCount === 0 ? "No supported files found" : `Found ${lastScanCount} file${lastScanCount !== 1 ? "s" : ""}`}
-              </span>
-            )}
-            <ToggleRow
-              label="Auto-scan on launch"
-              checked={autoScan}
-              onChange={handleAutoScanChange}
-            />
-          </div>
-        </div>
-        <div>
-          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">About</p>
-          <div className="flex items-center justify-between py-1">
-            <span className="text-[13px] text-white/60">Version</span>
-            <span className="text-[11px] text-white/30">{APP_VERSION}</span>
-          </div>
-        </div>
-      </div>
-    </ModalShell>
-  );
-}
-
 /* ── Dock ─────────────────────────────────────────────────── */
-export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems, activeSection }: DockProps) {
+export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
   const [activeModal, setActiveModal] = useState<DockModal>(null);
 
   const toggle = (modal: DockModal) => setActiveModal((v) => (v === modal ? null : modal));
@@ -631,7 +510,6 @@ export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems, active
           <ThemeModal theme={theme} onThemeChange={onThemeChange} onClose={close} />
         )}
         {activeModal === "shortcuts" && <ShortcutsModal onClose={close} />}
-        {activeModal === "settings" && <SettingsModal onClose={close} onImportItems={onImportItems} activeSection={activeSection} />}
 
         <div className="relative flex items-center gap-1 rounded-full border border-white/[0.06] bg-[var(--bg-surface)] px-2 py-1.5 shadow-lg shadow-black/30">
           <Tooltip delayDuration={300}>
@@ -676,19 +554,6 @@ export function Dock({ theme, onThemeChange, onSearchOpen, onImportItems, active
             <TooltipContent side="top">Shortcuts</TooltipContent>
           </Tooltip>
 
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8 rounded-full", activeModal === "settings" && "bg-white/10")}
-                onClick={() => toggle("settings")}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Settings</TooltipContent>
-          </Tooltip>
         </div>
       </div>
     </>

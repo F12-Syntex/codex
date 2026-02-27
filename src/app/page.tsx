@@ -8,6 +8,8 @@ import type { ViewMode, SortField, SortDir, FormatFilter } from "@/components/co
 import { ContentGrid } from "@/components/content/content-grid";
 import { Dock } from "@/components/dock";
 import { SearchOverlay } from "@/components/search-overlay";
+import { SettingsPage } from "@/components/pages/settings-page";
+import { ChangelogPage } from "@/components/pages/changelog-page";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   ResizablePanelGroup,
@@ -25,6 +27,8 @@ const viewLabelMap: Record<NavView, string> = {
   finished: "Finished",
   series: "Series",
   completed: "Completed",
+  settings: "Settings",
+  changelog: "What's New",
 };
 
 const fontFamilyMap: Record<string, string> = {
@@ -367,35 +371,41 @@ export default function Home() {
                 />
               )}
               <div className="relative flex h-full flex-col">
-                <ContentToolbar
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                  viewLabel={viewLabel}
-                  itemCount={processedItems.length}
-                  sortField={sortField}
-                  sortDir={sortDir}
-                  onSortChange={handleSortChange}
-                  formatFilter={formatFilter}
-                  onFormatFilterChange={setFormatFilter}
-                  onImport={handleImport}
-                />
-                <ContentGrid
-                  items={processedItems}
-                  viewMode={viewMode}
-                  coverStyle={theme.coverStyle}
-                  showFormatBadge={theme.showFormatBadge}
-                  onMoveItem={handleMoveItem}
-                  onDeleteItem={handleDeleteItem}
-                  onTransferItem={handleTransferItem}
-                  activeView={activeView}
-                  section={activeSection}
-                />
+                {activeView === "settings" ? (
+                  <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} />
+                ) : activeView === "changelog" ? (
+                  <ChangelogPage />
+                ) : (
+                  <>
+                    <ContentToolbar
+                      viewMode={viewMode}
+                      onViewModeChange={setViewMode}
+                      viewLabel={viewLabel}
+                      itemCount={processedItems.length}
+                      sortField={sortField}
+                      sortDir={sortDir}
+                      onSortChange={handleSortChange}
+                      formatFilter={formatFilter}
+                      onFormatFilterChange={setFormatFilter}
+                      onImport={handleImport}
+                    />
+                    <ContentGrid
+                      items={processedItems}
+                      viewMode={viewMode}
+                      coverStyle={theme.coverStyle}
+                      showFormatBadge={theme.showFormatBadge}
+                      onMoveItem={handleMoveItem}
+                      onDeleteItem={handleDeleteItem}
+                      onTransferItem={handleTransferItem}
+                      activeView={activeView}
+                      section={activeSection}
+                    />
+                  </>
+                )}
                 <Dock
                   theme={theme}
                   onThemeChange={handleThemeChange}
                   onSearchOpen={() => setSearchOpen(true)}
-                  onImportItems={handleImportItems}
-                  activeSection={activeSection}
                 />
               </div>
             </div>
