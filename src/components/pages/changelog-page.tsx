@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { AlertCircle, Tag, Megaphone } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { AlertCircle, GitCommit, Megaphone, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface GitHubRelease {
   id: number;
@@ -12,19 +13,21 @@ interface GitHubRelease {
   html_url: string;
 }
 
-interface GitHubTag {
-  name: string;
-  commit: { sha: string };
-}
-
-interface GitHubCommit {
+interface GitHubCommitRaw {
   sha: string;
-  commit: { committer: { date: string } | null; message: string };
+  commit: {
+    message: string;
+    committer: { date: string } | null;
+    author: { name: string } | null;
+  };
 }
 
-interface VersionEntry {
-  tag: string;
+interface CommitEntry {
+  sha: string;
+  message: string;
+  description: string;
   date: string;
+  author: string;
   release?: GitHubRelease;
 }
 
@@ -90,28 +93,20 @@ function renderBody(body: string) {
   return elements;
 }
 
-/* ── Skeletons ────────────────────────────────────────────── */
+/* ── Skeleton ─────────────────────────────────────────────── */
 
 function Skeleton() {
   return (
-    <div className="flex flex-col gap-4">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="flex gap-4 pl-1">
-          <div className="flex flex-col items-center">
-            <div className="h-1.5 w-1.5 rounded-full bg-white/[0.1]" />
-            <div className="w-px flex-1 bg-white/[0.06]" />
-          </div>
-          <div className="flex-1 pb-2">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="h-3.5 w-16 animate-pulse rounded-lg bg-white/[0.06]" />
-              <div className="h-3 w-20 animate-pulse rounded-lg bg-white/[0.06]" />
-            </div>
-            {i <= 2 && (
-              <div className="space-y-1.5">
-                <div className="h-3 w-4/5 animate-pulse rounded-lg bg-white/[0.06]" />
-                <div className="h-3 w-3/5 animate-pulse rounded-lg bg-white/[0.06]" />
-              </div>
-            )}
+    <div className="flex flex-col gap-0">
+      {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+        <div key={i} className="flex gap-3 py-2">
+          <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white/[0.08]" />
+          <div className="flex flex-1 items-center gap-2">
+            <div
+              className="h-3 animate-pulse rounded-lg bg-white/[0.06]"
+              style={{ width: `${60 + (i * 17) % 40}%` }}
+            />
+            <div className="ml-auto h-3 w-16 animate-pulse rounded-lg bg-white/[0.06]" />
           </div>
         </div>
       ))}
@@ -119,7 +114,7 @@ function Skeleton() {
   );
 }
 
-/* ── Release card (special UI for published releases) ───── */
+/* ── Release card ─────────────────────────────────────────── */
 
 function ReleaseCard({
   release,
@@ -131,7 +126,7 @@ function ReleaseCard({
   isLatest: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4">
+    <div className="my-2 rounded-lg border border-white/[0.06] bg-white/[0.03] p-4">
       <div className="mb-2 flex items-center gap-2">
         <Megaphone className="h-3.5 w-3.5 text-white/25" strokeWidth={1.5} />
         <span className="text-[13px] font-medium text-white/80">
@@ -159,29 +154,66 @@ function ReleaseCard({
   );
 }
 
-/* ── Version row (plain tag without a release) ──────────── */
+/* ── Commit row (expandable) ──────────────────────────────── */
 
-function VersionRow({
-  tag,
+function CommitRow({
+  entry,
   date,
-  isLast,
+  expanded,
+  onToggle,
 }: {
-  tag: string;
+  entry: CommitEntry;
   date: string;
-  isLast: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
+  const hasDescription = entry.description.length > 0;
+
   return (
-    <div className="flex gap-4 pl-1">
-      <div className="flex flex-col items-center">
-        <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-white/[0.12]" />
-        {!isLast && <div className="w-px flex-1 bg-white/[0.04]" />}
+    <button
+      onClick={hasDescription ? onToggle : undefined}
+      className={cn(
+        "flex w-full gap-3 text-left transition-colors",
+        hasDescription
+          ? "cursor-pointer rounded-lg px-2 py-2 hover:bg-white/[0.03]"
+          : "cursor-default px-2 py-2"
+      )}
+    >
+      {/* Dot */}
+      <div className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-white/[0.12]" />
+
+      {/* Content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-2">
+          <GitCommit className="h-3 w-3 shrink-0 text-white/15" strokeWidth={1.5} />
+          <span className="truncate text-[13px] text-white/50">
+            {entry.message}
+          </span>
+          {hasDescription && (
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 shrink-0 text-white/15 transition-transform",
+                expanded && "rotate-180"
+              )}
+              strokeWidth={1.5}
+            />
+          )}
+          <span className="ml-auto shrink-0 text-[11px] text-white/15">
+            {date}
+          </span>
+        </div>
+
+        {expanded && hasDescription && (
+          <div className="mt-2 mb-1 ml-5 border-l border-white/[0.06] pl-3">
+            {entry.description.split("\n").map((line, i) => (
+              <p key={i} className="text-[12px] text-white/30">
+                {line || "\u00A0"}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="flex flex-1 items-center gap-2 pb-4">
-        <Tag className="h-3 w-3 text-white/15" strokeWidth={1.5} />
-        <span className="text-[13px] text-white/40">{tag}</span>
-        <span className="text-[11px] text-white/15">{date}</span>
-      </div>
-    </div>
+    </button>
   );
 }
 
@@ -189,69 +221,68 @@ function VersionRow({
 
 const REPO = "F12-Syntex/codex";
 
-async function fetchAllVersions(): Promise<VersionEntry[]> {
-  const [tagsRes, releasesRes] = await Promise.all([
-    fetch(`https://api.github.com/repos/${REPO}/tags?per_page=100`),
-    fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`),
+async function fetchAllPages<T>(baseUrl: string, maxPages = 5): Promise<T[]> {
+  const all: T[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const res = await fetch(`${baseUrl}${sep}per_page=100&page=${page}`);
+    if (!res.ok) throw new Error(`Failed to fetch ${baseUrl}`);
+    const data: T[] = await res.json();
+    all.push(...data);
+    if (data.length < 100) break;
+  }
+  return all;
+}
+
+async function fetchData(): Promise<CommitEntry[]> {
+  const [commits, releases] = await Promise.all([
+    fetchAllPages<GitHubCommitRaw>(
+      `https://api.github.com/repos/${REPO}/commits`
+    ),
+    fetchAllPages<GitHubRelease>(
+      `https://api.github.com/repos/${REPO}/releases`
+    ),
   ]);
 
-  if (!tagsRes.ok) throw new Error("Failed to fetch tags");
-  if (!releasesRes.ok) throw new Error("Failed to fetch releases");
-
-  const tags: GitHubTag[] = await tagsRes.json();
-  const releases: GitHubRelease[] = await releasesRes.json();
-
+  // Map release tag names to release objects
   const releaseMap = new Map<string, GitHubRelease>();
   for (const r of releases) releaseMap.set(r.tag_name, r);
 
-  // Fetch commit dates for tags (batch the unique SHAs)
-  const uniqueShas = [...new Set(tags.map((t) => t.commit.sha))];
-  const commitDateMap = new Map<string, string>();
+  // We also need to know which commits are tagged — fetch tags
+  const tags = await fetchAllPages<{ name: string; commit: { sha: string } }>(
+    `https://api.github.com/repos/${REPO}/tags`
+  );
+  const tagBySha = new Map<string, string>();
+  for (const t of tags) tagBySha.set(t.commit.sha, t.name);
 
-  // Fetch in batches of 10 to avoid rate limiting
-  for (let i = 0; i < uniqueShas.length; i += 10) {
-    const batch = uniqueShas.slice(i, i + 10);
-    const results = await Promise.all(
-      batch.map((sha) =>
-        fetch(`https://api.github.com/repos/${REPO}/commits/${sha}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null)
-      )
-    );
-    for (const commit of results) {
-      if (commit) {
-        const c = commit as GitHubCommit;
-        commitDateMap.set(c.sha, c.commit.committer?.date ?? "");
-      }
-    }
-  }
+  return commits.map((c) => {
+    const fullMessage = c.commit.message;
+    const firstLine = fullMessage.split("\n")[0];
+    const rest = fullMessage.split("\n").slice(1).join("\n").trim();
+    const tagName = tagBySha.get(c.sha);
+    const release = tagName ? releaseMap.get(tagName) : undefined;
 
-  const entries: VersionEntry[] = tags.map((t) => {
-    const release = releaseMap.get(t.name);
-    const date = release?.published_at ?? commitDateMap.get(t.commit.sha) ?? "";
-    return { tag: t.name, date, release };
+    return {
+      sha: c.sha,
+      message: firstLine,
+      description: rest,
+      date: c.commit.committer?.date ?? "",
+      author: c.commit.author?.name ?? "",
+      release,
+    };
   });
-
-  // Sort by date descending (most recent first)
-  entries.sort((a, b) => {
-    if (!a.date && !b.date) return 0;
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    return new Date(b.date).getTime() - new Date(a.date).getTime();
-  });
-
-  return entries;
 }
 
 /* ── Page component ───────────────────────────────────────── */
 
 export function ChangelogPage() {
-  const [entries, setEntries] = useState<VersionEntry[]>([]);
+  const [entries, setEntries] = useState<CommitEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [expandedShas, setExpandedShas] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchAllVersions()
+    fetchData()
       .then((data) => {
         setEntries(data);
         setLoading(false);
@@ -262,13 +293,21 @@ export function ChangelogPage() {
       });
   }, []);
 
+  const toggleExpanded = useCallback((sha: string) => {
+    setExpandedShas((prev) => {
+      const next = new Set(prev);
+      if (next.has(sha)) next.delete(sha);
+      else next.add(sha);
+      return next;
+    });
+  }, []);
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
-      year: "numeric",
     });
   };
 
@@ -279,18 +318,18 @@ export function ChangelogPage() {
       <div className="px-6 pt-5 pb-1">
         <h1 className="text-sm font-medium text-white/80">What&apos;s New</h1>
         <p className="mt-1 text-[11px] text-white/25">
-          All versions and releases of Codex.
+          Every commit and release to Codex.
         </p>
       </div>
 
-      <div className="flex max-w-[600px] flex-col gap-0 p-6">
+      <div className="flex max-w-[640px] flex-col gap-0 px-4 py-4">
         {loading && <Skeleton />}
 
         {error && (
           <div className="flex flex-col items-center justify-center py-16">
             <AlertCircle className="mb-3 h-4 w-4 text-white/20" />
             <p className="text-[13px] text-white/30">
-              Couldn&apos;t load versions
+              Couldn&apos;t load history
             </p>
             <p className="mt-1 text-[11px] text-white/15">
               Check your connection and try again.
@@ -300,7 +339,7 @@ export function ChangelogPage() {
 
         {!loading && !error && entries.length === 0 && (
           <p className="py-16 text-center text-[13px] text-white/30">
-            No versions yet
+            No commits yet
           </p>
         )}
 
@@ -308,19 +347,19 @@ export function ChangelogPage() {
           !error &&
           entries.map((entry, idx) =>
             entry.release ? (
-              <div key={entry.tag} className="pb-4">
-                <ReleaseCard
-                  release={entry.release}
-                  date={formatDate(entry.date)}
-                  isLatest={idx === firstReleaseIdx}
-                />
-              </div>
-            ) : (
-              <VersionRow
-                key={entry.tag}
-                tag={entry.tag}
+              <ReleaseCard
+                key={entry.sha}
+                release={entry.release}
                 date={formatDate(entry.date)}
-                isLast={idx === entries.length - 1}
+                isLatest={idx === firstReleaseIdx}
+              />
+            ) : (
+              <CommitRow
+                key={entry.sha}
+                entry={entry}
+                date={formatDate(entry.date)}
+                expanded={expandedShas.has(entry.sha)}
+                onToggle={() => toggleExpanded(entry.sha)}
               />
             )
           )}
