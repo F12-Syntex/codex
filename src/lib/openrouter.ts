@@ -31,6 +31,21 @@ interface OpenRouterClient {
 const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
+/** Validate an API key by sending a minimal request. */
+export async function testApiKey(apiKey: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const client = createOpenRouterClient(apiKey);
+    await client.chat(
+      [{ role: "user", content: "hi" }],
+      DEFAULT_MODEL,
+      { max_tokens: 1 },
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 export function createOpenRouterClient(apiKey: string): OpenRouterClient {
   return {
     async chat(messages, model = DEFAULT_MODEL, options = {}) {

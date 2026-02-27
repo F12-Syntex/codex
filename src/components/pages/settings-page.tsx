@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { APP_VERSION } from "@/lib/version";
+import { testApiKey } from "@/lib/openrouter";
 
 interface SettingsPageProps {
   onImportItems: (items: LibraryItem[]) => void;
@@ -87,6 +88,8 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
@@ -160,7 +163,17 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
 
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
+    setTestResult(null);
     if (hasApi) api!.setSetting("openrouterApiKey", value);
+  };
+
+  const handleTestKey = async () => {
+    if (!apiKey.trim()) return;
+    setTestingKey(true);
+    setTestResult(null);
+    const result = await testApiKey(apiKey);
+    setTestResult(result);
+    setTestingKey(false);
   };
 
   const tabs: { id: SettingsTab; label: string }[] = [
@@ -322,6 +335,34 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   )}
                 </button>
               </div>
+            </SettingRow>
+            <SettingRow
+              label="Test connection"
+              description={
+                testResult
+                  ? testResult.ok
+                    ? "API key is valid"
+                    : testResult.error ?? "Invalid key"
+                  : "Verify your key works"
+              }
+            >
+              <button
+                onClick={handleTestKey}
+                disabled={testingKey || !apiKey.trim()}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium transition-colors",
+                  testingKey || !apiKey.trim()
+                    ? "text-white/20"
+                    : testResult?.ok
+                      ? "text-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-400"
+                      : testResult && !testResult.ok
+                        ? "text-red-400/70 hover:bg-red-500/10 hover:text-red-400"
+                        : "text-white/50 hover:bg-white/[0.10] hover:text-white/70"
+                )}
+              >
+                <RefreshCw className={cn("h-3 w-3", testingKey && "animate-spin")} />
+                {testingKey ? "Testing..." : testResult?.ok ? "Valid" : testResult && !testResult.ok ? "Failed" : "Test"}
+              </button>
             </SettingRow>
             <SettingRow label="Get an API key">
               <button
