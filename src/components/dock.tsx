@@ -498,7 +498,7 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
   return (
     <>
       {activeModal && (
-        <div className="overlay-backdrop absolute inset-0 z-40" onClick={close} />
+        <div className="overlay-backdrop fixed inset-0 z-40" onClick={close} />
       )}
 
       <div className="absolute bottom-4 right-4 z-50">
