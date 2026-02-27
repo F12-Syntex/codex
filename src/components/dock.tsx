@@ -132,8 +132,8 @@ function ThemeModal({
 }) {
   return (
     <ModalShell title="Appearance" onClose={onClose}>
-      <Tabs defaultValue="colors" className="gap-0">
-        <TabsList className="mx-4 mt-3 w-fit gap-0.5 bg-transparent p-0">
+      <Tabs defaultValue="colors" className="flex h-[400px] flex-col gap-0">
+        <TabsList className="mx-4 mt-3 w-fit shrink-0 gap-0.5 bg-transparent p-0">
           <TabsTrigger
             value="colors"
             className="h-auto rounded-lg border-none px-2.5 py-1 text-[11px] font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
@@ -154,7 +154,7 @@ function ThemeModal({
           </TabsTrigger>
         </TabsList>
 
-        <div className="max-h-[380px] overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {/* ── Colors tab ──────────────────────────── */}
           <TabsContent value="colors" className="mt-0">
             <div className="flex flex-col gap-4">
@@ -467,7 +467,7 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <ModalShell title="Shortcuts" onClose={onClose}>
-      <div className="flex max-h-[380px] flex-col gap-3 overflow-y-auto p-4">
+      <div className="flex h-[400px] flex-col gap-3 overflow-y-auto p-4">
         {categories.map((cat) => (
           <div key={cat}>
             <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">{cat}</p>
