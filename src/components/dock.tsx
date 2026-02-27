@@ -58,14 +58,14 @@ function ModalShell({
 }) {
   return (
     <div
-      className="overlay-panel absolute bottom-full left-1/2 z-50 mb-[10px] -translate-x-1/2 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] shadow-xl shadow-black/50"
+      className="overlay-panel absolute right-full top-1/2 z-50 mr-3 -translate-y-1/2 rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
       style={width ? { width } : undefined}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between px-4 pt-3 pb-0">
-        <span className="text-xs font-medium text-muted-foreground">{title}</span>
-        <button onClick={onClose} className="text-white/30 transition-colors hover:text-white/60">
-          <X className="h-3.5 w-3.5" />
+        <span className="text-[11px] font-medium uppercase tracking-wider text-white/30">{title}</span>
+        <button onClick={onClose} className="text-white/20 transition-colors hover:text-white/50">
+          <X className="h-3 w-3" />
         </button>
       </div>
       {children}
@@ -134,7 +134,7 @@ function ThemeModal({
   onClose: () => void;
 }) {
   return (
-    <ModalShell title="Appearance" onClose={onClose} width="380px">
+    <ModalShell title="Appearance" onClose={onClose} width="340px">
       <Tabs defaultValue="colors" className="gap-0">
         <TabsList className="mx-4 mt-3 w-fit gap-0.5 bg-transparent p-0">
           <TabsTrigger
@@ -157,7 +157,7 @@ function ThemeModal({
           </TabsTrigger>
         </TabsList>
 
-        <div className="h-[340px] overflow-y-auto p-4">
+        <div className="max-h-[380px] overflow-y-auto p-4">
           {/* ── Colors tab ──────────────────────────── */}
           <TabsContent value="colors" className="mt-0">
             <div className="flex flex-col gap-4">
@@ -178,7 +178,6 @@ function ThemeModal({
                       title={opt.label}
                     />
                   ))}
-                  {/* Custom color picker */}
                   <div className="relative">
                     <button
                       onClick={() => onThemeChange({ accent: "custom" })}
@@ -192,7 +191,7 @@ function ThemeModal({
                       title="Custom"
                     >
                       {theme.accent !== "custom" && (
-                        <span className="text-[10px] text-white/40">+</span>
+                        <span className="text-[11px] text-white/40">+</span>
                       )}
                     </button>
                   </div>
@@ -329,7 +328,7 @@ function ThemeModal({
                       key={c.id}
                       onClick={() => onThemeChange({ cursorStyle: c.id })}
                       className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg py-2.5 text-[10px] transition-all",
+                        "flex flex-col items-center gap-1.5 rounded-lg py-2.5 text-[11px] transition-all",
                         theme.cursorStyle === c.id
                           ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
                           : "text-white/30 hover:text-white/50"
@@ -358,7 +357,7 @@ function ThemeModal({
                       key={v}
                       onClick={() => onThemeChange({ borderRadius: v })}
                       className={cn(
-                        "flex-1 rounded-lg py-1.5 text-[10px] transition-all",
+                        "flex-1 rounded-lg py-1.5 text-[11px] transition-all",
                         theme.borderRadius === v
                           ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
                           : "text-white/25 hover:text-white/40"
@@ -470,16 +469,16 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
   const categories = [...new Set(SHORTCUT_REGISTRY.map((s) => s.category))];
 
   return (
-    <ModalShell title="Keyboard shortcuts" onClose={onClose} width="320px">
-      <div className="flex flex-col gap-3 p-4">
+    <ModalShell title="Shortcuts" onClose={onClose} width="280px">
+      <div className="flex max-h-[380px] flex-col gap-3 overflow-y-auto p-4">
         {categories.map((cat) => (
           <div key={cat}>
             <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">{cat}</p>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-0.5">
               {SHORTCUT_REGISTRY.filter((s) => s.category === cat).map((s) => (
                 <div key={s.id} className="flex items-center justify-between py-1">
-                  <span className="text-[13px] text-white/60">{s.label}</span>
-                  <kbd className="rounded-lg bg-[var(--bg-inset)] px-2 py-0.5 text-[11px] text-white/40">
+                  <span className="text-[13px] text-white/50">{s.label}</span>
+                  <kbd className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/30">
                     {s.keys}
                   </kbd>
                 </div>
@@ -502,58 +501,59 @@ export function Dock({ theme, onThemeChange, onSearchOpen }: DockProps) {
   return (
     <>
       {activeModal && (
-        <div className="overlay-backdrop absolute inset-0 z-40 bg-black/20" onClick={close} />
+        <div className="overlay-backdrop absolute inset-0 z-40" onClick={close} />
       )}
 
-      <div className="absolute bottom-4 left-1/2 z-50 -translate-x-1/2">
-        {activeModal === "theme" && (
-          <ThemeModal theme={theme} onThemeChange={onThemeChange} onClose={close} />
-        )}
-        {activeModal === "shortcuts" && <ShortcutsModal onClose={close} />}
+      <div className="absolute right-4 top-1/2 z-50 -translate-y-1/2">
+        <div className="relative">
+          {activeModal === "theme" && (
+            <ThemeModal theme={theme} onThemeChange={onThemeChange} onClose={close} />
+          )}
+          {activeModal === "shortcuts" && <ShortcutsModal onClose={close} />}
 
-        <div className="relative flex items-center gap-1 rounded-full border border-white/[0.06] bg-[var(--bg-surface)] px-2 py-1.5 shadow-lg shadow-black/30">
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8 rounded-full", activeModal === "theme" && "bg-white/10")}
-                onClick={() => toggle("theme")}
-              >
-                <Palette className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Appearance</TooltipContent>
-          </Tooltip>
+          <div className="flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[var(--bg-surface)] px-1.5 py-2 shadow-lg shadow-black/30">
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-8 w-8 rounded-full", activeModal === "theme" && "bg-white/10")}
+                  onClick={() => toggle("theme")}
+                >
+                  <Palette className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Appearance</TooltipContent>
+            </Tooltip>
 
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                onClick={() => { close(); onSearchOpen(); }}
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Search</TooltipContent>
-          </Tooltip>
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => { close(); onSearchOpen(); }}
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Search</TooltipContent>
+            </Tooltip>
 
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-8 w-8 rounded-full", activeModal === "shortcuts" && "bg-white/10")}
-                onClick={() => toggle("shortcuts")}
-              >
-                <Keyboard className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Shortcuts</TooltipContent>
-          </Tooltip>
-
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-8 w-8 rounded-full", activeModal === "shortcuts" && "bg-white/10")}
+                  onClick={() => toggle("shortcuts")}
+                >
+                  <Keyboard className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Shortcuts</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </div>
     </>
