@@ -53,6 +53,13 @@ interface ElectronAPI {
   moveItem: (id: number, view: string) => Promise<void>;
   transferItem: (id: number, section: string, view: string) => Promise<void>;
 
+  // Reader
+  openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => Promise<void>;
+
+  // TTS
+  ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;
+  ttsSynthesize: (text: string, voice: string, rate: string) => Promise<string>;
+
   // Settings
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;

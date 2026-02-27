@@ -212,6 +212,18 @@ export default function Home() {
     }, 0);
   }, [activeSection]);
 
+  /** Open a book in the reader window */
+  const handleOpenItem = useCallback((item: MockItem) => {
+    window.electronAPI?.openReader({
+      id: item.id,
+      title: item.title,
+      author: item.author,
+      filePath: item.filePath,
+      cover: item.cover,
+      format: item.format,
+    });
+  }, []);
+
   /** Import files via Electron file dialog */
   const handleImport = useCallback(async () => {
     if (!window.electronAPI?.importFiles) return;
@@ -412,6 +424,7 @@ export default function Home() {
                       onMoveItem={handleMoveItem}
                       onDeleteItem={handleDeleteItem}
                       onTransferItem={handleTransferItem}
+                      onOpenItem={handleOpenItem}
                       activeView={activeView}
                       section={activeSection}
                     />

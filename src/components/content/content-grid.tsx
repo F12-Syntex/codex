@@ -25,6 +25,7 @@ interface ContentGridProps {
   onMoveItem: (id: number, targetView: NavView) => void;
   onDeleteItem: (id: number) => void;
   onTransferItem: (id: number, targetSection: Section) => void;
+  onOpenItem?: (item: MockItem) => void;
   activeView: NavView;
   section: Section;
 }
@@ -185,7 +186,7 @@ function GroupCard({
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, activeView, section }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, activeView, section }: ContentGridProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
 
   if (items.length === 0) {
@@ -211,7 +212,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         <div className="flex flex-col gap-0.5 p-3">
           {items.map((item) => (
             <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
-              <div className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5">
+              <div onDoubleClick={() => onOpenItem?.(item)} className="flex cursor-default items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{item.title}</p>
                   <p className="truncate text-xs text-muted-foreground">{item.author}</p>
@@ -236,7 +237,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3 p-5">
           {items.map((item) => (
             <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
-              <div className="group flex gap-4 rounded-lg bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]">
+              <div onDoubleClick={() => onOpenItem?.(item)} className="group flex cursor-default gap-4 rounded-lg bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]">
                 <div className="relative shrink-0">
                   <div className={`relative h-32 w-[85px] overflow-hidden ${radius}`}>
                     {item.cover ? (
@@ -285,6 +286,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         coverStyle={coverStyle}
         showFormatBadge={showFormatBadge}
         ctxProps={ctxProps}
+        onOpenItem={onOpenItem}
       />
     );
   }
@@ -295,7 +297,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
       <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
         {items.map((item) => (
           <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
-            <div>
+            <div onDoubleClick={() => onOpenItem?.(item)} className="cursor-default">
               <BookCard
                 {...item}
                 coverStyle={coverStyle}
@@ -316,6 +318,7 @@ function GroupView({
   coverStyle,
   showFormatBadge,
   ctxProps,
+  onOpenItem,
 }: {
   items: MockItem[];
   radius: string;
@@ -328,6 +331,7 @@ function GroupView({
     onDelete: (id: number) => void;
     onTransfer: (id: number, targetSection: Section) => void;
   };
+  onOpenItem?: (item: MockItem) => void;
 }) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
@@ -367,7 +371,7 @@ function GroupView({
             <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
               {groupItems.map((item) => (
                 <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
-                  <div>
+                  <div onDoubleClick={() => onOpenItem?.(item)} className="cursor-default">
                     <BookCard
                       {...item}
                       coverStyle={coverStyle}
@@ -389,7 +393,7 @@ function GroupView({
         {groups.map(([author, groupItems]) =>
           groupItems.length === 1 ? (
             <ItemContextMenu key={author} itemId={groupItems[0].id} {...ctxProps}>
-              <div>
+              <div onDoubleClick={() => onOpenItem?.(groupItems[0])} className="cursor-default">
                 <BookCard
                   {...groupItems[0]}
                   coverStyle={coverStyle}

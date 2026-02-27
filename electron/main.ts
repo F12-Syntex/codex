@@ -6,6 +6,7 @@ import { initUpdater } from "./updater";
 import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings } from "./database";
 import { extractMetadata } from "./metadata";
 import type { LibraryItem } from "./database";
+import { EdgeTTS } from "@andresaya/edge-tts";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
 
@@ -95,11 +96,13 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+let mainWindow: BrowserWindow | null = null;
+
 function createWindow() {
   // Initialize database before setting up IPC
   initDatabase();
 
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
@@ -114,20 +117,96 @@ function createWindow() {
     },
   });
 
-  ipcMain.on("window:minimize", () => mainWindow.minimize());
-  ipcMain.on("window:maximize", () => {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
+  ipcMain.on("window:minimize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.minimize();
+  });
+  ipcMain.on("window:maximize", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win?.isMaximized()) {
+      win.unmaximize();
     } else {
-      mainWindow.maximize();
+      win?.maximize();
     }
   });
-  ipcMain.on("window:close", () => mainWindow.close());
+  ipcMain.on("window:close", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    // If it's NOT the main window, just close the child window
+    if (win !== mainWindow) {
+      win.close();
+      return;
+    }
+    // If it IS the main window, close everything and quit
+    BrowserWindow.getAllWindows().forEach((w) => {
+      if (w !== mainWindow) w.close();
+    });
+    win.close();
+  });
+
+  // ── Reader: open book in new window ──────────
+  ipcMain.handle("reader:open", (_event, bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => {
+    const readerWindow = new BrowserWindow({
+      width: 1000,
+      height: 700,
+      minWidth: 600,
+      minHeight: 400,
+      frame: false,
+      titleBarStyle: "hidden",
+      icon: path.join(__dirname, "../build/icon.png"),
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    const params = new URLSearchParams({
+      title: bookInfo.title,
+      author: bookInfo.author,
+      format: bookInfo.format,
+    });
+
+    if (isDev) {
+      readerWindow.loadURL(`http://localhost:3000/reader?${params.toString()}`);
+    } else {
+      readerWindow.loadURL(`app://./reader.html?${params.toString()}`);
+    }
+
+    readerWindow.on("maximize", () => {
+      readerWindow.webContents.send("window:maximized", true);
+    });
+    readerWindow.on("unmaximize", () => {
+      readerWindow.webContents.send("window:maximized", false);
+    });
+  });
+
+  // ── TTS: Edge TTS via @andresaya/edge-tts ─────────
+
+  ipcMain.handle("tts:get-voices", async () => {
+    const tts = new EdgeTTS();
+    const voices = await tts.getVoices();
+    // Return a serializable subset
+    return voices.map((v: { Name: string; ShortName: string; Gender: string; Locale: string }) => ({
+      name: v.Name,
+      shortName: v.ShortName,
+      gender: v.Gender,
+      locale: v.Locale,
+    }));
+  });
+
+  ipcMain.handle("tts:synthesize", async (_event, text: string, voice: string, rate: string) => {
+    const tts = new EdgeTTS();
+    await tts.synthesize(text, voice, { rate });
+    const buffer = tts.toBuffer();
+    // Return as base64 for safe IPC transfer
+    return buffer.toString("base64");
+  });
 
   // ── Library: import files via dialog ──────────────
 
   ipcMain.handle("library:import-files", async (_event, section: string, view: string) => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(mainWindow!, {
       title: "Import files",
       filters: [
         { name: "Books & Comics", extensions: ["epub", "pdf", "cbz", "cbr", "mobi"] },
@@ -157,7 +236,7 @@ function createWindow() {
   // ── Library: select folder ────────────────────────
 
   ipcMain.handle("library:select-folder", async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(mainWindow!, {
       title: "Select library folder",
       properties: ["openDirectory"],
     });
@@ -226,17 +305,25 @@ function createWindow() {
   // ── Window events ─────────────────────────────────
 
   mainWindow.on("maximize", () => {
-    mainWindow.webContents.send("window:maximized", true);
+    mainWindow!.webContents.send("window:maximized", true);
   });
   mainWindow.on("unmaximize", () => {
-    mainWindow.webContents.send("window:maximized", false);
+    mainWindow!.webContents.send("window:maximized", false);
+  });
+  mainWindow.on("closed", () => {
+    const remainingWindows = BrowserWindow.getAllWindows();
+    mainWindow = null;
+    // When main window closes, close all reader windows too
+    remainingWindows.forEach((win) => {
+      if (!win.isDestroyed()) win.close();
+    });
   });
 
   if (isDev) {
     mainWindow.loadURL("http://localhost:3000");
   } else {
     mainWindow.loadURL("app://./index.html");
-    initUpdater(mainWindow);
+    initUpdater(mainWindow!);
   }
 }
 
@@ -260,6 +347,8 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  // Only quit when the main window has been closed (not just reader windows)
+  if (mainWindow && !mainWindow.isDestroyed()) return;
   if (process.platform !== "darwin") {
     app.quit();
   }

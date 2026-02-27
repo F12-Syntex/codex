@@ -34,6 +34,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAllSettings: () =>
     ipcRenderer.invoke("library:get-all-settings"),
 
+  // Reader
+  openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) =>
+    ipcRenderer.invoke("reader:open", bookInfo),
+
+  // TTS
+  ttsGetVoices: () => ipcRenderer.invoke("tts:get-voices"),
+  ttsSynthesize: (text: string, voice: string, rate: string) =>
+    ipcRenderer.invoke("tts:synthesize", text, voice, rate),
+
   // Updates
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.send("update:install"),
