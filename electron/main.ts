@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
-import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings } from "./database";
+import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark } from "./database";
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
 import type { LibraryItem } from "./database";
@@ -188,6 +188,19 @@ function createWindow() {
   // ── Reader: get book content ──────────────────────
   ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
     return parseBookContent(filePath, format);
+  });
+
+  // ── Bookmarks ───────────────────────────────────────
+  ipcMain.handle("bookmarks:get", (_event, filePath: string) => {
+    return getBookmarks(filePath);
+  });
+
+  ipcMain.handle("bookmarks:add", (_event, filePath: string, chapterIndex: number, paragraphIndex: number, label: string) => {
+    return addBookmark(filePath, chapterIndex, paragraphIndex, label);
+  });
+
+  ipcMain.handle("bookmarks:delete", (_event, id: number) => {
+    deleteBookmark(id);
   });
 
   // ── TTS: Edge TTS via @andresaya/edge-tts ─────────

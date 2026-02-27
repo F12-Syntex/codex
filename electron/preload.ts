@@ -42,6 +42,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getBookContent: (filePath: string, format: string) =>
     ipcRenderer.invoke("reader:get-content", filePath, format),
 
+  // Bookmarks
+  getBookmarks: (filePath: string) =>
+    ipcRenderer.invoke("bookmarks:get", filePath),
+  addBookmark: (filePath: string, chapterIndex: number, paragraphIndex: number, label: string) =>
+    ipcRenderer.invoke("bookmarks:add", filePath, chapterIndex, paragraphIndex, label),
+  deleteBookmark: (id: number) =>
+    ipcRenderer.invoke("bookmarks:delete", id),
+
   // TTS
   ttsGetVoices: () => ipcRenderer.invoke("tts:get-voices"),
   ttsSynthesize: (text: string, voice: string, rate: string) =>

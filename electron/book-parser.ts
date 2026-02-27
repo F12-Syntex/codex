@@ -3,7 +3,10 @@ import path from "path";
 
 export interface BookChapter {
   title: string;
+  /** Plain text paragraphs (for TTS) */
   paragraphs: string[];
+  /** Raw HTML paragraphs (for native rendering with drop caps, etc.) */
+  htmlParagraphs: string[];
 }
 
 export interface BookContent {
@@ -14,6 +17,8 @@ export interface BookContent {
   fontFamily?: string;
   /** Native font size from the book's CSS in px (if found) */
   fontSizePx?: number;
+  /** Concatenated CSS from the book's stylesheets */
+  css?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────
@@ -69,9 +74,10 @@ function extractTitle(xhtml: string): string {
   return "";
 }
 
-/** Extract paragraphs from XHTML content */
-function extractParagraphs(xhtml: string): string[] {
-  const paragraphs: string[] = [];
+/** Extract paragraphs from XHTML content — returns { plain, html } arrays */
+function extractParagraphs(xhtml: string): { plain: string[]; html: string[] } {
+  const plain: string[] = [];
+  const html: string[] = [];
 
   // Remove head section
   const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -83,36 +89,39 @@ function extractParagraphs(xhtml: string): string[] {
     for (const p of pMatches) {
       const text = stripHtml(p).trim();
       if (text.length > 0) {
-        paragraphs.push(text);
+        plain.push(text);
+        html.push(p.trim());
       }
     }
   }
 
   // If no <p> tags, try splitting on <div> tags
-  if (paragraphs.length === 0) {
+  if (plain.length === 0) {
     const divMatches = content.match(/<div[^>]*>[\s\S]*?<\/div>/gi);
     if (divMatches) {
       for (const d of divMatches) {
         const text = stripHtml(d).trim();
         if (text.length > 0) {
-          paragraphs.push(text);
+          plain.push(text);
+          html.push(d.trim());
         }
       }
     }
   }
 
   // Last resort: strip all tags, split by double newlines
-  if (paragraphs.length === 0) {
-    const plain = stripHtml(content);
-    const lines = plain.split(/\n\s*\n/).map((l) => l.trim()).filter(Boolean);
-    paragraphs.push(...lines);
+  if (plain.length === 0) {
+    const stripped = stripHtml(content);
+    const lines = stripped.split(/\n\s*\n/).map((l) => l.trim()).filter(Boolean);
+    plain.push(...lines);
+    html.push(...lines.map((l) => `<p>${l}</p>`));
   }
 
-  return paragraphs;
+  return { plain, html };
 }
 
-/** Extract font-family and font-size from EPUB CSS files */
-function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFamily?: string; fontSizePx?: number } {
+/** Extract font-family, font-size, and raw CSS from EPUB CSS files */
+function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFamily?: string; fontSizePx?: number; css?: string } {
   // Find CSS files referenced in manifest
   const cssHrefs: string[] = [];
   const cssItemRegex = /<item\s[^>]*?href="([^"]+\.css)"[^>]*?\/?>/gi;
@@ -123,6 +132,7 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
 
   let fontFamily: string | undefined;
   let fontSizePx: number | undefined;
+  const cssChunks: string[] = [];
 
   for (const href of cssHrefs) {
     const entryPath = opfDir === "." ? href : `${opfDir}/${href}`;
@@ -130,13 +140,13 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
     if (!entry) continue;
 
     const css = entry.getData().toString("utf-8");
+    cssChunks.push(css);
 
     // Look for body or p font-family
     if (!fontFamily) {
       const bodyBlock = css.match(/(?:body|p)\s*\{[^}]*font-family\s*:\s*([^;}]+)/i);
       if (bodyBlock) {
         const raw = bodyBlock[1].trim().replace(/["']/g, "");
-        // Take the first font in the stack
         const first = raw.split(",")[0].trim();
         if (first && !first.match(/^(serif|sans-serif|monospace|cursive|fantasy|inherit|initial)$/i)) {
           fontFamily = raw;
@@ -161,11 +171,10 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
         }
       }
     }
-
-    if (fontFamily && fontSizePx) break;
   }
 
-  return { fontFamily, fontSizePx };
+  const fullCss = cssChunks.length > 0 ? cssChunks.join("\n") : undefined;
+  return { fontFamily, fontSizePx, css: fullCss };
 }
 
 // ── EPUB Parser ──────────────────────────────────────
@@ -176,20 +185,20 @@ function parseEpubChapters(filePath: string): BookContent {
   // 1. Find OPF path via container.xml
   const containerEntry = zip.getEntry("META-INF/container.xml");
   if (!containerEntry) {
-    return { chapters: [{ title: "Error", paragraphs: ["Could not read EPUB: missing container.xml"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["Could not read EPUB: missing container.xml"], htmlParagraphs: ["<p>Could not read EPUB: missing container.xml</p>"] }], isImageBook: false };
   }
 
   const containerXml = containerEntry.getData().toString("utf-8");
   const rootfileMatch = containerXml.match(/full-path="([^"]+)"/);
   if (!rootfileMatch) {
-    return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"], htmlParagraphs: ["<p>Could not find OPF file in EPUB</p>"] }], isImageBook: false };
   }
 
   const opfPath = rootfileMatch[1];
   const opfDir = path.posix.dirname(opfPath);
   const opfEntry = zip.getEntry(opfPath);
   if (!opfEntry) {
-    return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"], htmlParagraphs: ["<p>Could not read OPF file</p>"] }], isImageBook: false };
   }
 
   const opfXml = opfEntry.getData().toString("utf-8");
@@ -211,7 +220,7 @@ function parseEpubChapters(filePath: string): BookContent {
   }
 
   if (spineIds.length === 0) {
-    return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"], htmlParagraphs: ["<p>No chapters found in EPUB spine</p>"] }], isImageBook: false };
   }
 
   // 4. Extract each chapter
@@ -227,24 +236,24 @@ function parseEpubChapters(filePath: string): BookContent {
     if (!entry) continue;
 
     const xhtml = entry.getData().toString("utf-8");
-    const paragraphs = extractParagraphs(xhtml);
+    const { plain, html } = extractParagraphs(xhtml);
 
     // Skip empty chapters (like cover pages with only images)
-    if (paragraphs.length === 0) continue;
+    if (plain.length === 0) continue;
 
     chapterNum++;
     const title = extractTitle(xhtml) || `Chapter ${chapterNum}`;
-    chapters.push({ title, paragraphs });
+    chapters.push({ title, paragraphs: plain, htmlParagraphs: html });
   }
 
   if (chapters.length === 0) {
-    return { chapters: [{ title: "Empty", paragraphs: ["This EPUB has no readable text content."] }], isImageBook: false };
+    return { chapters: [{ title: "Empty", paragraphs: ["This EPUB has no readable text content."], htmlParagraphs: ["<p>This EPUB has no readable text content.</p>"] }], isImageBook: false };
   }
 
-  // Extract font info from CSS
-  const { fontFamily, fontSizePx } = extractFontInfo(zip, opfXml, opfDir);
+  // Extract font info and CSS from stylesheets
+  const { fontFamily, fontSizePx, css } = extractFontInfo(zip, opfXml, opfDir);
 
-  return { chapters, isImageBook: false, fontFamily, fontSizePx };
+  return { chapters, isImageBook: false, fontFamily, fontSizePx, css };
 }
 
 // ── CBZ Parser ───────────────────────────────────────
@@ -256,7 +265,7 @@ function parseCbzPages(filePath: string): BookContent {
     .sort((a, b) => a.entryName.localeCompare(b.entryName));
 
   if (entries.length === 0) {
-    return { chapters: [{ title: "Empty", paragraphs: ["No images found in CBZ archive."] }], isImageBook: false };
+    return { chapters: [{ title: "Empty", paragraphs: ["No images found in CBZ archive."], htmlParagraphs: ["<p>No images found in CBZ archive.</p>"] }], isImageBook: false };
   }
 
   // Group all pages into a single "chapter" for simplicity, or one chapter per ~20 pages
@@ -273,6 +282,7 @@ function parseCbzPages(filePath: string): BookContent {
         ? "All Pages"
         : `Pages ${i + 1}–${Math.min(i + PAGES_PER_CHAPTER, entries.length)}`,
       paragraphs: pages,
+      htmlParagraphs: pages,
     });
   }
 
@@ -295,6 +305,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
         chapters: [{
           title: "PDF Viewer",
           paragraphs: ["PDF reading is not yet supported. Please use an external PDF reader."],
+          htmlParagraphs: ["<p>PDF reading is not yet supported. Please use an external PDF reader.</p>"],
         }],
         isImageBook: false,
       };
@@ -303,6 +314,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
         chapters: [{
           title: "Unsupported Format",
           paragraphs: [`The format "${format}" is not yet supported for reading.`],
+          htmlParagraphs: [`<p>The format "${format}" is not yet supported for reading.</p>`],
         }],
         isImageBook: false,
       };

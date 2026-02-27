@@ -20,6 +20,8 @@ import {
   Loader2,
   BookOpen,
   AudioLines,
+  Bookmark,
+  BookmarkCheck,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -53,7 +55,7 @@ const THEME_STYLES: Record<ReadingTheme, { bg: string; text: string; mutedText: 
   },
 };
 
-/* ── Persisted settings shape ───────────────────────── */
+/* ── Persisted settings ─────────────────────────────── */
 
 interface ReaderSettings {
   readingTheme: ReadingTheme;
@@ -73,8 +75,7 @@ function loadSettings(): ReaderSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -110,13 +111,19 @@ export default function ReaderPage() {
 
 function ReaderTextBlock({
   children,
+  html,
+  nativeRendering,
   index,
   tts,
+  onClick,
 }: {
   children: React.ReactNode;
+  html?: string;
+  nativeRendering?: boolean;
   index: number;
   tts: TTSState;
   readingTheme: ReadingTheme;
+  onClick?: () => void;
 }) {
   const isActive = (tts.isPlaying || tts.isPaused || tts.isSynthesizing) && tts.currentParagraph === index;
   const ref = useRef<HTMLDivElement>(null);
@@ -128,7 +135,11 @@ function ReaderTextBlock({
   }, [isActive, tts.isPlaying, tts.isSynthesizing]);
 
   return (
-    <div ref={ref} className="relative">
+    <div
+      ref={ref}
+      className="relative cursor-pointer"
+      onClick={onClick}
+    >
       <div
         className={`pointer-events-none absolute -inset-x-4 -inset-y-2 rounded-lg border transition-all duration-300 ease-out ${
           isActive
@@ -136,7 +147,11 @@ function ReaderTextBlock({
             : "scale-[0.98] border-transparent bg-transparent opacity-0"
         }`}
       />
-      <p className="relative">{children}</p>
+      {nativeRendering && html ? (
+        <div className="book-native-content relative" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <p className="relative">{children}</p>
+      )}
     </div>
   );
 }
@@ -152,11 +167,7 @@ function themedBtnClass(rt: ReadingTheme): string {
 }
 
 function themedBorderColor(rt: ReadingTheme): string {
-  return rt === "dark"
-    ? "border-white/[0.04]"
-    : rt === "sepia"
-      ? "border-[#5b4636]/10"
-      : "border-black/[0.06]";
+  return rt === "dark" ? "border-white/[0.04]" : rt === "sepia" ? "border-[#5b4636]/10" : "border-black/[0.06]";
 }
 
 function themedMutedText(rt: ReadingTheme): string {
@@ -167,9 +178,9 @@ function themedSubtleBg(rt: ReadingTheme): string {
   return rt === "dark" ? "bg-white/[0.06]" : rt === "sepia" ? "bg-[#5b4636]/10" : "bg-black/[0.06]";
 }
 
-/* ── TTS Modal ──────────────────────────────────────── */
+/* ── TTS Dropdown (floating below header) ───────────── */
 
-function TTSModal({
+function TTSDropdown({
   readingTheme,
   paragraphs,
   tts,
@@ -200,7 +211,7 @@ function TTSModal({
   onRateChange: (rate: number) => void;
   onClose: () => void;
 }) {
-  const modalRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const voicePickerRef = useRef<HTMLDivElement>(null);
 
@@ -226,18 +237,22 @@ function TTSModal({
       ? "text-[#5b4636]/80"
       : "text-black/80";
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    // Delay so the toggle button click doesn't immediately close
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handler);
+    };
   }, [onClose]);
 
-  // Close voice picker on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (voicePickerRef.current && !voicePickerRef.current.contains(e.target as Node)) {
@@ -255,171 +270,144 @@ function TTSModal({
     ? voice.shortName.split("-").pop()?.replace("Neural", "") ?? voice.shortName
     : "Select voice";
 
-  // Progress through paragraphs
   const paraProgress = paragraphs.length > 0
     ? ((tts.currentParagraph + 1) / paragraphs.length) * 100
     : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div
-        ref={modalRef}
-        className={`w-[340px] rounded-lg border ${borderColor} ${surfaceBg} shadow-lg shadow-black/30`}
-      >
-        {/* Header */}
-        <div className={`flex items-center justify-between border-b px-4 py-3 ${borderColor}`}>
-          <span className={`text-[13px] font-medium ${textColor}`}>Text to Speech</span>
-          <button
-            onClick={onClose}
-            className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${btnClass}`}
-          >
-            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </button>
-        </div>
-
-        <div className="space-y-4 p-4">
-          {/* Playback controls — centered, prominent */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onPrev}
-                disabled={tts.currentParagraph === 0 && !tts.isPlaying}
-                className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${btnClass}`}
-              >
-                <SkipBack className="h-4 w-4" strokeWidth={1.5} />
-              </button>
-
-              {tts.isSynthesizing ? (
-                <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${solidBg} ${mutedText}`}>
-                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
-                </div>
-              ) : tts.isPlaying ? (
-                <button
-                  onClick={onPause}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${solidBg} transition-colors ${textColor}`}
-                >
-                  <Pause className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-              ) : (
-                <button
-                  onClick={onPlay}
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${solidBg} transition-colors ${textColor}`}
-                >
-                  <Play className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-              )}
-
-              {(tts.isPlaying || tts.isPaused) ? (
-                <button
-                  onClick={onStop}
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${btnClass}`}
-                >
-                  <StopCircle className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-              ) : (
-                <button
-                  onClick={onNext}
-                  disabled={tts.currentParagraph >= paragraphs.length - 1 && !tts.isPlaying}
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${btnClass}`}
-                >
-                  <SkipForward className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-              )}
-
-              {(tts.isPlaying || tts.isPaused) && (
-                <button
-                  onClick={onNext}
-                  disabled={tts.currentParagraph >= paragraphs.length - 1 && !tts.isPlaying}
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${btnClass}`}
-                >
-                  <SkipForward className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-              )}
-            </div>
-
-            {/* Progress bar */}
-            <div className="w-full">
-              <div className={`h-1 w-full rounded-lg ${themedSubtleBg(readingTheme)}`}>
-                <div
-                  className="h-full rounded-lg bg-[var(--accent-brand)] transition-all duration-200"
-                  style={{ width: `${paraProgress}%` }}
-                />
-              </div>
-              <div className={`mt-1 flex justify-between text-[11px] ${mutedText}`}>
-                <span>Paragraph {tts.currentParagraph + 1}</span>
-                <span>{paragraphs.length} total</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Voice selector */}
-          <div className="relative" ref={voicePickerRef}>
-            <label className={`mb-1 block text-[11px] font-medium ${mutedText}`}>Voice</label>
+    <div
+      ref={dropdownRef}
+      className={`absolute right-12 top-full z-50 mt-1 w-[320px] rounded-lg border ${borderColor} ${surfaceBg} shadow-lg shadow-black/30`}
+    >
+      <div className="space-y-3 p-3">
+        {/* Playback controls */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => setShowVoicePicker((v) => !v)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${themedSubtleBg(readingTheme)} ${textColor}`}
+              onClick={onPrev}
+              disabled={tts.currentParagraph === 0 && !tts.isPlaying}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${btnClass}`}
             >
-              <div className="flex items-center gap-2">
-                <Volume2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
-                <span className="truncate">{voiceLabel}</span>
-              </div>
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
+              <SkipBack className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
 
-            {showVoicePicker && (
-              <div
-                className={`absolute bottom-full left-0 z-50 mb-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${borderColor} ${surfaceBg}`}
-              >
-                {voices.map((v) => {
-                  const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
-                  return (
-                    <button
-                      key={v.shortName}
-                      onClick={() => {
-                        onVoiceChange(v.shortName);
-                        setShowVoicePicker(false);
-                      }}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors ${
-                        v.shortName === selectedVoice
-                          ? readingTheme === "dark"
-                            ? "bg-white/[0.08] text-white/80"
-                            : readingTheme === "sepia"
-                              ? "bg-[#5b4636]/10 text-[#5b4636]/80"
-                              : "bg-black/[0.06] text-black/80"
-                          : btnClass
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{label}</span>
-                      <span className={`shrink-0 text-[11px] ${mutedText}`}>{v.gender}</span>
-                      <span className={`shrink-0 text-[11px] ${mutedText}`}>{v.locale}</span>
-                    </button>
-                  );
-                })}
-                {voices.length === 0 && (
-                  <p className={`px-2 py-3 text-center text-[11px] ${mutedText}`}>Loading voices...</p>
-                )}
+            {tts.isSynthesizing ? (
+              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${solidBg} ${mutedText}`}>
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
               </div>
+            ) : tts.isPlaying ? (
+              <button
+                onClick={onPause}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg ${solidBg} transition-colors ${textColor}`}
+              >
+                <Pause className="h-4 w-4" strokeWidth={1.5} />
+              </button>
+            ) : (
+              <button
+                onClick={onPlay}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg ${solidBg} transition-colors ${textColor}`}
+              >
+                <Play className="h-4 w-4" strokeWidth={1.5} />
+              </button>
             )}
+
+            {(tts.isPlaying || tts.isPaused) && (
+              <button
+                onClick={onStop}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${btnClass}`}
+              >
+                <StopCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </button>
+            )}
+
+            <button
+              onClick={onNext}
+              disabled={tts.currentParagraph >= paragraphs.length - 1 && !tts.isPlaying}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${btnClass}`}
+            >
+              <SkipForward className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
           </div>
 
-          {/* Speed control */}
-          <div>
-            <label className={`mb-1 block text-[11px] font-medium ${mutedText}`}>Speed</label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0.5}
-                max={2}
-                step={0.25}
-                value={rate}
-                onChange={(e) => onRateChange(parseFloat(e.target.value))}
-                className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
+          {/* Progress */}
+          <div className="w-full">
+            <div className={`h-1 w-full rounded-lg ${themedSubtleBg(readingTheme)}`}>
+              <div
+                className="h-full rounded-lg bg-[var(--accent-brand)] transition-all duration-200"
+                style={{ width: `${paraProgress}%` }}
               />
-              <span className={`w-[36px] text-right text-[12px] tabular-nums ${textColor}`}>
-                {rate.toFixed(2).replace(/0$/, "")}x
-              </span>
+            </div>
+            <div className={`mt-1 flex justify-between text-[11px] ${mutedText}`}>
+              <span>Paragraph {tts.currentParagraph + 1}</span>
+              <span>{paragraphs.length} total</span>
             </div>
           </div>
+        </div>
+
+        {/* Voice selector */}
+        <div className="relative" ref={voicePickerRef}>
+          <button
+            onClick={() => setShowVoicePicker((v) => !v)}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${themedSubtleBg(readingTheme)} ${textColor}`}
+          >
+            <div className="flex items-center gap-2">
+              <Volume2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+              <span className="truncate">{voiceLabel}</span>
+            </div>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
+          </button>
+
+          {showVoicePicker && (
+            <div
+              className={`absolute bottom-full left-0 z-50 mb-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${borderColor} ${surfaceBg}`}
+            >
+              {voices.map((v) => {
+                const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
+                return (
+                  <button
+                    key={v.shortName}
+                    onClick={() => {
+                      onVoiceChange(v.shortName);
+                      setShowVoicePicker(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors ${
+                      v.shortName === selectedVoice
+                        ? readingTheme === "dark"
+                          ? "bg-white/[0.08] text-white/80"
+                          : readingTheme === "sepia"
+                            ? "bg-[#5b4636]/10 text-[#5b4636]/80"
+                            : "bg-black/[0.06] text-black/80"
+                        : btnClass
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    <span className={`shrink-0 text-[11px] ${mutedText}`}>{v.gender}</span>
+                    <span className={`shrink-0 text-[11px] ${mutedText}`}>{v.locale}</span>
+                  </button>
+                );
+              })}
+              {voices.length === 0 && (
+                <p className={`px-2 py-3 text-center text-[11px] ${mutedText}`}>Loading voices...</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Speed */}
+        <div className="flex items-center gap-3">
+          <span className={`text-[11px] ${mutedText}`}>Speed</span>
+          <input
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.25}
+            value={rate}
+            onChange={(e) => onRateChange(parseFloat(e.target.value))}
+            className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
+          />
+          <span className={`w-[36px] text-right text-[12px] tabular-nums ${textColor}`}>
+            {rate.toFixed(2).replace(/0$/, "")}x
+          </span>
         </div>
       </div>
     </div>
@@ -435,16 +423,20 @@ function ReaderContent() {
   const format = searchParams.get("format") || "EPUB";
   const filePath = searchParams.get("filePath") || "";
 
-  // Book content state
+  // Book content
   const [bookContent, setBookContent] = useState<BookContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(0);
   const [showChapterPicker, setShowChapterPicker] = useState(false);
   const chapterPickerRef = useRef<HTMLDivElement>(null);
 
+  // Bookmarks
+  const [bookmarks, setBookmarks] = useState<ReaderBookmark[]>([]);
+
   // Settings
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [readingTheme, setReadingTheme] = useState<ReadingTheme>("dark");
+  const [nativeRendering, setNativeRendering] = useState(true);
   const [maximized, setMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -468,20 +460,26 @@ function ReaderContent() {
   const sessionRef = useRef(0);
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   const theme = THEME_STYLES[readingTheme];
   const btnClass = themedBtnClass(readingTheme);
   const borderColor = themedBorderColor(readingTheme);
   const mutedText = themedMutedText(readingTheme);
 
-  // Current chapter data
   const chapters = bookContent?.chapters ?? [];
   const chapter = chapters[currentChapter];
   const paragraphs = chapter?.paragraphs ?? [];
+  const htmlParagraphs = chapter?.htmlParagraphs ?? [];
   const isImageBook = bookContent?.isImageBook ?? false;
 
-  // Native font from book
   const nativeFontFamily = bookContent?.fontFamily;
   const nativeFontSize = bookContent?.fontSizePx;
+  const bookCss = bookContent?.css;
+
+  // Check if current position is bookmarked
+  const currentBookmark = bookmarks.find(
+    (b) => b.chapterIndex === currentChapter && b.paragraphIndex === tts.currentParagraph
+  );
 
   // ── Load book content ──────────────────────────────
   useEffect(() => {
@@ -495,12 +493,18 @@ function ReaderContent() {
       setIsLoading(false);
     }).catch(() => {
       setBookContent({
-        chapters: [{ title: "Error", paragraphs: ["Failed to load book content."] }],
+        chapters: [{ title: "Error", paragraphs: ["Failed to load book content."], htmlParagraphs: ["<p>Failed to load book content.</p>"] }],
         isImageBook: false,
       });
       setIsLoading(false);
     });
   }, [filePath, format]);
+
+  // ── Load bookmarks ─────────────────────────────────
+  useEffect(() => {
+    if (!filePath) return;
+    window.electronAPI?.getBookmarks(filePath).then(setBookmarks).catch(() => {});
+  }, [filePath]);
 
   // ── Load persisted settings ────────────────────────
   useEffect(() => {
@@ -542,11 +546,9 @@ function ReaderContent() {
     persistSettings({ readingTheme: t });
   }, [persistSettings]);
 
-  useEffect(() => {
-    window.electronAPI?.onMaximized(setMaximized);
-  }, []);
+  useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
-  // Load Edge TTS voices
+  // Load TTS voices
   useEffect(() => {
     window.electronAPI?.ttsGetVoices().then((v) => {
       const english = v.filter((voice) => voice.locale.startsWith("en-"));
@@ -558,14 +560,9 @@ function ReaderContent() {
     }).catch(() => {});
   }, []);
 
-  // Cleanup
+  // Cleanup audio
   useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
-    };
+    return () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; } };
   }, []);
 
   // Close chapter picker on outside click
@@ -582,11 +579,7 @@ function ReaderContent() {
   }, [showChapterPicker]);
 
   const stopPlayback = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
   }, []);
 
   const rateToStr = (r: number) => {
@@ -598,26 +591,16 @@ function ReaderContent() {
 
   const synthesizeAndPlay = useCallback(async (index: number) => {
     if (!window.electronAPI?.ttsSynthesize || isImageBook) return;
-
     const session = ++sessionRef.current;
     currentParaRef.current = index;
     setTTS({ isPlaying: false, isPaused: false, isSynthesizing: true, currentParagraph: index });
-
     const currentRate = rateRef.current;
     const currentVoice = voiceRef.current;
-
     try {
-      const base64 = await window.electronAPI.ttsSynthesize(
-        paragraphs[index],
-        currentVoice,
-        rateToStr(currentRate),
-      );
-
+      const base64 = await window.electronAPI.ttsSynthesize(paragraphs[index], currentVoice, rateToStr(currentRate));
       if (sessionRef.current !== session) return;
-
       const audio = new Audio(`data:audio/mp3;base64,${base64}`);
       audioRef.current = audio;
-
       audio.onended = () => {
         if (sessionRef.current !== session) return;
         const next = currentParaRef.current + 1;
@@ -628,21 +611,14 @@ function ReaderContent() {
           setTTS({ isPlaying: false, isPaused: false, isSynthesizing: false, currentParagraph: 0 });
         }
       };
-
       audio.onerror = () => {
-        if (sessionRef.current === session) {
-          setTTS((s) => ({ ...s, isPlaying: false, isSynthesizing: false }));
-        }
+        if (sessionRef.current === session) setTTS((s) => ({ ...s, isPlaying: false, isSynthesizing: false }));
       };
-
       if (sessionRef.current !== session) return;
-
       setTTS({ isPlaying: true, isPaused: false, isSynthesizing: false, currentParagraph: index });
       await audio.play();
     } catch {
-      if (sessionRef.current === session) {
-        setTTS((s) => ({ ...s, isPlaying: false, isSynthesizing: false }));
-      }
+      if (sessionRef.current === session) setTTS((s) => ({ ...s, isPlaying: false, isSynthesizing: false }));
     }
   }, [paragraphs, isImageBook]);
 
@@ -673,37 +649,22 @@ function ReaderContent() {
   const handlePrev = useCallback(() => {
     const prev = Math.max(0, currentParaRef.current - 1);
     currentParaRef.current = prev;
-    if (tts.isPlaying || tts.isSynthesizing) {
-      stopPlayback();
-      synthesizeAndPlay(prev);
-    } else {
-      sessionRef.current++;
-      stopPlayback();
-      setTTS((s) => ({ ...s, isPaused: false, currentParagraph: prev }));
-    }
+    if (tts.isPlaying || tts.isSynthesizing) { stopPlayback(); synthesizeAndPlay(prev); }
+    else { sessionRef.current++; stopPlayback(); setTTS((s) => ({ ...s, isPaused: false, currentParagraph: prev })); }
   }, [tts.isPlaying, tts.isSynthesizing, stopPlayback, synthesizeAndPlay]);
 
   const handleNext = useCallback(() => {
     const next = Math.min(paragraphs.length - 1, currentParaRef.current + 1);
     currentParaRef.current = next;
-    if (tts.isPlaying || tts.isSynthesizing) {
-      stopPlayback();
-      synthesizeAndPlay(next);
-    } else {
-      sessionRef.current++;
-      stopPlayback();
-      setTTS((s) => ({ ...s, isPaused: false, currentParagraph: next }));
-    }
+    if (tts.isPlaying || tts.isSynthesizing) { stopPlayback(); synthesizeAndPlay(next); }
+    else { sessionRef.current++; stopPlayback(); setTTS((s) => ({ ...s, isPaused: false, currentParagraph: next })); }
   }, [paragraphs.length, tts.isPlaying, tts.isSynthesizing, stopPlayback, synthesizeAndPlay]);
 
   const handleVoiceChange = useCallback((shortName: string) => {
     setSelectedVoice(shortName);
     voiceRef.current = shortName;
     persistSettings({ ttsVoice: shortName });
-    if (tts.isPlaying || tts.isSynthesizing) {
-      stopPlayback();
-      synthesizeAndPlay(currentParaRef.current);
-    }
+    if (tts.isPlaying || tts.isSynthesizing) { stopPlayback(); synthesizeAndPlay(currentParaRef.current); }
   }, [tts.isPlaying, tts.isSynthesizing, stopPlayback, synthesizeAndPlay, persistSettings]);
 
   const handleRateChange = useCallback((newRate: number) => {
@@ -723,6 +684,62 @@ function ReaderContent() {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [stopPlayback]);
 
+  // Bookmark actions
+  // Click on paragraph to set TTS position
+  const handleParagraphClick = useCallback((index: number) => {
+    currentParaRef.current = index;
+    if (tts.isPlaying || tts.isSynthesizing) {
+      stopPlayback();
+      synthesizeAndPlay(index);
+    } else {
+      setTTS((s) => ({ ...s, currentParagraph: index }));
+    }
+  }, [tts.isPlaying, tts.isSynthesizing, stopPlayback, synthesizeAndPlay]);
+
+  const handleToggleBookmark = useCallback(() => {
+    if (!filePath) return;
+    if (currentBookmark) {
+      window.electronAPI?.deleteBookmark(currentBookmark.id).then(() => {
+        setBookmarks((prev) => prev.filter((b) => b.id !== currentBookmark.id));
+      });
+    } else {
+      const chTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
+      const label = `${chTitle} — Para ${tts.currentParagraph + 1}`;
+      window.electronAPI?.addBookmark(filePath, currentChapter, tts.currentParagraph, label).then((bm) => {
+        setBookmarks((prev) => [...prev, bm].sort((a, b) => a.chapterIndex - b.chapterIndex || a.paragraphIndex - b.paragraphIndex));
+      });
+    }
+  }, [filePath, currentBookmark, currentChapter, tts.currentParagraph, chapter?.title]);
+
+  const handleJumpToBookmark = useCallback((bm: ReaderBookmark) => {
+    if (bm.chapterIndex !== currentChapter) {
+      sessionRef.current++;
+      stopPlayback();
+      currentParaRef.current = bm.paragraphIndex;
+      setTTS({ isPlaying: false, isPaused: false, isSynthesizing: false, currentParagraph: bm.paragraphIndex });
+      setCurrentChapter(bm.chapterIndex);
+      // Scroll after chapter renders
+      setTimeout(() => {
+        const paraElements = contentRef.current?.querySelectorAll("[data-para-index]");
+        const target = paraElements?.[bm.paragraphIndex];
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    } else {
+      currentParaRef.current = bm.paragraphIndex;
+      setTTS((s) => ({ ...s, currentParagraph: bm.paragraphIndex }));
+      const paraElements = contentRef.current?.querySelectorAll("[data-para-index]");
+      const target = paraElements?.[bm.paragraphIndex];
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [currentChapter, stopPlayback]);
+
+  const handleDeleteBookmark = useCallback((id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.electronAPI?.deleteBookmark(id).then(() => {
+      setBookmarks((prev) => prev.filter((b) => b.id !== id));
+    });
+  }, []);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -735,31 +752,23 @@ function ReaderContent() {
         if (isImageBook) return;
         if (tts.isPlaying) handlePause();
         else handlePlay();
+      } else if (e.key === "b" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleToggleBookmark();
       } else if (e.key === "Escape") {
-        if (showTTS) {
-          setShowTTS(false);
-        } else if (tts.isPlaying || tts.isPaused) {
-          handleStop();
-        } else if (isFullscreen) {
-          document.exitFullscreen?.();
-          setIsFullscreen(false);
-        } else {
-          window.electronAPI?.close();
-        }
+        if (showTTS) { setShowTTS(false); }
+        else if (tts.isPlaying || tts.isPaused) { handleStop(); }
+        else if (isFullscreen) { document.exitFullscreen?.(); setIsFullscreen(false); }
+        else { window.electronAPI?.close(); }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [currentChapter, chapters.length, isFullscreen, isImageBook, tts.isPlaying, tts.isPaused, showTTS, handlePause, handlePlay, handleStop, handleChapterChange]);
+  }, [currentChapter, chapters.length, isFullscreen, isImageBook, tts.isPlaying, tts.isPaused, showTTS, handlePause, handlePlay, handleStop, handleChapterChange, handleToggleBookmark]);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
-    }
+    if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
+    else { document.exitFullscreen?.(); setIsFullscreen(false); }
   };
 
   const chapterProgress = chapters.length > 0 ? ((currentChapter + 1) / chapters.length) * 100 : 0;
@@ -770,126 +779,187 @@ function ReaderContent() {
       ? "bg-[#e0d4bc]"
       : "bg-white";
 
-  // Build article font style from native book fonts
   const articleStyle: React.CSSProperties = {};
-  if (nativeFontFamily) {
-    articleStyle.fontFamily = nativeFontFamily;
-  }
-  if (nativeFontSize) {
-    articleStyle.fontSize = `${nativeFontSize}px`;
-  }
+  if (nativeFontFamily) articleStyle.fontFamily = nativeFontFamily;
+  if (nativeFontSize) articleStyle.fontSize = `${nativeFontSize}px`;
 
   if (!settingsLoaded) return null;
 
   const ttsActive = tts.isPlaying || tts.isPaused || tts.isSynthesizing;
+  const hasBookmarks = bookmarks.length > 0;
 
   return (
     <div className={`flex h-screen flex-col ${theme.bg} transition-colors duration-300`}>
-      {/* ── Title bar ───────────────────────────────── */}
-      <header
-        className={`flex h-11 shrink-0 items-center border-b ${theme.surface} backdrop-blur-md ${borderColor}`}
-      >
-        <div className="app-drag-region flex h-full flex-1 items-center gap-2 pl-3.5">
-          <span className={`truncate text-[13px] font-medium ${theme.text}`}>{title}</span>
-          <span className={`shrink-0 text-[11px] ${theme.mutedText}`}>{author}</span>
-        </div>
-
-        <div className="no-drag flex items-center gap-1 pr-1">
-          {/* Theme switcher */}
-          <div className={`flex items-center gap-0.5 rounded-lg p-0.5 ${themedSubtleBg(readingTheme)}`}>
-            {(["dark", "light", "sepia"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => handleThemeChange(t)}
-                className={`rounded-[6px] px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                  readingTheme === t
-                    ? readingTheme === "dark"
-                      ? "bg-white/[0.1] text-white/80"
-                      : readingTheme === "sepia"
-                        ? "bg-[#5b4636]/15 text-[#5b4636]/80"
-                        : "bg-black/[0.1] text-black/70"
-                    : readingTheme === "dark"
-                      ? "text-white/30 hover:text-white/50"
-                      : readingTheme === "sepia"
-                        ? "text-[#5b4636]/30 hover:text-[#5b4636]/50"
-                        : "text-black/30 hover:text-black/50"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
+      {/* ── Header ──────────────────────────────────── */}
+      <header ref={headerRef} className={`relative shrink-0 border-b ${theme.surface} backdrop-blur-md ${borderColor}`}>
+        {/* Title row */}
+        <div className="flex h-11 items-center">
+          <div className="app-drag-region flex h-full flex-1 items-center gap-2 pl-3.5">
+            <span className={`truncate text-[13px] font-medium ${theme.text}`}>{title}</span>
+            <span className={`shrink-0 text-[11px] ${theme.mutedText}`}>{author}</span>
           </div>
 
-          {/* TTS button */}
-          {!isImageBook && (
+          <div className="no-drag flex items-center gap-1 pr-1">
+            {/* Theme switcher */}
+            <div className={`flex items-center gap-0.5 rounded-lg p-0.5 ${themedSubtleBg(readingTheme)}`}>
+              {(["dark", "light", "sepia"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => handleThemeChange(t)}
+                  className={`rounded-[6px] px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+                    readingTheme === t
+                      ? readingTheme === "dark"
+                        ? "bg-white/[0.1] text-white/80"
+                        : readingTheme === "sepia"
+                          ? "bg-[#5b4636]/15 text-[#5b4636]/80"
+                          : "bg-black/[0.1] text-black/70"
+                      : readingTheme === "dark"
+                        ? "text-white/30 hover:text-white/50"
+                        : readingTheme === "sepia"
+                          ? "text-[#5b4636]/30 hover:text-[#5b4636]/50"
+                          : "text-black/30 hover:text-black/50"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Native rendering toggle */}
+            {!isImageBook && bookCss && (
+              <button
+                onClick={() => setNativeRendering((v) => !v)}
+                title={nativeRendering ? "Switch to plain text" : "Switch to native book formatting"}
+                className={`ml-1 flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-medium transition-colors ${
+                  nativeRendering
+                    ? readingTheme === "dark"
+                      ? "bg-white/[0.1] text-white/70"
+                      : readingTheme === "sepia"
+                        ? "bg-[#5b4636]/[0.12] text-[#5b4636]/70"
+                        : "bg-black/[0.08] text-black/70"
+                    : btnClass
+                }`}
+              >
+                {nativeRendering ? "Native" : "Plain"}
+              </button>
+            )}
+
+            {/* Bookmark toggle */}
+            {!isImageBook && (
+              <button
+                onClick={handleToggleBookmark}
+                title="Bookmark current position (Ctrl+B)"
+                className={`ml-1 flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  currentBookmark
+                    ? "bg-[var(--accent-brand)] text-white"
+                    : btnClass
+                }`}
+              >
+                {currentBookmark ? (
+                  <BookmarkCheck className="h-3.5 w-3.5" strokeWidth={1.5} />
+                ) : (
+                  <Bookmark className="h-3.5 w-3.5" strokeWidth={1.5} />
+                )}
+              </button>
+            )}
+
+            {/* TTS button */}
+            {!isImageBook && (
+              <button
+                onClick={() => setShowTTS((v) => !v)}
+                className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  ttsActive
+                    ? "bg-[var(--accent-brand)] text-white"
+                    : btnClass
+                }`}
+              >
+                <AudioLines className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </button>
+            )}
+
+            {/* Fullscreen */}
             <button
-              onClick={() => setShowTTS((v) => !v)}
-              className={`ml-1 flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                ttsActive
-                  ? "bg-[var(--accent-brand)] text-white"
-                  : btnClass
+              onClick={toggleFullscreen}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                readingTheme === "dark"
+                  ? "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                  : readingTheme === "sepia"
+                    ? "text-[#5b4636]/40 hover:bg-[#5b4636]/10 hover:text-[#5b4636]/70"
+                    : "text-black/40 hover:bg-black/[0.06] hover:text-black/70"
               }`}
             >
-              <AudioLines className="h-3.5 w-3.5" strokeWidth={1.5} />
+              {isFullscreen ? <Minimize className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Maximize className="h-3.5 w-3.5" strokeWidth={1.5} />}
             </button>
-          )}
+          </div>
 
-          {/* Fullscreen */}
-          <button
-            onClick={toggleFullscreen}
-            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-              readingTheme === "dark"
-                ? "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
-                : readingTheme === "sepia"
-                  ? "text-[#5b4636]/40 hover:bg-[#5b4636]/10 hover:text-[#5b4636]/70"
-                  : "text-black/40 hover:bg-black/[0.06] hover:text-black/70"
-            }`}
-          >
-            {isFullscreen ? (
-              <Minimize className="h-3.5 w-3.5" strokeWidth={1.5} />
-            ) : (
-              <Maximize className="h-3.5 w-3.5" strokeWidth={1.5} />
-            )}
-          </button>
+          {/* Window controls */}
+          <div className="flex h-full items-center">
+            <button onClick={() => window.electronAPI?.minimize()} className={`inline-flex h-full w-11 items-center justify-center transition-colors ${readingTheme === "dark" ? "text-white/30 hover:bg-white/[0.06] hover:text-white/60" : readingTheme === "sepia" ? "text-[#5b4636]/30 hover:bg-[#5b4636]/10 hover:text-[#5b4636]/60" : "text-black/30 hover:bg-black/[0.06] hover:text-black/60"}`}>
+              <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+            <button onClick={() => window.electronAPI?.maximize()} className={`inline-flex h-full w-11 items-center justify-center transition-colors ${readingTheme === "dark" ? "text-white/30 hover:bg-white/[0.06] hover:text-white/60" : readingTheme === "sepia" ? "text-[#5b4636]/30 hover:bg-[#5b4636]/10 hover:text-[#5b4636]/60" : "text-black/30 hover:bg-black/[0.06] hover:text-black/60"}`}>
+              {maximized ? <Copy className="h-3 w-3" strokeWidth={1.5} /> : <Square className="h-3 w-3" strokeWidth={1.5} />}
+            </button>
+            <button onClick={() => window.electronAPI?.close()} className="inline-flex h-full w-11 items-center justify-center text-white/30 transition-colors hover:bg-[#e81123]/80 hover:text-white">
+              <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
 
-        {/* Window controls */}
-        <div className="flex h-full items-center">
-          <button
-            onClick={() => window.electronAPI?.minimize()}
-            className={`inline-flex h-full w-11 items-center justify-center transition-colors ${
-              readingTheme === "dark"
-                ? "text-white/30 hover:bg-white/[0.06] hover:text-white/60"
-                : readingTheme === "sepia"
-                  ? "text-[#5b4636]/30 hover:bg-[#5b4636]/10 hover:text-[#5b4636]/60"
-                  : "text-black/30 hover:bg-black/[0.06] hover:text-black/60"
-            }`}
-          >
-            <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={() => window.electronAPI?.maximize()}
-            className={`inline-flex h-full w-11 items-center justify-center transition-colors ${
-              readingTheme === "dark"
-                ? "text-white/30 hover:bg-white/[0.06] hover:text-white/60"
-                : readingTheme === "sepia"
-                  ? "text-[#5b4636]/30 hover:bg-[#5b4636]/10 hover:text-[#5b4636]/60"
-                  : "text-black/30 hover:bg-black/[0.06] hover:text-black/60"
-            }`}
-          >
-            {maximized ? (
-              <Copy className="h-3 w-3" strokeWidth={1.5} />
-            ) : (
-              <Square className="h-3 w-3" strokeWidth={1.5} />
-            )}
-          </button>
-          <button
-            onClick={() => window.electronAPI?.close()}
-            className="inline-flex h-full w-11 items-center justify-center text-white/30 transition-colors hover:bg-[#e81123]/80 hover:text-white"
-          >
-            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </button>
-        </div>
+        {/* Bookmarks row — horizontal scrollable, only shown when bookmarks exist */}
+        {hasBookmarks && (
+          <div className={`flex items-center gap-1.5 overflow-x-auto border-t px-3 py-1.5 ${borderColor}`}>
+            <Bookmark className={`h-3 w-3 shrink-0 ${mutedText}`} strokeWidth={1.5} />
+            {bookmarks.map((bm) => {
+              const isActive = bm.chapterIndex === currentChapter && bm.paragraphIndex === tts.currentParagraph;
+              return (
+                <button
+                  key={bm.id}
+                  onClick={() => handleJumpToBookmark(bm)}
+                  className={`group flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] transition-colors ${
+                    isActive
+                      ? "bg-[var(--accent-brand)] text-white"
+                      : readingTheme === "dark"
+                        ? "bg-white/[0.06] text-white/60 hover:bg-white/[0.1] hover:text-white/80"
+                        : readingTheme === "sepia"
+                          ? "bg-[#5b4636]/[0.08] text-[#5b4636]/60 hover:bg-[#5b4636]/[0.14] hover:text-[#5b4636]/80"
+                          : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08] hover:text-black/80"
+                  }`}
+                >
+                  <span className="max-w-[200px] truncate">{bm.label}</span>
+                  <button
+                    onClick={(e) => handleDeleteBookmark(bm.id, e)}
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-100 ${
+                      isActive ? "hover:bg-white/20" : "hover:bg-black/10"
+                    }`}
+                  >
+                    <X className="h-2.5 w-2.5" strokeWidth={2} />
+                  </button>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* TTS dropdown — floating below header */}
+        {showTTS && !isImageBook && (
+          <TTSDropdown
+            readingTheme={readingTheme}
+            paragraphs={paragraphs}
+            tts={tts}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onStop={handleStop}
+            onPrev={handlePrev}
+            onNext={handleNext}
+            voices={voices}
+            selectedVoice={selectedVoice}
+            onVoiceChange={handleVoiceChange}
+            rate={rate}
+            onRateChange={handleRateChange}
+            onClose={() => setShowTTS(false)}
+          />
+        )}
       </header>
 
       {/* ── Content area ───────────────────────────── */}
@@ -904,49 +974,47 @@ function ReaderContent() {
         ) : isImageBook ? (
           <div className="mx-auto flex max-w-4xl flex-col items-center gap-4 px-4 py-8">
             {paragraphs.map((dataUri, i) => (
-              <img
-                key={i}
-                src={dataUri}
-                alt={`Page ${i + 1}`}
-                className="w-full rounded-lg shadow-lg shadow-black/20"
-                loading="lazy"
-              />
+              <img key={i} src={dataUri} alt={`Page ${i + 1}`} className="w-full rounded-lg shadow-lg shadow-black/20" loading="lazy" />
             ))}
           </div>
         ) : (
-          <article
-            className="mx-auto max-w-2xl px-8 py-12"
-            style={articleStyle}
-          >
-            <h2
-              className={`mb-8 text-center text-sm font-medium uppercase tracking-widest ${theme.mutedText}`}
-            >
-              {chapter?.title ?? ""}
-            </h2>
-
-            <div className={`space-y-6 leading-relaxed ${theme.text}`}>
-              {paragraphs.map((text, i) => (
-                <ReaderTextBlock key={i} index={i} tts={tts} readingTheme={readingTheme}>
-                  {text}
-                </ReaderTextBlock>
-              ))}
-            </div>
-          </article>
+          <>
+            {/* Inject book's native CSS scoped to .book-native-content */}
+            {nativeRendering && bookCss && (
+              <style dangerouslySetInnerHTML={{ __html: bookCss.replace(/(^|\})\s*([a-zA-Z][^{]*)\{/g, '$1 .book-native-content $2{') }} />
+            )}
+            <article className="mx-auto max-w-2xl px-8 py-12" style={articleStyle}>
+              <h2 className={`mb-8 text-center text-sm font-medium uppercase tracking-widest ${theme.mutedText}`}>
+                {chapter?.title ?? ""}
+              </h2>
+              <div className={`space-y-6 leading-relaxed ${theme.text}`}>
+                {paragraphs.map((text, i) => (
+                  <div key={i} data-para-index={i}>
+                    <ReaderTextBlock
+                      index={i}
+                      tts={tts}
+                      readingTheme={readingTheme}
+                      html={htmlParagraphs[i]}
+                      nativeRendering={nativeRendering}
+                      onClick={() => handleParagraphClick(i)}
+                    >
+                      {text}
+                    </ReaderTextBlock>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </>
         )}
       </div>
 
       {/* ── Footer ─────────────────────────────────── */}
       <footer className={`shrink-0 ${theme.surface} backdrop-blur-md`}>
-        {/* Chapter progress bar */}
         <div className={`h-[2px] w-full ${themedSubtleBg(readingTheme)}`}>
-          <div
-            className="h-full bg-[var(--accent-brand)] transition-all duration-300"
-            style={{ width: `${chapterProgress}%` }}
-          />
+          <div className="h-full bg-[var(--accent-brand)] transition-all duration-300" style={{ width: `${chapterProgress}%` }} />
         </div>
 
         <div className="flex h-10 items-center px-3">
-          {/* Prev chapter */}
           <button
             onClick={() => { if (currentChapter > 0) handleChapterChange(currentChapter - 1); }}
             disabled={currentChapter === 0}
@@ -955,7 +1023,7 @@ function ReaderContent() {
             <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
           </button>
 
-          {/* Chapter selector — solid, prominent */}
+          {/* Chapter selector */}
           <div className="relative mx-2 flex-1" ref={chapterPickerRef}>
             <button
               onClick={() => setShowChapterPicker((v) => !v)}
@@ -969,16 +1037,12 @@ function ReaderContent() {
             >
               <BookOpen className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
               <span className="truncate">{chapter?.title ?? "No chapters"}</span>
-              <span className={`shrink-0 text-[11px] ${mutedText}`}>
-                {currentChapter + 1}/{chapters.length}
-              </span>
+              <span className={`shrink-0 text-[11px] ${mutedText}`}>{currentChapter + 1}/{chapters.length}</span>
               <ChevronDown className="h-3 w-3 shrink-0 opacity-50" strokeWidth={1.5} />
             </button>
 
             {showChapterPicker && (
-              <div
-                className={`absolute bottom-full left-0 z-50 mb-1 max-h-[320px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${borderColor} ${surfaceBg}`}
-              >
+              <div className={`absolute bottom-full left-0 z-50 mb-1 max-h-[320px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${borderColor} ${surfaceBg}`}>
                 {chapters.map((ch, i) => (
                   <button
                     key={i}
@@ -1005,7 +1069,6 @@ function ReaderContent() {
             )}
           </div>
 
-          {/* Next chapter */}
           <button
             onClick={() => { if (currentChapter < chapters.length - 1) handleChapterChange(currentChapter + 1); }}
             disabled={currentChapter >= chapters.length - 1}
@@ -1015,26 +1078,6 @@ function ReaderContent() {
           </button>
         </div>
       </footer>
-
-      {/* ── TTS Modal ──────────────────────────────── */}
-      {showTTS && !isImageBook && (
-        <TTSModal
-          readingTheme={readingTheme}
-          paragraphs={paragraphs}
-          tts={tts}
-          onPlay={handlePlay}
-          onPause={handlePause}
-          onStop={handleStop}
-          onPrev={handlePrev}
-          onNext={handleNext}
-          voices={voices}
-          selectedVoice={selectedVoice}
-          onVoiceChange={handleVoiceChange}
-          rate={rate}
-          onRateChange={handleRateChange}
-          onClose={() => setShowTTS(false)}
-        />
-      )}
     </div>
   );
 }

@@ -44,6 +44,15 @@ export function initDatabase(): void {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS bookmarks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filePath TEXT NOT NULL,
+      chapterIndex INTEGER NOT NULL,
+      paragraphIndex INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      createdAt TEXT DEFAULT (datetime('now'))
+    );
   `);
 }
 
@@ -105,6 +114,42 @@ export function getSetting(key: string): string | null {
 
 export function setSetting(key: string, value: string): void {
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+}
+
+// ── Bookmarks ─────────────────────────────────────
+
+export interface Bookmark {
+  id: number;
+  filePath: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  label: string;
+  createdAt: string;
+}
+
+export function getBookmarks(filePath: string): Bookmark[] {
+  const stmt = db.prepare("SELECT * FROM bookmarks WHERE filePath = ? ORDER BY chapterIndex ASC, paragraphIndex ASC");
+  return stmt.all(filePath) as Bookmark[];
+}
+
+export function addBookmark(filePath: string, chapterIndex: number, paragraphIndex: number, label: string): Bookmark {
+  const stmt = db.prepare(`
+    INSERT INTO bookmarks (filePath, chapterIndex, paragraphIndex, label)
+    VALUES (?, ?, ?, ?)
+  `);
+  const result = stmt.run(filePath, chapterIndex, paragraphIndex, label);
+  return {
+    id: Number(result.lastInsertRowid),
+    filePath,
+    chapterIndex,
+    paragraphIndex,
+    label,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function deleteBookmark(id: number): void {
+  db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
 }
 
 export function getAllSettings(): Record<string, string> {

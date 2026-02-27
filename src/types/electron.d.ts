@@ -37,9 +37,19 @@ interface UpdateEvent {
   };
 }
 
+interface ReaderBookmark {
+  id: number;
+  filePath: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  label: string;
+  createdAt: string;
+}
+
 interface BookChapter {
   title: string;
   paragraphs: string[];
+  htmlParagraphs: string[];
 }
 
 interface BookContent {
@@ -47,6 +57,7 @@ interface BookContent {
   isImageBook: boolean;
   fontFamily?: string;
   fontSizePx?: number;
+  css?: string;
 }
 
 interface ElectronAPI {
@@ -68,6 +79,11 @@ interface ElectronAPI {
   // Reader
   openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => Promise<void>;
   getBookContent: (filePath: string, format: string) => Promise<BookContent>;
+
+  // Bookmarks
+  getBookmarks: (filePath: string) => Promise<ReaderBookmark[]>;
+  addBookmark: (filePath: string, chapterIndex: number, paragraphIndex: number, label: string) => Promise<ReaderBookmark>;
+  deleteBookmark: (id: number) => Promise<void>;
 
   // TTS
   ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;
