@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) =>
     ipcRenderer.invoke("reader:open", bookInfo),
 
+  // Reader content
+  getBookContent: (filePath: string, format: string) =>
+    ipcRenderer.invoke("reader:get-content", filePath, format),
+
   // TTS
   ttsGetVoices: () => ipcRenderer.invoke("tts:get-voices"),
   ttsSynthesize: (text: string, voice: string, rate: string) =>

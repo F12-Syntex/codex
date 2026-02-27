@@ -37,6 +37,18 @@ interface UpdateEvent {
   };
 }
 
+interface BookChapter {
+  title: string;
+  paragraphs: string[];
+}
+
+interface BookContent {
+  chapters: BookChapter[];
+  isImageBook: boolean;
+  fontFamily?: string;
+  fontSizePx?: number;
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
   minimize: () => void;
@@ -55,6 +67,7 @@ interface ElectronAPI {
 
   // Reader
   openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => Promise<void>;
+  getBookContent: (filePath: string, format: string) => Promise<BookContent>;
 
   // TTS
   ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;

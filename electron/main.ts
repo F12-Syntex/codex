@@ -5,6 +5,7 @@ import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
 import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings } from "./database";
 import { extractMetadata } from "./metadata";
+import { parseBookContent } from "./book-parser";
 import type { LibraryItem } from "./database";
 import { EdgeTTS } from "@andresaya/edge-tts";
 
@@ -97,6 +98,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
 
 function createWindow() {
   // Initialize database before setting up IPC
@@ -132,14 +134,15 @@ function createWindow() {
   ipcMain.on("window:close", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
-    // If it's NOT the main window, just close the child window
+    // If it's NOT the main window, just close the child window — don't touch mainWindow
     if (win !== mainWindow) {
-      win.close();
+      win.destroy();
       return;
     }
     // If it IS the main window, close everything and quit
+    isQuitting = true;
     BrowserWindow.getAllWindows().forEach((w) => {
-      if (w !== mainWindow) w.close();
+      if (w !== mainWindow && !w.isDestroyed()) w.destroy();
     });
     win.close();
   });
@@ -165,6 +168,7 @@ function createWindow() {
       title: bookInfo.title,
       author: bookInfo.author,
       format: bookInfo.format,
+      filePath: bookInfo.filePath,
     });
 
     if (isDev) {
@@ -179,6 +183,11 @@ function createWindow() {
     readerWindow.on("unmaximize", () => {
       readerWindow.webContents.send("window:maximized", false);
     });
+  });
+
+  // ── Reader: get book content ──────────────────────
+  ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
+    return parseBookContent(filePath, format);
   });
 
   // ── TTS: Edge TTS via @andresaya/edge-tts ─────────
@@ -313,9 +322,10 @@ function createWindow() {
   mainWindow.on("closed", () => {
     const remainingWindows = BrowserWindow.getAllWindows();
     mainWindow = null;
-    // When main window closes, close all reader windows too
+    isQuitting = true;
+    // When main window closes, destroy all reader windows too
     remainingWindows.forEach((win) => {
-      if (!win.isDestroyed()) win.close();
+      if (!win.isDestroyed()) win.destroy();
     });
   });
 
@@ -347,8 +357,8 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  // Only quit when the main window has been closed (not just reader windows)
-  if (mainWindow && !mainWindow.isDestroyed()) return;
+  // Only quit when the main window has been closed, not when reader windows close
+  if (!isQuitting && mainWindow && !mainWindow.isDestroyed()) return;
   if (process.platform !== "darwin") {
     app.quit();
   }
