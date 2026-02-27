@@ -33,7 +33,7 @@ interface CommitEntry {
 
 /* ── Parse version from commit message ────────────────────── */
 
-const VERSION_RE = /\(v(\d+\.\d+\.\d+)\)\s*$/;
+const VERSION_RE = /\(v?(\d+\.\d+\.\d+)\)\s*$/;
 
 function parseCommitMessage(message: string): { title: string; version: string | null } {
   const match = message.match(VERSION_RE);
@@ -41,14 +41,6 @@ function parseCommitMessage(message: string): { title: string; version: string |
     return {
       title: message.replace(VERSION_RE, "").trim(),
       version: match[1],
-    };
-  }
-  // Also try "v0.1.0" at end without parens
-  const altMatch = message.match(/v(\d+\.\d+\.\d+)\s*$/);
-  if (altMatch) {
-    return {
-      title: message.replace(/v\d+\.\d+\.\d+\s*$/, "").trim(),
-      version: altMatch[1],
     };
   }
   return { title: message, version: null };
@@ -161,31 +153,37 @@ function VersionCard({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3 transition-colors",
+        "rounded-lg border transition-colors",
         isRelease
           ? "border-white/[0.08] bg-white/[0.04]"
-          : "border-white/[0.04] bg-white/[0.02]"
+          : "border-white/[0.04] bg-white/[0.02]",
+        hasDetails && "cursor-pointer"
       )}
+      onClick={hasDetails ? onToggle : undefined}
     >
-      {/* Header row */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 p-3">
+        {/* Icon */}
         {isRelease ? (
           <Megaphone className="h-3.5 w-3.5 shrink-0 text-white/30" strokeWidth={1.5} />
         ) : (
           <GitCommit className="h-3.5 w-3.5 shrink-0 text-white/15" strokeWidth={1.5} />
         )}
 
+        {/* Version badge */}
         {entry.version && (
           <span
             className={cn(
-              "shrink-0 text-[13px] font-medium",
-              isRelease ? "text-white/80" : "text-white/50"
+              "shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium",
+              isRelease
+                ? "bg-white/[0.08] text-white/70"
+                : "bg-white/[0.04] text-white/40"
             )}
           >
             v{entry.version}
           </span>
         )}
 
+        {/* Release badge */}
         {isRelease && (
           <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/40">
             Release
@@ -197,45 +195,41 @@ function VersionCard({
           </span>
         )}
 
+        {/* Commit title */}
         <span
           className={cn(
-            "min-w-0 truncate text-[12px]",
-            isRelease ? "text-white/40" : "text-white/25"
+            "min-w-0 flex-1 truncate text-[13px]",
+            isRelease ? "text-white/50" : "text-white/35"
           )}
         >
           {entry.title}
         </span>
 
-        {hasDetails && (
-          <button
-            onClick={onToggle}
-            className="ml-auto shrink-0 rounded-lg p-1 text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/30"
-          >
+        {/* Right side: chevron + date */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {hasDetails && (
             <ChevronDown
               className={cn(
-                "h-3 w-3 transition-transform",
+                "h-3 w-3 text-white/15 transition-transform",
                 expanded && "rotate-180"
               )}
               strokeWidth={1.5}
             />
-          </button>
-        )}
-
-        <span className="ml-auto shrink-0 text-[11px] text-white/15">
-          {date}
-        </span>
+          )}
+          <span className="text-[11px] text-white/15">{date}</span>
+        </div>
       </div>
-
-      {/* Release name (if different from tag) */}
-      {expanded && entry.release?.name && entry.release.name !== entry.release.tag_name && (
-        <p className="mt-2 text-[13px] font-medium text-white/60">
-          {entry.release.name}
-        </p>
-      )}
 
       {/* Expanded details */}
       {expanded && hasDetails && (
-        <div className="mt-2 border-t border-white/[0.04] pt-2">
+        <div className="border-t border-white/[0.04] px-3 pt-2 pb-3">
+          {/* Release name */}
+          {entry.release?.name && entry.release.name !== entry.release.tag_name && (
+            <p className="mb-2 text-[13px] font-medium text-white/60">
+              {entry.release.name}
+            </p>
+          )}
+
           {entry.release?.body ? (
             renderBody(entry.release.body)
           ) : (
@@ -308,7 +302,7 @@ async function fetchData(): Promise<CommitEntry[]> {
     return {
       sha: c.sha,
       version,
-      title,
+      title: title || firstLine,
       description: rest,
       date: c.commit.committer?.date ?? "",
       release,
