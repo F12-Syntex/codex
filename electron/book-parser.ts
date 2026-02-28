@@ -325,6 +325,10 @@ function parseEpubChapters(filePath: string): BookContent {
 
     chapterNum++;
     const title = extractTitle(xhtml) || `Chapter ${chapterNum}`;
+
+    // Skip the EPUB's built-in table of contents page — we render our own
+    if (/^(table\s+of\s+contents|contents|toc)$/i.test(title.trim())) continue;
+
     chapters.push({ title, paragraphs: plain, htmlParagraphs: html });
   }
 

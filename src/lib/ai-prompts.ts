@@ -1,12 +1,61 @@
 /* ── Global AI Prompt Templates ───────────────────────── */
 
 /**
- * Build a prompt that asks the AI to generate a clean, spoiler-free
- * chapter title based on the chapter's content.
- *
- * @param originalTitle  The current chapter title (e.g. "Chapter 3")
- * @param contentPreview First ~600 chars of the chapter text for context
- * @param bookTitle      The book's title for additional context
+ * Patterns for chapters that should NOT be renamed by AI.
+ * These are structural/meta pages, not actual content chapters.
+ */
+const SKIP_PATTERNS = [
+  /^(table\s+of\s+)?contents$/i,
+  /^toc$/i,
+  /^cover(\s+page)?$/i,
+  /^title\s+page$/i,
+  /^copyright/i,
+  /^(about\s+the\s+)?author/i,
+  /^dedication$/i,
+  /^acknowledgements?$/i,
+  /^(preface|foreword|introduction|prologue|epilogue|afterword)$/i,
+  /^appendix/i,
+  /^glossary$/i,
+  /^index$/i,
+  /^bibliography$/i,
+  /^also\s+by/i,
+  /^notes?$/i,
+];
+
+/**
+ * Check if a chapter title already has a meaningful subtitle.
+ * e.g. "Chapter 1: The Final Battle" → true (already named)
+ *      "Chapter 3" → false (generic, should be renamed)
+ *      "The Gathering Storm" → true (already descriptive)
+ */
+function hasSubtitle(title: string): boolean {
+  // If it contains a colon/dash separator with text after, it already has a subtitle
+  if (/[:–—]\s*.{2,}/.test(title)) return true;
+  // If it doesn't start with a generic prefix, it's already descriptive
+  if (!/^(chapter|part|story|volume|book|section)\s+(\d+|[ivxlcdm]+)$/i.test(title.trim())) {
+    // Doesn't match "Chapter N" pattern — check if it's just a number
+    if (/^\d+$/.test(title.trim())) return false;
+    // It's something descriptive already (e.g. "The Gathering Storm")
+    if (!/^(chapter|part|story|volume|book|section)\s/i.test(title.trim())) return true;
+  }
+  return false;
+}
+
+/**
+ * Check whether a chapter should be skipped by AI rename.
+ * Returns true if the chapter is structural (cover, TOC, etc.)
+ * or already has a meaningful name.
+ */
+export function shouldSkipRename(title: string): boolean {
+  const trimmed = title.trim();
+  if (!trimmed) return true;
+  if (SKIP_PATTERNS.some((p) => p.test(trimmed))) return true;
+  if (hasSubtitle(trimmed)) return true;
+  return false;
+}
+
+/**
+ * Build a prompt for renaming a single chapter.
  */
 export function buildChapterRenamePrompt(
   originalTitle: string,
@@ -36,67 +85,28 @@ export function buildChapterRenamePrompt(
 }
 
 /**
- * Build a batch prompt that renames multiple chapters at once.
- * More efficient than one-by-one calls.
- *
- * @param chapters Array of { title, preview } for each chapter
- * @param bookTitle The book's title
+ * Format the renamed title: "Chapter 3" → "Chapter 3: Subtitle Here"
  */
-export function buildBatchChapterRenamePrompt(
-  chapters: { title: string; preview: string }[],
-  bookTitle: string,
+export function formatRenamedTitle(
+  originalTitle: string,
+  subtitle: string,
 ): string {
-  const chapterList = chapters
-    .map(
-      (ch, i) =>
-        `[${i + 1}] Title: "${ch.title}"\nPreview: ${ch.preview}`,
-    )
-    .join("\n\n");
+  if (!subtitle.trim()) return originalTitle;
 
-  return [
-    `You are a literary assistant helping organize an ebook library.`,
-    `The book is "${bookTitle}".`,
-    ``,
-    `Below are chapters that need clean, spoiler-free subtitles. For each chapter:`,
-    `- Capture the mood, setting, or theme of the opening without revealing plot twists`,
-    `- Be concise (2-6 words)`,
-    `- Do not repeat the chapter number`,
-    `- Do not use generic filler like "A New Beginning"`,
-    `- Be evocative and specific to the content`,
-    ``,
-    `Chapters:`,
-    ``,
-    chapterList,
-    ``,
-    `Reply with one subtitle per line, numbered to match. Format:`,
-    `1: <subtitle>`,
-    `2: <subtitle>`,
-    `...`,
-    ``,
-    `Only the numbered subtitles, nothing else.`,
-  ].join("\n");
-}
+  const hasNumber =
+    /^(Chapter|Part|Story|Volume|Book|Section)\s+(\d+|[IVXLCDM]+)/i.test(originalTitle);
 
-/**
- * Parse the batch rename response into an array of subtitles.
- * Expects format: "1: subtitle\n2: subtitle\n..."
- */
-export function parseBatchRenameResponse(
-  response: string,
-  count: number,
-): string[] {
-  const lines = response.trim().split("\n");
-  const results: string[] = new Array(count).fill("");
-
-  for (const line of lines) {
-    const match = line.match(/^(\d+)\s*[:.\-–]\s*(.+)$/);
-    if (match) {
-      const idx = parseInt(match[1], 10) - 1;
-      if (idx >= 0 && idx < count) {
-        results[idx] = match[2].trim();
-      }
-    }
+  if (hasNumber) {
+    const prefix = originalTitle.match(
+      /^((?:Chapter|Part|Story|Volume|Book|Section)\s+(?:\d+|[IVXLCDM]+))/i,
+    );
+    return prefix ? `${prefix[1]}: ${subtitle}` : `${originalTitle}: ${subtitle}`;
   }
 
-  return results;
+  // For bare numbers like "3"
+  if (/^\d+$/.test(originalTitle.trim())) {
+    return `${originalTitle}: ${subtitle}`;
+  }
+
+  return `${originalTitle}: ${subtitle}`;
 }
