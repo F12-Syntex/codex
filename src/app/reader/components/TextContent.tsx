@@ -31,35 +31,42 @@ export function TextContent({
   onPageChange,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
-  const columnsRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [pageWidth, setPageWidth] = useState(0);
 
-  // Measure pages whenever content or settings change
+  const columnGap = 48;
+
+  // Measure total pages from an off-screen clone
   const measure = useCallback(() => {
     const outer = outerRef.current;
-    const cols = columnsRef.current;
-    if (!outer || !cols) return;
+    const measurer = measureRef.current;
+    if (!outer || !measurer) return;
 
-    const w = outer.clientWidth;
-    setContainerWidth(w);
+    // The visible page width is the inner width after padding
+    const innerW = outer.clientWidth - padding * 2;
+    const pw = Math.min(innerW, maxTextWidth);
+    setPageWidth(pw);
 
-    // Total scrollable width / visible width = total pages
-    // Need a frame for the browser to lay out columns
+    // The measurer div has the same column settings and fixed height
+    // Its scrollWidth tells us total horizontal extent
+    const innerH = outer.clientHeight - padding * 2;
+    measurer.style.width = `${pw}px`;
+    measurer.style.height = `${innerH}px`;
+
     requestAnimationFrame(() => {
-      const scrollW = cols.scrollWidth;
-      const pages = Math.max(1, Math.ceil(scrollW / w));
+      const scrollW = measurer.scrollWidth;
+      const pages = Math.max(1, Math.round(scrollW / pw));
       setTotalPages(pages);
-      // Clamp current page
       setCurrentPage((prev) => Math.min(prev, pages - 1));
     });
-  }, []);
+  }, [padding, maxTextWidth]);
 
-  // Re-measure on mount, content change, and settings change
+  // Re-measure on content/settings change
   useEffect(() => {
     measure();
-  }, [measure, htmlParagraphs, fontFamily, fontSize, lineHeight, paraSpacing, padding, maxTextWidth]);
+  }, [measure, htmlParagraphs, fontFamily, fontSize, lineHeight, paraSpacing]);
 
   // Re-measure on resize
   useEffect(() => {
@@ -70,26 +77,28 @@ export function TextContent({
     return () => ro.disconnect();
   }, [measure]);
 
-  // Report page changes
+  // Report page changes upward
   useEffect(() => {
     onPageChange(currentPage, totalPages);
   }, [currentPage, totalPages, onPageChange]);
 
-  // Reset page on content change
+  // Reset page on chapter change
   useEffect(() => {
     setCurrentPage(0);
   }, [htmlParagraphs]);
 
   const goTo = useCallback((page: number) => {
-    setCurrentPage(Math.max(0, Math.min(page, totalPages - 1)));
+    setCurrentPage((prev) => {
+      const next = Math.max(0, Math.min(page, totalPages - 1));
+      return next;
+    });
   }, [totalPages]);
 
-  // Click zones: left 30% = prev, right 30% = next
+  // Click zones: left 30% prev, right 30% next
   const handleClick = useCallback((e: React.MouseEvent) => {
     const rect = outerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = e.clientX - rect.left;
-    const ratio = x / rect.width;
+    const ratio = (e.clientX - rect.left) / rect.width;
     if (ratio < 0.3) goTo(currentPage - 1);
     else if (ratio > 0.7) goTo(currentPage + 1);
   }, [currentPage, goTo]);
@@ -109,78 +118,106 @@ export function TextContent({
     return () => window.removeEventListener("keydown", handler);
   }, [currentPage, goTo]);
 
-  // Filter out first paragraph if it duplicates the chapter title
   const filteredHtml = filterTitleParagraph(htmlParagraphs, chapterTitle);
   const showTitle = chapterTitle && !/^chapter\s+\d+$/i.test(chapterTitle.trim());
+  const translateX = currentPage * pageWidth;
 
-  const columnGap = 48;
-  const translateX = currentPage * containerWidth;
+  // Shared column styles for both visible and measurement divs
+  const columnStyles: React.CSSProperties = {
+    columnCount: 2,
+    columnGap: `${columnGap}px`,
+    columnFill: "auto",
+    fontFamily,
+    fontSize: `${fontSize}px`,
+    lineHeight,
+  };
+
+  const contentJSX = (
+    <>
+      {showTitle && (
+        <div
+          style={{
+            columnSpan: "all" as const,
+            textAlign: "center",
+            marginBottom: `${paraSpacing * 2}px`,
+            paddingBottom: `${paraSpacing}px`,
+          }}
+        >
+          <h2
+            style={{
+              fontSize: `${fontSize * 1.3}px`,
+              fontWeight: 600,
+              fontFamily,
+              lineHeight: 1.3,
+            }}
+          >
+            {chapterTitle}
+          </h2>
+        </div>
+      )}
+
+      {filteredHtml.map((html, i) => {
+        const isEmpty = html === "<p></p>" || html.trim() === "";
+        if (isEmpty) {
+          return <div key={i} style={{ height: `${paraSpacing}px` }} />;
+        }
+        const isFirst = i === 0 || (i === 1 && filteredHtml[0]?.trim() === "");
+        return (
+          <div
+            key={i}
+            className={isFirst ? "drop-cap-paragraph" : ""}
+            style={{ marginBottom: `${paraSpacing}px` }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      })}
+    </>
+  );
 
   return (
     <div
       ref={outerRef}
-      className="h-full overflow-hidden cursor-default"
+      className="h-full cursor-default select-text"
       onClick={handleClick}
       style={{ padding: `${padding}px` }}
     >
+      {/* Visible columns — clipped to exactly one page */}
       <div
-        ref={columnsRef}
-        className={theme.text}
+        className="mx-auto overflow-hidden"
         style={{
-          columnWidth: "320px",
-          columnCount: 2,
-          columnGap: `${columnGap}px`,
-          columnFill: "auto",
+          width: `${pageWidth}px`,
           height: "100%",
-          fontFamily,
-          fontSize: `${fontSize}px`,
-          lineHeight,
-          transform: `translateX(-${translateX}px)`,
-          transition: animated ? "transform 0.3s ease" : "none",
+          maxWidth: "100%",
         }}
       >
-        {/* Chapter title */}
-        {showTitle && (
-          <div
-            style={{
-              columnSpan: "all" as const,
-              textAlign: "center",
-              marginBottom: `${paraSpacing * 2}px`,
-              paddingBottom: `${paraSpacing}px`,
-            }}
-          >
-            <h2
-              className={theme.text}
-              style={{
-                fontSize: `${fontSize * 1.3}px`,
-                fontWeight: 600,
-                fontFamily,
-                lineHeight: 1.3,
-              }}
-            >
-              {chapterTitle}
-            </h2>
-          </div>
-        )}
+        <div
+          className={theme.text}
+          style={{
+            ...columnStyles,
+            height: "100%",
+            width: `${pageWidth}px`,
+            transform: `translateX(-${translateX}px)`,
+            transition: animated ? "transform 0.3s ease" : "none",
+          }}
+        >
+          {contentJSX}
+        </div>
+      </div>
 
-        {/* Paragraphs */}
-        {filteredHtml.map((html, i) => {
-          const isEmpty = html === "<p></p>" || html.trim() === "";
-          if (isEmpty) {
-            return <div key={i} style={{ height: `${paraSpacing}px` }} />;
-          }
-
-          const isFirst = i === 0 || (i === 1 && filteredHtml[0]?.trim() === "");
-
-          return (
-            <div
-              key={i}
-              className={isFirst ? "drop-cap-paragraph" : ""}
-              style={{ marginBottom: `${paraSpacing}px` }}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          );
-        })}
+      {/* Off-screen measurer — same settings, used to calculate total pages */}
+      <div
+        ref={measureRef}
+        aria-hidden
+        style={{
+          ...columnStyles,
+          position: "absolute",
+          left: "-99999px",
+          top: 0,
+          visibility: "hidden",
+          pointerEvents: "none",
+        }}
+      >
+        {contentJSX}
       </div>
 
       {/* Drop cap styles */}
@@ -200,9 +237,6 @@ export function TextContent({
   );
 }
 
-/**
- * Remove the first paragraph if it's just a repeat of the chapter title.
- */
 function filterTitleParagraph(html: string[], title: string): string[] {
   if (!html.length || !title) return html;
   const first = stripTags(html[0]).trim();
@@ -211,15 +245,12 @@ function filterTitleParagraph(html: string[], title: string): string[] {
 
   const normFirst = norm(first);
   const normTitle = norm(title);
-
   if (!normFirst) return html;
 
-  // Exact match or one contains the other
   if (normFirst === normTitle || normTitle.includes(normFirst) || normFirst.includes(normTitle)) {
     return html.slice(1);
   }
 
-  // Strip "Chapter N:" prefix and compare
   const stripped = (s: string) =>
     s.replace(/^(chapter|part)\s+(\d+|[ivxlcdm]+)\s*[:\-–—]?\s*/i, "").trim();
   if (stripped(normFirst) === stripped(normTitle)) {
