@@ -14,6 +14,7 @@ import { TTSPanel } from "./TTSPanel";
 import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
+import { AIPanel } from "./AIPanel";
 
 interface ReaderProps {
   filePath: string;
@@ -115,6 +116,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const handlePageChange = useCallback((page: number, total: number) => {
     setCurrentPage(page);
     setTotalPages(total);
+  }, []);
+
+  const handleChapterTitlesChanged = useCallback((titles: string[]) => {
+    setBookContent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        chapters: prev.chapters.map((ch, i) => ({
+          ...ch,
+          title: titles[i] ?? ch.title,
+        })),
+      };
+    });
   }, []);
 
   const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowTOC(v => !v); }, []);
@@ -257,6 +271,16 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               maxTextWidth={settings.maxTextWidth}
               animated={settings.animatedPageTurn}
               onPageChange={handlePageChange}
+            />
+          )}
+
+          {/* AI Panel — floating bottom-right */}
+          {!isImageBook && (
+            <AIPanel
+              theme={theme}
+              bookContent={bookContent}
+              bookTitle={title}
+              onChapterTitlesChanged={handleChapterTitlesChanged}
             />
           )}
 
