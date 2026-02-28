@@ -115,15 +115,16 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, opfDir?: string): { plai
         }
       } else if (/^<p[^>]*>/i.test(block.trim())) {
         const text = stripHtml(block).trim();
-        let htmlBlock = text.length > 0 ? sanitizeHtml(block.trim()) : "<p></p>";
-        // Resolve any inline images within the paragraph
+        let htmlBlock = text.length > 0 ? block.trim() : "<p></p>";
+        // Resolve images BEFORE sanitizing — sanitize strips unresolved src paths
         if (hasImg && zip && opfDir != null) {
           htmlBlock = resolveImages(htmlBlock, zip, opfDir);
         }
+        htmlBlock = sanitizeHtml(htmlBlock);
         plain.push(text);
         html.push(htmlBlock);
       } else if (/^<div[^>]*>/i.test(block.trim()) && hasImg) {
-        // Div containing an image
+        // Div containing an image — resolve first, then sanitize
         let resolved = zip && opfDir != null ? resolveImages(block, zip, opfDir) : block;
         resolved = sanitizeHtml(resolved);
         if (resolved.trim()) {
@@ -186,7 +187,7 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
   const cssChunks: string[] = [];
 
   for (const href of cssHrefs) {
-    const entryPath = opfDir === "." ? href : `${opfDir}/${href}`;
+    const entryPath = resolveRelativePath(opfDir, href);
     const entry = zip.getEntry(entryPath) || zip.getEntry(decodeURIComponent(entryPath));
     if (!entry) continue;
 
@@ -228,14 +229,29 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
   return { fontFamily, fontSizePx, css: fullCss };
 }
 
+/** Resolve a relative path against a base directory, handling ../ segments */
+function resolveRelativePath(base: string, relative: string): string {
+  if (base === ".") return relative;
+  const parts = `${base}/${relative}`.split("/");
+  const resolved: string[] = [];
+  for (const p of parts) {
+    if (p === "..") resolved.pop();
+    else if (p !== "." && p !== "") resolved.push(p);
+  }
+  return resolved.join("/");
+}
+
 /** Resolve <img src="..."> in HTML to inline data URIs using the EPUB zip */
 function resolveImages(html: string, zip: AdmZip, opfDir: string): string {
   return html.replace(
     /<img\s+([^>]*?)src=["'](?!data:)([^"']+)["']([^>]*?)\/?>/gi,
     (_match, pre, src, post) => {
       const decoded = decodeURIComponent(src);
-      const entryPath = opfDir === "." ? decoded : `${opfDir}/${decoded}`;
-      const entry = zip.getEntry(entryPath) || zip.getEntry(decoded);
+      const entryPath = resolveRelativePath(opfDir, decoded);
+      const entry =
+        zip.getEntry(entryPath) ||
+        zip.getEntry(decoded) ||
+        zip.getEntry(decodeURIComponent(entryPath));
       if (!entry) return ""; // image not found, remove tag
       const dataUri = bufferToDataUri(entry.getData(), decoded);
       return `<img ${pre}src="${dataUri}"${post}/>`;
