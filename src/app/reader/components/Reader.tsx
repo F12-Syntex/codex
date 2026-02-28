@@ -3,19 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
-import type { BookContent, ReaderBookmark, CustomFont } from "../lib/types";
+import type { BookContent, CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
-import { useScroll } from "../hooks/useScroll";
-import { useTTS } from "../hooks/useTTS";
 import { useBookmarks } from "../hooks/useBookmarks";
-import { useKeyboardNav } from "../hooks/useKeyboardNav";
+import { useTTS } from "../hooks/useTTS";
 import { ReaderHeader } from "./ReaderHeader";
 import { ReaderFooter, FOOTER_HEIGHT } from "./ReaderFooter";
 import { TOCSidebar } from "./TOCSidebar";
 import { TTSPanel } from "./TTSPanel";
 import { TextSettingsPanel } from "./TextSettingsPanel";
+import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
-import { ImagePage } from "./ImagePage";
 
 interface ReaderProps {
   filePath: string;
@@ -25,13 +23,13 @@ interface ReaderProps {
 }
 
 export function Reader({ filePath, format, title, author }: ReaderProps) {
-  // Book content
   const [bookContent, setBookContent] = useState<BookContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(0);
-  const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
+  const [customFonts] = useState<CustomFont[]>([]);
 
-  // UI state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [showTOC, setShowTOC] = useState(false);
   const [showTTS, setShowTTS] = useState(false);
   const [showTextSettings, setShowTextSettings] = useState(false);
@@ -41,28 +39,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Settings
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
 
-  // Derived values
   const chapters = bookContent?.chapters ?? [];
   const chapter = chapters[currentChapter];
   const paragraphs = chapter?.paragraphs ?? [];
   const isImageBook = bookContent?.isImageBook ?? false;
   const chapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
-
-  // Scroll — only used for image books now
-  const scroll = useScroll({
-    isImageBook,
-    itemCount: paragraphs.length,
-    onChapterChange: (delta) => {
-      const next = currentChapter + delta;
-      if (next >= 0 && next < chapters.length) {
-        handleChapterChange(next);
-      }
-    },
-  });
 
   // TTS
   const tts = useTTS({
@@ -76,193 +60,110 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     onChapterEnd: () => {
       if (currentChapter < chapters.length - 1) {
         handleChapterChange(currentChapter + 1);
-        setTimeout(() => tts.actions.play(0), 300);
+        setTimeout(() => tts.actions.play(), 300);
       }
     },
   });
 
-  // Bookmarks
+  const isTTSActive = tts.state.status !== "idle";
+
   const bookmarkState = useBookmarks({
     filePath,
     chapterIndex: currentChapter,
-    paragraphIndex: isImageBook ? scroll.currentIndex : 0,
+    paragraphIndex: 0,
     chapterTitle,
   });
 
   // Load book content
   useEffect(() => {
-    if (!filePath) {
-      setIsLoading(false);
-      return;
-    }
+    if (!filePath) { setIsLoading(false); return; }
     setIsLoading(true);
     window.electronAPI
       ?.getBookContent(filePath, format)
-      .then((content) => {
-        setBookContent(content);
-        setIsLoading(false);
-      })
+      .then((content) => { setBookContent(content); setIsLoading(false); })
       .catch(() => {
         setBookContent({
-          chapters: [
-            {
-              title: "Error",
-              paragraphs: ["Failed to load book content."],
-              htmlParagraphs: ["<p>Failed to load book content.</p>"],
-            },
-          ],
+          chapters: [{ title: "Error", paragraphs: ["Failed to load book content."], htmlParagraphs: ["<p>Failed to load book content.</p>"] }],
           isImageBook: false,
         });
         setIsLoading(false);
       });
   }, [filePath, format]);
 
-  // Window events
-  useEffect(() => {
-    window.electronAPI?.onMaximized(setMaximized);
-  }, []);
+  useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
-  // Immersive mode: show footer on mouse proximity to bottom
+  // Immersive mode
   useEffect(() => {
-    if (!settings.immersiveMode) {
-      setImmersiveVisible(true);
-      return;
-    }
-
+    if (!settings.immersiveMode) { setImmersiveVisible(true); return; }
     const handler = (e: MouseEvent) => {
-      const distFromBottom = window.innerHeight - e.clientY;
-      if (distFromBottom < 80) {
+      if (window.innerHeight - e.clientY < 80) {
         setImmersiveVisible(true);
         if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current);
         immersiveTimerRef.current = setTimeout(() => setImmersiveVisible(false), 2500);
       }
     };
-
     window.addEventListener("mousemove", handler);
-    return () => {
-      window.removeEventListener("mousemove", handler);
-      if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current);
-    };
+    return () => { window.removeEventListener("mousemove", handler); if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current); };
   }, [settings.immersiveMode]);
 
-  // Chapter change handler
   const handleChapterChange = useCallback((index: number) => {
     tts.actions.stop();
     setCurrentChapter(index);
-    scroll.resetScroll();
     setShowTOC(false);
-  }, [tts.actions, scroll]);
+  }, [tts.actions]);
 
-  // Toggle functions that close other panels
-  const toggleTOC = useCallback(() => {
-    setShowTTS(false);
-    setShowTextSettings(false);
-    setShowTOC((v) => !v);
+  const handlePageChange = useCallback((page: number, total: number) => {
+    setCurrentPage(page);
+    setTotalPages(total);
   }, []);
 
-  const toggleTTS = useCallback(() => {
-    setShowTOC(false);
-    setShowTextSettings(false);
-    setShowTTS((v) => !v);
-  }, []);
+  const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowTOC(v => !v); }, []);
+  const toggleTTS = useCallback(() => { setShowTOC(false); setShowTextSettings(false); setShowTTS(v => !v); }, []);
+  const toggleTextSettings = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(v => !v); }, []);
 
-  const toggleTextSettings = useCallback(() => {
-    setShowTOC(false);
-    setShowTTS(false);
-    setShowTextSettings((v) => !v);
-  }, []);
-
-  // Fullscreen
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
-    }
+    if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
+    else { document.exitFullscreen?.(); setIsFullscreen(false); }
   }, []);
 
-  // Handle escape
-  const handleEscape = useCallback(() => {
-    if (showTextSettings) {
-      setShowTextSettings(false);
-    } else if (showTOC) {
-      setShowTOC(false);
-    } else if (showTTS) {
-      setShowTTS(false);
-    } else if (tts.state.status === "playing" || tts.state.status === "paused") {
-      tts.actions.stop();
-    } else if (isFullscreen) {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
-    } else {
-      window.electronAPI?.close();
-    }
-  }, [showTextSettings, showTOC, showTTS, tts.state.status, tts.actions, isFullscreen]);
-
-  // Keyboard navigation — only image nav for now
-  useKeyboardNav({
-    onLeft: isImageBook ? scroll.scrollPrev : () => {},
-    onRight: isImageBook ? scroll.scrollNext : () => {},
-    onSpace: () => {
-      if (isImageBook) return;
-      if (tts.state.status === "playing") {
-        tts.actions.pause();
-      } else {
-        tts.actions.play();
+  // Escape + Space keyboard handling
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showTextSettings) setShowTextSettings(false);
+        else if (showTOC) setShowTOC(false);
+        else if (showTTS) setShowTTS(false);
+        else if (isTTSActive) tts.actions.stop();
+        else if (isFullscreen) { document.exitFullscreen?.(); setIsFullscreen(false); }
+        else window.electronAPI?.close();
       }
-    },
-    onEscape: handleEscape,
-    onBookmark: bookmarkState.toggleBookmark,
-    enabled: true,
-  });
-
-  // Jump to bookmark
-  const handleJumpToBookmark = useCallback((bm: ReaderBookmark) => {
-    if (bm.chapterIndex !== currentChapter) {
-      tts.actions.stop();
-      setCurrentChapter(bm.chapterIndex);
-      scroll.resetScroll();
-    }
-    if (isImageBook) {
-      scroll.goToIndex(bm.paragraphIndex);
-    }
-    setShowTOC(false);
-  }, [currentChapter, isImageBook, tts.actions, scroll]);
+      if (e.key === " " && !isImageBook) {
+        e.preventDefault();
+        if (tts.state.status === "playing") tts.actions.pause();
+        else tts.actions.play();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showTextSettings, showTOC, showTTS, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
 
   if (!isLoaded) return null;
 
-  const isTTSActive = tts.state.status !== "idle";
   const footerHeight = settings.immersiveMode && !immersiveVisible ? 0 : FOOTER_HEIGHT;
 
   return (
     <div className={`flex h-screen flex-col ${theme.bg} transition-colors duration-300`}>
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `@keyframes slideInLeft { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`,
-        }}
-      />
-
       {/* Header */}
       <header className={`relative shrink-0 border-b ${theme.surface} ${theme.border}`}>
         <ReaderHeader
-          title={title}
-          author={author}
-          theme={theme}
-          readingTheme={settings.readingTheme}
-          maximized={maximized}
-          isFullscreen={isFullscreen}
-          hasMultipleChapters={chapters.length > 1}
-          isImageBook={isImageBook}
-          isBookmarked={!!bookmarkState.currentBookmark}
-          isTTSActive={isTTSActive}
-          showTOC={showTOC}
-          showTTS={showTTS}
+          title={title} author={author} theme={theme}
+          readingTheme={settings.readingTheme} maximized={maximized}
+          isFullscreen={isFullscreen} hasMultipleChapters={chapters.length > 1}
+          isImageBook={isImageBook} isBookmarked={!!bookmarkState.currentBookmark}
+          isTTSActive={isTTSActive} showTOC={showTOC} showTTS={showTTS}
           showTextSettings={showTextSettings}
           onThemeChange={(t) => updateSetting("readingTheme", t)}
-          onTOCToggle={toggleTOC}
-          onTTSToggle={toggleTTS}
+          onTOCToggle={toggleTOC} onTTSToggle={toggleTTS}
           onTextSettingsToggle={toggleTextSettings}
           onBookmarkToggle={bookmarkState.toggleBookmark}
           onFullscreenToggle={toggleFullscreen}
@@ -297,15 +198,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         {/* Text Settings Panel */}
         {showTextSettings && !isImageBook && (
           <TextSettingsPanel
-            theme={theme}
-            fontFamily={settings.fontFamily}
-            fontSize={settings.fontSize}
-            lineHeight={settings.lineHeight}
-            paraSpacing={settings.paraSpacing}
-            textPadding={settings.textPadding}
-            maxTextWidth={settings.maxTextWidth}
-            animatedPageTurn={settings.animatedPageTurn}
-            immersiveMode={settings.immersiveMode}
+            theme={theme} fontFamily={settings.fontFamily} fontSize={settings.fontSize}
+            lineHeight={settings.lineHeight} paraSpacing={settings.paraSpacing}
+            textPadding={settings.textPadding} maxTextWidth={settings.maxTextWidth}
+            animatedPageTurn={settings.animatedPageTurn} immersiveMode={settings.immersiveMode}
             customFonts={customFonts}
             onFontFamilyChange={(f) => updateSetting("fontFamily", f)}
             onFontSizeChange={(s) => updateSetting("fontSize", s)}
@@ -320,69 +216,78 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         )}
       </header>
 
-      {/* Main area */}
-      <div className="relative flex flex-1 overflow-hidden">
-        {/* TOC Sidebar (overlay) */}
-        {showTOC && chapters.length > 1 && (
-          <TOCSidebar
-            chapters={chapters}
-            currentChapter={currentChapter}
-            bookmarks={bookmarkState.bookmarks}
-            theme={theme}
-            onSelectChapter={handleChapterChange}
-            onJumpToBookmark={handleJumpToBookmark}
-            onDeleteBookmark={bookmarkState.removeBookmark}
-            onClose={() => setShowTOC(false)}
-          />
-        )}
+      {/* Main area: content + footer as siblings in a column */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Content area — sidebar overlays this, not the footer */}
+        <div className="relative flex-1 overflow-hidden">
+          {showTOC && chapters.length > 1 && (
+            <TOCSidebar
+              chapters={chapters} currentChapter={currentChapter}
+              bookmarks={bookmarkState.bookmarks} theme={theme}
+              onSelectChapter={handleChapterChange}
+              onJumpToBookmark={() => {}}
+              onDeleteBookmark={bookmarkState.removeBookmark}
+              onClose={() => setShowTOC(false)}
+            />
+          )}
 
-        {/* Content */}
-        <div className="flex flex-1 flex-col overflow-hidden">
           {isLoading ? (
             <div className="flex h-full items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
-                <span className={`text-[13px] ${theme.muted}`}>Loading book...</span>
-              </div>
+              <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
             </div>
-          ) : isImageBook ? (
-            <div className="flex-1 overflow-hidden">
-              <ImagePage
-                src={paragraphs[scroll.currentIndex] ?? ""}
-                alt={`Page ${scroll.currentIndex + 1}`}
+          ) : isTOCChapter(chapterTitle) ? (
+            <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
+              <BookTableOfContents
+                chapters={chapters}
+                currentChapter={currentChapter}
+                theme={theme}
+                onSelectChapter={handleChapterChange}
               />
             </div>
           ) : (
             <TextContent
-              paragraphs={paragraphs}
-              theme={theme}
               chapterTitle={chapterTitle}
+              htmlParagraphs={chapter?.htmlParagraphs ?? []}
+              theme={theme}
               fontFamily={settings.fontFamily}
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}
               paraSpacing={settings.paraSpacing}
-              textPadding={settings.textPadding}
+              padding={settings.textPadding}
               maxTextWidth={settings.maxTextWidth}
-              animatedPageTurn={settings.animatedPageTurn}
-              footerHeight={footerHeight}
+              animated={settings.animatedPageTurn}
+              onPageChange={handlePageChange}
             />
           )}
 
-          {/* Footer */}
-          <ReaderFooter
-            currentPage={isImageBook ? scroll.currentIndex : 0}
-            totalPages={isImageBook ? paragraphs.length : 1}
-            chapterIndex={currentChapter}
-            chapterCount={chapters.length}
-            theme={theme}
-            immersiveMode={settings.immersiveMode}
-            immersiveVisible={immersiveVisible}
-            canGoPrev={isImageBook ? (currentChapter > 0 || scroll.currentIndex > 0) : currentChapter > 0}
-            canGoNext={isImageBook ? (currentChapter < chapters.length - 1 || scroll.currentIndex < paragraphs.length - 1) : currentChapter < chapters.length - 1}
-            onPrev={isImageBook ? scroll.scrollPrev : () => {}}
-            onNext={isImageBook ? scroll.scrollNext : () => {}}
+          {/* Top fade */}
+          <div
+            className="pointer-events-none absolute left-0 right-0 top-0"
+            style={{
+              height: `${settings.textPadding}px`,
+              background: `linear-gradient(to bottom, ${theme.bgRaw}, transparent)`,
+            }}
+          />
+          {/* Bottom fade */}
+          <div
+            className="pointer-events-none absolute bottom-0 left-0 right-0"
+            style={{
+              height: `${settings.textPadding}px`,
+              background: `linear-gradient(to top, ${theme.bgRaw}, transparent)`,
+            }}
           />
         </div>
+
+        {/* Footer — always below content, never overlapped by sidebar */}
+        <ReaderFooter
+          currentPage={currentPage} totalPages={totalPages}
+          chapterIndex={currentChapter} chapterCount={chapters.length}
+          chapterTitle={chapterTitle} theme={theme} immersiveMode={settings.immersiveMode}
+          immersiveVisible={immersiveVisible}
+          canGoPrev={currentChapter > 0} canGoNext={currentChapter < chapters.length - 1}
+          onPrev={() => handleChapterChange(currentChapter - 1)}
+          onNext={() => handleChapterChange(currentChapter + 1)}
+        />
       </div>
     </div>
   );

@@ -47,7 +47,7 @@ export function ReaderHeader({
   onFullscreenToggle,
 }: ReaderHeaderProps) {
   return (
-    <div className="flex h-11 items-center">
+    <div className="flex h-11 items-center" data-reader-header>
       {/* TOC button */}
       <div className="flex h-full items-center">
         {hasMultipleChapters && (

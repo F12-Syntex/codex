@@ -49,14 +49,17 @@ export function TOCSidebar({
     return bookmarks.filter((bm) => bm.label.toLowerCase().includes(q));
   }, [bookmarks, searchQuery]);
 
-  // Click outside to close
+  // Click outside to close (ignore clicks on header toolbar buttons)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (sidebarRef.current && !sidebarRef.current.contains(target)) {
+        const header = document.querySelector("[data-reader-header]");
+        if (header?.contains(target)) return;
         onClose();
       }
     };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 10);
     return () => {
       clearTimeout(timer);
       document.removeEventListener("mousedown", handler);

@@ -8,6 +8,7 @@ interface ReaderFooterProps {
   totalPages: number;
   chapterIndex: number;
   chapterCount: number;
+  chapterTitle: string;
   theme: ThemeClasses;
   immersiveMode: boolean;
   immersiveVisible: boolean;
@@ -24,6 +25,7 @@ export function ReaderFooter({
   totalPages,
   chapterIndex,
   chapterCount,
+  chapterTitle,
   theme,
   immersiveMode,
   immersiveVisible,
@@ -54,14 +56,14 @@ export function ReaderFooter({
           <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
         </button>
 
-        {/* Page info */}
-        <div className="flex items-center gap-4">
+        {/* Center info */}
+        <div className="flex items-center gap-3">
           <span className={`text-[12px] tabular-nums ${theme.muted}`}>
             Page {currentPage + 1} of {totalPages}
           </span>
-          <span className={`text-[11px] ${theme.muted} opacity-50`}>·</span>
-          <span className={`text-[12px] tabular-nums ${theme.muted}`}>
-            Chapter {chapterIndex + 1}/{chapterCount}
+          <span className={`text-[11px] ${theme.muted} opacity-30`}>·</span>
+          <span className={`max-w-[300px] truncate text-[12px] ${theme.muted}`}>
+            {chapterTitle}
           </span>
         </div>
 

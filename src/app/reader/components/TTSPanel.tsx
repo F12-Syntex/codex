@@ -53,14 +53,16 @@ export function TTSPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const voicePickerRef = useRef<HTMLDivElement>(null);
 
-  // Click outside to close panel
+  // Click outside to close panel (ignore clicks on header toolbar buttons)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (panelRef.current && !panelRef.current.contains(target)) {
+        const header = document.querySelector("[data-reader-header]");
+        if (header?.contains(target)) return;
         onClose();
       }
     };
-    // Delay to prevent immediate close from the toggle button click
     const timer = setTimeout(() => document.addEventListener("mousedown", handler), 10);
     return () => {
       clearTimeout(timer);

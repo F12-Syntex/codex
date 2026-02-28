@@ -55,10 +55,13 @@ export function TextSettingsPanel({
   const currentFont = allFonts.find(f => f.family === fontFamily);
   const currentFontName = currentFont?.name ?? "Georgia";
 
-  // Click outside to close panel
+  // Click outside to close panel (ignore clicks on header toolbar buttons)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (panelRef.current && !panelRef.current.contains(target)) {
+        const header = document.querySelector("[data-reader-header]");
+        if (header?.contains(target)) return;
         onClose();
       }
     };

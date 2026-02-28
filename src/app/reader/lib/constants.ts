@@ -55,6 +55,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
 export const THEMES: Record<string, ThemeClasses> = {
   dark: {
     bg: "bg-[var(--bg-inset)]",
+    bgRaw: "var(--bg-inset)",
     text: "text-white/85",
     muted: "text-white/40",
     surface: "bg-[var(--bg-surface)]",
@@ -67,6 +68,7 @@ export const THEMES: Record<string, ThemeClasses> = {
   },
   light: {
     bg: "bg-[#fafafa]",
+    bgRaw: "#fafafa",
     text: "text-[#1a1a1a]",
     muted: "text-[#1a1a1a]/40",
     surface: "bg-[#f0f0f0]",
@@ -79,6 +81,7 @@ export const THEMES: Record<string, ThemeClasses> = {
   },
   sepia: {
     bg: "bg-[#f4ecd8]",
+    bgRaw: "#f4ecd8",
     text: "text-[#5b4636]",
     muted: "text-[#5b4636]/40",
     surface: "bg-[#e8dcc8]",

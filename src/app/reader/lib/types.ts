@@ -71,6 +71,7 @@ export interface TTSState {
 
 export interface ThemeClasses {
   bg: string;
+  bgRaw: string;
   text: string;
   muted: string;
   surface: string;
