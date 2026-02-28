@@ -42,6 +42,20 @@ function bufferToDataUri(buffer: Buffer, filePath: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
+/** Sanitize HTML for safe rendering — neutralize links, remove internal images */
+function sanitizeHtml(raw: string): string {
+  return raw
+    // Convert <a href="...">text</a> to just <span>text</span> (neutralize navigation)
+    .replace(/<a\s[^>]*>/gi, "<span>")
+    .replace(/<\/a>/gi, "</span>")
+    // Remove <img> tags with internal EPUB paths (not data URIs)
+    .replace(/<img\s+[^>]*src=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
+    // Remove <image> (SVG) tags with internal paths
+    .replace(/<image\s+[^>]*href=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
+    // Remove <svg> blocks entirely (often used for decorative elements referencing internal files)
+    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
+}
+
 /** Strip HTML tags and decode common entities */
 function stripHtml(html: string): string {
   return html
@@ -83,15 +97,13 @@ function extractParagraphs(xhtml: string): { plain: string[]; html: string[] } {
   const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const content = bodyMatch ? bodyMatch[1] : xhtml;
 
-  // Split on <p> tags
+  // Split on <p> tags — preserve empty paragraphs as blank lines
   const pMatches = content.match(/<p[^>]*>[\s\S]*?<\/p>/gi);
   if (pMatches && pMatches.length > 0) {
     for (const p of pMatches) {
       const text = stripHtml(p).trim();
-      if (text.length > 0) {
-        plain.push(text);
-        html.push(p.trim());
-      }
+      plain.push(text);
+      html.push(text.length > 0 ? sanitizeHtml(p.trim()) : "<p></p>");
     }
   }
 
@@ -103,7 +115,7 @@ function extractParagraphs(xhtml: string): { plain: string[]; html: string[] } {
         const text = stripHtml(d).trim();
         if (text.length > 0) {
           plain.push(text);
-          html.push(d.trim());
+          html.push(sanitizeHtml(d.trim()));
         }
       }
     }

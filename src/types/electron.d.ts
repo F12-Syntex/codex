@@ -60,6 +60,18 @@ interface BookContent {
   css?: string;
 }
 
+interface WordBoundary {
+  type: "WordBoundary";
+  offset: number;
+  duration: number;
+  text: string;
+}
+
+interface TTSSynthesisResult {
+  audio: string;
+  wordBoundaries: WordBoundary[];
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
   minimize: () => void;
@@ -87,7 +99,7 @@ interface ElectronAPI {
 
   // TTS
   ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;
-  ttsSynthesize: (text: string, voice: string, rate: string) => Promise<string>;
+  ttsSynthesize: (text: string, voice: string, rate: string, pitch?: string, volume?: string) => Promise<TTSSynthesisResult>;
 
   // Settings
   getSetting: (key: string) => Promise<string | null>;
