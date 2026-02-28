@@ -42,13 +42,13 @@ function bufferToDataUri(buffer: Buffer, filePath: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
-/** Sanitize HTML for safe rendering — neutralize links, remove internal images */
+/** Sanitize HTML for safe rendering — neutralize links, remove unresolved images */
 function sanitizeHtml(raw: string): string {
   return raw
     // Convert <a href="...">text</a> to just <span>text</span> (neutralize navigation)
     .replace(/<a\s[^>]*>/gi, "<span>")
     .replace(/<\/a>/gi, "</span>")
-    // Remove <img> tags with internal EPUB paths (not data URIs)
+    // Keep <img> with data: URIs, remove ones with unresolved internal paths
     .replace(/<img\s+[^>]*src=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
     // Remove <image> (SVG) tags with internal paths
     .replace(/<image\s+[^>]*href=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
@@ -88,8 +88,8 @@ function extractTitle(xhtml: string): string {
   return "";
 }
 
-/** Extract paragraphs from XHTML content — returns { plain, html } arrays */
-function extractParagraphs(xhtml: string): { plain: string[]; html: string[] } {
+/** Extract paragraphs and images from XHTML content — returns { plain, html } arrays */
+function extractParagraphs(xhtml: string, zip?: AdmZip, opfDir?: string): { plain: string[]; html: string[] } {
   const plain: string[] = [];
   const html: string[] = [];
 
@@ -97,18 +97,57 @@ function extractParagraphs(xhtml: string): { plain: string[]; html: string[] } {
   const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
   const content = bodyMatch ? bodyMatch[1] : xhtml;
 
-  // Split on <p> tags — preserve empty paragraphs as blank lines
-  const pMatches = content.match(/<p[^>]*>[\s\S]*?<\/p>/gi);
-  if (pMatches && pMatches.length > 0) {
-    for (const p of pMatches) {
-      const text = stripHtml(p).trim();
-      plain.push(text);
-      html.push(text.length > 0 ? sanitizeHtml(p.trim()) : "<p></p>");
+  // Match <p>, <img>, and <div> with images — in document order
+  const blockRegex = /<(?:p|img|div)[^>]*>(?:[\s\S]*?<\/(?:p|div)>)?/gi;
+  const blocks = content.match(blockRegex);
+
+  if (blocks && blocks.length > 0) {
+    for (const block of blocks) {
+      const isImg = /^<img\s/i.test(block.trim());
+      const hasImg = /<img\s/i.test(block);
+
+      if (isImg) {
+        // Standalone <img> tag — resolve to data URI
+        const resolved = zip && opfDir != null ? resolveImages(block, zip, opfDir) : block;
+        if (resolved.trim()) {
+          plain.push("[image]");
+          html.push(resolved.trim());
+        }
+      } else if (/^<p[^>]*>/i.test(block.trim())) {
+        const text = stripHtml(block).trim();
+        let htmlBlock = text.length > 0 ? sanitizeHtml(block.trim()) : "<p></p>";
+        // Resolve any inline images within the paragraph
+        if (hasImg && zip && opfDir != null) {
+          htmlBlock = resolveImages(htmlBlock, zip, opfDir);
+        }
+        plain.push(text);
+        html.push(htmlBlock);
+      } else if (/^<div[^>]*>/i.test(block.trim()) && hasImg) {
+        // Div containing an image
+        let resolved = zip && opfDir != null ? resolveImages(block, zip, opfDir) : block;
+        resolved = sanitizeHtml(resolved);
+        if (resolved.trim()) {
+          plain.push("[image]");
+          html.push(resolved.trim());
+        }
+      }
     }
   }
 
-  // If no <p> tags, try splitting on <div> tags
-  if (plain.length === 0) {
+  // Fallback: if we got nothing, try the old <p>-only approach
+  if (html.length === 0) {
+    const pMatches = content.match(/<p[^>]*>[\s\S]*?<\/p>/gi);
+    if (pMatches && pMatches.length > 0) {
+      for (const p of pMatches) {
+        const text = stripHtml(p).trim();
+        plain.push(text);
+        html.push(text.length > 0 ? sanitizeHtml(p.trim()) : "<p></p>");
+      }
+    }
+  }
+
+  // If still nothing, try divs
+  if (html.length === 0) {
     const divMatches = content.match(/<div[^>]*>[\s\S]*?<\/div>/gi);
     if (divMatches) {
       for (const d of divMatches) {
@@ -122,7 +161,7 @@ function extractParagraphs(xhtml: string): { plain: string[]; html: string[] } {
   }
 
   // Last resort: strip all tags, split by double newlines
-  if (plain.length === 0) {
+  if (html.length === 0) {
     const stripped = stripHtml(content);
     const lines = stripped.split(/\n\s*\n/).map((l) => l.trim()).filter(Boolean);
     plain.push(...lines);
@@ -189,6 +228,21 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
   return { fontFamily, fontSizePx, css: fullCss };
 }
 
+/** Resolve <img src="..."> in HTML to inline data URIs using the EPUB zip */
+function resolveImages(html: string, zip: AdmZip, opfDir: string): string {
+  return html.replace(
+    /<img\s+([^>]*?)src=["'](?!data:)([^"']+)["']([^>]*?)\/?>/gi,
+    (_match, pre, src, post) => {
+      const decoded = decodeURIComponent(src);
+      const entryPath = opfDir === "." ? decoded : `${opfDir}/${decoded}`;
+      const entry = zip.getEntry(entryPath) || zip.getEntry(decoded);
+      if (!entry) return ""; // image not found, remove tag
+      const dataUri = bufferToDataUri(entry.getData(), decoded);
+      return `<img ${pre}src="${dataUri}"${post}/>`;
+    }
+  );
+}
+
 // ── EPUB Parser ──────────────────────────────────────
 
 function parseEpubChapters(filePath: string): BookContent {
@@ -248,7 +302,7 @@ function parseEpubChapters(filePath: string): BookContent {
     if (!entry) continue;
 
     const xhtml = entry.getData().toString("utf-8");
-    const { plain, html } = extractParagraphs(xhtml);
+    const { plain, html } = extractParagraphs(xhtml, zip, opfDir);
 
     // Skip empty chapters (like cover pages with only images)
     if (plain.length === 0) continue;
