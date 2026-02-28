@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { ThemeClasses } from "../lib/types";
 
 interface TextContentProps {
@@ -31,8 +31,7 @@ export function TextContent({
   onPageChange,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
-  const columnsRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [pageWidth, setPageWidth] = useState(0);
@@ -40,33 +39,43 @@ export function TextContent({
 
   const columnGap = 48;
 
+  // ── Layout measurement ──────────────────────────────
+  // The content div has overflow:hidden, fixed width/height, and CSS columns.
+  // scrollWidth reveals the full horizontal extent of all columns.
+  // We paginate by setting scrollLeft programmatically.
+
   const measure = useCallback(() => {
     const outer = outerRef.current;
-    const measurer = measureRef.current;
-    if (!outer || !measurer) return;
+    const content = contentRef.current;
+    if (!outer || !content) return;
 
     const innerW = outer.clientWidth - padding * 2;
     const innerH = outer.clientHeight - padding * 2;
     const pw = Math.min(innerW, maxTextWidth);
+
     setPageWidth(pw);
     setContentHeight(innerH);
 
-    // Set measurer to same dimensions — its scrollWidth gives us total column extent
-    measurer.style.width = `${pw}px`;
-    measurer.style.height = `${innerH}px`;
+    // Apply dimensions directly so the browser lays out columns immediately
+    content.style.width = `${pw}px`;
+    content.style.height = `${innerH}px`;
 
+    // Wait one frame for the browser to complete column layout
     requestAnimationFrame(() => {
-      if (!measurer) return;
-      const scrollW = measurer.scrollWidth;
-      // Each "page" is exactly pw wide (2 columns + gap within pw)
-      const pages = Math.max(1, Math.round(scrollW / pw));
+      if (!content) return;
+      const scrollW = content.scrollWidth;
+      const pages = Math.max(1, Math.ceil(scrollW / Math.max(pw, 1)));
       setTotalPages(pages);
       setCurrentPage((prev) => Math.min(prev, pages - 1));
     });
   }, [padding, maxTextWidth]);
 
-  useEffect(() => { measure(); }, [measure, htmlParagraphs, fontFamily, fontSize, lineHeight, paraSpacing]);
+  // Re-measure when content or typography settings change
+  useEffect(() => {
+    measure();
+  }, [measure, htmlParagraphs, fontFamily, fontSize, lineHeight, paraSpacing]);
 
+  // Re-measure on container resize
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
@@ -75,46 +84,138 @@ export function TextContent({
     return () => ro.disconnect();
   }, [measure]);
 
-  useEffect(() => { onPageChange(currentPage, totalPages); }, [currentPage, totalPages, onPageChange]);
-  useEffect(() => { setCurrentPage(0); }, [htmlParagraphs]);
+  // ── Pagination via scrollLeft ───────────────────────
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || pageWidth === 0) return;
 
-  const goTo = useCallback((page: number) => {
-    setCurrentPage(Math.max(0, Math.min(page, totalPages - 1)));
-  }, [totalPages]);
+    const target = currentPage * pageWidth;
+    if (animated) {
+      content.scrollTo({ left: target, behavior: "smooth" });
+    } else {
+      content.scrollLeft = target;
+    }
+  }, [currentPage, pageWidth, animated]);
 
-  // Click zones
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    const rect = outerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const ratio = (e.clientX - rect.left) / rect.width;
-    if (ratio < 0.3) goTo(currentPage - 1);
-    else if (ratio > 0.7) goTo(currentPage + 1);
-  }, [currentPage, goTo]);
+  // Report page changes to parent
+  useEffect(() => {
+    onPageChange(currentPage, totalPages);
+  }, [currentPage, totalPages, onPageChange]);
 
-  // Keyboard: arrows + page up/down
+  // Reset to page 0 when chapter content changes
+  useEffect(() => {
+    setCurrentPage(0);
+    const content = contentRef.current;
+    if (content) content.scrollLeft = 0;
+  }, [htmlParagraphs]);
+
+  // ── Navigation ──────────────────────────────────────
+  const goTo = useCallback(
+    (page: number) => {
+      setCurrentPage(Math.max(0, Math.min(page, totalPages - 1)));
+    },
+    [totalPages],
+  );
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const rect = outerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const ratio = (e.clientX - rect.left) / rect.width;
+      if (ratio < 0.3) goTo(currentPage - 1);
+      else if (ratio > 0.7) goTo(currentPage + 1);
+    },
+    [currentPage, goTo],
+  );
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); goTo(currentPage + 1); }
-      else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); goTo(currentPage - 1); }
+      if (e.key === "ArrowRight" || e.key === "PageDown") {
+        e.preventDefault();
+        goTo(currentPage + 1);
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        goTo(currentPage - 1);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [currentPage, goTo]);
 
-  const filteredHtml = filterTitleParagraph(htmlParagraphs, chapterTitle);
-  const showTitle = chapterTitle && !/^chapter\s+\d+$/i.test(chapterTitle.trim());
+  // Scroll wheel / trackpad navigation
+  const scrollAccum = useRef(0);
+  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Column width: each column is (pageWidth - gap) / 2
-  const colWidth = Math.floor((pageWidth - columnGap) / 2);
-  const translateX = currentPage * pageWidth;
+  useEffect(() => {
+    const outer = outerRef.current;
+    if (!outer) return;
 
-  const columnStyles: React.CSSProperties = {
-    columnWidth: `${colWidth}px`,
-    columnGap: `${columnGap}px`,
-    columnFill: "auto" as const,
-    fontFamily,
-    fontSize: `${fontSize}px`,
-    lineHeight,
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+
+      // Accumulate scroll delta (handles both mouse wheel and trackpad)
+      scrollAccum.current += e.deltaY;
+      const threshold = 80;
+
+      if (scrollAccum.current > threshold) {
+        goTo(currentPage + 1);
+        scrollAccum.current = 0;
+      } else if (scrollAccum.current < -threshold) {
+        goTo(currentPage - 1);
+        scrollAccum.current = 0;
+      }
+
+      // Reset accumulator after inactivity
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+      scrollTimeout.current = setTimeout(() => {
+        scrollAccum.current = 0;
+      }, 200);
+    };
+
+    outer.addEventListener("wheel", handler, { passive: false });
+    return () => {
+      outer.removeEventListener("wheel", handler);
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    };
+  }, [currentPage, goTo]);
+
+  // ── Content processing ──────────────────────────────
+  const filteredHtml = useMemo(
+    () => filterTitleParagraph(htmlParagraphs, chapterTitle),
+    [htmlParagraphs, chapterTitle],
+  );
+  const showTitle =
+    chapterTitle && !/^chapter\s+\d+$/i.test(chapterTitle.trim());
+
+  // We no longer compute colWidth — column-count: 2 lets the browser
+  // size columns automatically within the available pageWidth.
+
+  // Find index of first real text paragraph
+  const firstTextIndex = useMemo(() => {
+    for (let i = 0; i < filteredHtml.length; i++) {
+      const h = filteredHtml[i];
+      if (h === "<p></p>" || h.trim() === "") continue;
+      if (h.includes("<img ") && !h.includes("<p")) continue;
+      if (/<h[1-6][^>]*>/i.test(h)) continue;
+      const text = stripTags(h).trim();
+      if (
+        text.length < 80 &&
+        /^(chapter|part|story|book|prologue|epilogue|volume)\s/i.test(text)
+      )
+        continue;
+      return i;
+    }
+    return -1;
+  }, [filteredHtml]);
+
+  const buildFirstParagraph = (html: string) => {
+    const text = stripTags(html);
+    if (!text || text.length === 0) return html;
+    const bigSize = Math.round(fontSize * 1.8);
+    return html.replace(
+      /(<p[^>]*>(?:\s*<[^/][^>]*>)*)([A-Za-z\u00C0-\u024F])/,
+      `$1<span style="font-size:${bigSize}px;font-weight:600;line-height:1">${"$2"}</span>`,
+    );
   };
 
   const paragraphsJSX = filteredHtml.map((html, i) => {
@@ -122,11 +223,6 @@ export function TextContent({
     if (isEmpty) return <div key={i} style={{ height: `${paraSpacing}px` }} />;
 
     const isImage = html.includes("<img ") && !html.includes("<p");
-    // First non-empty, non-image, non-heading paragraph gets drop cap
-    const isFirstContent = !isImage && (i === 0 || (i === 1 && (filteredHtml[0]?.trim() === "" || filteredHtml[0] === "<p></p>")));
-    const looksLikeHeading = /<h[1-6][^>]*>/i.test(html) || (stripTags(html).length < 80 && /^(chapter|part|story|book|prologue|epilogue|volume)\s/i.test(stripTags(html).trim()));
-    const isFirst = isFirstContent && !looksLikeHeading;
-
     if (isImage) {
       return (
         <div
@@ -138,40 +234,103 @@ export function TextContent({
       );
     }
 
+    const isFirst = i === firstTextIndex;
+    const renderedHtml = isFirst ? buildFirstParagraph(html) : html;
+
     return (
       <div
         key={i}
-        className={isFirst ? "drop-cap-paragraph" : ""}
-        style={{ marginBottom: `${paraSpacing}px` }}
-        dangerouslySetInnerHTML={{ __html: html }}
+        style={{
+          marginBottom: `${paraSpacing}px`,
+          textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
+        }}
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
       />
     );
   });
+
+  // Parse chapter title into parts
+  const titleParts = useMemo(() => {
+    if (!chapterTitle) return null;
+    const match = chapterTitle.match(
+      /^((?:Chapter|Part|Story|Volume|Book)\s+\d+\s*[:\-–—.]\s*)([\s\S]+)$/i,
+    );
+    if (match) return { prefix: match[1].trim(), subtitle: match[2].trim() };
+    const match2 = chapterTitle.match(
+      /^((?:Chapter|Part|Story|Volume|Book)\s+\d+)\s*$/i,
+    );
+    if (match2) return { prefix: match2[1].trim(), subtitle: "" };
+    return null;
+  }, [chapterTitle]);
 
   const titleJSX = showTitle ? (
     <div
       style={{
         columnSpan: "all" as const,
         textAlign: "center",
-        marginBottom: `${paraSpacing * 1.5}px`,
-        paddingTop: `${paraSpacing}px`,
+        marginBottom: `${paraSpacing * 2}px`,
+        paddingTop: `${Math.round(paraSpacing * 1.5)}px`,
+        paddingBottom: `${paraSpacing}px`,
       }}
     >
-      <h2
-        className={theme.text}
+      {titleParts ? (
+        <>
+          <div
+            className={theme.muted}
+            style={{
+              fontSize: `${fontSize}px`,
+              fontWeight: 500,
+              fontFamily,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: `${Math.round(paraSpacing * 0.5)}px`,
+            }}
+          >
+            {titleParts.prefix.replace(/[:\-–—.]\s*$/, "")}
+          </div>
+          {titleParts.subtitle && (
+            <h2
+              className={theme.text}
+              style={{
+                fontSize: `${Math.round(fontSize * 1.5)}px`,
+                fontWeight: 600,
+                fontFamily,
+                lineHeight: 1.25,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {titleParts.subtitle}
+            </h2>
+          )}
+        </>
+      ) : (
+        <h2
+          className={theme.text}
+          style={{
+            fontSize: `${Math.round(fontSize * 1.4)}px`,
+            fontWeight: 600,
+            fontFamily,
+            lineHeight: 1.3,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          {chapterTitle}
+        </h2>
+      )}
+      <div
         style={{
-          fontSize: `${Math.round(fontSize * 1.4)}px`,
-          fontWeight: 600,
-          fontFamily,
-          lineHeight: 1.3,
-          letterSpacing: "-0.01em",
+          width: "40px",
+          height: "2px",
+          backgroundColor: "var(--accent-brand)",
+          opacity: 0.4,
+          margin: `${paraSpacing}px auto 0`,
+          borderRadius: "1px",
         }}
-      >
-        {chapterTitle}
-      </h2>
+      />
     </div>
   ) : null;
 
+  // ── Render ──────────────────────────────────────────
   return (
     <div
       ref={outerRef}
@@ -179,47 +338,19 @@ export function TextContent({
       onClick={handleClick}
       style={{ padding: `${padding}px` }}
     >
-      {/* Clipper — exactly one page wide, centered, hard clip */}
       <div
-        className="mx-auto"
+        ref={contentRef}
+        className={`mx-auto ${theme.text}`}
         style={{
           width: `${pageWidth}px`,
           height: `${contentHeight}px`,
-          maxWidth: "100%",
           overflow: "hidden",
-          position: "relative",
-        }}
-      >
-        {/* Columns — no width constraint, extends as far as content needs */}
-        <div
-          className={theme.text}
-          ref={columnsRef}
-          style={{
-            ...columnStyles,
-            height: `${contentHeight}px`,
-            position: "absolute",
-            left: 0,
-            top: 0,
-            transform: `translateX(-${translateX}px)`,
-            transition: animated ? "transform 0.35s cubic-bezier(0.25, 0.1, 0.25, 1)" : "none",
-          }}
-        >
-          {titleJSX}
-          {paragraphsJSX}
-        </div>
-      </div>
-
-      {/* Off-screen measurer — identical layout, used for page count */}
-      <div
-        ref={measureRef}
-        aria-hidden
-        style={{
-          ...columnStyles,
-          position: "fixed",
-          left: "-99999px",
-          top: 0,
-          visibility: "hidden",
-          pointerEvents: "none",
+          columnCount: 2,
+          columnGap: `${columnGap}px`,
+          columnFill: "auto" as const,
+          fontFamily,
+          fontSize: `${fontSize}px`,
+          lineHeight,
         }}
       >
         {titleJSX}
@@ -227,16 +358,6 @@ export function TextContent({
       </div>
 
       <style>{`
-        .drop-cap-paragraph > p::first-letter,
-        .drop-cap-paragraph::first-letter {
-          font-size: ${Math.round(fontSize * 3)}px;
-          float: left;
-          line-height: 0.78;
-          padding-right: 8px;
-          padding-top: 5px;
-          font-weight: 600;
-          font-family: ${fontFamily};
-        }
         .reader-image img {
           max-width: 100%;
           height: auto;
@@ -257,12 +378,21 @@ function filterTitleParagraph(html: string[], title: string): string[] {
   const normTitle = norm(title);
   if (!normFirst) return html;
 
-  if (normFirst === normTitle || normTitle.includes(normFirst) || normFirst.includes(normTitle)) {
+  if (
+    normFirst === normTitle ||
+    normTitle.includes(normFirst) ||
+    normFirst.includes(normTitle)
+  ) {
     return html.slice(1);
   }
 
   const stripped = (s: string) =>
-    s.replace(/^(chapter|part)\s+(\d+|[ivxlcdm]+)\s*[:\-–—]?\s*/i, "").trim();
+    s
+      .replace(
+        /^(chapter|part|story)\s+(\d+|[ivxlcdm]+)\s*[:\-–—]?\s*/i,
+        "",
+      )
+      .trim();
   if (stripped(normFirst) === stripped(normTitle)) return html.slice(1);
 
   return html;

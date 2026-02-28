@@ -12,12 +12,23 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  Cpu,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { APP_VERSION } from "@/lib/version";
 import { testApiKey } from "@/lib/openrouter";
+import { ModelCombobox } from "@/components/ui/model-combobox";
+import {
+  DEFAULT_PRESETS,
+  PRESET_OVERRIDES_KEY,
+  getEffectiveModel,
+  parseOverrides,
+  stringifyOverrides,
+  type PresetOverrides,
+} from "@/lib/ai-presets";
 
 interface SettingsPageProps {
   onImportItems: (items: LibraryItem[]) => void;
@@ -90,6 +101,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const [showApiKey, setShowApiKey] = useState(false);
   const [testingKey, setTestingKey] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [presetOverrides, setPresetOverrides] = useState<PresetOverrides>({});
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
@@ -101,10 +113,12 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
       api!.getSetting("libraryPath"),
       api!.getSetting("autoScan"),
       api!.getSetting("openrouterApiKey"),
-    ]).then(([path, scan, key]) => {
+      api!.getSetting(PRESET_OVERRIDES_KEY),
+    ]).then(([path, scan, key, overridesJson]) => {
       if (path) setLibraryPath(path);
       if (scan) setAutoScan(scan === "true");
       if (key) setApiKey(key);
+      setPresetOverrides(parseOverrides(overridesJson));
     });
   });
 
@@ -174,6 +188,19 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     const result = await testApiKey(apiKey);
     setTestResult(result);
     setTestingKey(false);
+  };
+
+  const handlePresetModelChange = (presetId: string, model: string) => {
+    const next = { ...presetOverrides, [presetId]: { model } };
+    setPresetOverrides(next);
+    if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
+  };
+
+  const handlePresetReset = (presetId: string) => {
+    const next = { ...presetOverrides };
+    delete next[presetId];
+    setPresetOverrides(next);
+    if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
   };
 
   const tabs: { id: SettingsTab; label: string }[] = [
@@ -373,6 +400,39 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                 <ExternalLink className="h-3 w-3" />
               </button>
             </SettingRow>
+          </SettingSection>
+
+          {/* ── Model Presets ─────────────────────────── */}
+          <SettingSection icon={Cpu} title="Model Presets">
+            {DEFAULT_PRESETS.map((preset) => {
+              const isOverridden = !!presetOverrides[preset.id];
+              const effectiveModel = getEffectiveModel(preset, presetOverrides);
+
+              return (
+                <SettingRow
+                  key={preset.id}
+                  label={preset.label}
+                  description={preset.description}
+                >
+                  <div className="flex items-center gap-2">
+                    <ModelCombobox
+                      value={effectiveModel}
+                      onChange={(model) => handlePresetModelChange(preset.id, model)}
+                      placeholder={preset.defaultModel}
+                    />
+                    {isOverridden && (
+                      <button
+                        onClick={() => handlePresetReset(preset.id)}
+                        title="Reset to default"
+                        className="rounded-lg p-1.5 text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </SettingRow>
+              );
+            })}
           </SettingSection>
         </div>
       )}
