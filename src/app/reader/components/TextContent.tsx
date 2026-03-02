@@ -97,12 +97,11 @@ export function TextContent({
   const singleColFrozenRef = useRef(false);
 
   const columnGap = 48;
-  const forceSingleCol = containerWidth > 0 && containerWidth < 600
-    || (pageWidth > 0 && pageWidth < 700);
+  const forceSingleCol = containerWidth > 0 && containerWidth < 1200;
   const useSingleCol = forceSingleCol || contentFitsSingleCol;
-  // In single-col mode use the full page width as the column width
+  // In single-col mode clamp column to at least 800px so CSS columns won't split
   const colWidth = useSingleCol
-    ? pageWidth
+    ? Math.max(pageWidth, 800)
     : Math.max(1, Math.floor((pageWidth - columnGap) / 2));
   const stride = pageWidth + columnGap;
 
