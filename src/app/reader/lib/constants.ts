@@ -40,6 +40,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   ttsPitch: 0,
   ttsVolume: 100,
   ttsAutoAdvance: false,
+  ttsHighlightMode: "both",
+  ttsShowReadMark: true,
   fontFamily: "'Literata', Georgia, serif",
   fontSize: 18,
   lineHeight: 1.8,

@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import type { ThemeClasses, ReadingTheme, TTSStatus } from "../lib/types";
+import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
+import { SelectionToolbar } from "./SelectionToolbar";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -16,11 +17,14 @@ interface TextContentProps {
   animated: boolean;
   initialPage?: number | null;
   onInitialPageConsumed?: () => void;
-  onPageChange: (current: number, total: number) => void;
+  onPageChange: (current: number, total: number, firstVisibleParagraph?: number) => void;
   ttsStatus?: TTSStatus;
   ttsParagraphIndex?: number;
   ttsActiveWordIndex?: number;
-  ttsHighWaterMark?: number; // highest paragraph index TTS has reached (for read mark)
+  ttsHighWaterMark?: number;
+  ttsHighlightMode?: TTSHighlightMode;
+  ttsShowReadMark?: boolean;
+  onPlayFromParagraph?: (paraIndex: number) => void;
 }
 
 /*
@@ -41,9 +45,16 @@ const SELECTION_COLORS: Record<string, { bg: string; fg: string }> = {
 
 // TTS word highlight colors — more prominent than selection
 const TTS_HIGHLIGHT_COLORS: Record<string, { bg: string; fg: string }> = {
-  dark: { bg: "oklch(0.65 0.22 264 / 55%)", fg: "white" },
-  light: { bg: "oklch(0.55 0.22 264 / 45%)", fg: "black" },
-  sepia: { bg: "oklch(0.65 0.16 55 / 50%)", fg: "#3d2b1f" },
+  dark: { bg: "oklch(0.65 0.18 264 / 40%)", fg: "white" },
+  light: { bg: "oklch(0.55 0.18 264 / 30%)", fg: "black" },
+  sepia: { bg: "oklch(0.65 0.14 55 / 35%)", fg: "#3d2b1f" },
+};
+
+// TTS paragraph highlight colors — subtle background
+const TTS_PARA_COLORS: Record<string, string> = {
+  dark: "oklch(0.65 0.15 264 / 12%)",
+  light: "oklch(0.55 0.15 264 / 10%)",
+  sepia: "oklch(0.65 0.12 55 / 12%)",
 };
 
 export function TextContent({
@@ -64,8 +75,12 @@ export function TextContent({
   ttsParagraphIndex = -1,
   ttsActiveWordIndex = -1,
   ttsHighWaterMark = -1,
+  ttsHighlightMode = "both",
+  ttsShowReadMark = true,
+  onPlayFromParagraph,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
+  const clipperRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
@@ -114,8 +129,25 @@ export function TextContent({
   }, [measure]);
 
   useEffect(() => {
-    onPageChange(currentPage, totalPages);
-  }, [currentPage, totalPages, onPageChange]);
+    // Find the first paragraph visible on this page
+    const slider = sliderRef.current;
+    let firstPara = 0;
+    if (slider && stride > 0) {
+      const pageStart = currentPage * stride;
+      const pageEnd = pageStart + pageWidth;
+      const paraEls = slider.querySelectorAll("[data-para-idx]");
+      for (const el of paraEls) {
+        const htmlEl = el as HTMLElement;
+        const left = htmlEl.offsetLeft;
+        const right = left + htmlEl.offsetWidth;
+        if (right > pageStart && left < pageEnd) {
+          firstPara = parseInt(htmlEl.getAttribute("data-para-idx") ?? "0", 10);
+          break;
+        }
+      }
+    }
+    onPageChange(currentPage, totalPages, firstPara);
+  }, [currentPage, totalPages, onPageChange, stride, pageWidth]);
 
   // Reset to page 0 on chapter change
   useEffect(() => {
@@ -252,8 +284,12 @@ export function TextContent({
 
     // Store original htmlParagraphs index for TTS word lookup
     const originalIdx = i + filterOffset;
-    // Subtle opacity dim for paragraphs TTS has already read
-    const isRead = ttsHighWaterMark >= 0 && originalIdx < ttsParagraphIndex && originalIdx <= ttsHighWaterMark;
+    // Subtle opacity dim for paragraphs TTS has already read (live or persisted)
+    const isRead = ttsShowReadMark && ttsHighWaterMark >= 0 && (
+      ttsParagraphIndex >= 0
+        ? (originalIdx < ttsParagraphIndex && originalIdx <= ttsHighWaterMark)
+        : originalIdx <= ttsHighWaterMark
+    );
 
     return (
       <div
@@ -372,11 +408,38 @@ export function TextContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ttsParagraphIndex, ttsStatus, stride, totalPages]);
 
-  // ── TTS word highlight overlay (custom rects for rounded corners) ──
+  // ── TTS highlight overlays ──
+
+  const showWordHighlight = ttsHighlightMode === "word";
+  const showParaHighlight = ttsHighlightMode === "paragraph" || ttsHighlightMode === "both";
+  const showWordBold = ttsHighlightMode === "both";
 
   const [wordRects, setWordRects] = useState<DOMRect[]>([]);
+  const [paraRects, setParaRects] = useState<DOMRect[]>([]);
 
+  // Find the target word's text node and position
+  const findWordInParagraph = useCallback((paraEl: Element, wordIndex: number) => {
+    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
+    let wordCount = 0;
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode as Text;
+      const text = textNode.textContent ?? "";
+      const wordRegex = /\S+/g;
+      let match: RegExpExecArray | null;
+      while ((match = wordRegex.exec(text)) !== null) {
+        if (wordCount === wordIndex) {
+          return { node: textNode, start: match.index, end: match.index + match[0].length };
+        }
+        wordCount++;
+      }
+    }
+    return null;
+  }, []);
+
+  // Word highlight rects (for "word" mode)
   useEffect(() => {
+    if (!showWordHighlight) { setWordRects([]); return; }
+
     const ttsPlaying = ttsStatus === "playing" || ttsStatus === "synthesizing";
     if (!ttsPlaying || ttsActiveWordIndex < 0 || ttsParagraphIndex < 0) {
       setWordRects([]);
@@ -390,49 +453,142 @@ export function TextContent({
     const paraEl = slider.querySelector(`[data-para-idx="${ttsParagraphIndex}"]`);
     if (!paraEl) { setWordRects([]); return; }
 
-    // Walk text nodes and count words to find the target word
-    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
-    let wordCount = 0;
-    let targetNode: Text | null = null;
-    let targetStart = 0;
-    let targetEnd = 0;
+    const found = findWordInParagraph(paraEl, ttsActiveWordIndex);
+    if (!found) { setWordRects([]); return; }
 
-    outer: while (walker.nextNode()) {
-      const textNode = walker.currentNode as Text;
-      const text = textNode.textContent ?? "";
-      const wordRegex = /\S+/g;
-      let match: RegExpExecArray | null;
-      while ((match = wordRegex.exec(text)) !== null) {
-        if (wordCount === ttsActiveWordIndex) {
-          targetNode = textNode;
-          targetStart = match.index;
-          targetEnd = match.index + match[0].length;
-          break outer;
-        }
-        wordCount++;
-      }
-    }
-
-    if (targetNode) {
-      try {
-        const range = new Range();
-        range.setStart(targetNode, targetStart);
-        range.setEnd(targetNode, targetEnd);
-        const clipperRect = clipper.getBoundingClientRect();
-        const rects = Array.from(range.getClientRects()).map(r => new DOMRect(
+    try {
+      const range = new Range();
+      range.setStart(found.node, found.start);
+      range.setEnd(found.node, found.end);
+      const clipperRect = clipper.getBoundingClientRect();
+      // Use computed line-height for consistent rect height
+      const computedLH = parseFloat(getComputedStyle(paraEl).lineHeight) || (fontSize * lineHeight);
+      const rects = Array.from(range.getClientRects()).map(r => {
+        const heightDiff = computedLH - r.height;
+        return new DOMRect(
           r.x - clipperRect.x,
-          r.y - clipperRect.y,
+          r.y - clipperRect.y - heightDiff / 2,
           r.width,
-          r.height,
-        ));
-        setWordRects(rects);
-      } catch {
-        setWordRects([]);
-      }
-    } else {
+          computedLH,
+        );
+      });
+      setWordRects(rects);
+    } catch {
       setWordRects([]);
     }
-  }, [ttsStatus, ttsParagraphIndex, ttsActiveWordIndex]);
+  }, [showWordHighlight, ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, findWordInParagraph, fontSize, lineHeight]);
+
+  // Paragraph highlight rects (for "paragraph" and "both" modes)
+  // Uses Range over all text nodes to get accurate column-aware rects
+  useEffect(() => {
+    if (!showParaHighlight) { setParaRects([]); return; }
+
+    const ttsPlaying = ttsStatus === "playing" || ttsStatus === "synthesizing";
+    if (!ttsPlaying || ttsParagraphIndex < 0) {
+      setParaRects([]);
+      return;
+    }
+
+    const slider = sliderRef.current;
+    const clipper = slider?.parentElement;
+    if (!slider || !clipper) { setParaRects([]); return; }
+
+    const paraEl = slider.querySelector(`[data-para-idx="${ttsParagraphIndex}"]`);
+    if (!paraEl) { setParaRects([]); return; }
+
+    try {
+      // Create a range spanning all content in the paragraph
+      const range = new Range();
+      range.selectNodeContents(paraEl);
+      const clipperRect = clipper.getBoundingClientRect();
+      // getClientRects returns one rect per line/column fragment
+      const clientRects = Array.from(range.getClientRects());
+      if (clientRects.length === 0) { setParaRects([]); return; }
+
+      // Group rects by column — rects in the same column have overlapping horizontal ranges
+      const translated = clientRects.map(r => new DOMRect(
+        r.x - clipperRect.x, r.y - clipperRect.y, r.width, r.height,
+      ));
+      const groups: DOMRect[][] = [];
+      for (const rect of translated) {
+        let added = false;
+        for (const group of groups) {
+          const ref = group[0];
+          // Same column if horizontal centers are within half a column width
+          const refCx = ref.x + ref.width / 2;
+          const cx = rect.x + rect.width / 2;
+          if (Math.abs(refCx - cx) < colWidth * 0.6) {
+            group.push(rect);
+            added = true;
+            break;
+          }
+        }
+        if (!added) groups.push([rect]);
+      }
+
+      // Merge each group into a single bounding rect
+      const pad = 6;
+      const merged = groups.map(group => {
+        const minX = Math.min(...group.map(r => r.x));
+        const minY = Math.min(...group.map(r => r.y));
+        const maxX = Math.max(...group.map(r => r.x + r.width));
+        const maxY = Math.max(...group.map(r => r.y + r.height));
+        // Apply padding then clamp to clipper bounds
+        const x = Math.max(0, minX - pad);
+        const y = Math.max(0, minY - pad / 2);
+        const right = Math.min(pageWidth, maxX + pad);
+        const bottom = Math.min(contentHeight, maxY + pad / 2);
+        return new DOMRect(x, y, right - x, bottom - y);
+      });
+
+      setParaRects(merged);
+    } catch {
+      setParaRects([]);
+    }
+  }, [showParaHighlight, ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, colWidth, pageWidth, contentHeight]);
+
+  // Word underline rects for "both" mode (overlay approach — no DOM mutation)
+  const [bothWordRects, setBothWordRects] = useState<DOMRect[]>([]);
+
+  useEffect(() => {
+    if (!showWordBold) { setBothWordRects([]); return; }
+
+    const ttsPlaying = ttsStatus === "playing" || ttsStatus === "synthesizing";
+    if (!ttsPlaying || ttsActiveWordIndex < 0 || ttsParagraphIndex < 0) {
+      setBothWordRects([]);
+      return;
+    }
+
+    const slider = sliderRef.current;
+    const clipper = slider?.parentElement;
+    if (!slider || !clipper) { setBothWordRects([]); return; }
+
+    const paraEl = slider.querySelector(`[data-para-idx="${ttsParagraphIndex}"]`);
+    if (!paraEl) { setBothWordRects([]); return; }
+
+    const found = findWordInParagraph(paraEl, ttsActiveWordIndex);
+    if (!found) { setBothWordRects([]); return; }
+
+    try {
+      const range = new Range();
+      range.setStart(found.node, found.start);
+      range.setEnd(found.node, found.end);
+      const clipperRect = clipper.getBoundingClientRect();
+      const computedLH = parseFloat(getComputedStyle(paraEl).lineHeight) || (fontSize * lineHeight);
+      const rects = Array.from(range.getClientRects()).map(r => {
+        const heightDiff = computedLH - r.height;
+        return new DOMRect(
+          r.x - clipperRect.x,
+          r.y - clipperRect.y - heightDiff / 2,
+          r.width,
+          computedLH,
+        );
+      });
+      setBothWordRects(rects);
+    } catch {
+      setBothWordRects([]);
+    }
+  }, [showWordBold, ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, findWordInParagraph, fontSize, lineHeight]);
 
   // ── Render ──────────────────────────────────────────
 
@@ -445,6 +601,7 @@ export function TextContent({
       : "dark";
   const sel = SELECTION_COLORS[readingTheme] ?? SELECTION_COLORS.dark;
   const ttsCol = TTS_HIGHLIGHT_COLORS[readingTheme] ?? TTS_HIGHLIGHT_COLORS.dark;
+  const ttsParaCol = TTS_PARA_COLORS[readingTheme] ?? TTS_PARA_COLORS.dark;
 
   return (
     <div
@@ -457,6 +614,7 @@ export function TextContent({
     >
       {/* Clipper: shows exactly one page (2 columns) */}
       <div
+        ref={clipperRef}
         className="mx-auto"
         style={{
           width: `${pageWidth}px`,
@@ -490,24 +648,69 @@ export function TextContent({
           {paragraphsJSX}
         </div>
 
-        {/* TTS active word highlight overlay */}
-        {wordRects.map((r, i) => (
+        {/* TTS paragraph highlight overlay ("paragraph" and "both" modes) */}
+        {showParaHighlight && paraRects.map((r, i) => (
           <div
-            key={i}
-            className="tts-word-highlight"
+            key={`para-${i}`}
+            style={{
+              position: "absolute",
+              left: `${r.x}px`,
+              top: `${r.y}px`,
+              width: `${r.width}px`,
+              height: `${r.height}px`,
+              borderRadius: "6px",
+              backgroundColor: ttsParaCol,
+              pointerEvents: "none",
+              transition: "top 0.15s ease, height 0.15s ease",
+              zIndex: 0,
+            }}
+          />
+        ))}
+
+        {/* TTS active word highlight overlay ("word" mode only) */}
+        {showWordHighlight && wordRects.map((r, i) => (
+          <div
+            key={`word-${i}`}
             style={{
               position: "absolute",
               left: `${r.x - 2}px`,
-              top: `${r.y - 1}px`,
+              top: `${r.y}px`,
               width: `${r.width + 4}px`,
-              height: `${r.height + 2}px`,
+              height: `${r.height}px`,
               borderRadius: "4px",
               backgroundColor: ttsCol.bg,
               pointerEvents: "none",
               transition: "left 0.05s ease, top 0.05s ease, width 0.05s ease",
+              zIndex: 1,
             }}
           />
         ))}
+
+        {/* TTS current word underline ("both" mode only) */}
+        {showWordBold && bothWordRects.map((r, i) => (
+          <div
+            key={`both-${i}`}
+            style={{
+              position: "absolute",
+              left: `${r.x - 2}px`,
+              top: `${r.y + r.height - 2}px`,
+              width: `${r.width + 4}px`,
+              height: "2px",
+              borderRadius: "1px",
+              backgroundColor: ttsCol.fg === "white" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.35)",
+              pointerEvents: "none",
+              transition: "left 0.05s ease, top 0.05s ease, width 0.05s ease",
+              zIndex: 1,
+            }}
+          />
+        ))}
+
+        {/* Text selection toolbar */}
+        <SelectionToolbar
+          theme={theme}
+          containerRef={clipperRef}
+          onPlayFromParagraph={onPlayFromParagraph}
+        />
       </div>
 
       <style>{`
@@ -519,9 +722,6 @@ export function TextContent({
         .reader-content ::selection {
           background-color: ${sel.bg};
           color: ${sel.fg};
-        }
-        .tts-word-highlight {
-          z-index: 0;
         }
       `}</style>
     </div>

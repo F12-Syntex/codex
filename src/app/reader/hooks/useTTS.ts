@@ -32,6 +32,16 @@ export function useTTS({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sessionRef = useRef(0); // incremented on stop to cancel stale callbacks
   const rafRef = useRef<number | null>(null);
+  // Tracks the current/target paragraph synchronously for rapid skip support
+  const currentParaRef = useRef(0);
+
+  // Refs for callbacks/options to avoid stale closures in long-running synthesis chains
+  const autoAdvanceRef = useRef(autoAdvance);
+  autoAdvanceRef.current = autoAdvance;
+  const onChapterEndRef = useRef(onChapterEnd);
+  onChapterEndRef.current = onChapterEnd;
+  const onParagraphChangeRef = useRef(onParagraphChange);
+  onParagraphChangeRef.current = onParagraphChange;
 
   // Load voices on mount
   useEffect(() => {
@@ -101,7 +111,7 @@ export function useTTS({
         const next = paragraphs.findIndex((p, i) => i > paraIndex && p.trim().length > 0);
         if (next !== -1 && session === sessionRef.current) {
           setState(s => ({ ...s, currentParagraph: next }));
-          onParagraphChange(next);
+          onParagraphChangeRef.current(next);
           await synthesizeAndPlay(next, session);
         }
       }
@@ -110,8 +120,9 @@ export function useTTS({
 
     if (session !== sessionRef.current) return;
 
+    currentParaRef.current = paraIndex;
     setState({ status: "synthesizing", currentParagraph: paraIndex });
-    onParagraphChange(paraIndex);
+    onParagraphChangeRef.current(paraIndex);
 
     try {
       const rateStr = `${rate >= 0 ? "+" : ""}${Math.round((rate - 1) * 100)}%`;
@@ -153,13 +164,10 @@ export function useTTS({
         await synthesizeAndPlay(nextNonEmpty, session);
       } else {
         // End of chapter
-        if (autoAdvance) {
-          setState({ status: "idle", currentParagraph: paraIndex });
-          setWordBoundaries(null);
-          onChapterEnd();
-        } else {
-          setState({ status: "idle", currentParagraph: paraIndex });
-          setWordBoundaries(null);
+        setState({ status: "idle", currentParagraph: paraIndex });
+        setWordBoundaries(null);
+        if (autoAdvanceRef.current) {
+          onChapterEndRef.current();
         }
       }
     } catch {
@@ -169,7 +177,7 @@ export function useTTS({
         stopWordTracking();
       }
     }
-  }, [paragraphs, voice, rate, pitch, volume, autoAdvance, onParagraphChange, onChapterEnd, startWordTracking, stopWordTracking]);
+  }, [paragraphs, voice, rate, pitch, volume, startWordTracking, stopWordTracking]);
 
   // Public actions
   const play = useCallback((fromParagraph?: number) => {
@@ -181,9 +189,13 @@ export function useTTS({
     }
     stopWordTracking();
 
-    const startAt = fromParagraph ?? state.currentParagraph;
+    const startAt = fromParagraph ?? currentParaRef.current;
+    // Immediately mark as synthesizing so the UI doesn't flash to idle
+    currentParaRef.current = startAt;
+    setState({ status: "synthesizing", currentParagraph: startAt });
+    setActiveWordIndex(-1);
     synthesizeAndPlay(startAt, session);
-  }, [state.currentParagraph, synthesizeAndPlay, stopWordTracking]);
+  }, [synthesizeAndPlay, stopWordTracking]);
 
   const pause = useCallback(() => {
     if (audioRef.current && state.status === "playing") {
@@ -210,26 +222,29 @@ export function useTTS({
     stopWordTracking();
     setWordBoundaries(null);
     setActiveWordIndex(-1);
+    currentParaRef.current = 0;
     setState({ status: "idle", currentParagraph: 0 });
   }, [stopWordTracking]);
 
   const skipNext = useCallback(() => {
-    const next = paragraphs.findIndex((p, i) => i > state.currentParagraph && p.trim().length > 0);
+    // Use ref for immediate reads — React state may be stale during rapid skips
+    const cur = currentParaRef.current;
+    const next = paragraphs.findIndex((p, i) => i > cur && p.trim().length > 0);
     if (next !== -1) {
       play(next);
     }
-  }, [paragraphs, state.currentParagraph, play]);
+  }, [paragraphs, play]);
 
   const skipPrev = useCallback(() => {
-    // Find previous non-empty paragraph
+    const cur = currentParaRef.current;
     let prev = -1;
-    for (let i = state.currentParagraph - 1; i >= 0; i--) {
+    for (let i = cur - 1; i >= 0; i--) {
       if (paragraphs[i].trim().length > 0) { prev = i; break; }
     }
     if (prev !== -1) {
       play(prev);
     }
-  }, [paragraphs, state.currentParagraph, play]);
+  }, [paragraphs, play]);
 
   // Expose play that handles pause/resume toggle
   const togglePlay = useCallback(() => {

@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ttsSynthesize: (text: string, voice: string, rate: string, pitch?: string, volume?: string) =>
     ipcRenderer.invoke("tts:synthesize", text, voice, rate, pitch, volume),
 
+  // Shell
+  openExternal: (url: string) =>
+    ipcRenderer.invoke("shell:open-external", url),
+
   // Updates
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.send("update:install"),

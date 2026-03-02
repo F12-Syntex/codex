@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
@@ -41,6 +41,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
+  const [autoPlayChapter, setAutoPlayChapter] = useState<number | null>(null);
+  const [persistedReadMarks, setPersistedReadMarks] = useState<Record<number, number>>({});
 
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
@@ -62,8 +64,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     onParagraphChange: () => {},
     onChapterEnd: () => {
       if (currentChapter < chapters.length - 1) {
-        handleChapterChange(currentChapter + 1);
-        setTimeout(() => tts.actions.play(), 300);
+        const next = currentChapter + 1;
+        handleChapterChange(next);
+        setAutoPlayChapter(next);
       }
     },
   });
@@ -75,6 +78,56 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (tts.state.status === "idle") { setTtsHighWaterMark(-1); return; }
     setTtsHighWaterMark(prev => Math.max(prev, tts.state.currentParagraph));
   }, [tts.state.currentParagraph, tts.state.status]);
+
+  // Auto-play after chapter change from auto-advance
+  useEffect(() => {
+    if (autoPlayChapter !== null && autoPlayChapter === currentChapter) {
+      setAutoPlayChapter(null);
+      tts.actions.playFrom(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlayChapter, currentChapter]);
+
+  // Persisted read marks — load
+  const readMarksKey = `ttsReadMarks:${filePath}`;
+  useEffect(() => {
+    if (!filePath) return;
+    window.electronAPI?.getSetting(readMarksKey).then(raw => {
+      if (!raw) return;
+      try { setPersistedReadMarks(JSON.parse(raw)); } catch { /* ignore */ }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath]);
+
+  // Persisted read marks — save when high water mark advances
+  useEffect(() => {
+    if (!filePath || ttsHighWaterMark < 0) return;
+    setPersistedReadMarks(prev => {
+      const existing = prev[currentChapter] ?? -1;
+      if (ttsHighWaterMark <= existing) return prev;
+      const next = { ...prev, [currentChapter]: ttsHighWaterMark };
+      window.electronAPI?.setSetting(readMarksKey, JSON.stringify(next));
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttsHighWaterMark, currentChapter, filePath]);
+
+  // Effective high water mark: live during TTS, persisted when idle
+  const effectiveHighWaterMark = tts.state.status !== "idle"
+    ? ttsHighWaterMark
+    : (persistedReadMarks[currentChapter] ?? -1);
+
+  // TTS progress info
+  const ttsProgress = useMemo(() => {
+    const total = paragraphs.length;
+    const current = tts.state.currentParagraph;
+    if (tts.state.status === "idle") return { current: 0, total, wordsRemaining: 0 };
+    let words = 0;
+    for (let i = current; i < paragraphs.length; i++) {
+      words += (paragraphs[i].match(/\S+/g) ?? []).length;
+    }
+    return { current, total, wordsRemaining: words };
+  }, [paragraphs, tts.state.currentParagraph, tts.state.status]);
 
   const bookmarkState = useBookmarks({
     filePath,
@@ -152,9 +205,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setShowTOC(false);
   }, [tts.actions]);
 
-  const handlePageChange = useCallback((page: number, total: number) => {
+  const [firstVisiblePara, setFirstVisiblePara] = useState(0);
+  const handlePageChange = useCallback((page: number, total: number, firstPara?: number) => {
     setCurrentPage(page);
     setTotalPages(total);
+    if (firstPara != null) setFirstVisiblePara(firstPara);
   }, []);
 
   const handleChapterTitlesChanged = useCallback((titles: string[]) => {
@@ -232,15 +287,29 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             rate={settings.ttsRate}
             volume={settings.ttsVolume}
             autoAdvance={settings.ttsAutoAdvance}
+            highlightMode={settings.ttsHighlightMode}
+            showReadMark={settings.ttsShowReadMark}
+            currentParagraph={ttsProgress.current}
+            totalParagraphs={ttsProgress.total}
+            wordsRemaining={ttsProgress.wordsRemaining}
             onPlayFromStart={() => tts.actions.playFrom(0)}
-            onPlayFromCurrent={() => tts.actions.play()}
+            onPlayFromCurrent={() => {
+              // Resume from last read position if available, otherwise start from first visible paragraph
+              const persisted = persistedReadMarks[currentChapter] ?? -1;
+              const resumeFrom = persisted >= firstVisiblePara ? persisted + 1 : firstVisiblePara;
+              tts.actions.playFrom(resumeFrom);
+            }}
             onPause={() => tts.actions.pause()}
             onResume={() => tts.actions.play()}
             onStop={() => tts.actions.stop()}
+            onSkipPrev={() => tts.actions.skipPrev()}
+            onSkipNext={() => tts.actions.skipNext()}
             onVoiceChange={(v) => updateSetting("ttsVoice", v)}
             onRateChange={(r) => updateSetting("ttsRate", r)}
             onVolumeChange={(v) => updateSetting("ttsVolume", v)}
             onAutoAdvanceChange={(a) => updateSetting("ttsAutoAdvance", a)}
+            onHighlightModeChange={(m) => updateSetting("ttsHighlightMode", m)}
+            onShowReadMarkChange={(s) => updateSetting("ttsShowReadMark", s)}
             onClose={() => setShowTTS(false)}
           />
         )}
@@ -312,7 +381,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               ttsStatus={tts.state.status}
               ttsParagraphIndex={tts.state.currentParagraph}
               ttsActiveWordIndex={tts.activeWordIndex}
-              ttsHighWaterMark={ttsHighWaterMark}
+              ttsHighWaterMark={effectiveHighWaterMark}
+              ttsHighlightMode={settings.ttsHighlightMode}
+              ttsShowReadMark={settings.ttsShowReadMark}
+              onPlayFromParagraph={(idx) => tts.actions.playFrom(idx)}
             />
           )}
 

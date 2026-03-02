@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, protocol, net, dialog, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
@@ -256,6 +256,12 @@ function createWindow() {
     }));
 
     return addItems(dbItems);
+  });
+
+  // ── Shell: open external URL ─────────────────────
+
+  ipcMain.handle("shell:open-external", (_event, url: string) => {
+    return shell.openExternal(url);
   });
 
   // ── Library: select folder ────────────────────────

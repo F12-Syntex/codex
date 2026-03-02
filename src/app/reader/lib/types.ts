@@ -31,6 +31,7 @@ export interface WordBoundary {
 }
 
 export type ReadingTheme = "dark" | "light" | "sepia";
+export type TTSHighlightMode = "word" | "paragraph" | "both" | "none";
 
 export interface ReaderSettings {
   readingTheme: ReadingTheme;
@@ -39,6 +40,8 @@ export interface ReaderSettings {
   ttsPitch: number;
   ttsVolume: number;
   ttsAutoAdvance: boolean;
+  ttsHighlightMode: TTSHighlightMode;
+  ttsShowReadMark: boolean;
   fontFamily: string;
   fontSize: number;
   lineHeight: number;

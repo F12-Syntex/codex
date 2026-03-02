@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Square, Volume2, ChevronDown, Loader2 } from "lucide-react";
-import type { EdgeVoice, ThemeClasses, TTSState } from "../lib/types";
+import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward } from "lucide-react";
+import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
 
 interface TTSPanelProps {
   theme: ThemeClasses;
@@ -12,15 +12,24 @@ interface TTSPanelProps {
   rate: number;
   volume: number;
   autoAdvance: boolean;
+  highlightMode: TTSHighlightMode;
+  showReadMark: boolean;
+  currentParagraph: number;
+  totalParagraphs: number;
+  wordsRemaining: number;
   onPlayFromStart: () => void;
   onPlayFromCurrent: () => void;
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  onSkipPrev: () => void;
+  onSkipNext: () => void;
   onVoiceChange: (voice: string) => void;
   onRateChange: (rate: number) => void;
   onVolumeChange: (volume: number) => void;
   onAutoAdvanceChange: (enabled: boolean) => void;
+  onHighlightModeChange: (mode: TTSHighlightMode) => void;
+  onShowReadMarkChange: (enabled: boolean) => void;
   onClose: () => void;
 }
 
@@ -32,15 +41,24 @@ export function TTSPanel({
   rate,
   volume,
   autoAdvance,
+  highlightMode,
+  showReadMark,
+  currentParagraph,
+  totalParagraphs,
+  wordsRemaining,
   onPlayFromStart,
   onPlayFromCurrent,
   onPause,
   onResume,
   onStop,
+  onSkipPrev,
+  onSkipNext,
   onVoiceChange,
   onRateChange,
   onVolumeChange,
   onAutoAdvanceChange,
+  onHighlightModeChange,
+  onShowReadMarkChange,
   onClose,
 }: TTSPanelProps) {
   const [showVoicePicker, setShowVoicePicker] = useState(false);
@@ -95,7 +113,13 @@ export function TTSPanel({
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              onClick={onSkipPrev}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+            >
+              <SkipBack className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
             {isSynthesizing ? (
               <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${theme.subtle} ${theme.muted}`}>
                 <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
@@ -121,8 +145,42 @@ export function TTSPanel({
             >
               <Square className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
+            <button
+              onClick={onSkipNext}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+            >
+              <SkipForward className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
           </div>
         )}
+
+        {/* Progress info — shown during active TTS */}
+        {isActive && totalParagraphs > 0 && (() => {
+          const pct = Math.round(((currentParagraph + 1) / totalParagraphs) * 100);
+          const wpm = 150 * rate;
+          const mins = Math.ceil(wordsRemaining / wpm);
+          const timeStr = mins < 1 ? "<1 min" : mins === 1 ? "1 min" : `${mins} min`;
+          return (
+            <div className="space-y-1.5">
+              {/* Progress bar */}
+              <div className={`h-1 w-full overflow-hidden rounded-full ${theme.subtle}`}>
+                <div
+                  className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
+                  style={{ width: `${pct}%`, opacity: 0.7 }}
+                />
+              </div>
+              {/* Stats row */}
+              <div className="flex items-center justify-between">
+                <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+                  {currentParagraph + 1}/{totalParagraphs}
+                </span>
+                <span className={`text-[11px] ${theme.muted}`}>
+                  ~{timeStr} left
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Voice selector */}
         <div className="relative">
@@ -172,6 +230,41 @@ export function TTSPanel({
             className={`relative h-5 w-9 rounded-full transition-colors ${autoAdvance ? "bg-[var(--accent-brand)]" : theme.subtle}`}
           >
             <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${autoAdvance ? "translate-x-4" : ""}`} />
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className={`border-t ${theme.border}`} />
+
+        {/* Highlight mode */}
+        <div className="space-y-2">
+          <span className={`text-[11px] ${theme.muted}`}>Highlight</span>
+          <div className={`flex rounded-lg ${theme.subtle} p-0.5`}>
+            {(["none", "word", "para", "both"] as const).map((mode) => {
+              const value: TTSHighlightMode = mode === "para" ? "paragraph" : mode;
+              const label = mode === "para" ? "Para" : mode.charAt(0).toUpperCase() + mode.slice(1);
+              const active = highlightMode === value;
+              return (
+                <button
+                  key={mode}
+                  onClick={() => onHighlightModeChange(value)}
+                  className={`flex-1 rounded-lg px-1 py-1 text-[11px] transition-colors ${active ? theme.btnActive : theme.btn}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Read mark toggle */}
+        <div className="flex items-center justify-between">
+          <span className={`text-[11px] ${theme.muted}`}>Dim read paragraphs</span>
+          <button
+            onClick={() => onShowReadMarkChange(!showReadMark)}
+            className={`relative h-5 w-9 rounded-full transition-colors ${showReadMark ? "bg-[var(--accent-brand)]" : theme.subtle}`}
+          >
+            <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${showReadMark ? "translate-x-4" : ""}`} />
           </button>
         </div>
       </div>

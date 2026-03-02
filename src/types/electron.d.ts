@@ -101,6 +101,9 @@ interface ElectronAPI {
   ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;
   ttsSynthesize: (text: string, voice: string, rate: string, pitch?: string, volume?: string) => Promise<TTSSynthesisResult>;
 
+  // Shell
+  openExternal: (url: string) => Promise<void>;
+
   // Settings
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
