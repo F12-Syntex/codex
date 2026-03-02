@@ -97,7 +97,8 @@ export function TextContent({
   const singleColFrozenRef = useRef(false);
 
   const columnGap = 48;
-  const forceSingleCol = containerWidth > 0 && containerWidth < 600;
+  const forceSingleCol = containerWidth > 0 && containerWidth < 600
+    || (pageWidth > 0 && pageWidth < 700);
   const useSingleCol = forceSingleCol || contentFitsSingleCol;
   // In single-col mode use the full page width as the column width
   const colWidth = useSingleCol
