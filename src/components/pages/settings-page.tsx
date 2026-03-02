@@ -8,27 +8,11 @@ import {
   RefreshCw,
   Trash2,
   Download,
-  Key,
-  Eye,
-  EyeOff,
-  ExternalLink,
-  Cpu,
-  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { APP_VERSION } from "@/lib/version";
-import { testApiKey } from "@/lib/openrouter";
-import { ModelCombobox } from "@/components/ui/model-combobox";
-import {
-  DEFAULT_PRESETS,
-  PRESET_OVERRIDES_KEY,
-  getEffectiveModel,
-  parseOverrides,
-  stringifyOverrides,
-  type PresetOverrides,
-} from "@/lib/ai-presets";
 
 interface SettingsPageProps {
   onImportItems: (items: LibraryItem[]) => void;
@@ -85,7 +69,7 @@ function SettingSection({
 
 /* ── Tab types ────────────────────────────────────────────── */
 
-type SettingsTab = "general" | "ai";
+type SettingsTab = "general";
 
 /* ── Settings page ───────────────────────────────────────── */
 
@@ -97,11 +81,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const [lastScanCount, setLastScanCount] = useState<number | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [testingKey, setTestingKey] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
-  const [presetOverrides, setPresetOverrides] = useState<PresetOverrides>({});
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
@@ -112,13 +91,9 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     Promise.all([
       api!.getSetting("libraryPath"),
       api!.getSetting("autoScan"),
-      api!.getSetting("openrouterApiKey"),
-      api!.getSetting(PRESET_OVERRIDES_KEY),
-    ]).then(([path, scan, key, overridesJson]) => {
+    ]).then(([path, scan]) => {
       if (path) setLibraryPath(path);
       if (scan) setAutoScan(scan === "true");
-      if (key) setApiKey(key);
-      setPresetOverrides(parseOverrides(overridesJson));
     });
   });
 
@@ -175,37 +150,8 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     // For now just a placeholder
   };
 
-  const handleApiKeyChange = (value: string) => {
-    setApiKey(value);
-    setTestResult(null);
-    if (hasApi) api!.setSetting("openrouterApiKey", value);
-  };
-
-  const handleTestKey = async () => {
-    if (!apiKey.trim()) return;
-    setTestingKey(true);
-    setTestResult(null);
-    const result = await testApiKey(apiKey);
-    setTestResult(result);
-    setTestingKey(false);
-  };
-
-  const handlePresetModelChange = (presetId: string, model: string) => {
-    const next = { ...presetOverrides, [presetId]: { model } };
-    setPresetOverrides(next);
-    if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
-  };
-
-  const handlePresetReset = (presetId: string) => {
-    const next = { ...presetOverrides };
-    delete next[presetId];
-    setPresetOverrides(next);
-    if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
-  };
-
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: "general", label: "General" },
-    { id: "ai", label: "AI" },
   ];
 
   return (
@@ -336,106 +282,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
         </div>
       )}
 
-      {activeTab === "ai" && (
-        <div className="flex max-w-[560px] flex-col gap-5 p-6">
-          <SettingSection icon={Key} title="OpenRouter">
-            <SettingRow
-              label="API Key"
-              description="Used for AI-powered features like recommendations"
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => handleApiKeyChange(e.target.value)}
-                  placeholder="sk-or-..."
-                  className="w-44 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
-                />
-                <button
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="rounded-lg p-1.5 text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50"
-                >
-                  {showApiKey ? (
-                    <EyeOff className="h-3 w-3" />
-                  ) : (
-                    <Eye className="h-3 w-3" />
-                  )}
-                </button>
-              </div>
-            </SettingRow>
-            <SettingRow
-              label="Test connection"
-              description={
-                testResult
-                  ? testResult.ok
-                    ? "API key is valid"
-                    : testResult.error ?? "Invalid key"
-                  : "Verify your key works"
-              }
-            >
-              <button
-                onClick={handleTestKey}
-                disabled={testingKey || !apiKey.trim()}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium transition-colors",
-                  testingKey || !apiKey.trim()
-                    ? "text-white/20"
-                    : testResult?.ok
-                      ? "text-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-400"
-                      : testResult && !testResult.ok
-                        ? "text-red-400/70 hover:bg-red-500/10 hover:text-red-400"
-                        : "text-white/50 hover:bg-white/[0.10] hover:text-white/70"
-                )}
-              >
-                <RefreshCw className={cn("h-3 w-3", testingKey && "animate-spin")} />
-                {testingKey ? "Testing..." : testResult?.ok ? "Valid" : testResult && !testResult.ok ? "Failed" : "Test"}
-              </button>
-            </SettingRow>
-            <SettingRow label="Get an API key">
-              <button
-                onClick={() => window.open("https://openrouter.ai/keys", "_blank")}
-                className="flex items-center gap-1.5 text-[11px] text-white/30 transition-colors hover:text-white/50"
-              >
-                openrouter.ai/keys
-                <ExternalLink className="h-3 w-3" />
-              </button>
-            </SettingRow>
-          </SettingSection>
-
-          {/* ── Model Presets ─────────────────────────── */}
-          <SettingSection icon={Cpu} title="Model Presets">
-            {DEFAULT_PRESETS.map((preset) => {
-              const isOverridden = !!presetOverrides[preset.id];
-              const effectiveModel = getEffectiveModel(preset, presetOverrides);
-
-              return (
-                <SettingRow
-                  key={preset.id}
-                  label={preset.label}
-                  description={preset.description}
-                >
-                  <div className="flex items-center gap-2">
-                    <ModelCombobox
-                      value={effectiveModel}
-                      onChange={(model) => handlePresetModelChange(preset.id, model)}
-                      placeholder={preset.defaultModel}
-                    />
-                    {isOverridden && (
-                      <button
-                        onClick={() => handlePresetReset(preset.id)}
-                        title="Reset to default"
-                        className="rounded-lg p-1.5 text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </SettingRow>
-              );
-            })}
-          </SettingSection>
-        </div>
-      )}
     </div>
   );
 }

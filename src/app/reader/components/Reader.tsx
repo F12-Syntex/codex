@@ -14,7 +14,6 @@ import { TTSPanel } from "./TTSPanel";
 import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
-import { AIPanel } from "./AIPanel";
 
 interface ReaderProps {
   filePath: string;
@@ -212,19 +211,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (firstPara != null) setFirstVisiblePara(firstPara);
   }, []);
 
-  const handleChapterTitlesChanged = useCallback((titles: string[]) => {
-    setBookContent((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        chapters: prev.chapters.map((ch, i) => ({
-          ...ch,
-          title: titles[i] ?? ch.title,
-        })),
-      };
-    });
-  }, []);
-
   const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowTOC(v => !v); }, []);
   const toggleTTS = useCallback(() => { setShowTOC(false); setShowTextSettings(false); setShowTTS(v => !v); }, []);
   const toggleTextSettings = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(v => !v); }, []);
@@ -385,17 +371,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               ttsHighlightMode={settings.ttsHighlightMode}
               ttsShowReadMark={settings.ttsShowReadMark}
               onPlayFromParagraph={(idx) => tts.actions.playFrom(idx)}
-            />
-          )}
-
-          {/* AI Panel — floating bottom-right */}
-          {!isImageBook && (
-            <AIPanel
-              theme={theme}
-              bookContent={bookContent}
-              bookTitle={title}
-              filePath={filePath}
-              onChapterTitlesChanged={handleChapterTitlesChanged}
             />
           )}
 
