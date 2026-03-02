@@ -103,14 +103,46 @@ function resolveRelativePath(base: string, relative: string): string {
   return resolved.join("/");
 }
 
+/** Case-insensitive fallback for zip entry lookup */
+function findEntryCaseInsensitive(zip: AdmZip, entryPath: string): AdmZip.IZipEntry | null {
+  const lower = entryPath.toLowerCase();
+  for (const entry of zip.getEntries()) {
+    if (entry.entryName.toLowerCase() === lower) return entry;
+  }
+  return null;
+}
+
 /** Look up a ZIP entry trying several path variants */
 function getZipEntry(zip: AdmZip, entryPath: string): AdmZip.IZipEntry | null {
   return (
     zip.getEntry(entryPath) ||
     zip.getEntry(decodeURIComponent(entryPath)) ||
     zip.getEntry(encodeURIComponent(entryPath).replace(/%2F/g, "/")) ||
+    findEntryCaseInsensitive(zip, entryPath) ||
+    findEntryCaseInsensitive(zip, decodeURIComponent(entryPath)) ||
     null
   );
+}
+
+/** Convert SVG <image xlink:href="..."> blocks to plain <img src="data:..."> tags.
+ *  Many publishers (Yen Press, J-Novel Club, etc.) wrap full-page images in SVG.
+ *  Must be called BEFORE sanitizeHtml (which strips SVG entirely). */
+function preprocessSvgImages(xhtml: string, zip: AdmZip, chapterDir: string): string {
+  return xhtml.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, (svgBlock) => {
+    // Look for <image> tag with xlink:href or href attribute
+    const hrefMatch = svgBlock.match(/\b(?:xlink:href|href)=["'](?!data:)([^"']+)["']/i);
+    if (!hrefMatch) return svgBlock; // No resolvable image ref — leave as-is
+    const src = hrefMatch[1];
+    const decoded = decodeURIComponent(src);
+    const entryPath = resolveRelativePath(chapterDir, decoded);
+    const entry =
+      getZipEntry(zip, entryPath) ||
+      getZipEntry(zip, decoded) ||
+      getZipEntry(zip, src);
+    if (!entry) return ""; // Image not found — remove the SVG block
+    const dataUri = bufferToDataUri(entry.getData(), decoded);
+    return `<img src="${dataUri}"/>`;
+  });
 }
 
 /** Resolve <img src="..."> in HTML to inline data URIs using the EPUB zip.
@@ -139,9 +171,14 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
   const plain: string[] = [];
   const html: string[] = [];
 
+  // Pre-process: convert SVG <image> blocks to <img> before anything else
+  const preprocessed = zip && chapterDir != null
+    ? preprocessSvgImages(xhtml, zip, chapterDir)
+    : xhtml;
+
   // Remove head section
-  const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const content = bodyMatch ? bodyMatch[1] : xhtml;
+  const bodyMatch = preprocessed.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const content = bodyMatch ? bodyMatch[1] : preprocessed;
 
   // Match <p>, <img>, and <div> with images — in document order
   const blockRegex = /<(?:p|img|div)[^>]*>(?:[\s\S]*?<\/(?:p|div)>)?/gi;
