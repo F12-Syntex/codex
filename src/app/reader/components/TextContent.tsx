@@ -27,13 +27,8 @@ interface TextContentProps {
  *
  * Layout:
  *   outerRef   — full-height container with padding, overflow:hidden
- *   ├─ viewport — full-width wrapper (animates translateX for page turns)
- *   │  └─ clipper — overflow:hidden, exactly pageWidth × contentHeight, mx-auto
- *   │     └─ slider — position:absolute, column-width layout, instant translateX
- *   └─ (inline styles)
- *
- * Page turn: viewport slides left/right across the full window width,
- * while the slider jumps to the new page instantly.
+ *   └─ clipper — overflow:hidden, exactly pageWidth × contentHeight, mx-auto
+ *      └─ slider — position:absolute, column-width layout, translateX with CSS transition
  */
 
 // Selection highlight colors per reading theme
@@ -41,6 +36,13 @@ const SELECTION_COLORS: Record<string, { bg: string; fg: string }> = {
   dark: { bg: "oklch(0.60 0.20 264 / 45%)", fg: "white" },
   light: { bg: "oklch(0.60 0.20 264 / 35%)", fg: "black" },
   sepia: { bg: "oklch(0.60 0.14 55 / 40%)", fg: "#3d2b1f" },
+};
+
+// TTS word highlight colors — more prominent than selection
+const TTS_HIGHLIGHT_COLORS: Record<string, { bg: string; fg: string }> = {
+  dark: { bg: "oklch(0.65 0.22 264 / 55%)", fg: "white" },
+  light: { bg: "oklch(0.55 0.22 264 / 45%)", fg: "black" },
+  sepia: { bg: "oklch(0.65 0.16 55 / 50%)", fg: "#3d2b1f" },
 };
 
 export function TextContent({
@@ -63,7 +65,6 @@ export function TextContent({
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -131,45 +132,12 @@ export function TextContent({
 
   // ── Navigation ──────────────────────────────────────
 
-  const animatingRef = useRef(false);
-
   const goTo = useCallback(
     (page: number) => {
       const clamped = Math.max(0, Math.min(page, totalPages - 1));
-      setCurrentPage((prev) => {
-        if (clamped === prev) return prev;
-
-        const viewport = viewportRef.current;
-        if (animated && viewport && !animatingRef.current) {
-          animatingRef.current = true;
-          const dir = clamped > prev ? 1 : -1;
-          const outerW = outerRef.current?.clientWidth ?? 800;
-          const offset = outerW * 0.4;
-
-          // Instantly kick viewport in opposite direction
-          viewport.style.transition = "none";
-          viewport.style.transform = `translateX(${dir * offset}px)`;
-
-          // Force reflow then animate back to center
-          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-          viewport.offsetHeight;
-          viewport.style.transition = "transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)";
-          viewport.style.transform = "translateX(0)";
-
-          const onEnd = () => {
-            viewport.removeEventListener("transitionend", onEnd);
-            viewport.style.transition = "none";
-            viewport.style.transform = "";
-            animatingRef.current = false;
-          };
-          viewport.addEventListener("transitionend", onEnd, { once: true });
-          setTimeout(onEnd, 400);
-        }
-
-        return clamped;
-      });
+      setCurrentPage(clamped);
     },
-    [totalPages, animated],
+    [totalPages],
   );
 
   // Removed: click-to-navigate regions. Page turns are keyboard/scroll/arrow-button only.
@@ -228,6 +196,9 @@ export function TextContent({
     () => filterTitleParagraph(htmlParagraphs, chapterTitle),
     [htmlParagraphs, chapterTitle],
   );
+  // How many paragraphs were removed from the front (0 or 1)
+  const filterOffset = htmlParagraphs.length - filteredHtml.length;
+
   const showTitle =
     chapterTitle && !/^chapter\s+\d+$/i.test(chapterTitle.trim());
 
@@ -277,10 +248,13 @@ export function TextContent({
     const isFirst = i === firstTextIndex;
     const renderedHtml = isFirst ? buildFirstParagraph(html) : html;
 
+    // Store original htmlParagraphs index for TTS word lookup
+    const originalIdx = i + filterOffset;
+
     return (
       <div
         key={i}
-        data-para-idx={i}
+        data-para-idx={originalIdx}
         style={{
           marginBottom: `${paraSpacing}px`,
           textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
@@ -373,9 +347,6 @@ export function TextContent({
 
   // ── TTS word highlight (CSS Custom Highlight API) ──
 
-  // filteredHtml may have removed index 0 if it matched the title
-  const filterOffset = htmlParagraphs.length - filteredHtml.length;
-
   useEffect(() => {
     if (typeof CSS === "undefined" || !CSS.highlights) return;
 
@@ -385,19 +356,12 @@ export function TextContent({
       return;
     }
 
-    // Map TTS paragraph index to filteredHtml index
-    const paraIdx = ttsParagraphIndex - filterOffset;
+    // data-para-idx stores the original htmlParagraphs index, matching ttsParagraphIndex
     const slider = sliderRef.current;
-    if (!slider || paraIdx < 0) {
-      CSS.highlights.delete("tts-word");
-      return;
-    }
+    if (!slider) { CSS.highlights.delete("tts-word"); return; }
 
-    const paraEl = slider.querySelector(`[data-para-idx="${paraIdx}"]`);
-    if (!paraEl) {
-      CSS.highlights.delete("tts-word");
-      return;
-    }
+    const paraEl = slider.querySelector(`[data-para-idx="${ttsParagraphIndex}"]`);
+    if (!paraEl) { CSS.highlights.delete("tts-word"); return; }
 
     // Walk text nodes and count words to find the target word
     const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
@@ -435,7 +399,7 @@ export function TextContent({
     } else {
       CSS.highlights.delete("tts-word");
     }
-  }, [ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, filterOffset]);
+  }, [ttsStatus, ttsParagraphIndex, ttsActiveWordIndex]);
 
   // Clean up highlight on unmount
   useEffect(() => {
@@ -456,6 +420,7 @@ export function TextContent({
       ? "light"
       : "dark";
   const sel = SELECTION_COLORS[readingTheme] ?? SELECTION_COLORS.dark;
+  const ttsCol = TTS_HIGHLIGHT_COLORS[readingTheme] ?? TTS_HIGHLIGHT_COLORS.dark;
 
   return (
     <div
@@ -466,39 +431,39 @@ export function TextContent({
         overflow: "hidden",
       }}
     >
-      {/* Viewport: full-width wrapper that animates for page turns */}
-      <div ref={viewportRef} style={{ width: "100%", height: "100%" }}>
-        {/* Clipper: shows exactly one page (2 columns) */}
+      {/* Clipper: shows exactly one page (2 columns) */}
+      <div
+        className="mx-auto"
+        style={{
+          width: `${pageWidth}px`,
+          height: `${contentHeight}px`,
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        {/* Slider: absolutely positioned, CSS transition handles page animation */}
         <div
-          className="mx-auto"
+          ref={sliderRef}
+          className={theme.text}
           style={{
-            width: `${pageWidth}px`,
+            position: "absolute",
+            top: 0,
+            left: 0,
             height: `${contentHeight}px`,
-            overflow: "hidden",
-            position: "relative",
+            columnWidth: `${colWidth}px`,
+            columnGap: `${columnGap}px`,
+            columnFill: "auto" as const,
+            fontFamily,
+            fontSize: `${fontSize}px`,
+            lineHeight,
+            transform: `translateX(-${translateX}px)`,
+            transition: animated
+              ? "transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)"
+              : "none",
           }}
         >
-          {/* Slider: absolutely positioned, no width — browser auto-sizes for all columns */}
-          <div
-            ref={sliderRef}
-            className={theme.text}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              height: `${contentHeight}px`,
-              columnWidth: `${colWidth}px`,
-              columnGap: `${columnGap}px`,
-              columnFill: "auto" as const,
-              fontFamily,
-              fontSize: `${fontSize}px`,
-              lineHeight,
-              transform: `translateX(-${translateX}px)`,
-            }}
-          >
-            {titleJSX}
-            {paragraphsJSX}
-          </div>
+          {titleJSX}
+          {paragraphsJSX}
         </div>
       </div>
 
@@ -514,8 +479,8 @@ export function TextContent({
         }
         /* TTS active word highlight */
         ::highlight(tts-word) {
-          background-color: ${sel.bg};
-          color: ${sel.fg};
+          background-color: ${ttsCol.bg};
+          color: ${ttsCol.fg};
         }
       `}</style>
     </div>

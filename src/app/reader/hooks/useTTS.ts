@@ -52,19 +52,29 @@ export function useTTS({
 
   // Word highlight sync loop — updates activeWordIndex based on audio.currentTime
   const startWordTracking = useCallback((boundaries: WordBoundary[]) => {
+    // Edge TTS returns offsets in 100-nanosecond ticks — convert to milliseconds
+    const msboundaries = boundaries.map(b => ({
+      ...b,
+      offsetMs: b.offset / 10_000,
+      durationMs: b.duration / 10_000,
+    }));
+    let lastIdx = -1;
     const tick = () => {
       const audio = audioRef.current;
-      if (!audio || audio.paused) return;
-      const ms = audio.currentTime * 1000;
-      let idx = -1;
-      for (let i = 0; i < boundaries.length; i++) {
-        if (ms >= boundaries[i].offset && ms < boundaries[i].offset + boundaries[i].duration) {
-          idx = i;
-          break;
+      if (!audio) return;
+      if (!audio.paused) {
+        const ms = audio.currentTime * 1000;
+        let idx = -1;
+        for (let i = 0; i < msboundaries.length; i++) {
+          if (ms >= msboundaries[i].offsetMs && ms < msboundaries[i].offsetMs + msboundaries[i].durationMs) {
+            idx = i;
+            break;
+          }
+          if (ms >= msboundaries[i].offsetMs) idx = i;
         }
-        if (ms >= boundaries[i].offset) idx = i;
+        if (idx !== lastIdx) lastIdx = idx;
+        setActiveWordIndex(idx);
       }
-      setActiveWordIndex(idx);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
