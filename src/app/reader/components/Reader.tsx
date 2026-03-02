@@ -305,6 +305,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               initialPage={initialPage}
               onInitialPageConsumed={() => setInitialPage(null)}
               onPageChange={handlePageChange}
+              ttsStatus={tts.state.status}
+              ttsParagraphIndex={tts.state.currentParagraph}
+              ttsActiveWordIndex={tts.activeWordIndex}
             />
           )}
 
