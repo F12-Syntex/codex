@@ -20,6 +20,7 @@ interface TextContentProps {
   ttsStatus?: TTSStatus;
   ttsParagraphIndex?: number;
   ttsActiveWordIndex?: number;
+  ttsHighWaterMark?: number; // highest paragraph index TTS has reached (for read mark)
 }
 
 /*
@@ -62,6 +63,7 @@ export function TextContent({
   ttsStatus,
   ttsParagraphIndex = -1,
   ttsActiveWordIndex = -1,
+  ttsHighWaterMark = -1,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -250,6 +252,8 @@ export function TextContent({
 
     // Store original htmlParagraphs index for TTS word lookup
     const originalIdx = i + filterOffset;
+    // Subtle opacity dim for paragraphs TTS has already read
+    const isRead = ttsHighWaterMark >= 0 && originalIdx < ttsParagraphIndex && originalIdx <= ttsHighWaterMark;
 
     return (
       <div
@@ -258,6 +262,8 @@ export function TextContent({
         style={{
           marginBottom: `${paraSpacing}px`,
           textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
+          opacity: isRead ? 0.45 : undefined,
+          transition: "opacity 0.4s ease",
         }}
         dangerouslySetInnerHTML={{ __html: renderedHtml }}
       />
@@ -345,23 +351,44 @@ export function TextContent({
     </div>
   ) : null;
 
-  // ── TTS word highlight (CSS Custom Highlight API) ──
+  // ── TTS auto-navigate: scroll to the page containing the active paragraph ──
 
   useEffect(() => {
-    if (typeof CSS === "undefined" || !CSS.highlights) return;
+    const ttsPlaying = ttsStatus === "playing" || ttsStatus === "synthesizing";
+    if (!ttsPlaying || ttsParagraphIndex < 0) return;
 
+    const slider = sliderRef.current;
+    if (!slider || stride <= 0) return;
+
+    const paraEl = slider.querySelector(`[data-para-idx="${ttsParagraphIndex}"]`) as HTMLElement | null;
+    if (!paraEl) return;
+
+    // The paragraph's left offset relative to the slider tells us which page it's on
+    const paraLeft = paraEl.offsetLeft;
+    const targetPage = Math.floor(paraLeft / stride);
+    if (targetPage !== currentPage && targetPage >= 0 && targetPage < totalPages) {
+      setCurrentPage(targetPage);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttsParagraphIndex, ttsStatus, stride, totalPages]);
+
+  // ── TTS word highlight overlay (custom rects for rounded corners) ──
+
+  const [wordRects, setWordRects] = useState<DOMRect[]>([]);
+
+  useEffect(() => {
     const ttsPlaying = ttsStatus === "playing" || ttsStatus === "synthesizing";
     if (!ttsPlaying || ttsActiveWordIndex < 0 || ttsParagraphIndex < 0) {
-      CSS.highlights.delete("tts-word");
+      setWordRects([]);
       return;
     }
 
-    // data-para-idx stores the original htmlParagraphs index, matching ttsParagraphIndex
     const slider = sliderRef.current;
-    if (!slider) { CSS.highlights.delete("tts-word"); return; }
+    const clipper = slider?.parentElement;
+    if (!slider || !clipper) { setWordRects([]); return; }
 
     const paraEl = slider.querySelector(`[data-para-idx="${ttsParagraphIndex}"]`);
-    if (!paraEl) { CSS.highlights.delete("tts-word"); return; }
+    if (!paraEl) { setWordRects([]); return; }
 
     // Walk text nodes and count words to find the target word
     const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
@@ -391,24 +418,21 @@ export function TextContent({
         const range = new Range();
         range.setStart(targetNode, targetStart);
         range.setEnd(targetNode, targetEnd);
-        const highlight = new Highlight(range);
-        CSS.highlights.set("tts-word", highlight);
+        const clipperRect = clipper.getBoundingClientRect();
+        const rects = Array.from(range.getClientRects()).map(r => new DOMRect(
+          r.x - clipperRect.x,
+          r.y - clipperRect.y,
+          r.width,
+          r.height,
+        ));
+        setWordRects(rects);
       } catch {
-        CSS.highlights.delete("tts-word");
+        setWordRects([]);
       }
     } else {
-      CSS.highlights.delete("tts-word");
+      setWordRects([]);
     }
   }, [ttsStatus, ttsParagraphIndex, ttsActiveWordIndex]);
-
-  // Clean up highlight on unmount
-  useEffect(() => {
-    return () => {
-      if (typeof CSS !== "undefined" && CSS.highlights) {
-        CSS.highlights.delete("tts-word");
-      }
-    };
-  }, []);
 
   // ── Render ──────────────────────────────────────────
 
@@ -465,6 +489,25 @@ export function TextContent({
           {titleJSX}
           {paragraphsJSX}
         </div>
+
+        {/* TTS active word highlight overlay */}
+        {wordRects.map((r, i) => (
+          <div
+            key={i}
+            className="tts-word-highlight"
+            style={{
+              position: "absolute",
+              left: `${r.x - 2}px`,
+              top: `${r.y - 1}px`,
+              width: `${r.width + 4}px`,
+              height: `${r.height + 2}px`,
+              borderRadius: "4px",
+              backgroundColor: ttsCol.bg,
+              pointerEvents: "none",
+              transition: "left 0.05s ease, top 0.05s ease, width 0.05s ease",
+            }}
+          />
+        ))}
       </div>
 
       <style>{`
@@ -477,10 +520,8 @@ export function TextContent({
           background-color: ${sel.bg};
           color: ${sel.fg};
         }
-        /* TTS active word highlight */
-        ::highlight(tts-word) {
-          background-color: ${ttsCol.bg};
-          color: ${ttsCol.fg};
+        .tts-word-highlight {
+          z-index: 0;
         }
       `}</style>
     </div>

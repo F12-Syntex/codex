@@ -53,10 +53,9 @@ export function useTTS({
   // Word highlight sync loop — updates activeWordIndex based on audio.currentTime
   const startWordTracking = useCallback((boundaries: WordBoundary[]) => {
     // Edge TTS returns offsets in 100-nanosecond ticks — convert to milliseconds
-    const msboundaries = boundaries.map(b => ({
-      ...b,
-      offsetMs: b.offset / 10_000,
-      durationMs: b.duration / 10_000,
+    const msb = boundaries.map(b => ({
+      start: b.offset / 10_000,
+      end: (b.offset + b.duration) / 10_000,
     }));
     let lastIdx = -1;
     const tick = () => {
@@ -64,13 +63,18 @@ export function useTTS({
       if (!audio) return;
       if (!audio.paused) {
         const ms = audio.currentTime * 1000;
+        // Find the word whose time range contains the current playback position.
+        // Use a small look-ahead (20ms) so the highlight arrives just as the word is spoken.
+        const ahead = ms + 20;
         let idx = -1;
-        for (let i = 0; i < msboundaries.length; i++) {
-          if (ms >= msboundaries[i].offsetMs && ms < msboundaries[i].offsetMs + msboundaries[i].durationMs) {
-            idx = i;
-            break;
+        for (let i = 0; i < msb.length; i++) {
+          if (ahead >= msb[i].start && ahead < msb[i].end) { idx = i; break; }
+        }
+        // Fallback: pick the last word whose start we've already passed
+        if (idx === -1) {
+          for (let i = msb.length - 1; i >= 0; i--) {
+            if (ms >= msb[i].start) { idx = i; break; }
           }
-          if (ms >= msboundaries[i].offsetMs) idx = i;
         }
         if (idx !== lastIdx) lastIdx = idx;
         setActiveWordIndex(idx);
@@ -240,6 +244,7 @@ export function useTTS({
     activeWordIndex,
     actions: {
       play: togglePlay,
+      playFrom: play,
       pause,
       stop,
       skipNext,

@@ -40,6 +40,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [immersiveVisible, setImmersiveVisible] = useState(true);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
 
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
@@ -68,6 +69,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   });
 
   const isTTSActive = tts.state.status !== "idle";
+
+  // Track highest paragraph TTS has reached (for read mark)
+  useEffect(() => {
+    if (tts.state.status === "idle") { setTtsHighWaterMark(-1); return; }
+    setTtsHighWaterMark(prev => Math.max(prev, tts.state.currentParagraph));
+  }, [tts.state.currentParagraph, tts.state.status]);
 
   const bookmarkState = useBookmarks({
     filePath,
@@ -219,22 +226,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         {showTTS && !isImageBook && (
           <TTSPanel
             theme={theme}
-            paragraphCount={paragraphs.length}
             state={tts.state}
             voices={tts.voices}
             selectedVoice={settings.ttsVoice}
             rate={settings.ttsRate}
-            pitch={settings.ttsPitch}
             volume={settings.ttsVolume}
             autoAdvance={settings.ttsAutoAdvance}
-            onPlay={() => tts.actions.play()}
+            onPlayFromStart={() => tts.actions.playFrom(0)}
+            onPlayFromCurrent={() => tts.actions.play()}
             onPause={() => tts.actions.pause()}
+            onResume={() => tts.actions.play()}
             onStop={() => tts.actions.stop()}
-            onPrev={() => tts.actions.skipPrev()}
-            onNext={() => tts.actions.skipNext()}
             onVoiceChange={(v) => updateSetting("ttsVoice", v)}
             onRateChange={(r) => updateSetting("ttsRate", r)}
-            onPitchChange={(p) => updateSetting("ttsPitch", p)}
             onVolumeChange={(v) => updateSetting("ttsVolume", v)}
             onAutoAdvanceChange={(a) => updateSetting("ttsAutoAdvance", a)}
             onClose={() => setShowTTS(false)}
@@ -308,6 +312,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               ttsStatus={tts.state.status}
               ttsParagraphIndex={tts.state.currentParagraph}
               ttsActiveWordIndex={tts.activeWordIndex}
+              ttsHighWaterMark={ttsHighWaterMark}
             />
           )}
 
