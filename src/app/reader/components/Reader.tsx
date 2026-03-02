@@ -28,6 +28,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(0);
   const [customFonts] = useState<CustomFont[]>([]);
+  const [initialPage, setInitialPage] = useState<number | null>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -90,6 +91,37 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         setIsLoading(false);
       });
   }, [filePath, format]);
+
+  // Restore saved reading position after book loads
+  const progressKey = `readProgress:${filePath}`;
+  useEffect(() => {
+    if (!bookContent || !filePath) return;
+    window.electronAPI?.getSetting(progressKey).then((raw) => {
+      if (!raw) return;
+      try {
+        const { chapter, page } = JSON.parse(raw);
+        const ch = Math.min(chapter ?? 0, bookContent.chapters.length - 1);
+        setCurrentChapter(ch);
+        setInitialPage(page ?? 0);
+      } catch { /* ignore corrupt data */ }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookContent, filePath]);
+
+  // Save reading position on chapter/page change
+  const saveProgressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!filePath || !bookContent) return;
+    if (saveProgressRef.current) clearTimeout(saveProgressRef.current);
+    saveProgressRef.current = setTimeout(() => {
+      window.electronAPI?.setSetting(
+        progressKey,
+        JSON.stringify({ chapter: currentChapter, page: currentPage }),
+      );
+    }, 500);
+    return () => { if (saveProgressRef.current) clearTimeout(saveProgressRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChapter, currentPage, filePath, bookContent]);
 
   useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
@@ -270,6 +302,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               padding={settings.textPadding}
               maxTextWidth={settings.maxTextWidth}
               animated={settings.animatedPageTurn}
+              initialPage={initialPage}
+              onInitialPageConsumed={() => setInitialPage(null)}
               onPageChange={handlePageChange}
             />
           )}
@@ -280,6 +314,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               theme={theme}
               bookContent={bookContent}
               bookTitle={title}
+              filePath={filePath}
               onChapterTitlesChanged={handleChapterTitlesChanged}
             />
           )}
