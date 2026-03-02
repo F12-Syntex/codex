@@ -27,8 +27,6 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     description: "Fast responses, lower cost",
     icon: "Zap",
     defaultModel: "openai/gpt-oss-safeguard-20b", 
-    temperature: 0.7,
-    maxTokens: 1024,
   },
 ];
 

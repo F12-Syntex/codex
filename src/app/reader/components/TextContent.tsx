@@ -18,6 +18,8 @@ interface TextContentProps {
   initialPage?: number | null;
   onInitialPageConsumed?: () => void;
   onPageChange: (current: number, total: number, firstVisibleParagraph?: number) => void;
+  onNextChapter?: () => void;
+  onPrevChapter?: () => void;
   ttsStatus?: TTSStatus;
   ttsParagraphIndex?: number;
   ttsActiveWordIndex?: number;
@@ -71,6 +73,8 @@ export function TextContent({
   initialPage,
   onInitialPageConsumed,
   onPageChange,
+  onNextChapter,
+  onPrevChapter,
   ttsStatus,
   ttsParagraphIndex = -1,
   ttsActiveWordIndex = -1,
@@ -208,15 +212,23 @@ export function TextContent({
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight" || e.key === "PageDown") {
         e.preventDefault();
-        goTo(currentPage + 1);
+        if (currentPage >= totalPages - 1) {
+          onNextChapter?.();
+        } else {
+          goTo(currentPage + 1);
+        }
       } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
         e.preventDefault();
-        goTo(currentPage - 1);
+        if (currentPage <= 0) {
+          onPrevChapter?.();
+        } else {
+          goTo(currentPage - 1);
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [currentPage, goTo]);
+  }, [currentPage, totalPages, goTo, onNextChapter, onPrevChapter]);
 
   // Scroll wheel / trackpad navigation
   const scrollAccum = useRef(0);
@@ -232,10 +244,18 @@ export function TextContent({
       const threshold = 80;
 
       if (scrollAccum.current > threshold) {
-        goTo(currentPage + 1);
+        if (currentPage >= totalPages - 1) {
+          onNextChapter?.();
+        } else {
+          goTo(currentPage + 1);
+        }
         scrollAccum.current = 0;
       } else if (scrollAccum.current < -threshold) {
-        goTo(currentPage - 1);
+        if (currentPage <= 0) {
+          onPrevChapter?.();
+        } else {
+          goTo(currentPage - 1);
+        }
         scrollAccum.current = 0;
       }
 
@@ -250,7 +270,7 @@ export function TextContent({
       outer.removeEventListener("wheel", handler);
       if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
     };
-  }, [currentPage, goTo]);
+  }, [currentPage, totalPages, goTo, onNextChapter, onPrevChapter]);
 
   // ── Content processing ──────────────────────────────
 

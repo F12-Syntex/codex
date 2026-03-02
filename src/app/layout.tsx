@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Codex",
   description: "Codex desktop application",
-  icons: { icon: "/icon.png" },
+  icons: { icon: "/codex-logo.svg" },
 };
 
 export default function RootLayout({

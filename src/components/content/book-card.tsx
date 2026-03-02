@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { Check } from "lucide-react";
 import type { BookFormat } from "@/lib/mock-data";
 import type { CoverStyle } from "@/lib/theme";
 
@@ -12,6 +13,7 @@ interface BookCardProps {
   format: BookFormat;
   coverStyle: CoverStyle;
   showFormatBadge: boolean;
+  selected?: boolean;
 }
 
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
@@ -51,7 +53,7 @@ function extractDominantColor(img: HTMLImageElement): string {
   return `rgb(${Math.round(r / count)},${Math.round(g / count)},${Math.round(b / count)})`;
 }
 
-export function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge }: BookCardProps) {
+export function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected }: BookCardProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const [glowColor, setGlowColor] = useState<string>(gradient);
   const extracted = useRef(false);
@@ -76,7 +78,7 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
         />
 
         <div
-          className={`relative aspect-[2/3] overflow-hidden outline-none border-0 ${radius} transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:scale-[1.02]`}
+          className={`relative aspect-[2/3] overflow-hidden border-0 ${radius} transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:scale-[1.02] ${selected ? "ring-2 ring-[var(--accent-brand)] ring-offset-1 ring-offset-transparent" : "outline-none"}`}
         >
           {cover ? (
             <img
@@ -91,10 +93,20 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
             <div className="absolute inset-0" style={{ background: gradient }} />
           )}
 
-          {showFormatBadge && (
+          {showFormatBadge && !selected && (
             <div className="absolute bottom-1.5 right-1.5 rounded-[4px] bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold uppercase leading-none tracking-wide text-white/80 backdrop-blur-md">
               {format}
             </div>
+          )}
+
+          {/* Selection indicator */}
+          {selected && (
+            <>
+              <div className="absolute inset-0 bg-[var(--accent-brand)] opacity-20" />
+              <div className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-brand)] shadow-sm">
+                <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
+              </div>
+            </>
           )}
         </div>
       </div>

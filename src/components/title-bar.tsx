@@ -23,7 +23,7 @@ export function TitleBar({ breadcrumb }: TitleBarProps) {
       {/* Left — icon + app name + drag region */}
       <div className="app-drag-region flex h-full flex-1 items-center gap-2.5 pl-3.5">
         <Image
-          src="/icon.png"
+          src="/codex-logo.svg"
           alt="Codex"
           width={18}
           height={18}

@@ -56,6 +56,8 @@ export default function Home() {
   const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
   const [bookData, setBookData] = useState<LibraryData>({});
   const [comicData, setComicData] = useState<LibraryData>({});
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const lastSelectedIdRef = useRef<number | null>(null);
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load data from database on mount ──────────────
@@ -134,6 +136,7 @@ export default function Home() {
     setActiveSection(section);
     setActiveView(section === "books" ? "bookshelf" : "series");
     setFormatFilter("all");
+    setSelectedIds(new Set());
   }, []);
 
   const handleSortChange = useCallback((field: SortField, dir: SortDir) => {
@@ -260,6 +263,13 @@ export default function Home() {
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
 
+      // Escape clears selection
+      if (e.key === "Escape" && selectedIds.size > 0) {
+        e.preventDefault();
+        setSelectedIds(new Set());
+        return;
+      }
+
       for (const s of parsed) {
         if (matchesShortcut(e, s.parsed)) {
           e.preventDefault();
@@ -290,7 +300,7 @@ export default function Home() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleSectionChange]);
+  }, [handleSectionChange, selectedIds]);
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
@@ -311,6 +321,67 @@ export default function Home() {
     });
     return items;
   }, [rawItems, formatFilter, sortField, sortDir]);
+
+  /** Toggle selection of an item (ctrl+click / shift+click) */
+  const handleToggleSelect = useCallback((id: number, shiftKey: boolean) => {
+    if (shiftKey && lastSelectedIdRef.current !== null) {
+      const lastIdx = processedItems.findIndex((i) => i.id === lastSelectedIdRef.current);
+      const currIdx = processedItems.findIndex((i) => i.id === id);
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const [start, end] = lastIdx < currIdx ? [lastIdx, currIdx] : [currIdx, lastIdx];
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (let i = start; i <= end; i++) next.add(processedItems[i].id);
+          return next;
+        });
+        return;
+      }
+    }
+    lastSelectedIdRef.current = id;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, [processedItems]);
+
+  /** Delete multiple items at once */
+  const handleBatchDelete = useCallback((ids: Set<number>) => {
+    for (const id of ids) window.electronAPI?.deleteItem(id);
+    const setter = activeSection === "books" ? setBookData : setComicData;
+    setter((prev) => {
+      const next = { ...prev };
+      for (const [view, items] of Object.entries(next)) {
+        if (items) next[view as NavView] = items.filter((i) => !ids.has(i.id));
+      }
+      return next;
+    });
+    setSelectedIds(new Set());
+  }, [activeSection]);
+
+  /** Move multiple items to a different view */
+  const handleBatchMove = useCallback((ids: Set<number>, targetView: NavView) => {
+    for (const id of ids) window.electronAPI?.moveItem(id, targetView);
+    const setter = activeSection === "books" ? setBookData : setComicData;
+    setter((prev) => {
+      const next = { ...prev };
+      const moved: MockItem[] = [];
+      for (const [view, items] of Object.entries(next)) {
+        if (items) {
+          const keep: MockItem[] = [];
+          for (const item of items) {
+            if (ids.has(item.id)) moved.push(item);
+            else keep.push(item);
+          }
+          next[view as NavView] = keep;
+        }
+      }
+      next[targetView] = [...(next[targetView] ?? []), ...moved];
+      return next;
+    });
+    setSelectedIds(new Set());
+  }, [activeSection]);
 
   // Compute dynamic styles from theme
   const rootStyle = useMemo(() => {
@@ -378,7 +449,7 @@ export default function Home() {
                   activeSection={activeSection}
                   onSectionChange={handleSectionChange}
                   activeView={activeView}
-                  onViewChange={setActiveView}
+                  onViewChange={(v: NavView) => { setActiveView(v); setSelectedIds(new Set()); }}
                   data={data}
                   onImport={handleImport}
                 />
@@ -427,6 +498,11 @@ export default function Home() {
                       onOpenItem={handleOpenItem}
                       activeView={activeView}
                       section={activeSection}
+                      selectedIds={selectedIds}
+                      onToggleSelect={handleToggleSelect}
+                      onClearSelection={() => setSelectedIds(new Set())}
+                      onBatchDelete={handleBatchDelete}
+                      onBatchMove={handleBatchMove}
                     />
                   </>
                 )}

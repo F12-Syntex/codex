@@ -1,6 +1,6 @@
 {
   "name": "codex",
-  "version": "0.31.1",
+  "version": "0.32.0",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -62,7 +62,7 @@
     "asarUnpack": [
       "node_modules/better-sqlite3/**"
     ],
-    "icon": "build/icon.png",
+    "icon": "build/codex-logo.svg",
     "forceCodeSigning": false,
     "win": {
       "target": "nsis",
@@ -71,11 +71,11 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.png"
+      "icon": "build/codex-logo.svg"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "build/icon.png"
+      "icon": "build/codex-logo.svg"
     },
     "publish": {
       "provider": "github",

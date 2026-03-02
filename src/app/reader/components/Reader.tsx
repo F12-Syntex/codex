@@ -198,17 +198,43 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     return () => { window.removeEventListener("mousemove", handler); if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current); };
   }, [settings.immersiveMode]);
 
+  const pendingStartPageRef = useRef<number | null>(null);
+
   const handleChapterChange = useCallback((index: number) => {
     tts.actions.stop();
     setCurrentChapter(index);
     setShowTOC(false);
   }, [tts.actions]);
 
+  // Chapter boundary navigation: page-forward at end → next chapter (page 0)
+  const handleNextChapterFromPage = useCallback(() => {
+    if (currentChapter < chapters.length - 1) {
+      handleChapterChange(currentChapter + 1);
+    }
+  }, [currentChapter, chapters.length, handleChapterChange]);
+
+  // Chapter boundary navigation: page-back at start → prev chapter (last page)
+  const handlePrevChapterFromPage = useCallback(() => {
+    if (currentChapter > 0) {
+      pendingStartPageRef.current = -1; // -1 signals "last page"
+      handleChapterChange(currentChapter - 1);
+    }
+  }, [currentChapter, handleChapterChange]);
+
   const [firstVisiblePara, setFirstVisiblePara] = useState(0);
   const handlePageChange = useCallback((page: number, total: number, firstPara?: number) => {
     setCurrentPage(page);
     setTotalPages(total);
     if (firstPara != null) setFirstVisiblePara(firstPara);
+
+    // Apply pending "go to last page" after chapter loads with correct totalPages
+    if (pendingStartPageRef.current !== null && total > 1) {
+      const target = pendingStartPageRef.current === -1 ? total - 1 : pendingStartPageRef.current;
+      pendingStartPageRef.current = null;
+      if (target > 0) {
+        setInitialPage(target);
+      }
+    }
   }, []);
 
   const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowTOC(v => !v); }, []);
@@ -364,6 +390,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               initialPage={initialPage}
               onInitialPageConsumed={() => setInitialPage(null)}
               onPageChange={handlePageChange}
+              onNextChapter={handleNextChapterFromPage}
+              onPrevChapter={handlePrevChapterFromPage}
               ttsStatus={tts.state.status}
               ttsParagraphIndex={tts.state.currentParagraph}
               ttsActiveWordIndex={tts.activeWordIndex}
