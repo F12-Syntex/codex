@@ -23,7 +23,7 @@ export interface BookContent {
 
 // ── Helpers ──────────────────────────────────────────
 
-const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"];
 
 function isImageFile(name: string): boolean {
   return IMAGE_EXTENSIONS.includes(path.extname(name).toLowerCase());
@@ -37,6 +37,7 @@ function bufferToDataUri(buffer: Buffer, filePath: string): string {
     ".png": "image/png",
     ".webp": "image/webp",
     ".gif": "image/gif",
+    ".svg": "image/svg+xml",
   };
   const mime = mimeMap[ext] || "image/jpeg";
   return `data:${mime};base64,${buffer.toString("base64")}`;
@@ -51,7 +52,7 @@ function sanitizeHtml(raw: string): string {
     // Keep <img> with data: URIs, remove ones with unresolved internal paths
     .replace(/<img\s+[^>]*src=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
     // Remove <image> (SVG) tags with internal paths
-    .replace(/<image\s+[^>]*href=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
+    .replace(/<image\s+[^>]*(?:href|xlink:href)=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
     // Remove <svg> blocks entirely (often used for decorative elements referencing internal files)
     .replace(/<svg[\s\S]*?<\/svg>/gi, "");
 }
@@ -88,13 +89,58 @@ function extractTitle(xhtml: string): string {
   return "";
 }
 
-/** Extract paragraphs and images from XHTML content — returns { plain, html } arrays */
-function extractParagraphs(xhtml: string, zip?: AdmZip, opfDir?: string): { plain: string[]; html: string[] } {
+/** Resolve a relative path against a base directory, handling ../ segments */
+function resolveRelativePath(base: string, relative: string): string {
+  // Absolute path within ZIP — strip leading slash
+  if (relative.startsWith("/")) return relative.slice(1);
+  if (base === "" || base === ".") return relative;
+  const parts = `${base}/${relative}`.split("/");
+  const resolved: string[] = [];
+  for (const p of parts) {
+    if (p === "..") resolved.pop();
+    else if (p !== "." && p !== "") resolved.push(p);
+  }
+  return resolved.join("/");
+}
+
+/** Look up a ZIP entry trying several path variants */
+function getZipEntry(zip: AdmZip, entryPath: string): AdmZip.IZipEntry | null {
+  return (
+    zip.getEntry(entryPath) ||
+    zip.getEntry(decodeURIComponent(entryPath)) ||
+    zip.getEntry(encodeURIComponent(entryPath).replace(/%2F/g, "/")) ||
+    null
+  );
+}
+
+/** Resolve <img src="..."> in HTML to inline data URIs using the EPUB zip.
+ *  chapterDir should be the directory of the XHTML file, not the OPF. */
+function resolveImages(html: string, zip: AdmZip, chapterDir: string): string {
+  return html.replace(
+    /<img\b([^>]*?)src=["'](?!data:)([^"']+)["']([^>]*?)\/?>/gi,
+    (_match, pre, src, post) => {
+      const decoded = decodeURIComponent(src);
+      // Resolve relative to the chapter file's directory
+      const entryPath = resolveRelativePath(chapterDir, decoded);
+      const entry =
+        getZipEntry(zip, entryPath) ||
+        getZipEntry(zip, decoded) ||
+        getZipEntry(zip, src);
+      if (!entry) return ""; // image not found, remove tag
+      const dataUri = bufferToDataUri(entry.getData(), decoded);
+      return `<img ${pre}src="${dataUri}"${post}/>`;
+    }
+  );
+}
+
+/** Extract paragraphs and images from XHTML content — returns { plain, html } arrays.
+ *  chapterDir is the directory of the XHTML file within the ZIP (for image resolution). */
+function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { plain: string[]; html: string[] } {
   const plain: string[] = [];
   const html: string[] = [];
 
   // Remove head section
-  const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const content = bodyMatch ? bodyMatch[1] : xhtml;
 
   // Match <p>, <img>, and <div> with images — in document order
@@ -103,29 +149,29 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, opfDir?: string): { plai
 
   if (blocks && blocks.length > 0) {
     for (const block of blocks) {
-      const isImg = /^<img\s/i.test(block.trim());
-      const hasImg = /<img\s/i.test(block);
+      const isImg = /^<img\b/i.test(block.trim());
+      const hasImg = /<img\b/i.test(block);
 
       if (isImg) {
         // Standalone <img> tag — resolve to data URI
-        const resolved = zip && opfDir != null ? resolveImages(block, zip, opfDir) : block;
+        const resolved = zip && chapterDir != null ? resolveImages(block, zip, chapterDir) : block;
         if (resolved.trim()) {
           plain.push("[image]");
           html.push(resolved.trim());
         }
-      } else if (/^<p[^>]*>/i.test(block.trim())) {
+      } else if (/^<p\b/i.test(block.trim())) {
         const text = stripHtml(block).trim();
         let htmlBlock = text.length > 0 ? block.trim() : "<p></p>";
         // Resolve images BEFORE sanitizing — sanitize strips unresolved src paths
-        if (hasImg && zip && opfDir != null) {
-          htmlBlock = resolveImages(htmlBlock, zip, opfDir);
+        if (hasImg && zip && chapterDir != null) {
+          htmlBlock = resolveImages(htmlBlock, zip, chapterDir);
         }
         htmlBlock = sanitizeHtml(htmlBlock);
         plain.push(text);
         html.push(htmlBlock);
-      } else if (/^<div[^>]*>/i.test(block.trim()) && hasImg) {
+      } else if (/^<div\b/i.test(block.trim()) && hasImg) {
         // Div containing an image — resolve first, then sanitize
-        let resolved = zip && opfDir != null ? resolveImages(block, zip, opfDir) : block;
+        let resolved = zip && chapterDir != null ? resolveImages(block, zip, chapterDir) : block;
         resolved = sanitizeHtml(resolved);
         if (resolved.trim()) {
           plain.push("[image]");
@@ -176,7 +222,7 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, opfDir?: string): { plai
 function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFamily?: string; fontSizePx?: number; css?: string } {
   // Find CSS files referenced in manifest
   const cssHrefs: string[] = [];
-  const cssItemRegex = /<item\s[^>]*?href="([^"]+\.css)"[^>]*?\/?>/gi;
+  const cssItemRegex = /<item\b[^>]*?href=["']([^"']+\.css)["'][^>]*?\/?>/gi;
   let cssMatch: RegExpExecArray | null;
   while ((cssMatch = cssItemRegex.exec(opfXml)) !== null) {
     cssHrefs.push(cssMatch[1]);
@@ -188,7 +234,7 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
 
   for (const href of cssHrefs) {
     const entryPath = resolveRelativePath(opfDir, href);
-    const entry = zip.getEntry(entryPath) || zip.getEntry(decodeURIComponent(entryPath));
+    const entry = getZipEntry(zip, entryPath) || getZipEntry(zip, href);
     if (!entry) continue;
 
     const css = entry.getData().toString("utf-8");
@@ -229,34 +275,32 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
   return { fontFamily, fontSizePx, css: fullCss };
 }
 
-/** Resolve a relative path against a base directory, handling ../ segments */
-function resolveRelativePath(base: string, relative: string): string {
-  if (base === ".") return relative;
-  const parts = `${base}/${relative}`.split("/");
-  const resolved: string[] = [];
-  for (const p of parts) {
-    if (p === "..") resolved.pop();
-    else if (p !== "." && p !== "") resolved.push(p);
+/** Parse OPF manifest: returns a map of id → href (handles any attribute order, single or double quotes) */
+function parseManifest(opfXml: string): Map<string, string> {
+  const manifest = new Map<string, string>();
+  // Match each <item .../> or <item ...> tag
+  const itemTagRegex = /<item\b([^>]+?)(?:\/>|>)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = itemTagRegex.exec(opfXml)) !== null) {
+    const attrs = m[1];
+    const idMatch = attrs.match(/\bid=["']([^"']+)["']/i);
+    const hrefMatch = attrs.match(/\bhref=["']([^"']+)["']/i);
+    if (idMatch && hrefMatch) {
+      manifest.set(idMatch[1], hrefMatch[1]);
+    }
   }
-  return resolved.join("/");
+  return manifest;
 }
 
-/** Resolve <img src="..."> in HTML to inline data URIs using the EPUB zip */
-function resolveImages(html: string, zip: AdmZip, opfDir: string): string {
-  return html.replace(
-    /<img\s+([^>]*?)src=["'](?!data:)([^"']+)["']([^>]*?)\/?>/gi,
-    (_match, pre, src, post) => {
-      const decoded = decodeURIComponent(src);
-      const entryPath = resolveRelativePath(opfDir, decoded);
-      const entry =
-        zip.getEntry(entryPath) ||
-        zip.getEntry(decoded) ||
-        zip.getEntry(decodeURIComponent(entryPath));
-      if (!entry) return ""; // image not found, remove tag
-      const dataUri = bufferToDataUri(entry.getData(), decoded);
-      return `<img ${pre}src="${dataUri}"${post}/>`;
-    }
-  );
+/** Parse OPF spine: returns ordered list of idref values (handles single or double quotes) */
+function parseSpine(opfXml: string): string[] {
+  const ids: string[] = [];
+  const spineItemRegex = /<itemref\b[^>]*?idref=["']([^"']+)["'][^>]*?\/?>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = spineItemRegex.exec(opfXml)) !== null) {
+    ids.push(m[1]);
+  }
+  return ids;
 }
 
 // ── EPUB Parser ──────────────────────────────────────
@@ -271,34 +315,33 @@ function parseEpubChapters(filePath: string): BookContent {
   }
 
   const containerXml = containerEntry.getData().toString("utf-8");
-  const rootfileMatch = containerXml.match(/full-path="([^"]+)"/);
+  const rootfileMatch = containerXml.match(/full-path=["']([^"']+)["']/);
   if (!rootfileMatch) {
     return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"], htmlParagraphs: ["<p>Could not find OPF file in EPUB</p>"] }], isImageBook: false };
   }
 
   const opfPath = rootfileMatch[1];
   const opfDir = path.posix.dirname(opfPath);
-  const opfEntry = zip.getEntry(opfPath);
+  const opfEntry = getZipEntry(zip, opfPath);
   if (!opfEntry) {
     return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"], htmlParagraphs: ["<p>Could not read OPF file</p>"] }], isImageBook: false };
   }
 
   const opfXml = opfEntry.getData().toString("utf-8");
 
-  // 2. Build manifest map: id -> href
-  const manifest = new Map<string, string>();
-  const itemRegex = /<item\s[^>]*?id="([^"]+)"[^>]*?href="([^"]+)"[^>]*?\/?>/gi;
-  let itemMatch: RegExpExecArray | null;
-  while ((itemMatch = itemRegex.exec(opfXml)) !== null) {
-    manifest.set(itemMatch[1], itemMatch[2]);
-  }
+  // 2. Build manifest map: id -> href (attribute-order-independent)
+  const manifest = parseManifest(opfXml);
 
-  // 3. Get spine order
-  const spineIds: string[] = [];
-  const spineItemRegex = /<itemref\s[^>]*?idref="([^"]+)"[^>]*?\/?>/gi;
-  let spineMatch: RegExpExecArray | null;
-  while ((spineMatch = spineItemRegex.exec(opfXml)) !== null) {
-    spineIds.push(spineMatch[1]);
+  // 3. Get spine order (handles single or double quotes)
+  let spineIds = parseSpine(opfXml);
+
+  // Fallback: if spine is empty, use all XHTML/HTML items from manifest in insertion order
+  if (spineIds.length === 0) {
+    for (const [id, href] of manifest) {
+      if (/\.x?html?$/i.test(href)) {
+        spineIds.push(id);
+      }
+    }
   }
 
   if (spineIds.length === 0) {
@@ -313,14 +356,22 @@ function parseEpubChapters(filePath: string): BookContent {
     const href = manifest.get(id);
     if (!href) continue;
 
-    const entryPath = opfDir === "." ? href : `${opfDir}/${href}`;
-    const entry = zip.getEntry(entryPath) || zip.getEntry(decodeURIComponent(entryPath));
+    const decodedHref = decodeURIComponent(href);
+    const entryPath = opfDir === "." ? decodedHref : `${opfDir}/${decodedHref}`;
+    const entry =
+      getZipEntry(zip, entryPath) ||
+      getZipEntry(zip, decodedHref) ||
+      getZipEntry(zip, href);
     if (!entry) continue;
 
     const xhtml = entry.getData().toString("utf-8");
-    const { plain, html } = extractParagraphs(xhtml, zip, opfDir);
 
-    // Skip empty chapters (like cover pages with only images)
+    // Derive chapter directory for image resolution (relative to chapter, not OPF)
+    const chapterDir = path.posix.dirname(entryPath);
+
+    const { plain, html } = extractParagraphs(xhtml, zip, chapterDir);
+
+    // Skip truly empty chapters (no text, no images)
     if (plain.length === 0) continue;
 
     chapterNum++;
@@ -360,7 +411,6 @@ function parseCbzPages(filePath: string): BookContent {
 
   for (let i = 0; i < entries.length; i += PAGES_PER_CHAPTER) {
     const slice = entries.slice(i, i + PAGES_PER_CHAPTER);
-    const chapterIndex = Math.floor(i / PAGES_PER_CHAPTER) + 1;
     const pages = slice.map((entry) => bufferToDataUri(entry.getData(), entry.entryName));
 
     chapters.push({
