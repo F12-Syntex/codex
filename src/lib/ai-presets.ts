@@ -6,8 +6,8 @@ export interface AIPreset {
   description: string;
   icon: string;
   defaultModel: string;
-  temperature: number;
-  maxTokens: number;
+  temperature?: number;
+  maxTokens?: number;
 }
 
 export type PresetOverrides = Record<string, { model: string }>;
@@ -26,7 +26,7 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     label: "Quick",
     description: "Fast responses, lower cost",
     icon: "Zap",
-    defaultModel: "x-ai/grok-4.1-fast", //openai/gpt-oss-safeguard-20b
+    defaultModel: "openai/gpt-oss-safeguard-20b", 
     temperature: 0.7,
     maxTokens: 1024,
   },

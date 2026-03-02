@@ -119,7 +119,7 @@ export async function chatWithPreset(
   const client = createOpenRouterClient(apiKey);
 
   return client.chat(messages, model, {
-    temperature: preset.temperature,
-    max_tokens: preset.maxTokens,
+    ...(preset.temperature !== undefined && { temperature: preset.temperature }),
+    ...(preset.maxTokens !== undefined && { max_tokens: preset.maxTokens }),
   });
 }
