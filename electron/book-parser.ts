@@ -129,19 +129,24 @@ function getZipEntry(zip: AdmZip, entryPath: string): AdmZip.IZipEntry | null {
  *  Must be called BEFORE sanitizeHtml (which strips SVG entirely). */
 function preprocessSvgImages(xhtml: string, zip: AdmZip, chapterDir: string): string {
   return xhtml.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, (svgBlock) => {
-    // Look for <image> tag with xlink:href or href attribute
-    const hrefMatch = svgBlock.match(/\b(?:xlink:href|href)=["'](?!data:)([^"']+)["']/i);
-    if (!hrefMatch) return svgBlock; // No resolvable image ref — leave as-is
-    const src = hrefMatch[1];
-    const decoded = decodeURIComponent(src);
-    const entryPath = resolveRelativePath(chapterDir, decoded);
-    const entry =
-      getZipEntry(zip, entryPath) ||
-      getZipEntry(zip, decoded) ||
-      getZipEntry(zip, src);
-    if (!entry) return ""; // Image not found — remove the SVG block
-    const dataUri = bufferToDataUri(entry.getData(), decoded);
-    return `<img src="${dataUri}"/>`;
+    // Extract ALL <image> tags (publishers sometimes include multiple per SVG)
+    const imgTags: string[] = [];
+    const imageRegex = /\b(?:xlink:href|href)=["'](?!data:)([^"']+)["']/gi;
+    let m: RegExpExecArray | null;
+    while ((m = imageRegex.exec(svgBlock)) !== null) {
+      const src = m[1];
+      const decoded = decodeURIComponent(src);
+      const entryPath = resolveRelativePath(chapterDir, decoded);
+      const entry =
+        getZipEntry(zip, entryPath) ||
+        getZipEntry(zip, decoded) ||
+        getZipEntry(zip, src);
+      if (entry) {
+        imgTags.push(`<img src="${bufferToDataUri(entry.getData(), decoded)}"/>`);
+      }
+    }
+    // If we found images, replace SVG block with them; otherwise remove the block
+    return imgTags.length > 0 ? imgTags.join("\n") : "";
   });
 }
 
@@ -180,8 +185,8 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
   const bodyMatch = preprocessed.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const content = bodyMatch ? bodyMatch[1] : preprocessed;
 
-  // Match <p>, <img>, and <div> with images — in document order
-  const blockRegex = /<(?:p|img|div)[^>]*>(?:[\s\S]*?<\/(?:p|div)>)?/gi;
+  // Match <p>, <img>, <div>, <figure>, <section> with images — in document order
+  const blockRegex = /<(?:p|img|figure|section|div)[^>]*>(?:[\s\S]*?<\/(?:p|figure|section|div)>)?/gi;
   const blocks = content.match(blockRegex);
 
   if (blocks && blocks.length > 0) {

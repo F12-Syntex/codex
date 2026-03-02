@@ -87,9 +87,18 @@ export function TextContent({
   const [totalPages, setTotalPages] = useState(1);
   const [pageWidth, setPageWidth] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [contentFitsSingleCol, setContentFitsSingleCol] = useState(false);
+  // Ref to prevent oscillation: once we decide content fits in 1 col, don't re-evaluate until chapter changes
+  const singleColFrozenRef = useRef(false);
 
   const columnGap = 48;
-  const colWidth = Math.max(1, Math.floor((pageWidth - columnGap) / 2));
+  const forceSingleCol = containerWidth > 0 && containerWidth < 600;
+  const useSingleCol = forceSingleCol || contentFitsSingleCol;
+  // In single-col mode use the full page width as the column width
+  const colWidth = useSingleCol
+    ? pageWidth
+    : Math.max(1, Math.floor((pageWidth - columnGap) / 2));
   const stride = pageWidth + columnGap;
 
   // ── Layout measurement ──────────────────────────────
@@ -99,10 +108,12 @@ export function TextContent({
     const slider = sliderRef.current;
     if (!outer || !slider) return;
 
-    const innerW = outer.clientWidth - padding * 2;
+    const outerW = outer.clientWidth;
+    const innerW = outerW - padding * 2;
     const innerH = outer.clientHeight - padding * 2;
     const pw = Math.min(innerW, maxTextWidth);
 
+    setContainerWidth(outerW);
     setPageWidth(pw);
     setContentHeight(innerH);
 
@@ -113,6 +124,16 @@ export function TextContent({
       const pages = Math.max(1, Math.ceil(scrollW / s));
       setTotalPages(pages);
       setCurrentPage((prev) => Math.min(prev, pages - 1));
+
+      // Detect if all content fits in a single column (only evaluate once per chapter)
+      if (!singleColFrozenRef.current) {
+        const twoColW = Math.max(1, Math.floor((pw - columnGap) / 2));
+        const fits = pages === 1 && scrollW <= twoColW + 20;
+        if (fits) {
+          singleColFrozenRef.current = true;
+          setContentFitsSingleCol(true);
+        }
+      }
     });
   }, [padding, maxTextWidth, columnGap]);
 
@@ -149,9 +170,11 @@ export function TextContent({
     onPageChange(currentPage, totalPages, firstPara);
   }, [currentPage, totalPages, onPageChange, stride, pageWidth]);
 
-  // Reset to page 0 on chapter change
+  // Reset to page 0 on chapter change; also unfreeze single-col detection
   useEffect(() => {
     setCurrentPage(0);
+    singleColFrozenRef.current = false;
+    setContentFitsSingleCol(false);
   }, [htmlParagraphs]);
 
   // Restore initial page from saved reading position
@@ -612,7 +635,7 @@ export function TextContent({
         overflow: "hidden",
       }}
     >
-      {/* Clipper: shows exactly one page (2 columns) */}
+      {/* Clipper: shows exactly one page (1 or 2 columns depending on viewport/content) */}
       <div
         ref={clipperRef}
         className="mx-auto"
