@@ -171,90 +171,64 @@ function resolveImages(html: string, zip: AdmZip, chapterDir: string): string {
 }
 
 /** Extract paragraphs and images from XHTML content — returns { plain, html } arrays.
- *  chapterDir is the directory of the XHTML file within the ZIP (for image resolution). */
+ *  chapterDir is the directory of the XHTML file within the ZIP (for image resolution).
+ *
+ *  Strategy: resolve ALL images/SVGs on the full body HTML first, sanitize once,
+ *  then split into blocks by <p> boundaries. Content between <p> tags (images,
+ *  figures, divs, etc.) becomes its own block — nothing is dropped. */
 function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { plain: string[]; html: string[] } {
   const plain: string[] = [];
   const html: string[] = [];
 
-  // Pre-process: convert SVG <image> blocks to <img> before anything else
-  const preprocessed = zip && chapterDir != null
+  // 1. Convert SVG <image> blocks to <img> tags
+  let processed = zip && chapterDir != null
     ? preprocessSvgImages(xhtml, zip, chapterDir)
     : xhtml;
 
-  // Remove head section
-  const bodyMatch = preprocessed.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const content = bodyMatch ? bodyMatch[1] : preprocessed;
+  // 2. Extract body content
+  const bodyMatch = processed.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let content = bodyMatch ? bodyMatch[1] : processed;
 
-  // Match <p>, <img>, <div>, <figure>, <section> with images — in document order
-  const blockRegex = /<(?:p|img|figure|section|div)[^>]*>(?:[\s\S]*?<\/(?:p|figure|section|div)>)?/gi;
-  const blocks = content.match(blockRegex);
-
-  if (blocks && blocks.length > 0) {
-    for (const block of blocks) {
-      const isImg = /^<img\b/i.test(block.trim());
-      const hasImg = /<img\b/i.test(block);
-
-      if (isImg) {
-        // Standalone <img> tag — resolve to data URI
-        const resolved = zip && chapterDir != null ? resolveImages(block, zip, chapterDir) : block;
-        if (resolved.trim()) {
-          plain.push("[image]");
-          html.push(resolved.trim());
-        }
-      } else if (/^<p\b/i.test(block.trim())) {
-        const text = stripHtml(block).trim();
-        let htmlBlock = text.length > 0 ? block.trim() : "<p></p>";
-        // Resolve images BEFORE sanitizing — sanitize strips unresolved src paths
-        if (hasImg && zip && chapterDir != null) {
-          htmlBlock = resolveImages(htmlBlock, zip, chapterDir);
-        }
-        htmlBlock = sanitizeHtml(htmlBlock);
-        plain.push(text);
-        html.push(htmlBlock);
-      } else if (/^<div\b/i.test(block.trim()) && hasImg) {
-        // Div containing an image — resolve first, then sanitize
-        let resolved = zip && chapterDir != null ? resolveImages(block, zip, chapterDir) : block;
-        resolved = sanitizeHtml(resolved);
-        if (resolved.trim()) {
-          plain.push("[image]");
-          html.push(resolved.trim());
-        }
-      }
-    }
+  // 3. Resolve ALL <img> src paths to data URIs in one pass
+  if (zip && chapterDir != null) {
+    content = resolveImages(content, zip, chapterDir);
   }
 
-  // Fallback: if we got nothing, try the old <p>-only approach
-  if (html.length === 0) {
-    const pMatches = content.match(/<p[^>]*>[\s\S]*?<\/p>/gi);
-    if (pMatches && pMatches.length > 0) {
-      for (const p of pMatches) {
-        const text = stripHtml(p).trim();
-        plain.push(text);
-        html.push(text.length > 0 ? sanitizeHtml(p.trim()) : "<p></p>");
-      }
-    }
+  // 4. Sanitize the entire content at once
+  content = sanitizeHtml(content);
+
+  // 5. Split into blocks using <p> tags as boundaries.
+  //    Gaps between <p> tags (images, figures, any HTML) become their own blocks.
+  const pRegex = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  const segments: string[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = pRegex.exec(content)) !== null) {
+    const gap = content.slice(lastIndex, m.index).trim();
+    if (gap) segments.push(gap);
+    segments.push(m[0]);
+    lastIndex = m.index + m[0].length;
+  }
+  const tail = content.slice(lastIndex).trim();
+  if (tail) segments.push(tail);
+
+  for (const segment of segments) {
+    const text = stripHtml(segment).trim();
+    const hasImage = /<img\b/i.test(segment);
+    if (!text && !hasImage) continue;
+
+    plain.push(text || "[image]");
+    html.push(segment);
   }
 
-  // If still nothing, try divs
-  if (html.length === 0) {
-    const divMatches = content.match(/<div[^>]*>[\s\S]*?<\/div>/gi);
-    if (divMatches) {
-      for (const d of divMatches) {
-        const text = stripHtml(d).trim();
-        if (text.length > 0) {
-          plain.push(text);
-          html.push(sanitizeHtml(d.trim()));
-        }
-      }
+  // Fallback: if we got nothing, treat entire content as one block
+  if (html.length === 0 && content.trim()) {
+    const text = stripHtml(content).trim();
+    if (text || /<img\b/i.test(content)) {
+      plain.push(text || "[image]");
+      html.push(content.trim());
     }
-  }
-
-  // Last resort: strip all tags, split by double newlines
-  if (html.length === 0) {
-    const stripped = stripHtml(content);
-    const lines = stripped.split(/\n\s*\n/).map((l) => l.trim()).filter(Boolean);
-    plain.push(...lines);
-    html.push(...lines.map((l) => `<p>${l}</p>`));
   }
 
   return { plain, html };

@@ -141,6 +141,11 @@ export function TextContent({
     measure();
   }, [measure, htmlParagraphs, fontFamily, fontSize, lineHeight, paraSpacing]);
 
+  // Re-measure when column mode changes so page count is recalculated with correct CSS
+  useEffect(() => {
+    measure();
+  }, [useSingleCol, measure]);
+
   useEffect(() => {
     const outer = outerRef.current;
     if (!outer) return;
