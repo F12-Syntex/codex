@@ -95,6 +95,9 @@ export function TextContent({
   const [contentFitsSingleCol, setContentFitsSingleCol] = useState(false);
   // Ref to prevent oscillation: once we decide content fits in 1 col, don't re-evaluate until chapter changes
   const singleColFrozenRef = useRef(false);
+  // Track chapter navigation direction for entrance animation
+  const navDirectionRef = useRef<"forward" | "backward" | null>(null);
+  const [slideClass, setSlideClass] = useState<string | null>(null);
 
   const columnGap = 48;
   const forceSingleCol = containerWidth > 0 && containerWidth < 1200;
@@ -179,12 +182,20 @@ export function TextContent({
     onPageChange(currentPage, totalPages, firstPara);
   }, [currentPage, totalPages, onPageChange, stride, pageWidth]);
 
-  // Reset to page 0 on chapter change; also unfreeze single-col detection
+  // Reset to page 0 on chapter change; trigger entrance animation
   useEffect(() => {
     setCurrentPage(0);
     singleColFrozenRef.current = false;
     setContentFitsSingleCol(false);
-  }, [htmlParagraphs]);
+
+    const dir = navDirectionRef.current;
+    if (dir && animated) {
+      setSlideClass(dir === "forward" ? "chapter-enter-forward" : "chapter-enter-backward");
+      const id = setTimeout(() => setSlideClass(null), 300);
+      return () => clearTimeout(id);
+    }
+    navDirectionRef.current = null;
+  }, [htmlParagraphs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore initial page from saved reading position
   useEffect(() => {
@@ -213,6 +224,7 @@ export function TextContent({
       if (e.key === "ArrowRight" || e.key === "PageDown") {
         e.preventDefault();
         if (currentPage >= totalPages - 1) {
+          navDirectionRef.current = "forward";
           onNextChapter?.();
         } else {
           goTo(currentPage + 1);
@@ -220,6 +232,7 @@ export function TextContent({
       } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
         e.preventDefault();
         if (currentPage <= 0) {
+          navDirectionRef.current = "backward";
           onPrevChapter?.();
         } else {
           goTo(currentPage - 1);
@@ -245,6 +258,7 @@ export function TextContent({
 
       if (scrollAccum.current > threshold) {
         if (currentPage >= totalPages - 1) {
+          navDirectionRef.current = "forward";
           onNextChapter?.();
         } else {
           goTo(currentPage + 1);
@@ -252,6 +266,7 @@ export function TextContent({
         scrollAccum.current = 0;
       } else if (scrollAccum.current < -threshold) {
         if (currentPage <= 0) {
+          navDirectionRef.current = "backward";
           onPrevChapter?.();
         } else {
           goTo(currentPage - 1);
@@ -663,7 +678,7 @@ export function TextContent({
       {/* Clipper: shows exactly one page (1 or 2 columns depending on viewport/content) */}
       <div
         ref={clipperRef}
-        className="mx-auto"
+        className={`mx-auto${slideClass ? ` ${slideClass}` : ""}`}
         style={{
           width: `${pageWidth}px`,
           height: `${contentHeight}px`,
