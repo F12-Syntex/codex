@@ -346,7 +346,8 @@ async function formatChunk(
 
 /**
  * Regenerate paragraphs that use a specific component class.
- * Re-formats just those paragraphs with a modified prompt asking for a different approach.
+ * Shows the AI what it previously produced and asks for a different approach.
+ * Accepts optional user instructions to guide the new styling.
  */
 export async function regenerateRule(
   apiKey: string,
@@ -354,6 +355,7 @@ export async function regenerateRule(
   formattedParagraphs: string[],
   originalParagraphs: string[],
   bookTitle: string,
+  userInstruction?: string,
 ): Promise<Record<number, string> | null> {
   // Find paragraph indices that use this component class
   const indices: number[] = [];
@@ -367,29 +369,43 @@ export async function regenerateRule(
 
   const overrides = await loadOverrides();
 
-  // Build a subset of paragraphs to re-format (using originals)
-  const subset = indices.map(i => originalParagraphs[i]);
+  // Build subsets — both originals and what the AI previously produced
+  const originalSubset = indices.map(i => originalParagraphs[i]);
+  const previousSubset = indices.map(i => formattedParagraphs[i]);
 
-  const regenPrompt = `You previously formatted these paragraphs using the class "${componentClass}". Try a DIFFERENT visual approach for the same content. Use a different class from the toolkit, or a different layout/structure. Still use only allowed classes.`;
+  let regenPrompt = `RE-FORMAT REQUEST: The paragraphs below were previously formatted using "${componentClass}". You MUST produce a DIFFERENT visual result this time.
+
+PREVIOUS OUTPUT (do NOT repeat this):
+${JSON.stringify(Object.fromEntries(previousSubset.map((p, i) => [i, p])))}
+
+Rules:
+- Use DIFFERENT classes from your toolkit than "${componentClass}"
+- Try a completely different layout, structure, or visual treatment
+- If the previous used a stat-block, try badges or a system-msg instead (and vice versa)
+- You may also choose to leave some paragraphs as plain text if that works better`;
+
+  if (userInstruction) {
+    regenPrompt += `\n\nUSER REQUEST: ${userInstruction}`;
+  }
 
   const messages: OpenRouterMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Book: "${bookTitle}"\n\n${regenPrompt}\n\nFormat these ${subset.length} paragraphs (indices 0-${subset.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(Object.fromEntries(subset.map((p, i) => [i, p])))}`,
+      content: `Book: "${bookTitle}"\n\n${regenPrompt}\n\nOriginal paragraphs to re-format (indices 0-${originalSubset.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(Object.fromEntries(originalSubset.map((p, i) => [i, p])))}`,
     },
   ];
 
   try {
     const response = await chatWithPreset(
       apiKey, PRESET_ID, messages, overrides,
-      { temperature: 0.7, max_tokens: 16384 },
+      { temperature: 0.9, max_tokens: 16384 },
     );
 
     const content = response.choices?.[0]?.message?.content;
     if (!content) return null;
 
-    const result = parseFormattingResponse(content, subset.length, subset);
+    const result = parseFormattingResponse(content, originalSubset.length, originalSubset);
     if (!result) return null;
 
     // Map back to original indices

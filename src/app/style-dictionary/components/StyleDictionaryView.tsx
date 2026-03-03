@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Loader2, RefreshCw, BarChart3, Tag, MessageCircle, Package,
-  Monitor, Wand2, Minus, Square, X, Copy, Maximize,
+  Monitor, Wand2, Minus, Square, X, Copy, Send,
 } from "lucide-react";
 import type { StyleDictionary, StyleRule } from "@/lib/ai-style-dictionary";
-import { loadDictionary } from "@/lib/ai-style-dictionary";
+import { loadDictionary, saveDictionary, extractRulesFromFormatted, mergeRules } from "@/lib/ai-style-dictionary";
 import { regenerateRule } from "@/lib/ai-formatting";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
@@ -40,50 +40,78 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
 
   useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
-  const handleRegenerate = useCallback(async (componentClass: string) => {
+  const handleRegenerate = useCallback(async (componentClass: string, instruction?: string) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey || !filePath) return;
 
-    // Load current formatted chapters to find paragraphs with this class
+    // Load current formatted chapters
     const raw = await window.electronAPI?.getSetting(`formattedChapters:${filePath}`);
     if (!raw) return;
 
     let formattedChapters: Record<string, string[]>;
     try { formattedChapters = JSON.parse(raw); } catch { return; }
 
-    // Load original book content
-    const bookRaw = await window.electronAPI?.getSetting(`readProgress:${filePath}`);
-    let currentChapter = 0;
-    if (bookRaw) {
-      try { currentChapter = JSON.parse(bookRaw).chapter ?? 0; } catch { /* ignore */ }
-    }
-
-    const formatted = formattedChapters[String(currentChapter)];
-    if (!formatted) return;
-
-    // We need originals — get from book content
+    // Find ALL chapters that use this component class, regenerate in all of them
     const format = new URLSearchParams(window.location.search).get("format") || "EPUB";
     const bookContent = await window.electronAPI?.getBookContent(filePath, format);
     if (!bookContent) return;
-    const originals = bookContent.chapters[currentChapter]?.htmlParagraphs;
-    if (!originals) return;
 
     setRegeneratingRule(componentClass);
     try {
-      const updates = await regenerateRule(apiKey, componentClass, formatted, originals, bookTitle);
-      if (!updates) return;
+      let anyUpdated = false;
 
-      // Apply updates
-      const updated = [...formatted];
-      for (const [idx, html] of Object.entries(updates)) {
-        updated[Number(idx)] = html;
+      for (const [chKey, formatted] of Object.entries(formattedChapters)) {
+        const chIdx = Number(chKey);
+        const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
+        if (!originals || !formatted) continue;
+
+        // Check if this chapter uses the component
+        const hasClass = formatted.some(p => p.includes(componentClass));
+        if (!hasClass) continue;
+
+        const updates = await regenerateRule(
+          apiKey, componentClass, formatted, originals, bookTitle,
+          instruction || undefined,
+        );
+        if (!updates) continue;
+
+        // Apply updates to this chapter
+        const updated = [...formatted];
+        for (const [idx, html] of Object.entries(updates)) {
+          updated[Number(idx)] = html;
+        }
+        formattedChapters[chKey] = updated;
+        anyUpdated = true;
       }
-      formattedChapters[String(currentChapter)] = updated;
-      await window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(formattedChapters));
 
-      // Reload dictionary
-      const newDict = await loadDictionary(filePath);
-      if (newDict) setDictionary(newDict);
+      if (anyUpdated) {
+        // Save updated formatted chapters
+        await window.electronAPI?.setSetting(
+          `formattedChapters:${filePath}`,
+          JSON.stringify(formattedChapters),
+        );
+
+        // Re-extract ALL rules from ALL formatted chapters and rebuild dictionary
+        const allRules: StyleRule[] = [];
+        for (const [chKey, formatted] of Object.entries(formattedChapters)) {
+          const chIdx = Number(chKey);
+          const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
+          if (!originals) continue;
+          const chapterRules = extractRulesFromFormatted(originals, formatted);
+          allRules.push(...chapterRules);
+        }
+
+        // Deduplicate by component class
+        const deduped = mergeRules([], allRules);
+        const newDict: StyleDictionary = {
+          rules: deduped,
+          bookTitle,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await saveDictionary(filePath, newDict);
+        setDictionary(newDict);
+      }
     } catch (err) {
       console.error("Regenerate failed:", err);
     } finally {
@@ -167,7 +195,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                       rule={rule}
                       isRegenerating={regeneratingRule === rule.component}
                       isAnyRegenerating={regeneratingRule !== null}
-                      onRegenerate={() => handleRegenerate(rule.component)}
+                      onRegenerate={(instruction) => handleRegenerate(rule.component, instruction)}
                     />
                   ))}
                 </div>
@@ -233,8 +261,17 @@ function RuleCard({
   rule: StyleRule;
   isRegenerating: boolean;
   isAnyRegenerating: boolean;
-  onRegenerate: () => void;
+  onRegenerate: (instruction?: string) => void;
 }) {
+  const [instruction, setInstruction] = useState("");
+  const [showInput, setShowInput] = useState(false);
+
+  const handleSubmit = () => {
+    onRegenerate(instruction.trim() || undefined);
+    setInstruction("");
+    setShowInput(false);
+  };
+
   return (
     <div
       className="rounded-lg border border-white/[0.06] p-4"
@@ -246,24 +283,27 @@ function RuleCard({
           <div className="text-[13px] font-medium text-white/85">{rule.pattern}</div>
           <div className="mt-0.5 font-mono text-[11px] text-white/30">{rule.component}</div>
         </div>
-        <button
-          onClick={onRegenerate}
-          disabled={isAnyRegenerating}
-          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
-            isRegenerating
-              ? "text-[var(--accent-brand)]"
-              : isAnyRegenerating
-                ? "text-white/20"
-                : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
-          }`}
-        >
-          {isRegenerating ? (
-            <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-          ) : (
-            <RefreshCw className="h-3 w-3" strokeWidth={1.5} />
-          )}
-          Regenerate
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={() => onRegenerate()}
+            disabled={isAnyRegenerating}
+            title="Regenerate with random new style"
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              isRegenerating
+                ? "text-[var(--accent-brand)]"
+                : isAnyRegenerating
+                  ? "text-white/20"
+                  : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
+            }`}
+          >
+            {isRegenerating ? (
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+            ) : (
+              <RefreshCw className="h-3 w-3" strokeWidth={1.5} />
+            )}
+            Regen
+          </button>
+        </div>
       </div>
 
       {/* Live preview — renders exactly like in the reader */}
@@ -273,6 +313,38 @@ function RuleCard({
         data-reading-theme="dark"
         dangerouslySetInnerHTML={{ __html: rule.exampleHtml }}
       />
+
+      {/* Instruction input */}
+      {!showInput ? (
+        <button
+          onClick={() => setShowInput(true)}
+          disabled={isAnyRegenerating}
+          className={`mt-2 text-[11px] transition-colors ${
+            isAnyRegenerating ? "text-white/15" : "text-white/30 hover:text-white/50"
+          }`}
+        >
+          + Add instructions for regeneration
+        </button>
+      ) : (
+        <div className="mt-2 flex items-center gap-1.5">
+          <input
+            type="text"
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") { setShowInput(false); setInstruction(""); } }}
+            placeholder='e.g. "use badges instead" or "make it more compact"'
+            autoFocus
+            className="flex-1 rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] px-2.5 py-1.5 text-[11px] text-white/80 placeholder-white/20 outline-none focus:border-[var(--accent-brand)]/40"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={isAnyRegenerating}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15 text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/25"
+          >
+            <Send className="h-3 w-3" strokeWidth={1.5} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
