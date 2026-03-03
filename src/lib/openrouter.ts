@@ -36,7 +36,7 @@ interface OpenRouterClient {
 
 const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_MODELS_API = "https://openrouter.ai/api/v1/models";
-const DEFAULT_MODEL = "openai/gpt-4o-mini";
+const DEFAULT_MODEL = "x-ai/grok-4.1-fast";
 
 export interface OpenRouterModel {
   id: string;

@@ -56,19 +56,19 @@ const ALLOWED_CLASSES = new Set([
   "ai-fmt-icon-bolt",
 ]);
 
-const SYSTEM_PROMPT = `You are a book formatting AI. You receive a JSON array of HTML paragraph strings and return a JSON array of the EXACT same length with enhanced formatting.
+const SYSTEM_PROMPT = `You are a book formatting AI. You receive a JSON array of HTML paragraph strings and return ONLY the paragraphs you changed, as a JSON object mapping index → formatted HTML.
 
 Read the content, understand the genre and tone, and decide what deserves visual enhancement. You have a toolkit of CSS classes below — use your judgement on what fits. A literary novel needs different treatment than a game-lit novel. Adapt.
 
 # CONSTRAINTS
-1. Return EXACTLY the same number of array entries as input.
+1. Return a JSON object where keys are paragraph indices (0-based) and values are the formatted HTML. ONLY include paragraphs you actually modified. Skip paragraphs that need no changes.
 2. Only use the CSS classes listed below. No inline styles. No Unicode emoji.
 3. Fix grammar and punctuation. Preserve tone, dialect, and style.
 4. For narration and dialogue: keep original text — don't rewrite or add content.
 5. For structured/game data (stats, skills, items, tables): you MAY restructure and abbreviate for clarity. Shorten labels, abbreviate skill names, split lists into badges. All original information must be preserved but the presentation can change.
-6. Most paragraphs should stay as normal text with only grammar fixes. Only enhance what genuinely benefits from it.
+6. Most paragraphs should stay as normal text — SKIP THEM (don't include in output). Only include paragraphs that genuinely benefit from enhancement or need grammar fixes.
 7. Keep enhancements inline and compact. Don't make anything dominate the page.
-8. If consecutive paragraphs form one structured block (like a stat table), merge into the first slot and return "" for consumed slots.
+8. If consecutive paragraphs form one structured block (like a stat table), merge into the first slot's index and set consumed slot indices to "".
 
 # YOUR TOOLKIT
 
@@ -113,28 +113,38 @@ Add a <span class="ai-fmt-icon ai-fmt-icon-NAME"></span> before text. Every stat
 Available: sword (combat/attack), shield (defense/armor), sparkle (magic/special), zap (speed/energy), scroll (knowledge/lore), skull (death/danger), arrow-up (level/increase), gem (rarity/treasure), trophy (rank/achievement), heart (health/HP), star (rating/level), flame (fire/power), eye (perception/spirit), crown (royalty/authority), book (skills/learning), target (accuracy/focus), plus (gain/addition), user (character/name), bolt (agility/lightning).
 
 # OUTPUT
-Return ONLY a valid JSON array of strings. No markdown fences, no explanation.`;
+Return ONLY a valid JSON object mapping indices to formatted strings, e.g. {"0":"<div>...</div>","3":"<p>fixed text</p>","4":""}. No markdown fences, no explanation. If nothing needs changing, return {}.`;
 
 /**
  * Build the messages array for the AI formatting call.
+ * chunkOffset is the starting index of this chunk within the full chapter
+ * (used so the AI returns correct 0-based indices within the chunk).
  */
 export function buildFormattingPrompt(
   paragraphs: string[],
   bookTitle: string,
+  chunkOffset: number = 0,
 ): OpenRouterMessage[] {
+  // Build indexed object so AI knows the indices
+  const indexed: Record<number, string> = {};
+  for (let i = 0; i < paragraphs.length; i++) {
+    indexed[i] = paragraphs[i];
+  }
+
   return [
     { role: "system", content: SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Book: "${bookTitle}"\n\nFormat these ${paragraphs.length} paragraphs:\n${JSON.stringify(paragraphs)}`,
+      content: `Book: "${bookTitle}"\n\nFormat these ${paragraphs.length} paragraphs (indices 0-${paragraphs.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(indexed)}`,
     },
   ];
 }
 
 /**
- * Parse the AI response into an array of HTML strings.
- * Lenient on count: pads with originals if short, truncates if long.
- * Falls back to null only on total parse failure.
+ * Parse the AI response (sparse object format) into a full array of HTML strings.
+ * The AI returns {index: html} for only modified paragraphs.
+ * Unmodified paragraphs keep their original content.
+ * Also supports legacy full-array format for backwards compatibility.
  */
 export function parseFormattingResponse(
   response: string,
@@ -149,33 +159,46 @@ export function parseFormattingResponse(
     }
 
     const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      console.warn("AI formatting: response is not a non-empty array");
-      return null;
-    }
 
-    // Sanitize each entry
-    const sanitized = parsed.map((entry: unknown) => {
-      if (typeof entry !== "string") return "";
-      return stripUnrecognizedClasses(entry);
-    });
-
-    // Lenient count matching
-    if (sanitized.length === expectedCount) return sanitized;
-
-    if (sanitized.length < expectedCount) {
-      // Pad with originals (or empty) for missing slots
-      console.warn(`AI formatting: got ${sanitized.length}/${expectedCount} entries, padding`);
-      const padded = [...sanitized];
-      for (let i = sanitized.length; i < expectedCount; i++) {
-        padded.push(originals?.[i] ?? "");
+    // Handle sparse object format: {index: html}
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const result = originals ? [...originals] : new Array<string>(expectedCount).fill("");
+      let changeCount = 0;
+      for (const [key, value] of Object.entries(parsed)) {
+        const idx = Number(key);
+        if (Number.isNaN(idx) || idx < 0 || idx >= expectedCount) continue;
+        if (typeof value !== "string") continue;
+        result[idx] = stripUnrecognizedClasses(value);
+        changeCount++;
       }
-      return padded;
+      console.log(`AI formatting: ${changeCount}/${expectedCount} paragraphs modified (sparse)`);
+      return result;
     }
 
-    // Too many — truncate
-    console.warn(`AI formatting: got ${sanitized.length}/${expectedCount} entries, truncating`);
-    return sanitized.slice(0, expectedCount);
+    // Legacy: full array format
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const sanitized = parsed.map((entry: unknown) => {
+        if (typeof entry !== "string") return "";
+        return stripUnrecognizedClasses(entry);
+      });
+
+      if (sanitized.length === expectedCount) return sanitized;
+
+      if (sanitized.length < expectedCount) {
+        console.warn(`AI formatting: got ${sanitized.length}/${expectedCount} entries, padding`);
+        const padded = [...sanitized];
+        for (let i = sanitized.length; i < expectedCount; i++) {
+          padded.push(originals?.[i] ?? "");
+        }
+        return padded;
+      }
+
+      console.warn(`AI formatting: got ${sanitized.length}/${expectedCount} entries, truncating`);
+      return sanitized.slice(0, expectedCount);
+    }
+
+    console.warn("AI formatting: response is not a valid object or array");
+    return null;
   } catch (err) {
     console.error("AI formatting: JSON parse failed:", err);
     return null;
@@ -218,7 +241,7 @@ export async function formatChapterContent(
 
   // Small enough for a single call
   if (htmlParagraphs.length <= MAX_SINGLE_CALL) {
-    return formatChunk(apiKey, overrides, htmlParagraphs, bookTitle);
+    return formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0);
   }
 
   // Build all chunks
@@ -236,7 +259,7 @@ export async function formatChapterContent(
 
     const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
     const batchResults = await Promise.all(
-      batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle)),
+      batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start)),
     );
 
     for (let j = 0; j < batchResults.length; j++) {
@@ -255,10 +278,11 @@ async function formatChunk(
   overrides: Record<string, { model: string }>,
   paragraphs: string[],
   bookTitle: string,
+  chunkOffset: number = 0,
 ): Promise<string[] | null> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const messages = buildFormattingPrompt(paragraphs, bookTitle);
+      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset);
       const response = await chatWithPreset(
         apiKey, PRESET_ID, messages, overrides,
         { temperature: 0.3, max_tokens: 16384 },

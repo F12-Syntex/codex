@@ -170,23 +170,24 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       });
   }, [filePath, format]);
 
-  // Load enriched chapter names from DB
+  // Load enriched chapter names + toggle state from DB
   useEffect(() => {
     if (!bookContent || !filePath) return;
     window.electronAPI?.getSetting(`enrichedChapters:${filePath}`).then((raw) => {
       if (!raw) return;
       try {
         const parsed = JSON.parse(raw) as Record<string, string>;
-        // Convert string keys to numbers for consistent lookup
         const names: Record<number, string> = {};
         for (const [k, v] of Object.entries(parsed)) {
           if (v) names[Number(k)] = v;
         }
-        if (Object.keys(names).length > 0) {
-          setEnrichedNames(names);
-          setEnrichEnabled(true);
-        }
+        if (Object.keys(names).length > 0) setEnrichedNames(names);
       } catch { /* ignore */ }
+    });
+    window.electronAPI?.getSetting(`enrichEnabled:${filePath}`).then((raw) => {
+      if (raw != null) {
+        try { setEnrichEnabled(JSON.parse(raw)); } catch { /* ignore */ }
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookContent, filePath]);
@@ -234,18 +235,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setEnrichEnabled(false);
     setEnrichingChapter(null);
     window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify({}));
+    window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(false));
   }, [filePath]);
 
   const toggleEnrichEnabled = useCallback(() => {
-    if (enrichEnabled) {
+    const next = !enrichEnabled;
+    if (!next) {
       enrichAbortRef.current = true;
-      setEnrichEnabled(false);
       setEnrichingChapter(null);
       setEnrichAllProgress(null);
-    } else {
-      setEnrichEnabled(true);
     }
-  }, [enrichEnabled]);
+    setEnrichEnabled(next);
+    window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(next));
+  }, [enrichEnabled, filePath]);
 
   const enrichAll = useCallback(async () => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
@@ -299,7 +301,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // ── AI Formatting ──────────────────────────────────
 
-  // Load formatted chapters from DB
+  // Load formatted chapters + toggle state from DB
   useEffect(() => {
     if (!bookContent || !filePath) return;
     window.electronAPI?.getSetting(`formattedChapters:${filePath}`).then((raw) => {
@@ -310,11 +312,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         for (const [k, v] of Object.entries(parsed)) {
           if (Array.isArray(v)) chapters[Number(k)] = v;
         }
-        if (Object.keys(chapters).length > 0) {
-          setFormattedChapters(chapters);
-          setFormattingEnabled(true);
-        }
+        if (Object.keys(chapters).length > 0) setFormattedChapters(chapters);
       } catch { /* ignore */ }
+    });
+    window.electronAPI?.getSetting(`formattingEnabled:${filePath}`).then((raw) => {
+      if (raw != null) {
+        try { setFormattingEnabled(JSON.parse(raw)); } catch { /* ignore */ }
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookContent, filePath]);
@@ -397,18 +401,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setFormattingChapter(null);
     setFormatAllProgress(null);
     window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify({}));
+    window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(false));
   }, [filePath]);
 
   const toggleFormattingEnabled = useCallback(() => {
-    if (formattingEnabled) {
+    const next = !formattingEnabled;
+    if (!next) {
       formatAbortRef.current = true;
-      setFormattingEnabled(false);
       setFormattingChapter(null);
       setFormatAllProgress(null);
-    } else {
-      setFormattingEnabled(true);
     }
-  }, [formattingEnabled]);
+    setFormattingEnabled(next);
+    window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(next));
+  }, [formattingEnabled, filePath]);
 
   // Effective HTML paragraphs (formatted or original)
   const effectiveHtml = formattingEnabled && formattedChapters[currentChapter]
