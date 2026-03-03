@@ -15,7 +15,7 @@ interface StyleDictionaryViewProps {
   bookTitle: string;
 }
 
-const CATEGORY_META: Record<StyleRule["category"], { icon: React.ReactNode; label: string }> = {
+const CATEGORY_META: Record<string, { icon: React.ReactNode; label: string }> = {
   stat: { icon: <BarChart3 className="h-4 w-4" strokeWidth={1.5} />, label: "Stats" },
   badge: { icon: <Tag className="h-4 w-4" strokeWidth={1.5} />, label: "Badges" },
   dialogue: { icon: <MessageCircle className="h-4 w-4" strokeWidth={1.5} />, label: "Dialogue" },
@@ -23,6 +23,12 @@ const CATEGORY_META: Record<StyleRule["category"], { icon: React.ReactNode; labe
   system: { icon: <Monitor className="h-4 w-4" strokeWidth={1.5} />, label: "System" },
   effect: { icon: <Wand2 className="h-4 w-4" strokeWidth={1.5} />, label: "Effects" },
 };
+
+const DEFAULT_CATEGORY_META = { icon: <Wand2 className="h-4 w-4" strokeWidth={1.5} />, label: "Other" };
+
+function getCategoryMeta(cat: string) {
+  return CATEGORY_META[cat] ?? { ...DEFAULT_CATEGORY_META, label: cat.charAt(0).toUpperCase() + cat.slice(1) };
+}
 
 export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryViewProps) {
   const [dictionary, setDictionary] = useState<StyleDictionary | null>(null);
@@ -44,71 +50,80 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey || !filePath) return;
 
-    // Load current formatted chapters
+    // Load formatted chapters
     const raw = await window.electronAPI?.getSetting(`formattedChapters:${filePath}`);
     if (!raw) return;
 
     let formattedChapters: Record<string, string[]>;
     try { formattedChapters = JSON.parse(raw); } catch { return; }
 
-    // Find ALL chapters that use this component class, regenerate in all of them
+    // Load book content for originals
     const format = new URLSearchParams(window.location.search).get("format") || "EPUB";
     const bookContent = await window.electronAPI?.getBookContent(filePath, format);
     if (!bookContent) return;
 
+    // Find the FIRST chapter that uses this component (regenerate one at a time)
+    let targetChKey: string | null = null;
+    for (const [chKey, formatted] of Object.entries(formattedChapters)) {
+      if (formatted.some(p => p.includes(componentClass))) {
+        targetChKey = chKey;
+        break;
+      }
+    }
+    if (!targetChKey) return;
+
+    const chIdx = Number(targetChKey);
+    const formatted = formattedChapters[targetChKey];
+    const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
+    if (!originals || !formatted) return;
+
     setRegeneratingRule(componentClass);
     try {
-      let anyUpdated = false;
+      const updates = await regenerateRule(
+        apiKey, componentClass, formatted, originals, bookTitle,
+        instruction || undefined,
+      );
+      if (!updates || Object.keys(updates).length === 0) return;
 
-      for (const [chKey, formatted] of Object.entries(formattedChapters)) {
-        const chIdx = Number(chKey);
-        const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
-        if (!originals || !formatted) continue;
-
-        // Check if this chapter uses the component
-        const hasClass = formatted.some(p => p.includes(componentClass));
-        if (!hasClass) continue;
-
-        const updates = await regenerateRule(
-          apiKey, componentClass, formatted, originals, bookTitle,
-          instruction || undefined,
-        );
-        if (!updates) continue;
-
-        // Apply updates to this chapter
-        const updated = [...formatted];
-        for (const [idx, html] of Object.entries(updates)) {
-          updated[Number(idx)] = html;
-        }
-        formattedChapters[chKey] = updated;
-        anyUpdated = true;
+      // Apply ONLY the changed paragraphs
+      const updated = [...formatted];
+      for (const [idx, html] of Object.entries(updates)) {
+        updated[Number(idx)] = html;
       }
+      formattedChapters[targetChKey] = updated;
 
-      if (anyUpdated) {
-        // Save updated formatted chapters
-        await window.electronAPI?.setSetting(
-          `formattedChapters:${filePath}`,
-          JSON.stringify(formattedChapters),
-        );
+      await window.electronAPI?.setSetting(
+        `formattedChapters:${filePath}`,
+        JSON.stringify(formattedChapters),
+      );
 
-        // Re-extract ALL rules from ALL formatted chapters and rebuild dictionary
-        const allRules: StyleRule[] = [];
-        for (const [chKey, formatted] of Object.entries(formattedChapters)) {
-          const chIdx = Number(chKey);
-          const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
-          if (!originals) continue;
-          const chapterRules = extractRulesFromFormatted(originals, formatted);
-          allRules.push(...chapterRules);
+      // Update the targeted rule's example in-place, keep its identity
+      if (dictionary) {
+        const newDict = { ...dictionary, updatedAt: new Date().toISOString() };
+        const updatedRules = [...newDict.rules];
+
+        // Find the first updated paragraph to use as the new example
+        const firstUpdatedIdx = Object.keys(updates).map(Number).sort((a, b) => a - b)[0];
+        const newExampleHtml = updates[firstUpdatedIdx];
+        const trimmedExample = newExampleHtml.length > 300
+          ? newExampleHtml.slice(0, 300) + "..."
+          : newExampleHtml;
+
+        // Update the targeted rule's example
+        const ruleIdx = updatedRules.findIndex(r => r.component === componentClass);
+        if (ruleIdx >= 0) {
+          updatedRules[ruleIdx] = { ...updatedRules[ruleIdx], exampleHtml: trimmedExample };
         }
 
-        // Deduplicate by component class
-        const deduped = mergeRules([], allRules);
-        const newDict: StyleDictionary = {
-          rules: deduped,
-          bookTitle,
-          updatedAt: new Date().toISOString(),
-        };
+        // Check if any NEW classes appeared that we don't track yet
+        const newRules = extractRulesFromFormatted(originals, updated);
+        for (const nr of newRules) {
+          if (!updatedRules.some(r => r.component === nr.component)) {
+            updatedRules.push(nr);
+          }
+        }
 
+        newDict.rules = updatedRules;
         await saveDictionary(filePath, newDict);
         setDictionary(newDict);
       }
@@ -117,7 +132,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
     } finally {
       setRegeneratingRule(null);
     }
-  }, [filePath, bookTitle]);
+  }, [filePath, bookTitle, dictionary]);
 
   if (isLoading) {
     return (
@@ -150,7 +165,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
     return acc;
   }, {});
 
-  const categories = Object.keys(grouped) as StyleRule["category"][];
+  const categories = Object.keys(grouped);
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
@@ -180,9 +195,9 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
               <div key={cat}>
                 {/* Category header */}
                 <div className="mb-3 flex items-center gap-2 text-white/40">
-                  {CATEGORY_META[cat].icon}
+                  {getCategoryMeta(cat).icon}
                   <span className="text-[12px] font-medium uppercase tracking-wider">
-                    {CATEGORY_META[cat].label}
+                    {getCategoryMeta(cat).label}
                   </span>
                   <span className="text-[11px] text-white/25">({grouped[cat].length})</span>
                 </div>
@@ -283,27 +298,25 @@ function RuleCard({
           <div className="text-[13px] font-medium text-white/85">{rule.pattern}</div>
           <div className="mt-0.5 font-mono text-[11px] text-white/30">{rule.component}</div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={() => onRegenerate()}
-            disabled={isAnyRegenerating}
-            title="Regenerate with random new style"
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
-              isRegenerating
-                ? "text-[var(--accent-brand)]"
-                : isAnyRegenerating
-                  ? "text-white/20"
-                  : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
-            }`}
-          >
-            {isRegenerating ? (
-              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-            ) : (
-              <RefreshCw className="h-3 w-3" strokeWidth={1.5} />
-            )}
-            Regen
-          </button>
-        </div>
+        <button
+          onClick={() => onRegenerate()}
+          disabled={isAnyRegenerating}
+          title="Regenerate with a different style"
+          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            isRegenerating
+              ? "text-[var(--accent-brand)]"
+              : isAnyRegenerating
+                ? "text-white/20"
+                : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
+          }`}
+        >
+          {isRegenerating ? (
+            <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+          ) : (
+            <RefreshCw className="h-3 w-3" strokeWidth={1.5} />
+          )}
+          Regen
+        </button>
       </div>
 
       {/* Live preview — renders exactly like in the reader */}

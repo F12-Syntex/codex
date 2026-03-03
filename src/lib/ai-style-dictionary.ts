@@ -13,7 +13,7 @@ export interface StyleRule {
   pattern: string;           // semantic trigger, e.g. "XP gains", "Health stat"
   component: string;         // CSS component, e.g. "ai-fmt-xp-badge"
   exampleHtml: string;       // rendered HTML snippet
-  category: "stat" | "badge" | "dialogue" | "item" | "system" | "effect";
+  category: string;          // free-form: "stat", "badge", "dialogue", "item", etc.
 }
 
 export interface StyleDictionary {
@@ -24,7 +24,7 @@ export interface StyleDictionary {
 
 // ── Class → category mapping ───────────────────────
 
-const CLASS_CATEGORY: Record<string, StyleRule["category"]> = {
+const CLASS_CATEGORY: Record<string, string> = {
   "ai-fmt-stat-block": "stat",
   "ai-fmt-stat-row": "stat",
   "ai-fmt-stat-label": "stat",
@@ -77,6 +77,20 @@ const CLASS_PATTERN: Record<string, string> = {
   "ai-fmt-rarity-legendary": "Legendary rarity item",
 };
 
+// ── Category inference for unknown classes ─────────
+
+function inferCategory(cls: string): string {
+  const name = cls.replace("ai-fmt-", "");
+  if (name.includes("stat") || name.includes("row") || name.includes("label") || name.includes("value")) return "stat";
+  if (name.includes("badge") || name.includes("buff") || name.includes("debuff") || name.includes("status") || name.includes("xp")) return "badge";
+  if (name.includes("dialogue") || name.includes("speech") || name.includes("quote")) return "dialogue";
+  if (name.includes("item") || name.includes("card") || name.includes("rarity")) return "item";
+  if (name.includes("system") || name.includes("msg") || name.includes("notification")) return "system";
+  // Default: use the first segment as category
+  const firstSegment = name.split("-")[0];
+  return firstSegment || "effect";
+}
+
 // ── Extraction ─────────────────────────────────────
 
 /**
@@ -106,7 +120,7 @@ export function extractRulesFromFormatted(
         if (seenComponents.has(cls)) continue;
         seenComponents.add(cls);
 
-        const category = CLASS_CATEGORY[cls] ?? "effect";
+        const category = CLASS_CATEGORY[cls] ?? inferCategory(cls);
         const pattern = CLASS_PATTERN[cls] ?? cls.replace("ai-fmt-", "").replace(/-/g, " ");
 
         // Extract a trimmed example (first 300 chars of the formatted paragraph)

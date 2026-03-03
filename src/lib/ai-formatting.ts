@@ -99,7 +99,7 @@ ai-fmt-rarity-common, ai-fmt-rarity-uncommon, ai-fmt-rarity-rare, ai-fmt-rarity-
 Tiny inline pills. Combine with ai-fmt-status-buff (positive) or ai-fmt-status-debuff (negative) for any status, condition, trait, or tag mentioned in text.
 
 ## Dialogue tags → ai-fmt-dialogue-villain / ai-fmt-dialogue-divine / ai-fmt-dialogue-hero
-A tiny colored pill/tag placed BEFORE the quoted dialogue. Do NOT wrap the quote text itself — instead insert a <span class="ai-fmt-dialogue-villain">VILLAIN</span> (or similar short label like the character's name/role) right before the opening quote mark. The tag text should be a short label (1-5 chars): a name, role, or archetype. villain = antagonist/threatening, divine = otherworldly/authoritative/system, hero = protagonist's key moments. Only tag truly notable dialogue — most quotes should stay untagged.
+A tiny colored pill/tag placed BEFORE the quoted dialogue. Do NOT wrap the quote text itself — instead insert a <span class="ai-fmt-dialogue-hero">Zephyr</span> (using the CHARACTER'S NAME, not "HERO") right before the opening quote mark. The tag text MUST be the character's actual name (1-8 chars), never a generic role like "HERO", "VILLAIN", or "DIVINE". villain = antagonist/threatening characters, divine = otherworldly/authoritative/system voices, hero = protagonist and allies. Only tag truly notable dialogue — most quotes should stay untagged.
 
 ## Internal monologue → ai-fmt-thought
 Left-bordered italic block for thoughts, reflections, or inner voice.
@@ -408,12 +408,14 @@ Rules:
     const result = parseFormattingResponse(content, originalSubset.length, originalSubset);
     if (!result) return null;
 
-    // Map back to original indices
+    // Map back to original indices — ONLY include paragraphs the AI actually changed
     const updates: Record<number, string> = {};
     for (let j = 0; j < indices.length; j++) {
+      // Skip if the AI returned the original unchanged
+      if (result[j] === originalSubset[j]) continue;
       updates[indices[j]] = result[j];
     }
-    return updates;
+    return Object.keys(updates).length > 0 ? updates : null;
   } catch (err) {
     console.error("Regenerate rule failed:", err);
     return null;
