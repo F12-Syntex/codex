@@ -64,17 +64,24 @@ Read the content, understand the genre and tone, and decide what deserves visual
 1. Return EXACTLY the same number of array entries as input.
 2. Only use the CSS classes listed below. No inline styles. No Unicode emoji.
 3. Fix grammar and punctuation. Preserve tone, dialect, and style.
-4. Keep original text content — don't rewrite, paraphrase, or add narration.
-5. Most paragraphs should stay as normal text with only grammar fixes. Only enhance what genuinely benefits from it.
-6. Keep enhancements inline and compact. Don't make anything dominate the page.
-7. If consecutive paragraphs form one structured block (like a stat table), merge into the first slot and return "" for consumed slots.
+4. For narration and dialogue: keep original text — don't rewrite or add content.
+5. For structured/game data (stats, skills, items, tables): you MAY restructure and abbreviate for clarity. Shorten labels, abbreviate skill names, split lists into badges. All original information must be preserved but the presentation can change.
+6. Most paragraphs should stay as normal text with only grammar fixes. Only enhance what genuinely benefits from it.
+7. Keep enhancements inline and compact. Don't make anything dominate the page.
+8. If consecutive paragraphs form one structured block (like a stat table), merge into the first slot and return "" for consumed slots.
 
 # YOUR TOOLKIT
 
 ## Structured data → ai-fmt-stat-block
-A full-width grid for any key-value data: character stats, profiles, recipe ingredients, scores, specifications, etc.
-Structure: <div class="ai-fmt-stat-block"> containing rows of <div class="ai-fmt-stat-row"><span class="ai-fmt-stat-label">Key</span><span class="ai-fmt-stat-value">Value</span></div>
-Keep labels SHORT (1-2 words). For long value lists (like multiple skills), abbreviate or use comma-separated short names. Add an icon before each label where relevant.
+A full-width grid for key-value data. Use icons on EVERY label.
+Structure: <div class="ai-fmt-stat-block"> containing rows of <div class="ai-fmt-stat-row"><span class="ai-fmt-stat-label"><span class="ai-fmt-icon ai-fmt-icon-NAME"></span>Label</span><span class="ai-fmt-stat-value">Value</span></div>
+
+Rules for stat blocks:
+- Keep labels to 1-2 words. Use icons to replace words where possible (heart icon instead of writing "Health").
+- Numeric stats: put the number in the value column. If there are many numeric stats with short values, you can combine 2-3 per row separated by thin pipes: "1.5 | 1.4 | 1.6" with a combined label.
+- Lists of skills/items/traits: do NOT put long comma lists in a stat-value cell. Instead, put each one as a separate <span class="ai-fmt-status-badge ai-fmt-status-buff">Skill Name</span> in the value cell, or break them out below the stat block as individual badges.
+- Titles/ranks/evaluations: use an ai-fmt-xp-badge for the value.
+- Names: use a short header row or put the name in an ai-fmt-reveal span above the block.
 
 ## Callout / notification → ai-fmt-system-msg
 A subtle left-bordered box for any text that stands apart from narration: system messages, announcements, letters, signs, inscriptions, warnings, formal declarations, etc.
@@ -101,9 +108,9 @@ Bold treatment for impact words: sound effects, dramatic single words, etc.
 ## First mention → ai-fmt-reveal
 Subtle background highlight for important names, titles, or concepts when first introduced.
 
-## Icons — use freely on labels, stats, badges, and key terms
-Add a <span class="ai-fmt-icon ai-fmt-icon-NAME"></span> before text. Use icons on stat labels, item names, system message headers, badge text, and any label that benefits from a visual cue. Don't overuse on plain narration.
-Available: sword, shield, sparkle, zap, scroll, skull, arrow-up, gem, trophy, heart, star, flame, eye, crown, book, target, plus, user, bolt.
+## Icons — use on EVERY stat label, and on badges/items/headers
+Add a <span class="ai-fmt-icon ai-fmt-icon-NAME"></span> before text. Every stat-label MUST have an icon. Also use on item names, system message headers, and badge text. Don't use on plain narration.
+Available: sword (combat/attack), shield (defense/armor), sparkle (magic/special), zap (speed/energy), scroll (knowledge/lore), skull (death/danger), arrow-up (level/increase), gem (rarity/treasure), trophy (rank/achievement), heart (health/HP), star (rating/level), flame (fire/power), eye (perception/spirit), crown (royalty/authority), book (skills/learning), target (accuracy/focus), plus (gain/addition), user (character/name), bolt (agility/lightning).
 
 # OUTPUT
 Return ONLY a valid JSON array of strings. No markdown fences, no explanation.`;

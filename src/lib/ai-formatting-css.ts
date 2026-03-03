@@ -203,11 +203,13 @@ export const AI_FORMATTING_STYLES = `
 
 /* ── Status Effect Badges — tiny inline pills ────────────── */
 .ai-fmt-status-badge {
-  display: inline;
+  display: inline-block;
   border-radius: 4px;
-  padding: 0 5px;
-  font-size: 0.88em;
+  padding: 1px 6px;
+  font-size: 0.82em;
   font-weight: 500;
+  margin: 1px 2px 1px 0;
+  white-space: nowrap;
 }
 
 .ai-fmt-status-buff {
