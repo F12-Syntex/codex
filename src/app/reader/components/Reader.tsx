@@ -16,7 +16,9 @@ import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
 import { AISidebar } from "./AISidebar";
 import { needsEnrichment, buildChapterRenamePrompt, formatRenamedTitle } from "@/lib/ai-prompts";
-import { createOpenRouterClient } from "@/lib/openrouter";
+import { chatWithPreset } from "@/lib/openrouter";
+import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
+import { formatChapterContent } from "@/lib/ai-formatting";
 
 interface ReaderProps {
   filePath: string;
@@ -46,6 +48,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [enrichingChapter, setEnrichingChapter] = useState<number | null>(null);
   const [enrichAllProgress, setEnrichAllProgress] = useState<{ current: number; total: number } | null>(null);
   const enrichAbortRef = useRef(false);
+
+  // AI Formatting state
+  const [formattingEnabled, setFormattingEnabled] = useState(false);
+  const [formattedChapters, setFormattedChapters] = useState<Record<number, string[]>>({});
+  const [formattingChapter, setFormattingChapter] = useState<number | null>(null);
+  const [formatAllProgress, setFormatAllProgress] = useState<{ current: number; total: number } | null>(null);
+  const formatAbortRef = useRef(false);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -194,12 +203,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       const ch = chapters[chapterIndex];
       const contentPreview = ch.paragraphs.join("\n").slice(0, 2000);
       const prompt = buildChapterRenamePrompt(ch.title, contentPreview, title);
-      const client = createOpenRouterClient(apiKey);
+      const overrides = parseOverrides(await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY) ?? null);
 
-      const response = await client.chat(
+      const response = await chatWithPreset(
+        apiKey, "quick",
         [{ role: "user", content: prompt }],
-        "openai/gpt-4o-mini",
-        { max_tokens: 30, temperature: 0.3 },
+        overrides,
       );
 
       if (enrichAbortRef.current) return;
@@ -251,7 +260,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     enrichAbortRef.current = false;
     setEnrichAllProgress({ current: 0, total: toEnrich.length });
 
-    const client = createOpenRouterClient(apiKey);
+    const overrides = parseOverrides(await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY) ?? null);
     let currentNames = { ...enrichedNames };
 
     for (let idx = 0; idx < toEnrich.length; idx++) {
@@ -265,10 +274,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         const contentPreview = ch.paragraphs.join("\n").slice(0, 2000);
         const prompt = buildChapterRenamePrompt(ch.title, contentPreview, title);
 
-        const response = await client.chat(
+        const response = await chatWithPreset(
+          apiKey, "quick",
           [{ role: "user", content: prompt }],
-          "openai/gpt-4o-mini",
-          { max_tokens: 30, temperature: 0.3 },
+          overrides,
         );
 
         if (enrichAbortRef.current) break;
@@ -287,6 +296,124 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setEnrichingChapter(null);
     setEnrichAllProgress(enrichAbortRef.current ? null : { current: toEnrich.length, total: toEnrich.length });
   }, [chapters, title, filePath, enrichedNames]);
+
+  // ── AI Formatting ──────────────────────────────────
+
+  // Load formatted chapters from DB
+  useEffect(() => {
+    if (!bookContent || !filePath) return;
+    window.electronAPI?.getSetting(`formattedChapters:${filePath}`).then((raw) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as Record<string, string[]>;
+        const chapters: Record<number, string[]> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (Array.isArray(v)) chapters[Number(k)] = v;
+        }
+        if (Object.keys(chapters).length > 0) {
+          setFormattedChapters(chapters);
+          setFormattingEnabled(true);
+        }
+      } catch { /* ignore */ }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookContent, filePath]);
+
+  const formatChapter = useCallback(async (chapterIndex: number) => {
+    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+    if (!apiKey || !chapters[chapterIndex]) return;
+
+    setFormattingChapter(chapterIndex);
+    formatAbortRef.current = false;
+
+    try {
+      const result = await formatChapterContent(
+        apiKey, chapters[chapterIndex], title,
+        () => formatAbortRef.current,
+      );
+
+      if (formatAbortRef.current || !result) return;
+
+      setFormattedChapters((prev) => {
+        const updated = { ...prev, [chapterIndex]: result };
+        window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error(`Failed to format chapter ${chapterIndex}:`, err);
+    } finally {
+      setFormattingChapter(null);
+    }
+  }, [chapters, title, filePath]);
+
+  const formatAllChapters = useCallback(async () => {
+    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+    if (!apiKey) return;
+
+    const toFormat = chapters
+      .map((_, i) => i)
+      .filter((i) => !formattedChapters[i]);
+
+    if (toFormat.length === 0) return;
+
+    formatAbortRef.current = false;
+    setFormatAllProgress({ current: 0, total: toFormat.length });
+
+    let currentFormatted = { ...formattedChapters };
+
+    for (let idx = 0; idx < toFormat.length; idx++) {
+      if (formatAbortRef.current) break;
+
+      const i = toFormat[idx];
+      setFormattingChapter(i);
+      setFormatAllProgress({ current: idx, total: toFormat.length });
+
+      try {
+        const result = await formatChapterContent(
+          apiKey, chapters[i], title,
+          () => formatAbortRef.current,
+        );
+
+        if (formatAbortRef.current) break;
+
+        if (result) {
+          currentFormatted = { ...currentFormatted, [i]: result };
+          setFormattedChapters({ ...currentFormatted });
+        }
+      } catch (err) {
+        console.error(`Failed to format chapter ${i}:`, err);
+      }
+    }
+
+    await window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(currentFormatted));
+    setFormattingChapter(null);
+    setFormatAllProgress(formatAbortRef.current ? null : { current: toFormat.length, total: toFormat.length });
+  }, [chapters, title, filePath, formattedChapters]);
+
+  const clearFormatting = useCallback(() => {
+    formatAbortRef.current = true;
+    setFormattedChapters({});
+    setFormattingEnabled(false);
+    setFormattingChapter(null);
+    setFormatAllProgress(null);
+    window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify({}));
+  }, [filePath]);
+
+  const toggleFormattingEnabled = useCallback(() => {
+    if (formattingEnabled) {
+      formatAbortRef.current = true;
+      setFormattingEnabled(false);
+      setFormattingChapter(null);
+      setFormatAllProgress(null);
+    } else {
+      setFormattingEnabled(true);
+    }
+  }, [formattingEnabled]);
+
+  // Effective HTML paragraphs (formatted or original)
+  const effectiveHtml = formattingEnabled && formattedChapters[currentChapter]
+    ? formattedChapters[currentChapter]
+    : chapter?.htmlParagraphs ?? [];
 
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
@@ -519,6 +646,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               enrichEnabled={enrichEnabled}
               enrichingChapter={enrichingChapter}
               onEnrichChapter={enrichChapter}
+              formattingEnabled={formattingEnabled}
+              formattedChapters={formattedChapters}
+              formattingChapter={formattingChapter}
+              onFormatChapter={formatChapter}
               onSelectChapter={handleChapterChange}
               onJumpToBookmark={() => {}}
               onDeleteBookmark={bookmarkState.removeBookmark}
@@ -537,6 +668,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onEnrichToggle={toggleEnrichEnabled}
               onEnrichAll={enrichAll}
               onClearEnrichedNames={clearEnrichedNames}
+              formattingEnabled={formattingEnabled}
+              formattedChapters={formattedChapters}
+              formattingChapter={formattingChapter}
+              formatAllProgress={formatAllProgress}
+              onFormattingToggle={toggleFormattingEnabled}
+              onFormatAll={formatAllChapters}
+              onClearFormatting={clearFormatting}
               onClose={() => setShowAI(false)}
             />
           )}
@@ -557,8 +695,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           ) : (
             <TextContent
               chapterTitle={chapterTitle}
-              htmlParagraphs={chapter?.htmlParagraphs ?? []}
+              htmlParagraphs={effectiveHtml}
               theme={theme}
+              readingTheme={settings.readingTheme}
+              aiFormattingEnabled={formattingEnabled && !!formattedChapters[currentChapter]}
               fontFamily={settings.fontFamily}
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}

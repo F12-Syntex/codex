@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { X, Search, List, Bookmark, Sparkles, Loader2 } from "lucide-react";
+import { X, Search, List, Bookmark, Sparkles, Paintbrush, Loader2 } from "lucide-react";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 
@@ -16,6 +16,10 @@ interface TOCSidebarProps {
   enrichEnabled?: boolean;
   enrichingChapter?: number | null;
   onEnrichChapter?: (index: number) => void;
+  formattingEnabled?: boolean;
+  formattedChapters?: Record<number, string[]>;
+  formattingChapter?: number | null;
+  onFormatChapter?: (index: number) => void;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
   onDeleteBookmark: (id: number) => void;
@@ -31,6 +35,10 @@ export function TOCSidebar({
   enrichEnabled = false,
   enrichingChapter = null,
   onEnrichChapter,
+  formattingEnabled = false,
+  formattedChapters = {},
+  formattingChapter = null,
+  onFormatChapter,
   onSelectChapter,
   onJumpToBookmark,
   onDeleteBookmark,
@@ -162,6 +170,9 @@ export function TOCSidebar({
               const canEnrich = enrichEnabled && needsEnrichment(ch.title);
               const isEnriching = enrichingChapter === i;
 
+              const canFormat = formattingEnabled && !formattedChapters[i];
+              const isFormatting = formattingChapter === i;
+
               return (
                 <div
                   key={i}
@@ -179,16 +190,25 @@ export function TOCSidebar({
                   >
                     {displayTitle}
                   </button>
-                  {isEnriching && (
+                  {(isEnriching || isFormatting) && (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={1.5} />
                   )}
-                  {canEnrich && !isEnriching && (
+                  {canEnrich && !isEnriching && !isFormatting && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onEnrichChapter?.(i); }}
                       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100 ${theme.btn}`}
                       title="Rename with AI"
                     >
                       <Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
+                    </button>
+                  )}
+                  {canFormat && !isEnriching && !isFormatting && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onFormatChapter?.(i); }}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100 ${theme.btn}`}
+                      title="Format with AI"
+                    >
+                      <Paintbrush className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
                     </button>
                   )}
                 </div>

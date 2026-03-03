@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -27,6 +28,8 @@ interface TextContentProps {
   ttsHighlightMode?: TTSHighlightMode;
   ttsShowReadMark?: boolean;
   onPlayFromParagraph?: (paraIndex: number) => void;
+  readingTheme?: ReadingTheme;
+  aiFormattingEnabled?: boolean;
 }
 
 /*
@@ -82,6 +85,8 @@ export function TextContent({
   ttsHighlightMode = "both",
   ttsShowReadMark = true,
   onPlayFromParagraph,
+  readingTheme: readingThemeProp,
+  aiFormattingEnabled = false,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
@@ -679,6 +684,7 @@ export function TextContent({
       <div
         ref={clipperRef}
         className={`mx-auto${slideClass ? ` ${slideClass}` : ""}`}
+        data-reading-theme={readingThemeProp ?? readingTheme}
         style={{
           width: `${pageWidth}px`,
           height: `${contentHeight}px`,
@@ -686,6 +692,7 @@ export function TextContent({
           position: "relative",
         }}
       >
+        {aiFormattingEnabled && <style>{AI_FORMATTING_STYLES}</style>}
         {/* Slider: absolutely positioned, CSS transition handles page animation */}
         <div
           ref={sliderRef}

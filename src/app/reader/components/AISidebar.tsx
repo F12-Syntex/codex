@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap } from "lucide-react";
+import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 
@@ -15,6 +15,13 @@ interface AISidebarProps {
   onEnrichToggle: () => void;
   onEnrichAll: () => void;
   onClearEnrichedNames: () => void;
+  formattingEnabled: boolean;
+  formattedChapters: Record<number, string[]>;
+  formattingChapter: number | null;
+  formatAllProgress: { current: number; total: number } | null;
+  onFormattingToggle: () => void;
+  onFormatAll: () => void;
+  onClearFormatting: () => void;
   onClose: () => void;
 }
 
@@ -28,6 +35,13 @@ export function AISidebar({
   onEnrichToggle,
   onEnrichAll,
   onClearEnrichedNames,
+  formattingEnabled,
+  formattedChapters,
+  formattingChapter,
+  formatAllProgress,
+  onFormattingToggle,
+  onFormatAll,
+  onClearFormatting,
   onClose,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -38,6 +52,10 @@ export function AISidebar({
     needsEnrichment(ch.title) && !enrichedNames[i]
   ).length;
   const isRunningAll = enrichAllProgress !== null && enrichingChapter !== null;
+
+  const alreadyFormatted = Object.keys(formattedChapters).length;
+  const chaptersToFormatCount = chapters.length - alreadyFormatted;
+  const isFormattingAll = formatAllProgress !== null && formattingChapter !== null;
 
   useEffect(() => {
     window.electronAPI?.getSetting("openrouterApiKey").then((key) => {
@@ -147,6 +165,72 @@ export function AISidebar({
     );
   };
 
+  // Formatting sub-content: progress, idle actions, or single-chapter spinner
+  const formattingSubContent = () => {
+    if (!formattingEnabled || disabled) return null;
+
+    // Bulk formatting running
+    if (isFormattingAll) {
+      return (
+        <div className="mt-2 space-y-1.5">
+          <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
+            <div
+              className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
+              style={{ width: `${formatAllProgress.total > 0 ? Math.round(((formatAllProgress.current + 1) / formatAllProgress.total) * 100) : 0}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+              <span className={`text-[11px] ${theme.muted}`}>Chapter {formattingChapter! + 1}</span>
+            </div>
+            <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+              {formatAllProgress.current + 1}/{formatAllProgress.total}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    // Single chapter formatting
+    if (formattingChapter !== null) {
+      return (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+          <span className={`text-[11px] ${theme.muted}`}>Formatting chapter {formattingChapter + 1}...</span>
+        </div>
+      );
+    }
+
+    // Idle — show actions
+    return (
+      <div className="mt-2 flex items-center gap-1.5">
+        {chaptersToFormatCount > 0 && (
+          <button
+            onClick={onFormatAll}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors"
+            style={{ background: "var(--accent-brand-dim)" }}
+          >
+            <Zap className="h-3 w-3" strokeWidth={1.5} />
+            Format All ({chaptersToFormatCount})
+          </button>
+        )}
+        {alreadyFormatted > 0 && (
+          <button
+            onClick={onClearFormatting}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${theme.btn}`}
+          >
+            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+            Clear
+          </button>
+        )}
+        {chaptersToFormatCount === 0 && alreadyFormatted > 0 && (
+          <span className={`text-[11px] ${theme.muted}`}>{alreadyFormatted} chapters formatted</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
       ref={sidebarRef}
@@ -229,11 +313,28 @@ export function AISidebar({
             comingSoon
           />
 
-          {/* Immersive Formatting — coming soon */}
+          {/* Immersive Formatting — functional */}
+          <div className={`rounded-lg px-3 py-2.5 transition-colors ${formattingEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <Paintbrush className={`h-3.5 w-3.5 ${formattingEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[13px] font-medium ${theme.text}`}>Immersive Formatting</div>
+                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                  AI-enhanced typography, stat blocks, and dialogue
+                </div>
+                {formattingSubContent()}
+              </div>
+              <Toggle value={formattingEnabled} onChange={onFormattingToggle} isDisabled={disabled} />
+            </div>
+          </div>
+
+          {/* Immersive Simulate — coming soon */}
           <SettingRow
-            icon={<Paintbrush className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
-            label="Immersive Formatting"
-            description="Enhanced typography and layout"
+            icon={<Clapperboard className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
+            label="Immersive Simulate"
+            description="AI-generated ambient sounds and music for scenes"
             theme={theme}
             comingSoon
           />

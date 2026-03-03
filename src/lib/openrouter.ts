@@ -105,12 +105,16 @@ export function createOpenRouterClient(apiKey: string): OpenRouterClient {
   };
 }
 
-/** Send a chat request using a named preset's model and parameters. */
+/**
+ * Send a chat request using a named preset's model and parameters.
+ * Caller can provide `options` as defaults — preset values override them if defined.
+ */
 export async function chatWithPreset(
   apiKey: string,
   presetId: string,
   messages: OpenRouterMessage[],
   overrides?: PresetOverrides,
+  options?: ChatOptions,
 ): Promise<OpenRouterResponse> {
   const preset = getPreset(presetId);
   if (!preset) throw new Error(`Unknown AI preset: "${presetId}"`);
@@ -119,6 +123,7 @@ export async function chatWithPreset(
   const client = createOpenRouterClient(apiKey);
 
   return client.chat(messages, model, {
+    ...options,
     ...(preset.temperature !== undefined && { temperature: preset.temperature }),
     ...(preset.maxTokens !== undefined && { max_tokens: preset.maxTokens }),
   });
