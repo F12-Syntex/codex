@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getBookContent: (filePath: string, format: string) =>
     ipcRenderer.invoke("reader:get-content", filePath, format),
 
+  // Style Dictionary
+  openStyleDictionary: (info: { filePath: string; title: string }) =>
+    ipcRenderer.invoke("style-dictionary:open", info),
+
   // Bookmarks
   getBookmarks: (filePath: string) =>
     ipcRenderer.invoke("bookmarks:get", filePath),

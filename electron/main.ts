@@ -185,6 +185,42 @@ function createWindow() {
     });
   });
 
+  // ── Style Dictionary: open in new window ─────────
+  ipcMain.handle("style-dictionary:open", (_event, info: { filePath: string; title: string }) => {
+    const dictWindow = new BrowserWindow({
+      width: 900,
+      height: 700,
+      minWidth: 600,
+      minHeight: 400,
+      frame: false,
+      titleBarStyle: "hidden",
+      icon: path.join(__dirname, "../build/icon.png"),
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    const params = new URLSearchParams({
+      filePath: info.filePath,
+      title: info.title,
+    });
+
+    if (isDev) {
+      dictWindow.loadURL(`http://localhost:3000/style-dictionary?${params.toString()}`);
+    } else {
+      dictWindow.loadURL(`app://./style-dictionary.html?${params.toString()}`);
+    }
+
+    dictWindow.on("maximize", () => {
+      dictWindow.webContents.send("window:maximized", true);
+    });
+    dictWindow.on("unmaximize", () => {
+      dictWindow.webContents.send("window:maximized", false);
+    });
+  });
+
   // ── Reader: get book content ──────────────────────
   ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
     return parseBookContent(filePath, format);

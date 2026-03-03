@@ -111,6 +111,9 @@ interface ElectronAPI {
   openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => Promise<void>;
   getBookContent: (filePath: string, format: string) => Promise<BookContent>;
 
+  // Style Dictionary
+  openStyleDictionary: (info: { filePath: string; title: string }) => Promise<void>;
+
   // Bookmarks
   getBookmarks: (filePath: string) => Promise<ReaderBookmark[]>;
   addBookmark: (filePath: string, chapterIndex: number, paragraphIndex: number, label: string) => Promise<ReaderBookmark>;

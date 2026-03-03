@@ -90,8 +90,7 @@ export function AISidebar({
   const loading = hasApiKey === null;
 
   const openStyleDictionary = () => {
-    const params = new URLSearchParams({ filePath, title: bookTitle });
-    window.open(`/style-dictionary?${params.toString()}`, "_blank", "width=900,height=700");
+    window.electronAPI?.openStyleDictionary({ filePath, title: bookTitle });
   };
 
   const Toggle = ({ value, onChange, isDisabled }: { value: boolean; onChange: () => void; isDisabled?: boolean }) => (
