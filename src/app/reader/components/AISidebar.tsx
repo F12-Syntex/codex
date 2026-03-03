@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, Check, KeyRound, Loader2, Trash2 } from "lucide-react";
+import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, Check, KeyRound, Loader2, Trash2, Zap } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 
@@ -11,7 +11,9 @@ interface AISidebarProps {
   enrichedNames: Record<number, string>;
   enrichEnabled: boolean;
   enrichingChapter: number | null;
+  enrichAllProgress: { current: number; total: number } | null;
   onEnrichToggle: () => void;
+  onEnrichAll: () => void;
   onClearEnrichedNames: () => void;
   onClose: () => void;
 }
@@ -22,7 +24,9 @@ export function AISidebar({
   enrichedNames,
   enrichEnabled,
   enrichingChapter,
+  enrichAllProgress,
   onEnrichToggle,
+  onEnrichAll,
   onClearEnrichedNames,
   onClose,
 }: AISidebarProps) {
@@ -136,8 +140,28 @@ export function AISidebar({
                   Rename generic chapters via the table of contents
                 </div>
 
-                {/* Enriching indicator */}
-                {enrichingChapter !== null && (
+                {/* Enrich All progress */}
+                {enrichAllProgress !== null && enrichingChapter !== null && (
+                  <div className="mt-2 space-y-1.5">
+                    <div className={`h-1 w-full overflow-hidden rounded-full ${theme.subtle}`}>
+                      <div
+                        className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
+                        style={{ width: `${enrichAllProgress.total > 0 ? Math.round((enrichAllProgress.current / enrichAllProgress.total) * 100) : 0}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+                        {enrichAllProgress.current}/{enrichAllProgress.total}
+                      </span>
+                      <span className={`text-[11px] ${theme.muted}`}>
+                        Chapter {enrichingChapter + 1}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Single chapter enriching (no bulk) */}
+                {enrichAllProgress === null && enrichingChapter !== null && (
                   <div className="mt-1.5 flex items-center gap-1.5">
                     <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
                     <span className={`text-[11px] ${theme.muted}`}>
@@ -146,22 +170,35 @@ export function AISidebar({
                   </div>
                 )}
 
-                {/* Stats + clear */}
-                {alreadyEnriched > 0 && enrichingChapter === null && (
+                {/* Stats + actions */}
+                {enrichingChapter === null && enrichEnabled && (
                   <div className="mt-1.5 flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <Check className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={2} />
-                      <span className={`text-[11px] ${theme.muted}`}>
-                        {alreadyEnriched} renamed
-                      </span>
-                    </div>
-                    <button
-                      onClick={onClearEnrichedNames}
-                      className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] transition-colors ${theme.btn}`}
-                    >
-                      <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-                      Clear
-                    </button>
+                    {alreadyEnriched > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Check className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={2} />
+                        <span className={`text-[11px] ${theme.muted}`}>
+                          {alreadyEnriched} renamed
+                        </span>
+                      </div>
+                    )}
+                    {chaptersToEnrichCount > 0 && (
+                      <button
+                        onClick={onEnrichAll}
+                        className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] transition-colors ${theme.btn}`}
+                      >
+                        <Zap className="h-3 w-3" strokeWidth={1.5} />
+                        Enrich All ({chaptersToEnrichCount})
+                      </button>
+                    )}
+                    {alreadyEnriched > 0 && (
+                      <button
+                        onClick={onClearEnrichedNames}
+                        className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] transition-colors ${theme.btn}`}
+                      >
+                        <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+                        Clear
+                      </button>
+                    )}
                   </div>
                 )}
 

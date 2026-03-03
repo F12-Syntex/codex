@@ -44,6 +44,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [enrichedNames, setEnrichedNames] = useState<Record<number, string>>({});
   const [enrichEnabled, setEnrichEnabled] = useState(false);
   const [enrichingChapter, setEnrichingChapter] = useState<number | null>(null);
+  const [enrichAllProgress, setEnrichAllProgress] = useState<{ current: number; total: number } | null>(null);
   const enrichAbortRef = useRef(false);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,7 +60,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const paragraphs = chapter?.paragraphs ?? [];
   const isImageBook = bookContent?.isImageBook ?? false;
   const rawChapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
-  const chapterTitle = enrichedNames[currentChapter] ?? rawChapterTitle;
+  const chapterTitle = enrichEnabled && enrichedNames[currentChapter] ? enrichedNames[currentChapter] : rawChapterTitle;
 
   // TTS
   const tts = useTTS({
@@ -228,14 +229,64 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const toggleEnrichEnabled = useCallback(() => {
     if (enrichEnabled) {
-      // Turn off — abort any in-progress enrichment but keep existing names
       enrichAbortRef.current = true;
       setEnrichEnabled(false);
       setEnrichingChapter(null);
+      setEnrichAllProgress(null);
     } else {
       setEnrichEnabled(true);
     }
   }, [enrichEnabled]);
+
+  const enrichAll = useCallback(async () => {
+    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+    if (!apiKey) return;
+
+    const toEnrich = chapters
+      .map((ch, i) => ({ ch, i }))
+      .filter(({ ch, i }) => needsEnrichment(ch.title) && !enrichedNames[i]);
+
+    if (toEnrich.length === 0) return;
+
+    enrichAbortRef.current = false;
+    setEnrichAllProgress({ current: 0, total: toEnrich.length });
+
+    const client = createOpenRouterClient(apiKey);
+    let currentNames = { ...enrichedNames };
+
+    for (let idx = 0; idx < toEnrich.length; idx++) {
+      if (enrichAbortRef.current) break;
+
+      const { ch, i } = toEnrich[idx];
+      setEnrichingChapter(i);
+      setEnrichAllProgress({ current: idx, total: toEnrich.length });
+
+      try {
+        const contentPreview = ch.paragraphs.join("\n").slice(0, 2000);
+        const prompt = buildChapterRenamePrompt(ch.title, contentPreview, title);
+
+        const response = await client.chat(
+          [{ role: "user", content: prompt }],
+          "openai/gpt-4o-mini",
+          { max_tokens: 30, temperature: 0.3 },
+        );
+
+        if (enrichAbortRef.current) break;
+
+        const aiTitle = response.choices?.[0]?.message?.content?.trim();
+        if (aiTitle) {
+          currentNames = { ...currentNames, [i]: formatRenamedTitle(ch.title, aiTitle) };
+          setEnrichedNames({ ...currentNames });
+        }
+      } catch (err) {
+        console.error(`Failed to enrich chapter ${i}:`, err);
+      }
+    }
+
+    await window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify(currentNames));
+    setEnrichingChapter(null);
+    setEnrichAllProgress(enrichAbortRef.current ? null : { current: toEnrich.length, total: toEnrich.length });
+  }, [chapters, title, filePath, enrichedNames]);
 
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
@@ -482,7 +533,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               enrichedNames={enrichedNames}
               enrichEnabled={enrichEnabled}
               enrichingChapter={enrichingChapter}
+              enrichAllProgress={enrichAllProgress}
               onEnrichToggle={toggleEnrichEnabled}
+              onEnrichAll={enrichAll}
               onClearEnrichedNames={clearEnrichedNames}
               onClose={() => setShowAI(false)}
             />

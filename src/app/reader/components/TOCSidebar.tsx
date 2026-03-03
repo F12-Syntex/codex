@@ -42,13 +42,16 @@ export function TOCSidebar({
   const [tab, setTab] = useState<Tab>("chapters");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter chapters by search (use enriched name if available)
+  // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
-    const mapped = chapters.map((ch, i) => ({ ch, i, displayTitle: enrichedNames[i] ?? ch.title }));
+    const mapped = chapters.map((ch, i) => ({
+      ch, i,
+      displayTitle: enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title,
+    }));
     if (!searchQuery.trim()) return mapped;
     const q = searchQuery.toLowerCase();
     return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
-  }, [chapters, searchQuery, enrichedNames]);
+  }, [chapters, searchQuery, enrichedNames, enrichEnabled]);
 
   // Filter bookmarks by search
   const filteredBookmarks = useMemo(() => {
