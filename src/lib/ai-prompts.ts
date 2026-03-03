@@ -23,21 +23,36 @@ const SKIP_PATTERNS = [
 ];
 
 /**
- * Check if a chapter title already has a meaningful subtitle.
- * e.g. "Chapter 1: The Final Battle" → true (already named)
- *      "Chapter 3" → false (generic, should be renamed)
- *      "The Gathering Storm" → true (already descriptive)
+ * Patterns that are clearly generic / need renaming.
+ * These match things like: "Chapter 1", "ch003.xml", "ch1", "Part 2", "3", "Section IV"
  */
-function hasSubtitle(title: string): boolean {
-  // If it contains a colon/dash separator with text after, it already has a subtitle
-  if (/[:–—]\s*.{2,}/.test(title)) return true;
-  // If it doesn't start with a generic prefix, it's already descriptive
-  if (!/^(chapter|part|story|volume|book|section)\s+(\d+|[ivxlcdm]+)$/i.test(title.trim())) {
-    // Doesn't match "Chapter N" pattern — check if it's just a number
-    if (/^\d+$/.test(title.trim())) return false;
-    // It's something descriptive already (e.g. "The Gathering Storm")
-    if (!/^(chapter|part|story|volume|book|section)\s/i.test(title.trim())) return true;
-  }
+const GENERIC_PATTERNS = [
+  // "Chapter 1", "chapter 23", "CHAPTER IV"
+  /^(chapter|part|story|volume|book|section)\s+(\d+|[ivxlcdm]+)$/i,
+  // Bare numbers: "3", "42"
+  /^\d+$/,
+  // Filename-style: "ch003.xml", "ch1.xhtml", "chapter-02", "part_1"
+  /^ch(apter)?[-_.]?\d+(\.\w+)?$/i,
+  /^(part|section|vol)[-_.]?\d+(\.\w+)?$/i,
+  // "Chapter1", "Part2" (no space)
+  /^(chapter|part|section)\d+$/i,
+];
+
+/**
+ * Check whether a chapter title is generic and needs AI enrichment.
+ * Returns true for: "Chapter 1", "ch003.xml", "3", "Part IV"
+ * Returns false for: "Chapter 1: The Final War", "The Gathering Storm",
+ *   "Chapter 1 The Final War", structural pages (TOC, cover, etc.)
+ */
+export function needsEnrichment(title: string): boolean {
+  const trimmed = title.trim();
+  if (!trimmed) return false;
+  // Skip structural pages entirely — they shouldn't be renamed
+  if (SKIP_PATTERNS.some((p) => p.test(trimmed))) return false;
+  // If it matches a generic pattern, it needs enrichment
+  if (GENERIC_PATTERNS.some((p) => p.test(trimmed))) return true;
+  // "Chapter 1 The Final War" — has a prefix + number + extra words → already descriptive
+  // "Chapter 1: Subtitle" — colon/dash separator → already descriptive
   return false;
 }
 
@@ -47,11 +62,7 @@ function hasSubtitle(title: string): boolean {
  * or already has a meaningful name.
  */
 export function shouldSkipRename(title: string): boolean {
-  const trimmed = title.trim();
-  if (!trimmed) return true;
-  if (SKIP_PATTERNS.some((p) => p.test(trimmed))) return true;
-  if (hasSubtitle(trimmed)) return true;
-  return false;
+  return !needsEnrichment(title);
 }
 
 /**

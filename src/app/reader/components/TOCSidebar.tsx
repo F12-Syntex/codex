@@ -11,6 +11,7 @@ interface TOCSidebarProps {
   currentChapter: number;
   bookmarks: ReaderBookmark[];
   theme: ThemeClasses;
+  enrichedNames?: Record<number, string>;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
   onDeleteBookmark: (id: number) => void;
@@ -22,6 +23,7 @@ export function TOCSidebar({
   currentChapter,
   bookmarks,
   theme,
+  enrichedNames = {},
   onSelectChapter,
   onJumpToBookmark,
   onDeleteBookmark,
@@ -33,14 +35,13 @@ export function TOCSidebar({
   const [tab, setTab] = useState<Tab>("chapters");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter chapters by search
+  // Filter chapters by search (use enriched name if available)
   const filteredChapters = useMemo(() => {
-    if (!searchQuery.trim()) return chapters.map((ch, i) => ({ ch, i }));
+    const mapped = chapters.map((ch, i) => ({ ch, i, displayTitle: enrichedNames[i] ?? ch.title }));
+    if (!searchQuery.trim()) return mapped;
     const q = searchQuery.toLowerCase();
-    return chapters
-      .map((ch, i) => ({ ch, i }))
-      .filter(({ ch }) => ch.title.toLowerCase().includes(q));
-  }, [chapters, searchQuery]);
+    return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
+  }, [chapters, searchQuery, enrichedNames]);
 
   // Filter bookmarks by search
   const filteredBookmarks = useMemo(() => {
@@ -147,7 +148,7 @@ export function TOCSidebar({
           filteredChapters.length === 0 ? (
             <p className={`py-8 text-center text-[12px] ${theme.muted}`}>No chapters found</p>
           ) : (
-            filteredChapters.map(({ ch, i }) => (
+            filteredChapters.map(({ i, displayTitle }) => (
               <button
                 key={i}
                 onClick={() => {
@@ -162,7 +163,7 @@ export function TOCSidebar({
                 <span className={`w-5 shrink-0 text-right tabular-nums text-[11px] ${theme.muted}`}>
                   {i + 1}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{ch.title}</span>
+                <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
               </button>
             ))
           )

@@ -39,6 +39,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [maximized, setMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [immersiveVisible, setImmersiveVisible] = useState(true);
+  const [enrichedNames, setEnrichedNames] = useState<Record<number, string>>({});
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -52,7 +53,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const chapter = chapters[currentChapter];
   const paragraphs = chapter?.paragraphs ?? [];
   const isImageBook = bookContent?.isImageBook ?? false;
-  const chapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
+  const rawChapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
+  const chapterTitle = enrichedNames[currentChapter] ?? rawChapterTitle;
 
   // TTS
   const tts = useTTS({
@@ -152,6 +154,16 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         setIsLoading(false);
       });
   }, [filePath, format]);
+
+  // Load enriched chapter names from DB
+  useEffect(() => {
+    if (!bookContent || !filePath) return;
+    window.electronAPI?.getSetting(`enrichedChapters:${filePath}`).then((raw) => {
+      if (!raw) return;
+      try { setEnrichedNames(JSON.parse(raw)); } catch { /* ignore */ }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookContent, filePath]);
 
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
@@ -380,6 +392,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             <TOCSidebar
               chapters={chapters} currentChapter={currentChapter}
               bookmarks={bookmarkState.bookmarks} theme={theme}
+              enrichedNames={enrichedNames}
               onSelectChapter={handleChapterChange}
               onJumpToBookmark={() => {}}
               onDeleteBookmark={bookmarkState.removeBookmark}
@@ -390,7 +403,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           {showAI && (
             <AISidebar
               theme={theme}
-              chapterCount={chapters.length}
+              chapters={chapters}
+              bookTitle={title}
+              filePath={filePath}
+              enrichedNames={enrichedNames}
+              onEnrichedNamesChange={setEnrichedNames}
               onClose={() => setShowAI(false)}
             />
           )}
