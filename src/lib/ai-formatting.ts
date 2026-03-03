@@ -44,6 +44,16 @@ const ALLOWED_CLASSES = new Set([
   "ai-fmt-icon-arrow-up",
   "ai-fmt-icon-gem",
   "ai-fmt-icon-trophy",
+  "ai-fmt-icon-heart",
+  "ai-fmt-icon-star",
+  "ai-fmt-icon-flame",
+  "ai-fmt-icon-eye",
+  "ai-fmt-icon-crown",
+  "ai-fmt-icon-book",
+  "ai-fmt-icon-target",
+  "ai-fmt-icon-plus",
+  "ai-fmt-icon-user",
+  "ai-fmt-icon-bolt",
 ]);
 
 const SYSTEM_PROMPT = `You are a book formatting AI. You receive a JSON array of HTML paragraph strings and return a JSON array of the EXACT same length with enhanced formatting.
@@ -62,8 +72,9 @@ Read the content, understand the genre and tone, and decide what deserves visual
 # YOUR TOOLKIT
 
 ## Structured data → ai-fmt-stat-block
-A compact table for any key-value data: character stats, profiles, recipe ingredients, scores, specifications, etc.
+A full-width grid for any key-value data: character stats, profiles, recipe ingredients, scores, specifications, etc.
 Structure: <div class="ai-fmt-stat-block"> containing rows of <div class="ai-fmt-stat-row"><span class="ai-fmt-stat-label">Key</span><span class="ai-fmt-stat-value">Value</span></div>
+Keep labels SHORT (1-2 words). For long value lists (like multiple skills), abbreviate or use comma-separated short names. Add an icon before each label where relevant.
 
 ## Callout / notification → ai-fmt-system-msg
 A subtle left-bordered box for any text that stands apart from narration: system messages, announcements, letters, signs, inscriptions, warnings, formal declarations, etc.
@@ -90,8 +101,9 @@ Bold treatment for impact words: sound effects, dramatic single words, etc.
 ## First mention → ai-fmt-reveal
 Subtle background highlight for important names, titles, or concepts when first introduced.
 
-## Icons (use sparingly on labels)
-Add a <span class="ai-fmt-icon ai-fmt-icon-NAME"></span> before text. Available: sword, shield, sparkle, zap, scroll, skull, arrow-up, gem, trophy.
+## Icons — use freely on labels, stats, badges, and key terms
+Add a <span class="ai-fmt-icon ai-fmt-icon-NAME"></span> before text. Use icons on stat labels, item names, system message headers, badge text, and any label that benefits from a visual cue. Don't overuse on plain narration.
+Available: sword, shield, sparkle, zap, scroll, skull, arrow-up, gem, trophy, heart, star, flame, eye, crown, book, target, plus, user, bolt.
 
 # OUTPUT
 Return ONLY a valid JSON array of strings. No markdown fences, no explanation.`;
