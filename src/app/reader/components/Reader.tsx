@@ -15,6 +15,8 @@ import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
 import { AISidebar } from "./AISidebar";
+import { needsEnrichment, buildChapterRenamePrompt, formatRenamedTitle } from "@/lib/ai-prompts";
+import { createOpenRouterClient } from "@/lib/openrouter";
 
 interface ReaderProps {
   filePath: string;
@@ -40,6 +42,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [immersiveVisible, setImmersiveVisible] = useState(true);
   const [enrichedNames, setEnrichedNames] = useState<Record<number, string>>({});
+  const [enrichEnabled, setEnrichEnabled] = useState(false);
+  const [enrichingChapter, setEnrichingChapter] = useState<number | null>(null);
+  const enrichAbortRef = useRef(false);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -160,10 +165,72 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!bookContent || !filePath) return;
     window.electronAPI?.getSetting(`enrichedChapters:${filePath}`).then((raw) => {
       if (!raw) return;
-      try { setEnrichedNames(JSON.parse(raw)); } catch { /* ignore */ }
+      try {
+        const parsed = JSON.parse(raw);
+        if (Object.keys(parsed).length > 0) {
+          setEnrichedNames(parsed);
+          setEnrichEnabled(true);
+        }
+      } catch { /* ignore */ }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookContent, filePath]);
+
+  // Per-chapter enrichment
+  const enrichChapter = useCallback(async (chapterIndex: number) => {
+    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+    if (!apiKey || !chapters[chapterIndex]) return;
+
+    setEnrichingChapter(chapterIndex);
+    enrichAbortRef.current = false;
+
+    try {
+      const ch = chapters[chapterIndex];
+      const contentPreview = ch.paragraphs.join("\n").slice(0, 2000);
+      const prompt = buildChapterRenamePrompt(ch.title, contentPreview, title);
+      const client = createOpenRouterClient(apiKey);
+
+      const response = await client.chat(
+        [{ role: "user", content: prompt }],
+        "openai/gpt-4o-mini",
+        { max_tokens: 30, temperature: 0.3 },
+      );
+
+      if (enrichAbortRef.current) return;
+
+      const aiTitle = response.choices?.[0]?.message?.content?.trim();
+      if (aiTitle) {
+        setEnrichedNames((prev) => {
+          const updated = { ...prev, [chapterIndex]: formatRenamedTitle(ch.title, aiTitle) };
+          window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error(`Failed to enrich chapter ${chapterIndex}:`, err);
+    } finally {
+      setEnrichingChapter(null);
+    }
+  }, [chapters, title, filePath]);
+
+  const clearEnrichedNames = useCallback(() => {
+    enrichAbortRef.current = true;
+    setEnrichedNames({});
+    setEnrichEnabled(false);
+    setEnrichingChapter(null);
+    window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify({}));
+  }, [filePath]);
+
+  const toggleEnrichEnabled = useCallback(() => {
+    if (enrichEnabled) {
+      // Turn off — abort any in-progress enrichment but keep existing names
+      enrichAbortRef.current = true;
+      setEnrichEnabled(false);
+      setEnrichingChapter(null);
+    } else {
+      setEnrichEnabled(true);
+    }
+  }, [enrichEnabled]);
 
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
@@ -393,6 +460,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               chapters={chapters} currentChapter={currentChapter}
               bookmarks={bookmarkState.bookmarks} theme={theme}
               enrichedNames={enrichedNames}
+              enrichEnabled={enrichEnabled}
+              enrichingChapter={enrichingChapter}
+              onEnrichChapter={enrichChapter}
               onSelectChapter={handleChapterChange}
               onJumpToBookmark={() => {}}
               onDeleteBookmark={bookmarkState.removeBookmark}
@@ -404,10 +474,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             <AISidebar
               theme={theme}
               chapters={chapters}
-              bookTitle={title}
-              filePath={filePath}
               enrichedNames={enrichedNames}
-              onEnrichedNamesChange={setEnrichedNames}
+              enrichEnabled={enrichEnabled}
+              enrichingChapter={enrichingChapter}
+              onEnrichToggle={toggleEnrichEnabled}
+              onClearEnrichedNames={clearEnrichedNames}
               onClose={() => setShowAI(false)}
             />
           )}

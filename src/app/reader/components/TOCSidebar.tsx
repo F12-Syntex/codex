@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { X, Search, List, Bookmark } from "lucide-react";
+import { X, Search, List, Bookmark, Sparkles, Loader2 } from "lucide-react";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
+import { needsEnrichment } from "@/lib/ai-prompts";
 
 type Tab = "chapters" | "bookmarks";
 
@@ -12,6 +13,9 @@ interface TOCSidebarProps {
   bookmarks: ReaderBookmark[];
   theme: ThemeClasses;
   enrichedNames?: Record<number, string>;
+  enrichEnabled?: boolean;
+  enrichingChapter?: number | null;
+  onEnrichChapter?: (index: number) => void;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
   onDeleteBookmark: (id: number) => void;
@@ -24,6 +28,9 @@ export function TOCSidebar({
   bookmarks,
   theme,
   enrichedNames = {},
+  enrichEnabled = false,
+  enrichingChapter = null,
+  onEnrichChapter,
   onSelectChapter,
   onJumpToBookmark,
   onDeleteBookmark,
@@ -148,24 +155,42 @@ export function TOCSidebar({
           filteredChapters.length === 0 ? (
             <p className={`py-8 text-center text-[12px] ${theme.muted}`}>No chapters found</p>
           ) : (
-            filteredChapters.map(({ i, displayTitle }) => (
-              <button
-                key={i}
-                onClick={() => {
-                  onSelectChapter(i);
-                  onClose();
-                }}
-                {...(i === currentChapter ? { "data-active-chapter": true } : {})}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors ${
-                  i === currentChapter ? theme.btnActive : theme.btn
-                }`}
-              >
-                <span className={`w-5 shrink-0 text-right tabular-nums text-[11px] ${theme.muted}`}>
-                  {i + 1}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
-              </button>
-            ))
+            filteredChapters.map(({ ch, i, displayTitle }) => {
+              const canEnrich = enrichEnabled && needsEnrichment(ch.title) && !enrichedNames[i];
+              const isEnriching = enrichingChapter === i;
+
+              return (
+                <div
+                  key={i}
+                  {...(i === currentChapter ? { "data-active-chapter": true } : {})}
+                  className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors ${
+                    i === currentChapter ? theme.btnActive : theme.btn
+                  }`}
+                >
+                  <span className={`w-5 shrink-0 text-right tabular-nums text-[11px] ${theme.muted}`}>
+                    {i + 1}
+                  </span>
+                  <button
+                    onClick={() => { onSelectChapter(i); onClose(); }}
+                    className="min-w-0 flex-1 truncate text-left"
+                  >
+                    {displayTitle}
+                  </button>
+                  {isEnriching && (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={1.5} />
+                  )}
+                  {canEnrich && !isEnriching && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEnrichChapter?.(i); }}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100 ${theme.btn}`}
+                      title="Rename with AI"
+                    >
+                      <Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
+                    </button>
+                  )}
+                </div>
+              );
+            })
           )
         ) : filteredBookmarks.length === 0 ? (
           <div className={`py-8 text-center ${theme.muted}`}>

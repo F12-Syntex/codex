@@ -84,40 +84,59 @@ export function buildChapterRenamePrompt(
     contentPreview,
     `---`,
     ``,
-    `Generate a clean, spoiler-free subtitle for this chapter. The subtitle should:`,
+    `Generate a clean, spoiler-free title for this chapter. The title should:`,
     `- Capture the mood, setting, or theme of the opening without revealing plot twists`,
-    `- Be concise (2-6 words)`,
-    `- Not repeat the chapter number`,
+    `- Be concise (2-5 words)`,
+    `- Not include the chapter number or "Chapter" prefix — just the title words`,
     `- Not use generic filler like "A New Beginning" or "The Journey Continues"`,
     `- Be evocative and specific to the content`,
     ``,
-    `Reply with ONLY the subtitle text, nothing else. No quotes, no explanation.`,
+    `Reply with ONLY the title text, nothing else. No quotes, no explanation, no chapter number.`,
   ].join("\n");
 }
 
 /**
- * Format the renamed title: "Chapter 3" → "Chapter 3: Subtitle Here"
+ * Extract a chapter number from a generic title.
+ * "Chapter 3" → 3, "ch005.xml" → 5, "42" → 42, "Part IV" → "IV"
+ */
+function extractChapterNumber(title: string): string | null {
+  const trimmed = title.trim();
+
+  // "Chapter 3", "Part IV"
+  const prefixed = trimmed.match(
+    /^(?:chapter|part|story|volume|book|section)\s+(\d+|[ivxlcdm]+)$/i,
+  );
+  if (prefixed) return prefixed[1];
+
+  // Bare number: "3", "42"
+  if (/^\d+$/.test(trimmed)) return trimmed;
+
+  // Filename-style: "ch003.xml", "ch1", "chapter-02"
+  const filestyle = trimmed.match(/^ch(?:apter)?[-_.]?(\d+)(?:\.\w+)?$/i);
+  if (filestyle) return String(parseInt(filestyle[1], 10));
+
+  // "Part_1", "section-2"
+  const partStyle = trimmed.match(/^(?:part|section|vol)[-_.]?(\d+)(?:\.\w+)?$/i);
+  if (partStyle) return partStyle[1];
+
+  // "Chapter1", "Part2"
+  const noSpace = trimmed.match(/^(?:chapter|part|section)(\d+)$/i);
+  if (noSpace) return noSpace[1];
+
+  return null;
+}
+
+/**
+ * Format the renamed title: "Chapter 3" → "Chapter 3 The Final War"
  */
 export function formatRenamedTitle(
   originalTitle: string,
-  subtitle: string,
+  aiTitle: string,
 ): string {
-  if (!subtitle.trim()) return originalTitle;
+  if (!aiTitle.trim()) return originalTitle;
 
-  const hasNumber =
-    /^(Chapter|Part|Story|Volume|Book|Section)\s+(\d+|[IVXLCDM]+)/i.test(originalTitle);
+  const num = extractChapterNumber(originalTitle);
+  if (num) return `Chapter ${num} ${aiTitle.trim()}`;
 
-  if (hasNumber) {
-    const prefix = originalTitle.match(
-      /^((?:Chapter|Part|Story|Volume|Book|Section)\s+(?:\d+|[IVXLCDM]+))/i,
-    );
-    return prefix ? `${prefix[1]}: ${subtitle}` : `${originalTitle}: ${subtitle}`;
-  }
-
-  // For bare numbers like "3"
-  if (/^\d+$/.test(originalTitle.trim())) {
-    return `${originalTitle}: ${subtitle}`;
-  }
-
-  return `${originalTitle}: ${subtitle}`;
+  return `${originalTitle} ${aiTitle.trim()}`;
 }
