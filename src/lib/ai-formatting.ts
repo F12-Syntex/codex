@@ -345,79 +345,95 @@ async function formatChunk(
 }
 
 /**
- * Regenerate paragraphs that use a specific component class.
- * Shows the AI what it previously produced and asks for a different approach.
- * Accepts optional user instructions to guide the new styling.
+ * Regenerate a component across ALL chapters.
+ * The AI gets the original text and full creative freedom to use any classes/structure.
+ * Returns a map of chapterKey → { paragraphIndex → newHtml } for all affected chapters.
  */
 export async function regenerateRule(
   apiKey: string,
   componentClass: string,
-  formattedParagraphs: string[],
-  originalParagraphs: string[],
+  formattedChapters: Record<string, string[]>,
+  bookContent: { chapters: { htmlParagraphs: string[] }[] },
   bookTitle: string,
   userInstruction?: string,
-): Promise<Record<number, string> | null> {
-  // Find paragraph indices that use this component class
-  const indices: number[] = [];
-  for (let i = 0; i < formattedParagraphs.length; i++) {
-    if (formattedParagraphs[i].includes(componentClass)) {
-      indices.push(i);
-    }
-  }
-
-  if (indices.length === 0) return null;
-
+): Promise<Record<string, Record<number, string>> | null> {
   const overrides = await loadOverrides();
 
-  // Build subsets — both originals and what the AI previously produced
-  const originalSubset = indices.map(i => originalParagraphs[i]);
-  const previousSubset = indices.map(i => formattedParagraphs[i]);
+  // Collect ALL paragraphs across ALL chapters that use this component
+  // Group by chapter so we can batch them
+  const allUpdates: Record<string, Record<number, string>> = {};
+  let anyFound = false;
 
-  let regenPrompt = `RE-FORMAT REQUEST: The paragraphs below were previously formatted using "${componentClass}". You MUST produce a DIFFERENT visual result this time.
+  for (const [chKey, formatted] of Object.entries(formattedChapters)) {
+    const chIdx = Number(chKey);
+    const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
+    if (!originals || !formatted) continue;
 
-PREVIOUS OUTPUT (do NOT repeat this):
+    // Find indices in this chapter that use the component
+    const indices: number[] = [];
+    for (let i = 0; i < formatted.length; i++) {
+      if (formatted[i].includes(componentClass)) {
+        indices.push(i);
+      }
+    }
+    if (indices.length === 0) continue;
+    anyFound = true;
+
+    // Get the original (unformatted) text for these paragraphs
+    const originalSubset = indices.map(i => originals[i]);
+    const previousSubset = indices.map(i => formatted[i]);
+
+    let regenPrompt = `RE-FORMAT REQUEST: The paragraphs below were previously formatted using "${componentClass}". Produce a COMPLETELY DIFFERENT visual treatment.
+
+PREVIOUS OUTPUT (do NOT repeat this — make something that looks DIFFERENT):
 ${JSON.stringify(Object.fromEntries(previousSubset.map((p, i) => [i, p])))}
 
-Rules:
-- Use DIFFERENT classes from your toolkit than "${componentClass}"
-- Try a completely different layout, structure, or visual treatment
-- If the previous used a stat-block, try badges or a system-msg instead (and vice versa)
-- You may also choose to leave some paragraphs as plain text if that works better`;
+Creative freedom:
+- Use ANY combination of classes from your toolkit — you are not limited to "${componentClass}"
+- Try completely different structures: if it was a stat-block, try system-msg + badges. If it was badges, try a stat-block or item-card. If it was a system-msg, try inline badges or a thought block.
+- Change the layout, grouping, and visual hierarchy
+- You can merge data, split it differently, use different icons
+- You can leave paragraphs as plain text if that works better
+- Be creative and surprising — don't default to the safe/obvious choice`;
 
-  if (userInstruction) {
-    regenPrompt += `\n\nUSER REQUEST: ${userInstruction}`;
-  }
-
-  const messages: OpenRouterMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    {
-      role: "user",
-      content: `Book: "${bookTitle}"\n\n${regenPrompt}\n\nOriginal paragraphs to re-format (indices 0-${originalSubset.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(Object.fromEntries(originalSubset.map((p, i) => [i, p])))}`,
-    },
-  ];
-
-  try {
-    const response = await chatWithPreset(
-      apiKey, PRESET_ID, messages, overrides,
-      { temperature: 0.9, max_tokens: 16384 },
-    );
-
-    const content = response.choices?.[0]?.message?.content;
-    if (!content) return null;
-
-    const result = parseFormattingResponse(content, originalSubset.length, originalSubset);
-    if (!result) return null;
-
-    // Map back to original indices — ONLY include paragraphs the AI actually changed
-    const updates: Record<number, string> = {};
-    for (let j = 0; j < indices.length; j++) {
-      // Skip if the AI returned the original unchanged
-      if (result[j] === originalSubset[j]) continue;
-      updates[indices[j]] = result[j];
+    if (userInstruction) {
+      regenPrompt += `\n\nUSER REQUEST: ${userInstruction}`;
     }
-    return Object.keys(updates).length > 0 ? updates : null;
-  } catch (err) {
-    console.error("Regenerate rule failed:", err);
-    return null;
+
+    const messages: OpenRouterMessage[] = [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Book: "${bookTitle}"\n\n${regenPrompt}\n\nOriginal paragraphs to re-format (indices 0-${originalSubset.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(Object.fromEntries(originalSubset.map((p, i) => [i, p])))}`,
+      },
+    ];
+
+    try {
+      const response = await chatWithPreset(
+        apiKey, PRESET_ID, messages, overrides,
+        { temperature: 0.9, max_tokens: 16384 },
+      );
+
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) continue;
+
+      const result = parseFormattingResponse(content, originalSubset.length, originalSubset);
+      if (!result) continue;
+
+      // Map back to original indices — only include actually changed paragraphs
+      const chapterUpdates: Record<number, string> = {};
+      for (let j = 0; j < indices.length; j++) {
+        if (result[j] === originalSubset[j]) continue;
+        chapterUpdates[indices[j]] = result[j];
+      }
+      if (Object.keys(chapterUpdates).length > 0) {
+        allUpdates[chKey] = chapterUpdates;
+      }
+    } catch (err) {
+      console.error(`Regenerate rule failed for chapter ${chKey}:`, err);
+    }
   }
+
+  if (!anyFound) return null;
+  return Object.keys(allUpdates).length > 0 ? allUpdates : null;
 }

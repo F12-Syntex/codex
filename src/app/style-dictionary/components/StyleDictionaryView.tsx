@@ -6,7 +6,7 @@ import {
   Monitor, Wand2, Minus, Square, X, Copy, Send,
 } from "lucide-react";
 import type { StyleDictionary, StyleRule } from "@/lib/ai-style-dictionary";
-import { loadDictionary, saveDictionary, extractRulesFromFormatted, mergeRules } from "@/lib/ai-style-dictionary";
+import { loadDictionary, saveDictionary, extractRulesFromFormatted } from "@/lib/ai-style-dictionary";
 import { regenerateRule } from "@/lib/ai-formatting";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
@@ -62,49 +62,40 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
     const bookContent = await window.electronAPI?.getBookContent(filePath, format);
     if (!bookContent) return;
 
-    // Find the FIRST chapter that uses this component (regenerate one at a time)
-    let targetChKey: string | null = null;
-    for (const [chKey, formatted] of Object.entries(formattedChapters)) {
-      if (formatted.some(p => p.includes(componentClass))) {
-        targetChKey = chKey;
-        break;
-      }
-    }
-    if (!targetChKey) return;
-
-    const chIdx = Number(targetChKey);
-    const formatted = formattedChapters[targetChKey];
-    const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
-    if (!originals || !formatted) return;
-
     setRegeneratingRule(componentClass);
     try {
-      const updates = await regenerateRule(
-        apiKey, componentClass, formatted, originals, bookTitle,
+      const allUpdates = await regenerateRule(
+        apiKey, componentClass, formattedChapters, bookContent, bookTitle,
         instruction || undefined,
       );
-      if (!updates || Object.keys(updates).length === 0) return;
+      if (!allUpdates) return;
 
-      // Apply ONLY the changed paragraphs
-      const updated = [...formatted];
-      for (const [idx, html] of Object.entries(updates)) {
-        updated[Number(idx)] = html;
+      // Apply updates across all affected chapters
+      for (const [chKey, updates] of Object.entries(allUpdates)) {
+        const formatted = formattedChapters[chKey];
+        if (!formatted) continue;
+        const updated = [...formatted];
+        for (const [idx, html] of Object.entries(updates)) {
+          updated[Number(idx)] = html;
+        }
+        formattedChapters[chKey] = updated;
       }
-      formattedChapters[targetChKey] = updated;
 
       await window.electronAPI?.setSetting(
         `formattedChapters:${filePath}`,
         JSON.stringify(formattedChapters),
       );
 
-      // Update the targeted rule's example in-place, keep its identity
+      // Update the style dictionary with new examples
       if (dictionary) {
         const newDict = { ...dictionary, updatedAt: new Date().toISOString() };
         const updatedRules = [...newDict.rules];
 
-        // Find the first updated paragraph to use as the new example
-        const firstUpdatedIdx = Object.keys(updates).map(Number).sort((a, b) => a - b)[0];
-        const newExampleHtml = updates[firstUpdatedIdx];
+        // Use the first updated paragraph as the new example
+        const firstChKey = Object.keys(allUpdates)[0];
+        const firstUpdates = allUpdates[firstChKey];
+        const firstIdx = Object.keys(firstUpdates).map(Number).sort((a, b) => a - b)[0];
+        const newExampleHtml = firstUpdates[firstIdx];
         const trimmedExample = newExampleHtml.length > 300
           ? newExampleHtml.slice(0, 300) + "..."
           : newExampleHtml;
@@ -116,10 +107,14 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
         }
 
         // Check if any NEW classes appeared that we don't track yet
-        const newRules = extractRulesFromFormatted(originals, updated);
-        for (const nr of newRules) {
-          if (!updatedRules.some(r => r.component === nr.component)) {
-            updatedRules.push(nr);
+        const chIdx = Number(firstChKey);
+        const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
+        if (originals) {
+          const newRules = extractRulesFromFormatted(originals, formattedChapters[firstChKey]);
+          for (const nr of newRules) {
+            if (!updatedRules.some(r => r.component === nr.component)) {
+              updatedRules.push(nr);
+            }
           }
         }
 
@@ -209,7 +204,6 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                       key={rule.id}
                       rule={rule}
                       isRegenerating={regeneratingRule === rule.component}
-                      isAnyRegenerating={regeneratingRule !== null}
                       onRegenerate={(instruction) => handleRegenerate(rule.component, instruction)}
                     />
                   ))}
@@ -270,12 +264,10 @@ function Header({ title, maximized }: { title: string; maximized: boolean }) {
 function RuleCard({
   rule,
   isRegenerating,
-  isAnyRegenerating,
   onRegenerate,
 }: {
   rule: StyleRule;
   isRegenerating: boolean;
-  isAnyRegenerating: boolean;
   onRegenerate: (instruction?: string) => void;
 }) {
   const [instruction, setInstruction] = useState("");
@@ -300,14 +292,12 @@ function RuleCard({
         </div>
         <button
           onClick={() => onRegenerate()}
-          disabled={isAnyRegenerating}
+          disabled={isRegenerating}
           title="Regenerate with a different style"
           className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
             isRegenerating
               ? "text-[var(--accent-brand)]"
-              : isAnyRegenerating
-                ? "text-white/20"
-                : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
+              : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
           }`}
         >
           {isRegenerating ? (
@@ -331,9 +321,9 @@ function RuleCard({
       {!showInput ? (
         <button
           onClick={() => setShowInput(true)}
-          disabled={isAnyRegenerating}
+          disabled={isRegenerating}
           className={`mt-2 text-[11px] transition-colors ${
-            isAnyRegenerating ? "text-white/15" : "text-white/30 hover:text-white/50"
+            isRegenerating ? "text-white/15" : "text-white/30 hover:text-white/50"
           }`}
         >
           + Add instructions for regeneration
@@ -351,7 +341,7 @@ function RuleCard({
           />
           <button
             onClick={handleSubmit}
-            disabled={isAnyRegenerating}
+            disabled={isRegenerating}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15 text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/25"
           >
             <Send className="h-3 w-3" strokeWidth={1.5} />
