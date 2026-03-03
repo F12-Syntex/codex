@@ -133,11 +133,13 @@ export function buildFormattingPrompt(
 
 /**
  * Parse the AI response into an array of HTML strings.
- * Falls back to null on failure.
+ * Lenient on count: pads with originals if short, truncates if long.
+ * Falls back to null only on total parse failure.
  */
 export function parseFormattingResponse(
   response: string,
   expectedCount: number,
+  originals?: string[],
 ): string[] | null {
   try {
     // Strip markdown fences if present
@@ -147,15 +149,35 @@ export function parseFormattingResponse(
     }
 
     const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return null;
-    if (parsed.length !== expectedCount) return null;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      console.warn("AI formatting: response is not a non-empty array");
+      return null;
+    }
 
-    // Validate and sanitize each entry
-    return parsed.map((entry: unknown) => {
+    // Sanitize each entry
+    const sanitized = parsed.map((entry: unknown) => {
       if (typeof entry !== "string") return "";
       return stripUnrecognizedClasses(entry);
     });
-  } catch {
+
+    // Lenient count matching
+    if (sanitized.length === expectedCount) return sanitized;
+
+    if (sanitized.length < expectedCount) {
+      // Pad with originals (or empty) for missing slots
+      console.warn(`AI formatting: got ${sanitized.length}/${expectedCount} entries, padding`);
+      const padded = [...sanitized];
+      for (let i = sanitized.length; i < expectedCount; i++) {
+        padded.push(originals?.[i] ?? "");
+      }
+      return padded;
+    }
+
+    // Too many — truncate
+    console.warn(`AI formatting: got ${sanitized.length}/${expectedCount} entries, truncating`);
+    return sanitized.slice(0, expectedCount);
+  } catch (err) {
+    console.error("AI formatting: JSON parse failed:", err);
     return null;
   }
 }
@@ -226,25 +248,35 @@ export async function formatChapterContent(
   return results.flatMap((r) => r!);
 }
 
+const MAX_RETRIES = 2;
+
 async function formatChunk(
   apiKey: string,
   overrides: Record<string, { model: string }>,
   paragraphs: string[],
   bookTitle: string,
 ): Promise<string[] | null> {
-  try {
-    const messages = buildFormattingPrompt(paragraphs, bookTitle);
-    const response = await chatWithPreset(
-      apiKey, PRESET_ID, messages, overrides,
-      { temperature: 0.3, max_tokens: 16384 },
-    );
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const messages = buildFormattingPrompt(paragraphs, bookTitle);
+      const response = await chatWithPreset(
+        apiKey, PRESET_ID, messages, overrides,
+        { temperature: 0.3, max_tokens: 16384 },
+      );
 
-    const content = response.choices?.[0]?.message?.content;
-    if (!content) return null;
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) {
+        console.warn(`AI formatting: empty response (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        continue;
+      }
 
-    return parseFormattingResponse(content, paragraphs.length);
-  } catch (err) {
-    console.error("AI formatting chunk failed:", err);
-    return null;
+      const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
+      if (result) return result;
+
+      console.warn(`AI formatting: parse failed (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    } catch (err) {
+      console.error(`AI formatting chunk failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
+    }
   }
+  return null;
 }
