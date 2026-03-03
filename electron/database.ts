@@ -58,6 +58,21 @@ export function initDatabase(): void {
       filePath TEXT PRIMARY KEY NOT NULL,
       excludedAt TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS reading_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filePath TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      chapterIndex INTEGER NOT NULL,
+      chapterTitle TEXT NOT NULL DEFAULT '',
+      pageIndex INTEGER NOT NULL,
+      totalPages INTEGER NOT NULL DEFAULT 1,
+      totalChapters INTEGER NOT NULL DEFAULT 1,
+      timestamp TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reading_activity_file
+      ON reading_activity (filePath, timestamp);
   `);
 }
 
@@ -178,4 +193,69 @@ export function getAllSettings(): Record<string, string> {
     result[row.key] = row.value;
   }
   return result;
+}
+
+// ── Reading Activity ─────────────────────────────
+
+export interface ReadingActivity {
+  id: number;
+  filePath: string;
+  title: string;
+  chapterIndex: number;
+  chapterTitle: string;
+  pageIndex: number;
+  totalPages: number;
+  totalChapters: number;
+  timestamp: string;
+}
+
+export function recordPageView(
+  filePath: string,
+  title: string,
+  chapterIndex: number,
+  chapterTitle: string,
+  pageIndex: number,
+  totalPages: number,
+  totalChapters: number,
+): void {
+  db.prepare(`
+    INSERT INTO reading_activity (filePath, title, chapterIndex, chapterTitle, pageIndex, totalPages, totalChapters)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(filePath, title, chapterIndex, chapterTitle, pageIndex, totalPages, totalChapters);
+}
+
+export function getReadingActivity(filePath?: string, limit = 500): ReadingActivity[] {
+  if (filePath) {
+    return db.prepare(
+      "SELECT * FROM reading_activity WHERE filePath = ? ORDER BY timestamp DESC LIMIT ?"
+    ).all(filePath, limit) as ReadingActivity[];
+  }
+  return db.prepare(
+    "SELECT * FROM reading_activity ORDER BY timestamp DESC LIMIT ?"
+  ).all(limit) as ReadingActivity[];
+}
+
+export function getReadingStats(): {
+  totalPagesRead: number;
+  totalSessions: number;
+  booksRead: number;
+  activityByBook: { filePath: string; title: string; pagesRead: number; lastRead: string }[];
+} {
+  const totalPagesRead = (db.prepare(
+    "SELECT COUNT(*) as count FROM reading_activity"
+  ).get() as { count: number }).count;
+
+  // A "session" is a group of activity with <30min gap
+  const booksRead = (db.prepare(
+    "SELECT COUNT(DISTINCT filePath) as count FROM reading_activity"
+  ).get() as { count: number }).count;
+
+  const activityByBook = db.prepare(`
+    SELECT filePath, title, COUNT(*) as pagesRead, MAX(timestamp) as lastRead
+    FROM reading_activity
+    GROUP BY filePath
+    ORDER BY lastRead DESC
+  `).all() as { filePath: string; title: string; pagesRead: number; lastRead: string }[];
+
+  return { totalPagesRead, totalSessions: 0, booksRead, activityByBook };
 }

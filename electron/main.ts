@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
-import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark, getExcludedPaths } from "./database";
+import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark, getExcludedPaths, recordPageView, getReadingActivity, getReadingStats } from "./database";
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
 import type { LibraryItem } from "./database";
@@ -334,6 +334,20 @@ function createWindow() {
 
   ipcMain.handle("library:get-all-settings", () => {
     return getAllSettings();
+  });
+
+  // ── Reading Activity ──────────────────────────────
+
+  ipcMain.handle("activity:record-page", (_event, filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) => {
+    recordPageView(filePath, title, chapterIndex, chapterTitle, pageIndex, totalPages, totalChapters);
+  });
+
+  ipcMain.handle("activity:get", (_event, filePath?: string, limit?: number) => {
+    return getReadingActivity(filePath, limit);
+  });
+
+  ipcMain.handle("activity:stats", () => {
+    return getReadingStats();
   });
 
   // ── Window events ─────────────────────────────────

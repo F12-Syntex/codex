@@ -72,6 +72,25 @@ interface TTSSynthesisResult {
   wordBoundaries: WordBoundary[];
 }
 
+interface ReadingActivityRecord {
+  id: number;
+  filePath: string;
+  title: string;
+  chapterIndex: number;
+  chapterTitle: string;
+  pageIndex: number;
+  totalPages: number;
+  totalChapters: number;
+  timestamp: string;
+}
+
+interface ReadingStats {
+  totalPagesRead: number;
+  totalSessions: number;
+  booksRead: number;
+  activityByBook: { filePath: string; title: string; pagesRead: number; lastRead: string }[];
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
   minimize: () => void;
@@ -108,6 +127,11 @@ interface ElectronAPI {
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
   getAllSettings: () => Promise<Record<string, string>>;
+
+  // Reading Activity
+  recordPageView: (filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) => Promise<void>;
+  getReadingActivity: (filePath?: string, limit?: number) => Promise<ReadingActivityRecord[]>;
+  getReadingStats: () => Promise<ReadingStats>;
 
   // Updates
   checkForUpdates: () => Promise<unknown>;

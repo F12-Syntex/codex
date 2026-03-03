@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Square, X, Copy, Maximize, Minimize, List, ALargeSmall, Bookmark, BookmarkCheck, AudioLines } from "lucide-react";
+import { Minus, Square, X, Copy, Maximize, Minimize, List, ALargeSmall, Bookmark, BookmarkCheck, AudioLines, Sparkles } from "lucide-react";
 import type { ReadingTheme, ThemeClasses } from "../lib/types";
 
 interface ReaderHeaderProps {
@@ -17,12 +17,14 @@ interface ReaderHeaderProps {
   showTOC: boolean;
   showTTS: boolean;
   showTextSettings: boolean;
+  showAI: boolean;
   onThemeChange: (theme: ReadingTheme) => void;
   onTOCToggle: () => void;
   onTTSToggle: () => void;
   onTextSettingsToggle: () => void;
   onBookmarkToggle: () => void;
   onFullscreenToggle: () => void;
+  onAIToggle: () => void;
 }
 
 export function ReaderHeader({
@@ -39,12 +41,14 @@ export function ReaderHeader({
   showTOC,
   showTTS,
   showTextSettings,
+  showAI,
   onThemeChange,
   onTOCToggle,
   onTTSToggle,
   onTextSettingsToggle,
   onBookmarkToggle,
   onFullscreenToggle,
+  onAIToggle,
 }: ReaderHeaderProps) {
   return (
     <div className="flex h-11 items-center" data-reader-header>
@@ -128,6 +132,20 @@ export function ReaderHeader({
             }`}
           >
             <AudioLines className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </button>
+        )}
+
+        {/* AI tools */}
+        {!isImageBook && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onAIToggle}
+            title="AI Tools"
+            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+              showAI ? "bg-[var(--accent-brand)] text-white" : theme.btn
+            }`}
+          >
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />
           </button>
         )}
 

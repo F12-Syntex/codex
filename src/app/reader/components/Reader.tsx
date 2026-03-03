@@ -14,6 +14,7 @@ import { TTSPanel } from "./TTSPanel";
 import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
+import { AISidebar } from "./AISidebar";
 
 interface ReaderProps {
   filePath: string;
@@ -34,6 +35,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [showTOC, setShowTOC] = useState(false);
   const [showTTS, setShowTTS] = useState(false);
   const [showTextSettings, setShowTextSettings] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [immersiveVisible, setImmersiveVisible] = useState(true);
@@ -182,6 +184,26 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChapter, currentPage, filePath, bookContent]);
 
+  // Record page view for reading activity tracking
+  const recordPageRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!filePath || !bookContent) return;
+    if (recordPageRef.current) clearTimeout(recordPageRef.current);
+    recordPageRef.current = setTimeout(() => {
+      window.electronAPI?.recordPageView(
+        filePath,
+        title,
+        currentChapter,
+        chapterTitle,
+        currentPage,
+        totalPages,
+        chapters.length,
+      );
+    }, 1000);
+    return () => { if (recordPageRef.current) clearTimeout(recordPageRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChapter, currentPage, filePath, bookContent]);
+
   useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
   // Immersive mode
@@ -237,9 +259,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, []);
 
-  const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowTOC(v => !v); }, []);
-  const toggleTTS = useCallback(() => { setShowTOC(false); setShowTextSettings(false); setShowTTS(v => !v); }, []);
-  const toggleTextSettings = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(v => !v); }, []);
+  const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowAI(false); setShowTOC(v => !v); }, []);
+  const toggleTTS = useCallback(() => { setShowTOC(false); setShowTextSettings(false); setShowAI(false); setShowTTS(v => !v); }, []);
+  const toggleTextSettings = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowAI(false); setShowTextSettings(v => !v); }, []);
+  const toggleAI = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(false); setShowAI(v => !v); }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
@@ -250,7 +273,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showTextSettings) setShowTextSettings(false);
+        if (showAI) setShowAI(false);
+        else if (showTextSettings) setShowTextSettings(false);
         else if (showTOC) setShowTOC(false);
         else if (showTTS) setShowTTS(false);
         else if (isTTSActive) tts.actions.stop();
@@ -265,7 +289,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showTextSettings, showTOC, showTTS, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
+  }, [showTextSettings, showTOC, showTTS, showAI, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
 
   if (!isLoaded) return null;
 
@@ -281,12 +305,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           isFullscreen={isFullscreen} hasMultipleChapters={chapters.length > 1}
           isImageBook={isImageBook} isBookmarked={!!bookmarkState.currentBookmark}
           isTTSActive={isTTSActive} showTOC={showTOC} showTTS={showTTS}
-          showTextSettings={showTextSettings}
+          showTextSettings={showTextSettings} showAI={showAI}
           onThemeChange={(t) => updateSetting("readingTheme", t)}
           onTOCToggle={toggleTOC} onTTSToggle={toggleTTS}
           onTextSettingsToggle={toggleTextSettings}
           onBookmarkToggle={bookmarkState.toggleBookmark}
           onFullscreenToggle={toggleFullscreen}
+          onAIToggle={toggleAI}
         />
 
         {/* TTS Panel */}
@@ -359,6 +384,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onJumpToBookmark={() => {}}
               onDeleteBookmark={bookmarkState.removeBookmark}
               onClose={() => setShowTOC(false)}
+            />
+          )}
+
+          {showAI && (
+            <AISidebar
+              theme={theme}
+              chapterCount={chapters.length}
+              onClose={() => setShowAI(false)}
             />
           )}
 

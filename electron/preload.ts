@@ -59,6 +59,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openExternal: (url: string) =>
     ipcRenderer.invoke("shell:open-external", url),
 
+  // Reading Activity
+  recordPageView: (filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) =>
+    ipcRenderer.invoke("activity:record-page", filePath, title, chapterIndex, chapterTitle, pageIndex, totalPages, totalChapters),
+  getReadingActivity: (filePath?: string, limit?: number) =>
+    ipcRenderer.invoke("activity:get", filePath, limit),
+  getReadingStats: () =>
+    ipcRenderer.invoke("activity:stats"),
+
   // Updates
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.send("update:install"),
