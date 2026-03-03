@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard } from "lucide-react";
+import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3 } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
+import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 
 interface AISidebarProps {
   theme: ThemeClasses;
@@ -22,6 +23,9 @@ interface AISidebarProps {
   onFormattingToggle: () => void;
   onFormatAll: () => void;
   onClearFormatting: () => void;
+  styleDictionary: StyleDictionary | null;
+  filePath: string;
+  bookTitle: string;
   onClose: () => void;
 }
 
@@ -42,6 +46,9 @@ export function AISidebar({
   onFormattingToggle,
   onFormatAll,
   onClearFormatting,
+  styleDictionary,
+  filePath,
+  bookTitle,
   onClose,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -81,6 +88,11 @@ export function AISidebar({
 
   const disabled = hasApiKey === false;
   const loading = hasApiKey === null;
+
+  const openStyleDictionary = () => {
+    const params = new URLSearchParams({ filePath, title: bookTitle });
+    window.open(`/style-dictionary?${params.toString()}`, "_blank", "width=900,height=700");
+  };
 
   const Toggle = ({ value, onChange, isDisabled }: { value: boolean; onChange: () => void; isDisabled?: boolean }) => (
     <button
@@ -204,7 +216,7 @@ export function AISidebar({
 
     // Idle — show actions
     return (
-      <div className="mt-2 flex items-center gap-1.5">
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
         {chaptersToFormatCount > 0 && (
           <button
             onClick={onFormatAll}
@@ -329,6 +341,25 @@ export function AISidebar({
               <Toggle value={formattingEnabled} onChange={onFormattingToggle} isDisabled={disabled} />
             </div>
           </div>
+
+          {/* Style Dictionary — open in new window */}
+          {formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 && (
+            <button
+              onClick={openStyleDictionary}
+              className="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-[var(--accent-brand)]/5"
+            >
+              <div className="mt-0.5">
+                <BarChart3 className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <div className={`text-[13px] font-medium ${theme.text}`}>Style Dictionary</div>
+                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                  {styleDictionary.rules.length} learned {styleDictionary.rules.length === 1 ? "rule" : "rules"} — view and regenerate
+                </div>
+              </div>
+              <ExternalLink className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
+            </button>
+          )}
 
           {/* Immersive Simulate — coming soon */}
           <SettingRow

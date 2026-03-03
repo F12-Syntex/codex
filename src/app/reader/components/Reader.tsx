@@ -19,6 +19,8 @@ import { needsEnrichment, buildChapterRenamePrompt, formatRenamedTitle } from "@
 import { chatWithPreset } from "@/lib/openrouter";
 import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
 import { formatChapterContent } from "@/lib/ai-formatting";
+import type { StyleDictionary } from "@/lib/ai-style-dictionary";
+import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 
 interface ReaderProps {
   filePath: string;
@@ -55,6 +57,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [formattingChapter, setFormattingChapter] = useState<number | null>(null);
   const [formatAllProgress, setFormatAllProgress] = useState<{ current: number; total: number } | null>(null);
   const formatAbortRef = useRef(false);
+  const [styleDictionary, setStyleDictionary] = useState<StyleDictionary | null>(null);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -301,7 +304,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // ── AI Formatting ──────────────────────────────────
 
-  // Load formatted chapters + toggle state from DB
+  // Load formatted chapters + toggle state + style dictionary from DB
   useEffect(() => {
     if (!bookContent || !filePath) return;
     window.electronAPI?.getSetting(`formattedChapters:${filePath}`).then((raw) => {
@@ -320,6 +323,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         try { setFormattingEnabled(JSON.parse(raw)); } catch { /* ignore */ }
       }
     });
+    loadDictionary(filePath).then((dict) => {
+      if (dict) setStyleDictionary(dict);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookContent, filePath]);
 
@@ -334,12 +340,15 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       const result = await formatChapterContent(
         apiKey, chapters[chapterIndex], title,
         () => formatAbortRef.current,
+        styleDictionary,
+        filePath,
       );
 
       if (formatAbortRef.current || !result) return;
 
+      setStyleDictionary(result.dictionary);
       setFormattedChapters((prev) => {
-        const updated = { ...prev, [chapterIndex]: result };
+        const updated = { ...prev, [chapterIndex]: result.paragraphs };
         window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(updated));
         return updated;
       });
@@ -348,7 +357,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     } finally {
       setFormattingChapter(null);
     }
-  }, [chapters, title, filePath]);
+  }, [chapters, title, filePath, styleDictionary]);
 
   const formatAllChapters = useCallback(async () => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
@@ -364,6 +373,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setFormatAllProgress({ current: 0, total: toFormat.length });
 
     let currentFormatted = { ...formattedChapters };
+    let currentDict = styleDictionary;
 
     for (let idx = 0; idx < toFormat.length; idx++) {
       if (formatAbortRef.current) break;
@@ -376,13 +386,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         const result = await formatChapterContent(
           apiKey, chapters[i], title,
           () => formatAbortRef.current,
+          currentDict,
+          filePath,
         );
 
         if (formatAbortRef.current) break;
 
         if (result) {
-          currentFormatted = { ...currentFormatted, [i]: result };
+          currentFormatted = { ...currentFormatted, [i]: result.paragraphs };
+          currentDict = result.dictionary;
           setFormattedChapters({ ...currentFormatted });
+          setStyleDictionary(currentDict);
         }
       } catch (err) {
         console.error(`Failed to format chapter ${i}:`, err);
@@ -392,7 +406,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     await window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(currentFormatted));
     setFormattingChapter(null);
     setFormatAllProgress(formatAbortRef.current ? null : { current: toFormat.length, total: toFormat.length });
-  }, [chapters, title, filePath, formattedChapters]);
+  }, [chapters, title, filePath, formattedChapters, styleDictionary]);
 
   const clearFormatting = useCallback(() => {
     formatAbortRef.current = true;
@@ -400,9 +414,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setFormattingEnabled(false);
     setFormattingChapter(null);
     setFormatAllProgress(null);
+    setStyleDictionary(null);
     window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify({}));
     window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(false));
-  }, [filePath]);
+    saveDictionary(filePath, { rules: [], bookTitle: title, updatedAt: new Date().toISOString() });
+  }, [filePath, title]);
 
   const toggleFormattingEnabled = useCallback(() => {
     const next = !formattingEnabled;
@@ -680,6 +696,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onFormattingToggle={toggleFormattingEnabled}
               onFormatAll={formatAllChapters}
               onClearFormatting={clearFormatting}
+              styleDictionary={styleDictionary}
+              filePath={filePath}
+              bookTitle={title}
               onClose={() => setShowAI(false)}
             />
           )}

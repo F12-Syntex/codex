@@ -4,6 +4,8 @@ import type { BookChapter } from "@/app/reader/lib/types";
 import type { OpenRouterMessage } from "./openrouter";
 import { chatWithPreset } from "./openrouter";
 import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
+import type { StyleDictionary } from "./ai-style-dictionary";
+import { extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary } from "./ai-style-dictionary";
 
 const PRESET_ID = "quick";
 const CHUNK_SIZE = 40;
@@ -124,6 +126,7 @@ export function buildFormattingPrompt(
   paragraphs: string[],
   bookTitle: string,
   chunkOffset: number = 0,
+  styleContext: string = "",
 ): OpenRouterMessage[] {
   // Build indexed object so AI knows the indices
   const indexed: Record<number, string> = {};
@@ -132,7 +135,7 @@ export function buildFormattingPrompt(
   }
 
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: SYSTEM_PROMPT + styleContext },
     {
       role: "user",
       content: `Book: "${bookTitle}"\n\nFormat these ${paragraphs.length} paragraphs (indices 0-${paragraphs.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(indexed)}`,
@@ -228,47 +231,82 @@ async function loadOverrides() {
  * Format a single chapter's content via AI.
  * Handles chunking for long chapters. Uses the "quick" preset.
  */
+export interface FormatResult {
+  paragraphs: string[];
+  dictionary: StyleDictionary;
+}
+
 export async function formatChapterContent(
   apiKey: string,
   chapter: BookChapter,
   bookTitle: string,
   onAbortCheck?: () => boolean,
-): Promise<string[] | null> {
+  existingDictionary?: StyleDictionary | null,
+  filePath?: string,
+): Promise<FormatResult | null> {
   const { htmlParagraphs } = chapter;
-  if (htmlParagraphs.length === 0) return [];
+  if (htmlParagraphs.length === 0) {
+    return {
+      paragraphs: [],
+      dictionary: existingDictionary ?? { rules: [], bookTitle, updatedAt: new Date().toISOString() },
+    };
+  }
 
   const overrides = await loadOverrides();
+  const styleContext = existingDictionary ? buildStyleContext(existingDictionary) : "";
+
+  let formatted: string[] | null;
 
   // Small enough for a single call
   if (htmlParagraphs.length <= MAX_SINGLE_CALL) {
-    return formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0);
-  }
-
-  // Build all chunks
-  const chunks: { start: number; paragraphs: string[] }[] = [];
-  for (let start = 0; start < htmlParagraphs.length; start += CHUNK_SIZE) {
-    const end = Math.min(start + CHUNK_SIZE, htmlParagraphs.length);
-    chunks.push({ start, paragraphs: htmlParagraphs.slice(start, end) });
-  }
-
-  // Process in parallel batches
-  const results = new Array<string[] | null>(chunks.length).fill(null);
-
-  for (let batch = 0; batch < chunks.length; batch += PARALLEL_CHUNKS) {
-    if (onAbortCheck?.()) return null;
-
-    const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
-    const batchResults = await Promise.all(
-      batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start)),
-    );
-
-    for (let j = 0; j < batchResults.length; j++) {
-      if (!batchResults[j]) return null; // chunk failed — abort
-      results[batch + j] = batchResults[j];
+    formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext);
+  } else {
+    // Build all chunks
+    const chunks: { start: number; paragraphs: string[] }[] = [];
+    for (let start = 0; start < htmlParagraphs.length; start += CHUNK_SIZE) {
+      const end = Math.min(start + CHUNK_SIZE, htmlParagraphs.length);
+      chunks.push({ start, paragraphs: htmlParagraphs.slice(start, end) });
     }
+
+    // Process in parallel batches
+    const results = new Array<string[] | null>(chunks.length).fill(null);
+
+    for (let batch = 0; batch < chunks.length; batch += PARALLEL_CHUNKS) {
+      if (onAbortCheck?.()) return null;
+
+      const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
+      const batchResults = await Promise.all(
+        batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start, styleContext)),
+      );
+
+      for (let j = 0; j < batchResults.length; j++) {
+        if (!batchResults[j]) return null;
+        results[batch + j] = batchResults[j];
+      }
+    }
+
+    formatted = results.flatMap((r) => r!);
   }
 
-  return results.flatMap((r) => r!);
+  if (!formatted) return null;
+
+  // Extract style rules from the formatted output
+  const newRules = extractRulesFromFormatted(htmlParagraphs, formatted);
+  const existingRules = existingDictionary?.rules ?? [];
+  const mergedRules = mergeRules(existingRules, newRules);
+
+  const dictionary: StyleDictionary = {
+    rules: mergedRules,
+    bookTitle,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Persist dictionary if filePath provided
+  if (filePath) {
+    saveDictionary(filePath, dictionary);
+  }
+
+  return { paragraphs: formatted, dictionary };
 }
 
 const MAX_RETRIES = 2;
@@ -279,10 +317,11 @@ async function formatChunk(
   paragraphs: string[],
   bookTitle: string,
   chunkOffset: number = 0,
+  styleContext: string = "",
 ): Promise<string[] | null> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset);
+      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext);
       const response = await chatWithPreset(
         apiKey, PRESET_ID, messages, overrides,
         { temperature: 0.3, max_tokens: 16384 },
@@ -303,4 +342,64 @@ async function formatChunk(
     }
   }
   return null;
+}
+
+/**
+ * Regenerate paragraphs that use a specific component class.
+ * Re-formats just those paragraphs with a modified prompt asking for a different approach.
+ */
+export async function regenerateRule(
+  apiKey: string,
+  componentClass: string,
+  formattedParagraphs: string[],
+  originalParagraphs: string[],
+  bookTitle: string,
+): Promise<Record<number, string> | null> {
+  // Find paragraph indices that use this component class
+  const indices: number[] = [];
+  for (let i = 0; i < formattedParagraphs.length; i++) {
+    if (formattedParagraphs[i].includes(componentClass)) {
+      indices.push(i);
+    }
+  }
+
+  if (indices.length === 0) return null;
+
+  const overrides = await loadOverrides();
+
+  // Build a subset of paragraphs to re-format (using originals)
+  const subset = indices.map(i => originalParagraphs[i]);
+
+  const regenPrompt = `You previously formatted these paragraphs using the class "${componentClass}". Try a DIFFERENT visual approach for the same content. Use a different class from the toolkit, or a different layout/structure. Still use only allowed classes.`;
+
+  const messages: OpenRouterMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: `Book: "${bookTitle}"\n\n${regenPrompt}\n\nFormat these ${subset.length} paragraphs (indices 0-${subset.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(Object.fromEntries(subset.map((p, i) => [i, p])))}`,
+    },
+  ];
+
+  try {
+    const response = await chatWithPreset(
+      apiKey, PRESET_ID, messages, overrides,
+      { temperature: 0.7, max_tokens: 16384 },
+    );
+
+    const content = response.choices?.[0]?.message?.content;
+    if (!content) return null;
+
+    const result = parseFormattingResponse(content, subset.length, subset);
+    if (!result) return null;
+
+    // Map back to original indices
+    const updates: Record<number, string> = {};
+    for (let j = 0; j < indices.length; j++) {
+      updates[indices[j]] = result[j];
+    }
+    return updates;
+  } catch (err) {
+    console.error("Regenerate rule failed:", err);
+    return null;
+  }
 }
