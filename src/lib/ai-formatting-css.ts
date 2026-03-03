@@ -220,10 +220,35 @@ export const AI_FORMATTING_STYLES = `
   color: var(--ai-fmt-debuff);
 }
 
-/* ── Dialogue Coloring — just text color, nothing else ────── */
-.ai-fmt-dialogue-villain { color: var(--ai-fmt-villain); }
-.ai-fmt-dialogue-divine  { color: var(--ai-fmt-divine); }
-.ai-fmt-dialogue-hero    { color: var(--ai-fmt-hero); }
+/* ── Dialogue Tags — tiny colored pill before the quote ────── */
+.ai-fmt-dialogue-villain,
+.ai-fmt-dialogue-divine,
+.ai-fmt-dialogue-hero {
+  display: inline;
+  font-size: 0.7em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.ai-fmt-dialogue-villain {
+  background: var(--ai-fmt-debuff-bg);
+  color: var(--ai-fmt-villain);
+}
+
+.ai-fmt-dialogue-divine {
+  background: oklch(0.78 0.12 80 / 12%);
+  color: var(--ai-fmt-divine);
+}
+
+.ai-fmt-dialogue-hero {
+  background: var(--ai-fmt-accent-dim);
+  color: var(--ai-fmt-hero);
+}
 
 /* ── Thought Block — subtle left border, stays compact ────── */
 .ai-fmt-thought {

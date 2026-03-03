@@ -89,8 +89,8 @@ ai-fmt-rarity-common, ai-fmt-rarity-uncommon, ai-fmt-rarity-rare, ai-fmt-rarity-
 ## Inline tags → ai-fmt-status-badge
 Tiny inline pills. Combine with ai-fmt-status-buff (positive) or ai-fmt-status-debuff (negative) for any status, condition, trait, or tag mentioned in text.
 
-## Dialogue color → ai-fmt-dialogue-villain / ai-fmt-dialogue-divine / ai-fmt-dialogue-hero
-Subtle color on dialogue text (inside quotes, not the attribution). Use your judgement: villain = antagonist/threatening, divine = otherworldly/authoritative/system, hero = protagonist's key moments. Most dialogue should stay uncolored.
+## Dialogue tags → ai-fmt-dialogue-villain / ai-fmt-dialogue-divine / ai-fmt-dialogue-hero
+A tiny colored pill/tag placed BEFORE the quoted dialogue. Do NOT wrap the quote text itself — instead insert a <span class="ai-fmt-dialogue-villain">VILLAIN</span> (or similar short label like the character's name/role) right before the opening quote mark. The tag text should be a short label (1-5 chars): a name, role, or archetype. villain = antagonist/threatening, divine = otherworldly/authoritative/system, hero = protagonist's key moments. Only tag truly notable dialogue — most quotes should stay untagged.
 
 ## Internal monologue → ai-fmt-thought
 Left-bordered italic block for thoughts, reflections, or inner voice.
