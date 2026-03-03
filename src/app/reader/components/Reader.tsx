@@ -166,9 +166,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.electronAPI?.getSetting(`enrichedChapters:${filePath}`).then((raw) => {
       if (!raw) return;
       try {
-        const parsed = JSON.parse(raw);
-        if (Object.keys(parsed).length > 0) {
-          setEnrichedNames(parsed);
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        // Convert string keys to numbers for consistent lookup
+        const names: Record<number, string> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v) names[Number(k)] = v;
+        }
+        if (Object.keys(names).length > 0) {
+          setEnrichedNames(names);
           setEnrichEnabled(true);
         }
       } catch { /* ignore */ }

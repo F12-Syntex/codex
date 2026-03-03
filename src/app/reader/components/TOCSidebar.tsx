@@ -156,7 +156,7 @@ export function TOCSidebar({
             <p className={`py-8 text-center text-[12px] ${theme.muted}`}>No chapters found</p>
           ) : (
             filteredChapters.map(({ ch, i, displayTitle }) => {
-              const canEnrich = enrichEnabled && needsEnrichment(ch.title) && !enrichedNames[i];
+              const canEnrich = enrichEnabled && needsEnrichment(ch.title);
               const isEnriching = enrichingChapter === i;
 
               return (
