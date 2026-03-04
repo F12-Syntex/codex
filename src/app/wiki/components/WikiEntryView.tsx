@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   User, Swords, MapPin, Flame, Lightbulb,
-  Link2, Clock,
+  Clock,
 } from "lucide-react";
 import type { WikiEntry, WikiEntryType } from "@/lib/ai-wiki";
 
@@ -174,37 +174,92 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
 
       {/* Relationships */}
       {entry.relationships.length > 0 && (
-        <div className="mt-6">
-          <SectionTitle>Relationships</SectionTitle>
-          <div className="mt-2 space-y-1">
-            {entry.relationships.map((rel, i) => {
-              const targetName = resolvedNames.get(rel.targetId) ?? rel.targetId.replace(/-/g, " ");
-              return (
-                <button
-                  key={i}
-                  onClick={() => onEntryClick(rel.targetId)}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-white/[0.04]"
-                  style={{ background: "var(--bg-surface)" }}
-                >
-                  <Link2 className="h-3.5 w-3.5 shrink-0 text-white/25" strokeWidth={1.5} />
-                  <div className="flex-1">
-                    <span className="text-[12px] font-medium capitalize text-white/70">
-                      {targetName}
-                    </span>
-                    <span className="mx-2 text-[11px] text-white/25">—</span>
-                    <span className="text-[11px] capitalize text-white/40">{rel.relation}</span>
-                  </div>
-                  <span className="text-[11px] tabular-nums text-white/20">
-                    Ch. {rel.since + 1}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <RelationshipsSection
+          relationships={entry.relationships}
+          resolvedNames={resolvedNames}
+          onEntryClick={onEntryClick}
+        />
       )}
 
       <div className="h-12" />
+    </div>
+  );
+}
+
+/* ── Relationships Section ────────────────────────────── */
+
+const RELATION_GROUPS: { label: string; match: RegExp }[] = [
+  { label: "Allies & Friends", match: /ally|friend|companion|comrade|partner|trusted/i },
+  { label: "Family", match: /family|father|mother|brother|sister|parent|child|son|daughter|spouse|husband|wife|sibling|relative|kin/i },
+  { label: "Rivals & Enemies", match: /enemy|rival|antagonist|opponent|adversary|nemesis|hostile/i },
+  { label: "Mentors & Students", match: /mentor|student|teacher|master|apprentice|disciple|pupil|guide/i },
+  { label: "Other", match: /.*/ },
+];
+
+function RelationshipsSection({
+  relationships,
+  resolvedNames,
+  onEntryClick,
+}: {
+  relationships: { targetId: string; relation: string; since: number }[];
+  resolvedNames: Map<string, string>;
+  onEntryClick: (id: string) => void;
+}) {
+  // Deduplicate: keep the latest relation per target
+  const deduped = new Map<string, { targetId: string; relation: string; since: number }>();
+  for (const rel of relationships) {
+    const existing = deduped.get(rel.targetId);
+    if (!existing || rel.since > existing.since) {
+      deduped.set(rel.targetId, rel);
+    }
+  }
+  const uniqueRels = Array.from(deduped.values());
+
+  // Group by relation type
+  const groups: { label: string; rels: typeof uniqueRels }[] = [];
+  const assigned = new Set<string>();
+
+  for (const group of RELATION_GROUPS) {
+    const matching = uniqueRels.filter(
+      (r) => !assigned.has(r.targetId) && group.match.test(r.relation),
+    );
+    if (matching.length > 0) {
+      groups.push({ label: group.label, rels: matching });
+      for (const r of matching) assigned.add(r.targetId);
+    }
+  }
+
+  return (
+    <div className="mt-6">
+      <SectionTitle>Relationships ({uniqueRels.length})</SectionTitle>
+      <div className="mt-2 space-y-3">
+        {groups.map((group) => (
+          <div key={group.label}>
+            <span className="text-[11px] font-medium text-white/25 px-1">
+              {group.label}
+            </span>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {group.rels.map((rel) => {
+                const targetName = resolvedNames.get(rel.targetId) ?? rel.targetId.replace(/-/g, " ");
+                return (
+                  <button
+                    key={rel.targetId}
+                    onClick={() => onEntryClick(rel.targetId)}
+                    className="group flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+                    style={{ background: "var(--bg-surface)" }}
+                    title={`${rel.relation} (Ch. ${rel.since + 1})`}
+                  >
+                    <span className="text-[12px] font-medium text-white/70 group-hover:text-white/90">
+                      {targetName}
+                    </span>
+                    <span className="text-[10px] text-white/25">{rel.relation}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

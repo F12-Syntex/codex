@@ -322,10 +322,68 @@ async function writeResponseToDB(
     });
   }
 
-  // New entries
+  // Build lookup of existing entries by name/alias for dedup
+  const existingEntries = await api.wikiGetEntries(filePath);
+  const nameToId = new Map<string, string>();
+  for (const e of existingEntries) {
+    nameToId.set(e.name.toLowerCase(), e.id);
+    const aliases = await api.wikiGetAliases(filePath, e.id);
+    for (const alias of aliases) {
+      nameToId.set(alias.toLowerCase(), e.id);
+    }
+  }
+
+  // New entries — with dedup against existing entries by name/alias
   for (const entry of response.new_entries) {
     if (!entry.id || !entry.name) continue;
     const type = validateType(entry.type);
+
+    // Check if an entry with this name already exists under a different ID
+    const existingId = nameToId.get(entry.name.toLowerCase());
+    if (existingId && existingId !== entry.id) {
+      // Redirect: treat as update to existing entry instead of creating duplicate
+      console.info(`Wiki dedup: "${entry.name}" already exists as ${existingId}, merging into existing entry`);
+      const existing = await api.wikiGetEntry(filePath, existingId);
+      if (existing) {
+        // Merge new info into existing entry
+        await api.wikiUpsertEntry({
+          id: existingId,
+          filePath,
+          name: existing.name,
+          type: existing.type as WikiEntryType,
+          shortDescription: existing.short_description,
+          description: entry.description
+            ? (existing.description ? `${existing.description}\n\n${entry.description}` : entry.description)
+            : existing.description,
+          color: existing.color,
+          firstAppearance: existing.first_appearance,
+          significance: Math.max(existing.significance, entry.significance ?? 1),
+          status: entry.status ?? existing.status,
+        });
+
+        if (entry.aliases && entry.aliases.length > 0) {
+          await api.wikiAddAliases(filePath, existingId, entry.aliases);
+        }
+        if (entry.details && entry.details.length > 0) {
+          await api.wikiAddDetails(filePath, existingId, entry.details);
+        }
+        if (entry.relationships) {
+          for (const rel of entry.relationships) {
+            await api.wikiAddRelationship(filePath, {
+              sourceId: existingId,
+              targetId: rel.targetId,
+              relation: rel.relation,
+              sinceChapter: rel.since ?? chapterIndex,
+            });
+          }
+        }
+        await api.wikiAddAppearance(filePath, existingId, chapterIndex);
+
+        // Register new ID as alias so future references resolve
+        nameToId.set(entry.id.toLowerCase(), existingId);
+        continue;
+      }
+    }
 
     await api.wikiUpsertEntry({
       id: entry.id,
@@ -360,14 +418,25 @@ async function writeResponseToDB(
     }
 
     await api.wikiAddAppearance(filePath, entry.id, chapterIndex);
+
+    // Register in lookup for subsequent entries in same batch
+    nameToId.set(entry.name.toLowerCase(), entry.id);
+    if (entry.aliases) {
+      for (const alias of entry.aliases) {
+        nameToId.set(alias.toLowerCase(), entry.id);
+      }
+    }
   }
 
   // Updates to existing entries
   for (const update of response.updates) {
     if (!update.id) continue;
 
+    // Resolve ID — might be an old/alternate ID that was deduped
+    const resolvedId = nameToId.get(update.id.toLowerCase()) ?? update.id;
+
     // Check entry exists
-    const existing = await api.wikiGetEntry(filePath, update.id);
+    const existing = await api.wikiGetEntry(filePath, resolvedId);
     if (!existing) continue;
 
     // Update entry fields if needed
@@ -389,17 +458,17 @@ async function writeResponseToDB(
     }
 
     if (update.newAliases && update.newAliases.length > 0) {
-      await api.wikiAddAliases(filePath, update.id, update.newAliases);
+      await api.wikiAddAliases(filePath, resolvedId, update.newAliases);
     }
 
     if (update.details && update.details.length > 0) {
-      await api.wikiAddDetails(filePath, update.id, update.details);
+      await api.wikiAddDetails(filePath, resolvedId, update.details);
     }
 
     if (update.relationships) {
       for (const rel of update.relationships) {
         await api.wikiAddRelationship(filePath, {
-          sourceId: update.id,
+          sourceId: resolvedId,
           targetId: rel.targetId,
           relation: rel.relation,
           sinceChapter: rel.since ?? chapterIndex,
@@ -407,7 +476,7 @@ async function writeResponseToDB(
       }
     }
 
-    await api.wikiAddAppearance(filePath, update.id, chapterIndex);
+    await api.wikiAddAppearance(filePath, resolvedId, chapterIndex);
   }
 
   // Arc updates
