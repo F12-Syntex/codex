@@ -64,3 +64,9 @@ export function parseOverrides(json: string | null): PresetOverrides {
 export function stringifyOverrides(overrides: PresetOverrides): string {
   return JSON.stringify(overrides);
 }
+
+/** Load user's preset overrides from settings (shared helper). */
+export async function loadOverrides(): Promise<PresetOverrides> {
+  const raw = await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY);
+  return parseOverrides(raw ?? null);
+}

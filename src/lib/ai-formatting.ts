@@ -3,7 +3,7 @@
 import type { BookChapter } from "@/app/reader/lib/types";
 import type { OpenRouterMessage } from "./openrouter";
 import { chatWithPreset } from "./openrouter";
-import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
+import { loadOverrides } from "./ai-presets";
 import type { StyleDictionary } from "./ai-style-dictionary";
 import { extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary } from "./ai-style-dictionary";
 import { buildClassReference } from "./ai-formatting-classes";
@@ -142,12 +142,6 @@ function stripUnrecognizedClasses(html: string): string {
       .join(" ");
     return filtered ? `class="${filtered}"` : "";
   });
-}
-
-/** Resolve user's preset overrides from settings. */
-async function loadOverrides() {
-  const raw = await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY);
-  return parseOverrides(raw ?? null);
 }
 
 /**

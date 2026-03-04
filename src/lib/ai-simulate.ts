@@ -1,7 +1,7 @@
 /* ── AI Simulate — Branching Narrative Continuation ────────── */
 
 import { chatWithPreset, type OpenRouterMessage } from "./openrouter";
-import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
+import { loadOverrides } from "./ai-presets";
 
 interface EntityData {
   name: string;
@@ -242,9 +242,7 @@ export async function generateSimContinuation(
   const apiKey = await api.getSetting("openrouterApiKey");
   if (!apiKey) throw new Error("No API key configured");
 
-  const overrides = parseOverrides(
-    (await api.getSetting(PRESET_OVERRIDES_KEY)) ?? null,
-  );
+  const overrides = await loadOverrides();
 
   const systemPrompt = buildSimulatePrompt(bookTitle, entity, precedingParagraphs, prevChapterText, chapterSummaries, userInput);
 

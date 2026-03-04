@@ -1,7 +1,7 @@
 /* ── AI Wiki — DB-backed Core Logic ───────────────────── */
 
 import { chatWithPreset } from "./openrouter";
-import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
+import { loadOverrides } from "./ai-presets";
 import {
   WIKI_SYSTEM_PROMPT,
   buildWikiUserPrompt,
@@ -182,9 +182,7 @@ export async function generateWikiForChapter(
 
   const userPrompt = buildWikiUserPrompt(chapterIndex, chapterText, bookTitle, context);
 
-  const overrides = parseOverrides(
-    (await api.getSetting(PRESET_OVERRIDES_KEY)) ?? null,
-  );
+  const overrides = await loadOverrides();
 
   const response = await chatWithPreset(
     apiKey,
