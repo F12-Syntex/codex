@@ -67,17 +67,22 @@ export function WikiAIChat({ filePath, bookTitle, onEntryClick }: WikiAIChatProp
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load entity map for clickable references
+  // Load entity map for clickable references — refresh periodically
   useEffect(() => {
     if (!filePath) return;
-    window.electronAPI?.wikiGetEntries(filePath).then((entries) => {
-      const map = new Map<string, { name: string; type: WikiEntryType }>();
-      for (const e of entries) {
-        map.set(e.id, { name: e.name, type: e.type as WikiEntryType });
-        map.set(e.name.toLowerCase(), { name: e.name, type: e.type as WikiEntryType });
-      }
-      setEntityMap(map);
-    });
+    const refresh = () => {
+      window.electronAPI?.wikiGetEntries(filePath).then((entries) => {
+        const map = new Map<string, { name: string; type: WikiEntryType }>();
+        for (const e of entries) {
+          map.set(e.id, { name: e.name, type: e.type as WikiEntryType });
+          map.set(e.name.toLowerCase(), { name: e.name, type: e.type as WikiEntryType });
+        }
+        setEntityMap(map);
+      });
+    };
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
   }, [filePath]);
 
   // Scroll to bottom on new messages
@@ -132,22 +137,33 @@ export function WikiAIChat({ filePath, bookTitle, onEntryClick }: WikiAIChatProp
       context += "\n";
     }
 
-    // Load relationships for main characters
+    // Load details and relationships for main characters
     const mainChars = entries.filter(e => e.significance >= 3).slice(0, 10);
     if (mainChars.length > 0) {
+      const detailLines: string[] = [];
       const relLines: string[] = [];
       for (const ch of mainChars) {
-        const details = await api.wikiGetDetails(filePath, ch.id);
-        const rels = await api.wikiGetAliases(filePath, ch.id);
+        const [details, rels] = await Promise.all([
+          api.wikiGetDetails(filePath, ch.id),
+          api.wikiGetRelationships(filePath, ch.id),
+        ]);
         if (details.length > 0) {
-          const latest = details.slice(-3);
-          for (const d of latest) {
-            relLines.push(`- ${ch.name} [${d.category}]: ${d.content}`);
+          for (const d of details.slice(-5)) {
+            detailLines.push(`- ${ch.name} [${d.category}]: ${d.content}`);
+          }
+        }
+        if (rels.length > 0) {
+          for (const r of rels) {
+            const targetName = entries.find(e => e.id === r.target_id)?.name ?? r.target_id;
+            relLines.push(`- ${ch.name} → ${targetName}: ${r.relation}`);
           }
         }
       }
+      if (detailLines.length > 0) {
+        context += "## Key Details\n" + detailLines.join("\n") + "\n\n";
+      }
       if (relLines.length > 0) {
-        context += "## Key Details\n" + relLines.join("\n") + "\n";
+        context += "## Key Relationships\n" + relLines.join("\n") + "\n";
       }
     }
 

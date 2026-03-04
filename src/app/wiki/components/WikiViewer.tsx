@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Loader2, Search,
   User, Swords, MapPin, Flame, Lightbulb,
@@ -58,66 +58,75 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<WikiEntryType | "all">("all");
   const [viewMode, setViewMode] = useState<ViewMode>("entries");
-  // Load entries from DB
-  useEffect(() => {
-    if (!filePath) { setIsLoading(false); return; }
-    const load = async () => {
-      const api = window.electronAPI;
-      if (!api) return;
+  // Load entries from DB — runs on mount and polls for updates
+  const initialSelectionDone = useRef(false);
 
-      const [entryRows, processed, arcRows, summaryRows] = await Promise.all([
-        api.wikiGetEntries(filePath),
-        api.wikiGetProcessed(filePath),
-        api.wikiGetAllArcs(filePath),
-        api.wikiGetAllChapterSummaries(filePath),
-      ]);
+  const refreshData = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api || !filePath) return;
 
-      setEntries(entryRows.map((e) => ({
-        id: e.id,
-        name: e.name,
-        type: e.type as WikiEntryType,
-        short_description: e.short_description,
-        first_appearance: e.first_appearance,
-        significance: e.significance,
-        status: e.status,
-      })));
+    const [entryRows, processed, arcRows, summaryRows] = await Promise.all([
+      api.wikiGetEntries(filePath),
+      api.wikiGetProcessed(filePath),
+      api.wikiGetAllArcs(filePath),
+      api.wikiGetAllChapterSummaries(filePath),
+    ]);
 
-      setProcessedCount(processed.length);
+    setEntries(entryRows.map((e) => ({
+      id: e.id,
+      name: e.name,
+      type: e.type as WikiEntryType,
+      short_description: e.short_description,
+      first_appearance: e.first_appearance,
+      significance: e.significance,
+      status: e.status,
+    })));
 
-      setArcs(arcRows.map((a) => ({
-        id: a.id,
-        name: a.name,
-        description: a.description,
-        arcType: a.arc_type,
-        status: a.status,
-        startChapter: a.start_chapter,
-        endChapter: a.end_chapter,
-      })));
+    setProcessedCount(processed.length);
 
-      setChapterSummaries(summaryRows.map((s) => ({
-        chapter_index: s.chapter_index,
-        summary: s.summary,
-        key_events: s.key_events,
-        mood: s.mood,
-      })));
+    setArcs(arcRows.map((a) => ({
+      id: a.id,
+      name: a.name,
+      description: a.description,
+      arcType: a.arc_type,
+      status: a.status,
+      startChapter: a.start_chapter,
+      endChapter: a.end_chapter,
+    })));
 
-      setIsLoading(false);
+    setChapterSummaries(summaryRows.map((s) => ({
+      chapter_index: s.chapter_index,
+      summary: s.summary,
+      key_events: s.key_events,
+      mood: s.mood,
+    })));
 
-      // Navigate to specific entry if requested, otherwise select first
+    setIsLoading(false);
+
+    // Only set initial selection once
+    if (!initialSelectionDone.current) {
+      initialSelectionDone.current = true;
       if (initialEntryId && entryRows.some((e) => e.id === initialEntryId)) {
         setSelectedEntryId(initialEntryId);
       } else if (entryRows.length > 0) {
         setSelectedEntryId(entryRows[0].id);
       }
-    };
-    load();
-  }, [filePath]);
+    }
+  }, [filePath, initialEntryId]);
 
-  // Load full entry when selected
+  useEffect(() => {
+    if (!filePath) { setIsLoading(false); return; }
+    refreshData();
+    // Poll every 5s for fresh data while wiki window is open
+    const interval = setInterval(refreshData, 5000);
+    return () => clearInterval(interval);
+  }, [filePath, refreshData]);
+
+  // Load full entry when selected or when new chapters are processed
   useEffect(() => {
     if (!selectedEntryId || !filePath) { setSelectedEntry(null); return; }
     fetchWikiEntry(filePath, selectedEntryId).then(setSelectedEntry);
-  }, [filePath, selectedEntryId]);
+  }, [filePath, selectedEntryId, processedCount]);
 
   // Group entries by type
   const groupedEntries = useMemo(() => {
