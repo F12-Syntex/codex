@@ -412,7 +412,7 @@ export default function Home() {
   const overlayStyle = useMemo(() => {
     if (!theme.backgroundImage) return undefined;
     const s: React.CSSProperties = {
-      backgroundColor: `oklch(0.145 0 0 / ${theme.backgroundOpacity}%)`,
+      backgroundColor: `color-mix(in oklch, var(--foreground) ${theme.backgroundOpacity}%, transparent)`,
       backdropFilter: theme.backgroundBlur > 0 ? `blur(${theme.backgroundBlur}px)` : undefined,
     };
     return s;
