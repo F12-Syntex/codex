@@ -20,6 +20,8 @@ import {
   getWikiMeta, upsertWikiMeta,
   getEntityIndex, getRecentEntities,
   clearWiki, migrateJsonWiki,
+  // Simulate
+  upsertBranch, getBranches, getBranchSegments, addSegment, deleteBranch,
 } from "./database";
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
@@ -166,6 +168,7 @@ function createWindow() {
 
   // ── Reader: open book in new window ──────────
   ipcMain.handle("reader:open", (_event, bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => {
+    console.log(`[main] reader:open — title="${bookInfo.title}", format="${bookInfo.format}", filePath="${bookInfo.filePath}"`);
     const readerWindow = new BrowserWindow({
       width: 1000,
       height: 700,
@@ -277,7 +280,15 @@ function createWindow() {
 
   // ── Reader: get book content ──────────────────────
   ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
-    return parseBookContent(filePath, format);
+    console.log(`[main] reader:get-content — filePath="${filePath}", format="${format}"`);
+    try {
+      const result = parseBookContent(filePath, format);
+      console.log(`[main] reader:get-content — OK, ${result.chapters.length} chapters`);
+      return result;
+    } catch (err) {
+      console.error(`[main] reader:get-content — EXCEPTION:`, err);
+      throw err;
+    }
   });
 
   // ── Bookmarks ───────────────────────────────────────
@@ -484,6 +495,14 @@ function createWindow() {
 
   ipcMain.handle("wiki:clear", (_event, filePath: string) => { clearWiki(filePath); });
   ipcMain.handle("wiki:migrate-json", (_event, filePath: string) => migrateJsonWiki(filePath));
+
+  // ── Simulate ────────────────────────────────────────
+
+  ipcMain.handle("sim:upsert-branch", (_event, branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => { upsertBranch(branch); });
+  ipcMain.handle("sim:get-branches", (_event, filePath: string) => getBranches(filePath));
+  ipcMain.handle("sim:get-segments", (_event, filePath: string, branchId: string) => getBranchSegments(filePath, branchId));
+  ipcMain.handle("sim:add-segment", (_event, segment: { filePath: string; branchId: string; segmentIndex: number; userInput: string; htmlParagraphs: string }) => addSegment(segment));
+  ipcMain.handle("sim:delete-branch", (_event, filePath: string, branchId: string) => { deleteBranch(filePath, branchId); });
 
   // ── Window events ─────────────────────────────────
 

@@ -162,6 +162,27 @@ interface WikiEntityIndexItem {
   aliases: string[];
 }
 
+// Simulate DB types
+interface SimBranchRow {
+  id: string;
+  file_path: string;
+  entity_id: string;
+  entity_name: string;
+  chapter_index: number;
+  truncate_after_para: number;
+  created_at: string;
+}
+
+interface SimSegmentRow {
+  id: number;
+  file_path: string;
+  branch_id: string;
+  segment_index: number;
+  user_input: string;
+  html_paragraphs: string; // JSON stringified string[]
+  created_at: string;
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
   minimize: () => void;
@@ -231,6 +252,13 @@ interface ElectronAPI {
 
   wikiClear: (filePath: string) => Promise<void>;
   wikiMigrateJson: (filePath: string) => Promise<boolean>;
+
+  // Simulate
+  simUpsertBranch: (branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => Promise<void>;
+  simGetBranches: (filePath: string) => Promise<SimBranchRow[]>;
+  simGetSegments: (filePath: string, branchId: string) => Promise<SimSegmentRow[]>;
+  simAddSegment: (segment: { filePath: string; branchId: string; segmentIndex: number; userInput: string; htmlParagraphs: string }) => Promise<number>;
+  simDeleteBranch: (filePath: string, branchId: string) => Promise<void>;
 
   // Bookmarks
   getBookmarks: (filePath: string) => Promise<ReaderBookmark[]>;

@@ -231,14 +231,72 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
     }
   }
 
-  return { plain, html };
+  // Post-process: split wall-of-text paragraphs that lack line breaks.
+  // Many raw-translated EPUBs dump entire chapters into a single <p> or <div>.
+  const splitPlain: string[] = [];
+  const splitHtml: string[] = [];
+
+  for (let i = 0; i < html.length; i++) {
+    const h = html[i];
+    const p = plain[i];
+
+    // 1. Split on <br> tags first — treat them as paragraph separators
+    if (/<br\s*\/?>/i.test(h)) {
+      const parts = h.split(/<br\s*\/?>/gi).map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const text = stripHtml(part).trim();
+        if (!text && !/<img\b/i.test(part)) continue;
+        splitPlain.push(text || "[image]");
+        splitHtml.push(`<p>${part}</p>`);
+      }
+      continue;
+    }
+
+    // 2. If the plain text is very long (>1500 chars), split on double-newlines
+    //    or sentence boundaries to create readable paragraphs
+    if (p && p.length > 1500 && !/<img\b/i.test(h)) {
+      // Try double-newline split first
+      const nlParts = p.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+      if (nlParts.length > 1) {
+        for (const part of nlParts) {
+          splitPlain.push(part);
+          splitHtml.push(`<p>${part}</p>`);
+        }
+        continue;
+      }
+
+      // Fall back to splitting on sentence boundaries every ~500 chars
+      const sentences = p.split(/(?<=[.!?。！？」』])\s+/);
+      let buf = "";
+      for (const s of sentences) {
+        if (buf.length > 0 && buf.length + s.length > 500) {
+          splitPlain.push(buf);
+          splitHtml.push(`<p>${buf}</p>`);
+          buf = s;
+        } else {
+          buf += (buf ? " " : "") + s;
+        }
+      }
+      if (buf) {
+        splitPlain.push(buf);
+        splitHtml.push(`<p>${buf}</p>`);
+      }
+      continue;
+    }
+
+    // 3. Normal paragraph — keep as-is
+    splitPlain.push(p);
+    splitHtml.push(h);
+  }
+
+  return { plain: splitPlain, html: splitHtml };
 }
 
 /** Extract font-family, font-size, and raw CSS from EPUB CSS files */
 function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFamily?: string; fontSizePx?: number; css?: string } {
   // Find CSS files referenced in manifest
   const cssHrefs: string[] = [];
-  const cssItemRegex = /<item\b[^>]*?href=["']([^"']+\.css)["'][^>]*?\/?>/gi;
+  const cssItemRegex = /<(?:\w+:)?item\b[^>]*?href=["']([^"']+\.css)["'][^>]*?\/?>/gi;
   let cssMatch: RegExpExecArray | null;
   while ((cssMatch = cssItemRegex.exec(opfXml)) !== null) {
     cssHrefs.push(cssMatch[1]);
@@ -291,11 +349,11 @@ function extractFontInfo(zip: AdmZip, opfXml: string, opfDir: string): { fontFam
   return { fontFamily, fontSizePx, css: fullCss };
 }
 
-/** Parse OPF manifest: returns a map of id → href (handles any attribute order, single or double quotes) */
+/** Parse OPF manifest: returns a map of id → href (handles any attribute order, single or double quotes, and XML namespace prefixes like opf:item) */
 function parseManifest(opfXml: string): Map<string, string> {
   const manifest = new Map<string, string>();
-  // Match each <item .../> or <item ...> tag
-  const itemTagRegex = /<item\b([^>]+?)(?:\/>|>)/gi;
+  // Match <item> or <opf:item> (or any ns prefix)
+  const itemTagRegex = /<(?:\w+:)?item\b([^>]+?)(?:\/>|>)/gi;
   let m: RegExpExecArray | null;
   while ((m = itemTagRegex.exec(opfXml)) !== null) {
     const attrs = m[1];
@@ -308,10 +366,10 @@ function parseManifest(opfXml: string): Map<string, string> {
   return manifest;
 }
 
-/** Parse OPF spine: returns ordered list of idref values (handles single or double quotes) */
+/** Parse OPF spine: returns ordered list of idref values (handles single or double quotes and XML namespace prefixes like opf:itemref) */
 function parseSpine(opfXml: string): string[] {
   const ids: string[] = [];
-  const spineItemRegex = /<itemref\b[^>]*?idref=["']([^"']+)["'][^>]*?\/?>/gi;
+  const spineItemRegex = /<(?:\w+:)?itemref\b[^>]*?idref=["']([^"']+)["'][^>]*?\/?>/gi;
   let m: RegExpExecArray | null;
   while ((m = spineItemRegex.exec(opfXml)) !== null) {
     ids.push(m[1]);
@@ -322,24 +380,30 @@ function parseSpine(opfXml: string): string[] {
 // ── EPUB Parser ──────────────────────────────────────
 
 function parseEpubChapters(filePath: string): BookContent {
+  console.log(`[book-parser] parseEpubChapters — opening "${filePath}"`);
   const zip = new AdmZip(filePath);
+  console.log(`[book-parser] ZIP opened — ${zip.getEntries().length} entries`);
 
   // 1. Find OPF path via container.xml
   const containerEntry = zip.getEntry("META-INF/container.xml");
   if (!containerEntry) {
+    console.error(`[book-parser] Missing META-INF/container.xml`);
     return { chapters: [{ title: "Error", paragraphs: ["Could not read EPUB: missing container.xml"], htmlParagraphs: ["<p>Could not read EPUB: missing container.xml</p>"] }], isImageBook: false };
   }
 
   const containerXml = containerEntry.getData().toString("utf-8");
   const rootfileMatch = containerXml.match(/full-path=["']([^"']+)["']/);
   if (!rootfileMatch) {
+    console.error(`[book-parser] No rootfile full-path in container.xml`);
     return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"], htmlParagraphs: ["<p>Could not find OPF file in EPUB</p>"] }], isImageBook: false };
   }
 
   const opfPath = rootfileMatch[1];
   const opfDir = path.posix.dirname(opfPath);
+  console.log(`[book-parser] OPF path="${opfPath}", dir="${opfDir}"`);
   const opfEntry = getZipEntry(zip, opfPath);
   if (!opfEntry) {
+    console.error(`[book-parser] OPF entry not found in ZIP: "${opfPath}"`);
     return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"], htmlParagraphs: ["<p>Could not read OPF file</p>"] }], isImageBook: false };
   }
 
@@ -351,6 +415,7 @@ function parseEpubChapters(filePath: string): BookContent {
   // 3. Get spine order (handles single or double quotes)
   let spineIds = parseSpine(opfXml);
 
+  console.log(`[book-parser] Initial spine parse: ${spineIds.length} ids, manifest: ${manifest.size} items`);
   // Fallback: if spine is empty, use all XHTML/HTML items from manifest in insertion order
   if (spineIds.length === 0) {
     for (const [id, href] of manifest) {
@@ -360,7 +425,18 @@ function parseEpubChapters(filePath: string): BookContent {
     }
   }
 
+  console.log(`[book-parser] Manifest: ${manifest.size} items, Spine: ${spineIds.length} items`);
+  if (manifest.size === 0) {
+    console.error(`[book-parser] DEBUG — OPF XML (first 3000 chars):\n${opfXml.slice(0, 3000)}`);
+  }
+  if (spineIds.length === 0 && manifest.size > 0) {
+    // Spine parsing failed but manifest has items — dump spine section for debugging
+    const spineMatch = opfXml.match(/<spine[\s\S]*?<\/spine>/i);
+    console.error(`[book-parser] DEBUG — Spine section:\n${spineMatch?.[0] ?? "NOT FOUND"}`);
+  }
+
   if (spineIds.length === 0) {
+    console.error(`[book-parser] No spine items found`);
     return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"], htmlParagraphs: ["<p>No chapters found in EPUB spine</p>"] }], isImageBook: false };
   }
 
@@ -445,30 +521,56 @@ function parseCbzPages(filePath: string): BookContent {
 
 export function parseBookContent(filePath: string, format: string): BookContent {
   const fmt = format.toUpperCase();
+  console.log(`[book-parser] parseBookContent called — format="${format}" (normalized="${fmt}"), filePath="${filePath}"`);
 
-  switch (fmt) {
-    case "EPUB":
-      return parseEpubChapters(filePath);
-    case "CBZ":
-    case "CBR":
-      return parseCbzPages(filePath);
-    case "PDF":
-      return {
-        chapters: [{
-          title: "PDF Viewer",
-          paragraphs: ["PDF reading is not yet supported. Please use an external PDF reader."],
-          htmlParagraphs: ["<p>PDF reading is not yet supported. Please use an external PDF reader.</p>"],
-        }],
-        isImageBook: false,
-      };
-    default:
-      return {
-        chapters: [{
-          title: "Unsupported Format",
-          paragraphs: [`The format "${format}" is not yet supported for reading.`],
-          htmlParagraphs: [`<p>The format "${format}" is not yet supported for reading.</p>`],
-        }],
-        isImageBook: false,
-      };
+  try {
+    let result: BookContent;
+
+    switch (fmt) {
+      case "EPUB":
+        result = parseEpubChapters(filePath);
+        break;
+      case "CBZ":
+      case "CBR":
+        result = parseCbzPages(filePath);
+        break;
+      case "PDF":
+        result = {
+          chapters: [{
+            title: "PDF Viewer",
+            paragraphs: ["PDF reading is not yet supported. Please use an external PDF reader."],
+            htmlParagraphs: ["<p>PDF reading is not yet supported. Please use an external PDF reader.</p>"],
+          }],
+          isImageBook: false,
+        };
+        break;
+      default:
+        console.error(`[book-parser] Unsupported format: "${format}"`);
+        result = {
+          chapters: [{
+            title: "Unsupported Format",
+            paragraphs: [`The format "${format}" is not yet supported for reading.`],
+            htmlParagraphs: [`<p>The format "${format}" is not yet supported for reading.</p>`],
+          }],
+          isImageBook: false,
+        };
+        break;
+    }
+
+    console.log(`[book-parser] Success — ${result.chapters.length} chapters, isImageBook=${result.isImageBook}`);
+    if (result.chapters.length > 0 && result.chapters[0].title === "Error") {
+      console.error(`[book-parser] Parser returned error chapter: "${result.chapters[0].paragraphs[0]}"`);
+    }
+    return result;
+  } catch (err) {
+    console.error(`[book-parser] EXCEPTION parsing "${filePath}":`, err);
+    return {
+      chapters: [{
+        title: "Error",
+        paragraphs: [`Failed to parse book: ${err instanceof Error ? err.message : String(err)}`],
+        htmlParagraphs: [`<p>Failed to parse book: ${err instanceof Error ? err.message : String(err)}</p>`],
+      }],
+      isImageBook: false,
+    };
   }
 }

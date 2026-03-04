@@ -126,6 +126,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   wikiMigrateJson: (filePath: string) =>
     ipcRenderer.invoke("wiki:migrate-json", filePath),
 
+  // Simulate
+  simUpsertBranch: (branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) =>
+    ipcRenderer.invoke("sim:upsert-branch", branch),
+  simGetBranches: (filePath: string) =>
+    ipcRenderer.invoke("sim:get-branches", filePath),
+  simGetSegments: (filePath: string, branchId: string) =>
+    ipcRenderer.invoke("sim:get-segments", filePath, branchId),
+  simAddSegment: (segment: { filePath: string; branchId: string; segmentIndex: number; userInput: string; htmlParagraphs: string }) =>
+    ipcRenderer.invoke("sim:add-segment", segment),
+  simDeleteBranch: (filePath: string, branchId: string) =>
+    ipcRenderer.invoke("sim:delete-branch", filePath, branchId),
+
   // Bookmarks
   getBookmarks: (filePath: string) =>
     ipcRenderer.invoke("bookmarks:get", filePath),

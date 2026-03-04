@@ -185,6 +185,31 @@ export function initDatabase(): void {
       book_title TEXT NOT NULL,
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- ── Simulate Tables ─────────────────────────────────
+
+    CREATE TABLE IF NOT EXISTS sim_branches (
+      id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      entity_name TEXT NOT NULL,
+      chapter_index INTEGER NOT NULL,
+      truncate_after_para INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (file_path, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS sim_segments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL,
+      branch_id TEXT NOT NULL,
+      segment_index INTEGER NOT NULL,
+      user_input TEXT NOT NULL,
+      html_paragraphs TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (file_path, branch_id) REFERENCES sim_branches(file_path, id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_sim_segments ON sim_segments(file_path, branch_id, segment_index);
   `);
 }
 
@@ -897,4 +922,71 @@ export function migrateJsonWiki(filePath: string): boolean {
     console.error("Wiki migration failed:", err);
     return false;
   }
+}
+
+// ── Simulate ──────────────────────────────────────────
+
+export interface SimBranchRow {
+  id: string;
+  file_path: string;
+  entity_id: string;
+  entity_name: string;
+  chapter_index: number;
+  truncate_after_para: number;
+  created_at: string;
+}
+
+export interface SimSegmentRow {
+  id: number;
+  file_path: string;
+  branch_id: string;
+  segment_index: number;
+  user_input: string;
+  html_paragraphs: string; // JSON stringified string[]
+  created_at: string;
+}
+
+export function upsertBranch(branch: {
+  id: string;
+  filePath: string;
+  entityId: string;
+  entityName: string;
+  chapterIndex: number;
+  truncateAfterPara: number;
+}): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO sim_branches (id, file_path, entity_id, entity_name, chapter_index, truncate_after_para)
+    VALUES (@id, @filePath, @entityId, @entityName, @chapterIndex, @truncateAfterPara)
+  `).run(branch);
+}
+
+export function getBranches(filePath: string): SimBranchRow[] {
+  return db.prepare(
+    "SELECT * FROM sim_branches WHERE file_path = ? ORDER BY created_at DESC",
+  ).all(filePath) as SimBranchRow[];
+}
+
+export function getBranchSegments(filePath: string, branchId: string): SimSegmentRow[] {
+  return db.prepare(
+    "SELECT * FROM sim_segments WHERE file_path = ? AND branch_id = ? ORDER BY segment_index ASC",
+  ).all(filePath, branchId) as SimSegmentRow[];
+}
+
+export function addSegment(segment: {
+  filePath: string;
+  branchId: string;
+  segmentIndex: number;
+  userInput: string;
+  htmlParagraphs: string; // JSON stringified
+}): number {
+  const result = db.prepare(`
+    INSERT INTO sim_segments (file_path, branch_id, segment_index, user_input, html_paragraphs)
+    VALUES (@filePath, @branchId, @segmentIndex, @userInput, @htmlParagraphs)
+  `).run(segment);
+  return Number(result.lastInsertRowid);
+}
+
+export function deleteBranch(filePath: string, branchId: string): void {
+  db.prepare("DELETE FROM sim_segments WHERE file_path = ? AND branch_id = ?").run(filePath, branchId);
+  db.prepare("DELETE FROM sim_branches WHERE file_path = ? AND id = ?").run(filePath, branchId);
 }

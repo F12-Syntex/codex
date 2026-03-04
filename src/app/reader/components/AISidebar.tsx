@@ -37,6 +37,8 @@ interface AISidebarProps {
   onWikiProcessAll: () => void;
   onCancelWikiProcessAll: () => void;
   onClearWiki: () => void;
+  simulateEnabled: boolean;
+  onSimulateToggle: () => void;
   onClose: () => void;
 }
 
@@ -72,6 +74,8 @@ export function AISidebar({
   onWikiProcessAll,
   onCancelWikiProcessAll,
   onClearWiki,
+  simulateEnabled,
+  onSimulateToggle,
   onClose,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -155,19 +159,19 @@ export function AISidebar({
 
     if (isRunningAll) {
       return (
-        <div className="mt-2 space-y-1.5">
+        <div className="mt-2 space-y-1.5 overflow-hidden">
           <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
             <div
               className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
               style={{ width: `${enrichAllProgress.total > 0 ? Math.round(((enrichAllProgress.current + 1) / enrichAllProgress.total) * 100) : 0}%` }}
             />
           </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate max-w-[130px] ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+              <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <span className={`text-[11px] tabular-nums ${theme.muted}`}>
                 {enrichAllProgress.current + 1}/{enrichAllProgress.total}
               </span>
@@ -186,15 +190,15 @@ export function AISidebar({
 
     if (enrichingChapter !== null) {
       return (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+        <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
           <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(enrichingChapter)}</span>
         </div>
       );
     }
 
     return (
-      <div className="mt-2 flex items-center gap-1.5">
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
         {chaptersToEnrichCount > 0 && (
           <button
             onClick={onEnrichAll}
@@ -226,19 +230,19 @@ export function AISidebar({
 
     if (isFormattingAll) {
       return (
-        <div className="mt-2 space-y-1.5">
+        <div className="mt-2 space-y-1.5 overflow-hidden">
           <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
             <div
               className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
               style={{ width: `${formatAllProgress.total > 0 ? Math.round(((formatAllProgress.current + 1) / formatAllProgress.total) * 100) : 0}%` }}
             />
           </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate max-w-[130px] ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+              <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <span className={`text-[11px] tabular-nums ${theme.muted}`}>
                 {formatAllProgress.current + 1}/{formatAllProgress.total}
               </span>
@@ -257,19 +261,19 @@ export function AISidebar({
 
     if (formattingChapter !== null) {
       return (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+        <div className="mt-1.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
           <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(formattingChapter)}</span>
         </div>
       );
     }
 
     return (
-      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap overflow-hidden">
         {chaptersToFormatCount > 0 && (
           <button
             onClick={onFormatAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors shrink-0"
             style={{ background: "var(--accent-brand-dim)" }}
           >
             <Zap className="h-3 w-3" strokeWidth={1.5} />
@@ -279,7 +283,7 @@ export function AISidebar({
         {alreadyFormatted > 0 && (
           <button
             onClick={onClearFormatting}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${theme.btn}`}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors shrink-0 ${theme.btn}`}
           >
             <Trash2 className="h-3 w-3" strokeWidth={1.5} />
             Clear
@@ -300,14 +304,14 @@ export function AISidebar({
       const activeChapter = wikiProcessingChapter ?? formattingChapter ?? 0;
       const phase = formattingChapter !== null ? "Formatting" : "Analyzing";
       return (
-        <div className="mt-2 space-y-1.5">
+        <div className="mt-2 space-y-1.5 overflow-hidden">
           <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
             <div
               className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
               style={{ width: `${totalChapters > 0 ? Math.round((wikiProcessedCount / totalChapters) * 100) : 0}%` }}
             />
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
               <span className={`text-[11px] truncate ${theme.muted}`}>{phase}: {chapterName(activeChapter)}</span>
@@ -330,11 +334,11 @@ export function AISidebar({
     }
 
     return (
-      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap overflow-hidden">
         {wikiChaptersToProcess > 0 && (
           <button
             onClick={onWikiProcessAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors shrink-0"
             style={{ background: "var(--accent-brand-dim)" }}
           >
             <Zap className="h-3 w-3" strokeWidth={1.5} />
@@ -344,14 +348,14 @@ export function AISidebar({
         {wikiEntryCount > 0 && (
           <button
             onClick={onClearWiki}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${theme.btn}`}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors shrink-0 ${theme.btn}`}
           >
             <Trash2 className="h-3 w-3" strokeWidth={1.5} />
             Clear
           </button>
         )}
         {wikiEntryCount > 0 && (
-          <span className={`text-[11px] ${theme.muted}`}>
+          <span className={`text-[11px] truncate ${theme.muted}`}>
             {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} · {wikiProcessedCount} ch.
           </span>
         )}
@@ -523,14 +527,21 @@ export function AISidebar({
             </button>
           )}
 
-          {/* Immersive Simulate — coming soon */}
-          <SettingRow
-            icon={<Clapperboard className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
-            label="Immersive Simulate"
-            description="AI-generated ambient sounds and music for scenes"
-            theme={theme}
-            comingSoon
-          />
+          {/* Immersive Simulate */}
+          <div className={`rounded-lg px-3 py-2.5 transition-colors ${simulateEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <Clapperboard className={`h-3.5 w-3.5 ${simulateEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[13px] font-medium ${theme.text}`}>Immersive Simulate</div>
+                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                  Right-click wiki entities to chat in-character
+                </div>
+              </div>
+              <Toggle value={simulateEnabled} onChange={onSimulateToggle} isDisabled={disabled || !wikiEnabled} />
+            </div>
+          </div>
         </div>
       </div>
     </div>

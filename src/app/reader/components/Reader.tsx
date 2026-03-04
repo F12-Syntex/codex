@@ -23,6 +23,7 @@ import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
+import { generateSimContinuation, extractVoiceLines } from "@/lib/ai-simulate";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -76,6 +77,22 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
   const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
   const [wikiEntryCount, setWikiEntryCount] = useState(0);
+
+  // Simulate state (branching narrative)
+  const [simulateEnabled, setSimulateEnabled] = useState(false);
+  const [activeBranch, setActiveBranch] = useState<{
+    id: string;
+    chapterIndex: number;
+    truncateAfterPara: number;
+    entityId: string;
+    entityName: string;
+  } | null>(null);
+  const [activeBranchSegments, setActiveBranchSegments] = useState<
+    { userInput: string; htmlParagraphs: string[] }[]
+  >([]);
+  const [simulateGenerating, setSimulateGenerating] = useState(false);
+  const [showBranchList, setShowBranchList] = useState(false);
+  const [savedBranches, setSavedBranches] = useState<SimBranchRow[]>([]);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -177,12 +194,21 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // Load book content
   useEffect(() => {
-    if (!filePath) { setIsLoading(false); return; }
+    console.log(`[Reader] Loading book — filePath="${filePath}", format="${format}"`);
+    if (!filePath) { console.warn("[Reader] No filePath provided, skipping load"); setIsLoading(false); return; }
     setIsLoading(true);
     window.electronAPI
       ?.getBookContent(filePath, format)
-      .then((content) => { setBookContent(content); setIsLoading(false); })
-      .catch(() => {
+      .then((content) => {
+        console.log(`[Reader] Book loaded — ${content?.chapters?.length ?? 0} chapters, isImageBook=${content?.isImageBook}`);
+        if (content?.chapters?.[0]?.title === "Error") {
+          console.error(`[Reader] Parser error: ${content.chapters[0].paragraphs[0]}`);
+        }
+        setBookContent(content);
+        setIsLoading(false);
+      })
+      .catch((err: unknown) => {
+        console.error("[Reader] Failed to load book content:", err);
         setBookContent({
           chapters: [{ title: "Error", paragraphs: ["Failed to load book content."], htmlParagraphs: ["<p>Failed to load book content.</p>"] }],
           isImageBook: false,
@@ -367,6 +393,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.electronAPI?.getSetting(`wikiEnabled:${filePath}`).then((raw) => {
       if (raw != null) {
         try { setWikiEnabled(JSON.parse(raw)); } catch { /* ignore */ }
+      }
+    });
+    window.electronAPI?.getSetting(`simulateEnabled:${filePath}`).then((raw) => {
+      if (raw != null) {
+        try { setSimulateEnabled(JSON.parse(raw)); } catch { /* ignore */ }
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -591,6 +622,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!next) {
       wikiAbortRef.current = true;
       setWikiProcessingChapter(null);
+      // Simulate requires wiki — auto-disable
+      if (simulateEnabled) {
+        setSimulateEnabled(false);
+        setActiveBranch(null);
+        setActiveBranchSegments([]);
+        window.electronAPI?.setSetting(`simulateEnabled:${filePath}`, JSON.stringify(false));
+      }
     } else {
       // Wiki requires formatting — auto-enable if off
       if (!formattingEnabled) {
@@ -600,7 +638,223 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
     setWikiEnabled(next);
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(next));
-  }, [wikiEnabled, filePath, formattingEnabled]);
+  }, [wikiEnabled, filePath, formattingEnabled, simulateEnabled]);
+
+  const toggleSimulateEnabled = useCallback(() => {
+    const next = !simulateEnabled;
+    setSimulateEnabled(next);
+    if (!next) {
+      setActiveBranch(null);
+      setActiveBranchSegments([]);
+    }
+    window.electronAPI?.setSetting(`simulateEnabled:${filePath}`, JSON.stringify(next));
+  }, [simulateEnabled, filePath]);
+
+  // Load saved branches when simulate is enabled
+  useEffect(() => {
+    if (!simulateEnabled || !filePath) return;
+    window.electronAPI?.simGetBranches(filePath).then(branches => {
+      setSavedBranches(branches);
+    });
+  }, [simulateEnabled, filePath]);
+
+  // ── Simulate handlers ──────────────────────────────
+
+  const handleSimulateEntity = useCallback(async (entity: { id: string; name: string; type: WikiEntryType; color: string }, paragraphIndex: number) => {
+    if (!filePath) return;
+
+    // Truncate right at the paragraph where the user right-clicked
+    const truncateAfterPara = paragraphIndex;
+
+    // Create branch
+    const branchId = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const branch = {
+      id: branchId,
+      filePath,
+      entityId: entity.id,
+      entityName: entity.name,
+      chapterIndex: currentChapter,
+      truncateAfterPara,
+    };
+
+    await window.electronAPI?.simUpsertBranch(branch);
+
+    setActiveBranch({
+      id: branchId,
+      chapterIndex: currentChapter,
+      truncateAfterPara,
+      entityId: entity.id,
+      entityName: entity.name,
+    });
+    setActiveBranchSegments([]);
+
+    // Refresh branch list
+    const branches = await window.electronAPI?.simGetBranches(filePath) ?? [];
+    setSavedBranches(branches);
+  }, [filePath, currentChapter]);
+
+  const handleSimulateSubmit = useCallback(async (text: string) => {
+    if (!activeBranch || !filePath || simulateGenerating) return;
+
+    setSimulateGenerating(true);
+
+    try {
+      // Get entity data for AI context
+      const api = window.electronAPI;
+      if (!api) throw new Error("No API");
+
+      const [row, details, relationships, allEntries, aliases, chapterSummariesRaw] = await Promise.all([
+        api.wikiGetEntry(filePath, activeBranch.entityId),
+        api.wikiGetDetails(filePath, activeBranch.entityId, activeBranch.chapterIndex),
+        api.wikiGetRelationships(filePath, activeBranch.entityId, activeBranch.chapterIndex),
+        api.wikiGetEntries(filePath),
+        api.wikiGetAliases(filePath, activeBranch.entityId),
+        api.wikiGetChapterSummaries(filePath, 0, activeBranch.chapterIndex),
+      ]);
+
+      const nameMap = new Map(allEntries.map(e => [e.id, e.name]));
+
+      // Get preceding paragraphs for current chapter context
+      const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
+        ? formattedChapters[activeBranch.chapterIndex]
+        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
+      const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
+      const existingGenerated = activeBranchSegments.flatMap(s => s.htmlParagraphs);
+      const allPrecedingParas = [...truncated, ...existingGenerated];
+
+      // Build previous chapter text (the chapter right before the branch chapter)
+      let prevChapterText = "";
+      const prevChIdx = activeBranch.chapterIndex - 1;
+      if (prevChIdx >= 0 && chapters[prevChIdx]) {
+        const prevParas = chapters[prevChIdx].htmlParagraphs;
+        // Take last ~4000 chars of the previous chapter
+        const stripped: string[] = [];
+        let charCount = 0;
+        for (let i = prevParas.length - 1; i >= 0; i--) {
+          const t = prevParas[i].replace(/<[^>]+>/g, "").trim();
+          if (!t) continue;
+          if (charCount + t.length > 4000) break;
+          stripped.unshift(t);
+          charCount += t.length;
+        }
+        prevChapterText = stripped.join("\n\n");
+      }
+
+      // Format chapter summaries for broader narrative context
+      const chapterSummaries = (chapterSummariesRaw ?? [])
+        .slice(-8)
+        .map(s => `- Chapter ${s.chapter_index + 1}: ${s.summary}`);
+
+      // Extract voice lines from the original book text (all chapters up to branch point)
+      const entityNames = [activeBranch.entityName, ...(aliases ?? [])];
+      const allBookParas: string[] = [];
+      for (let ci = 0; ci <= activeBranch.chapterIndex; ci++) {
+        const chParas = chapters[ci]?.htmlParagraphs ?? [];
+        if (ci === activeBranch.chapterIndex) {
+          allBookParas.push(...chParas.slice(0, activeBranch.truncateAfterPara + 1));
+        } else {
+          allBookParas.push(...chParas);
+        }
+      }
+      const voiceLines = extractVoiceLines(allBookParas, entityNames);
+
+      // Also check wiki details for previously saved voice lines
+      const savedVoiceDetails = details
+        .filter(d => d.category === "voice")
+        .map(d => d.content);
+      const combinedVoice = [...new Set([...savedVoiceDetails, ...voiceLines])].slice(0, 20);
+
+      const entityData = {
+        name: activeBranch.entityName,
+        description: row?.description ?? "",
+        shortDescription: row?.short_description ?? "",
+        details: details.map(d => ({ category: d.category, content: d.content })),
+        relationships: relationships.map(r => ({
+          targetName: (r.source_id === activeBranch.entityId
+            ? nameMap.get(r.target_id)
+            : nameMap.get(r.source_id)) ?? r.target_id,
+          relation: r.relation,
+        })),
+        voiceLines: combinedVoice,
+      };
+
+      const htmlParagraphs = await generateSimContinuation(
+        title,
+        entityData,
+        allPrecedingParas,
+        prevChapterText,
+        chapterSummaries,
+        text,
+      );
+
+      const segmentIndex = activeBranchSegments.length;
+      await api.simAddSegment({
+        filePath,
+        branchId: activeBranch.id,
+        segmentIndex,
+        userInput: text,
+        htmlParagraphs: JSON.stringify(htmlParagraphs),
+      });
+
+      setActiveBranchSegments(prev => [...prev, { userInput: text, htmlParagraphs }]);
+
+      // Persist new voice lines to wiki DB (only ones not already saved)
+      const newVoiceLines = voiceLines.filter(vl => !savedVoiceDetails.includes(vl));
+      if (newVoiceLines.length > 0) {
+        await api.wikiAddDetails(
+          filePath,
+          activeBranch.entityId,
+          newVoiceLines.map(vl => ({
+            chapterIndex: activeBranch.chapterIndex,
+            category: "voice",
+            content: vl,
+          })),
+        );
+      }
+    } catch (err) {
+      console.error("Simulate generation error:", err);
+    } finally {
+      setSimulateGenerating(false);
+    }
+  }, [activeBranch, filePath, simulateGenerating, formattingEnabled, formattedChapters, chapters, activeBranchSegments, title]);
+
+  const handleExitBranch = useCallback(() => {
+    setActiveBranch(null);
+    setActiveBranchSegments([]);
+  }, []);
+
+  const handleLoadBranch = useCallback(async (branch: SimBranchRow) => {
+    if (!filePath) return;
+
+    // Load segments
+    const segments = await window.electronAPI?.simGetSegments(filePath, branch.id) ?? [];
+    const parsedSegments = segments.map(s => ({
+      userInput: s.user_input,
+      htmlParagraphs: JSON.parse(s.html_paragraphs) as string[],
+    }));
+
+    // Navigate to branch chapter
+    setCurrentChapter(branch.chapter_index);
+    setActiveBranch({
+      id: branch.id,
+      chapterIndex: branch.chapter_index,
+      truncateAfterPara: branch.truncate_after_para,
+      entityId: branch.entity_id,
+      entityName: branch.entity_name,
+    });
+    setActiveBranchSegments(parsedSegments);
+    setShowBranchList(false);
+  }, [filePath]);
+
+  const handleDeleteBranch = useCallback(async (branchId: string) => {
+    if (!filePath) return;
+    await window.electronAPI?.simDeleteBranch(filePath, branchId);
+    setSavedBranches(prev => prev.filter(b => b.id !== branchId));
+    if (activeBranch?.id === branchId) {
+      setActiveBranch(null);
+      setActiveBranchSegments([]);
+    }
+  }, [filePath, activeBranch]);
 
   const clearWiki = useCallback(() => {
     wikiAbortRef.current = true;
@@ -683,10 +937,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     return wikiEntityIndex;
   }, [wikiEnabled, wikiEntityIndex]);
 
-  // Effective HTML paragraphs (formatted or original)
-  const effectiveHtml = formattingEnabled && formattedChapters[currentChapter]
-    ? formattedChapters[currentChapter]
-    : chapter?.htmlParagraphs ?? [];
+  // Effective HTML paragraphs (formatted or original, with branch override)
+  const effectiveHtml = useMemo(() => {
+    if (activeBranch) {
+      const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
+        ? formattedChapters[activeBranch.chapterIndex]
+        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
+      const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
+      const generated = activeBranchSegments.flatMap(s => s.htmlParagraphs);
+      return [...truncated, ...generated];
+    }
+    return formattingEnabled && formattedChapters[currentChapter]
+      ? formattedChapters[currentChapter]
+      : chapter?.htmlParagraphs ?? [];
+  }, [activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapter, chapters]);
 
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
@@ -766,17 +1030,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // Chapter boundary navigation: page-forward at end → next chapter (page 0)
   const handleNextChapterFromPage = useCallback(() => {
+    if (activeBranch) return; // Block in branch mode
     if (currentChapter < chapters.length - 1) {
       handleChapterChange(currentChapter + 1);
     }
-  }, [currentChapter, chapters.length, handleChapterChange]);
+  }, [currentChapter, chapters.length, handleChapterChange, activeBranch]);
 
   // Chapter boundary navigation: page-back at start → prev chapter (last page)
   const handlePrevChapterFromPage = useCallback(() => {
+    if (activeBranch) return; // Block in branch mode
     if (currentChapter > 0) {
       handleChapterChange(currentChapter - 1, -1); // -1 signals "last page"
     }
-  }, [currentChapter, handleChapterChange]);
+  }, [currentChapter, handleChapterChange, activeBranch]);
 
   const [firstVisiblePara, setFirstVisiblePara] = useState(0);
   const handlePageChange = useCallback((page: number, total: number, firstPara?: number) => {
@@ -814,7 +1080,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           (e.target as HTMLElement).blur();
           return;
         }
-        if (showAI) setShowAI(false);
+        if (activeBranch) { handleExitBranch(); }
+        else if (showAI) setShowAI(false);
         else if (showTextSettings) setShowTextSettings(false);
         else if (showTOC) setShowTOC(false);
         else if (showTTS) setShowTTS(false);
@@ -833,7 +1100,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showTextSettings, showTOC, showTTS, showAI, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
+  }, [showTextSettings, showTOC, showTTS, showAI, activeBranch, handleExitBranch, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
 
   if (!isLoaded) return null;
 
@@ -932,6 +1199,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               formattedChapters={formattedChapters}
               formattingChapter={formattingChapter}
               onFormatChapter={formatChapter}
+              wikiEnabled={wikiEnabled}
+              wikiProcessedChapters={wikiProcessedChapters}
               onSelectChapter={handleChapterChange}
               onJumpToBookmark={() => {}}
               onDeleteBookmark={bookmarkState.removeBookmark}
@@ -972,6 +1241,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onWikiProcessAll={processAllWikiChapters}
               onCancelWikiProcessAll={cancelWikiProcessAll}
               onClearWiki={clearWiki}
+              simulateEnabled={simulateEnabled}
+              onSimulateToggle={toggleSimulateEnabled}
               onClose={() => setShowAI(false)}
             />
           )}
@@ -1020,6 +1291,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               currentChapterIndex={currentChapter}
               filePath={filePath}
               bookTitle={title}
+              simulateEnabled={simulateEnabled}
+              onSimulateEntity={handleSimulateEntity}
+              simulateMode={!!activeBranch}
+              simulateInputVisible={!!activeBranch && !simulateGenerating}
+              simulateGenerating={simulateGenerating}
+              onSimulateSubmit={handleSimulateSubmit}
+              branchEntityName={activeBranch?.entityName}
             />
           )}
 
@@ -1047,9 +1325,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           chapterIndex={currentChapter} chapterCount={chapters.length}
           chapterTitle={chapterTitle} theme={theme} immersiveMode={settings.immersiveMode}
           immersiveVisible={immersiveVisible}
-          canGoPrev={currentChapter > 0} canGoNext={currentChapter < chapters.length - 1}
+          canGoPrev={!activeBranch && currentChapter > 0}
+          canGoNext={!activeBranch && currentChapter < chapters.length - 1}
           onPrev={() => handleChapterChange(currentChapter - 1)}
           onNext={() => handleChapterChange(currentChapter + 1)}
+          branchMode={!!activeBranch}
+          branchEntityName={activeBranch?.entityName}
+          onExitBranch={handleExitBranch}
+          savedBranches={savedBranches}
+          showBranchList={showBranchList}
+          onToggleBranchList={() => setShowBranchList(v => !v)}
+          onLoadBranch={handleLoadBranch}
+          onDeleteBranch={handleDeleteBranch}
+          activeBranchId={activeBranch?.id}
         />
       </div>
     </div>

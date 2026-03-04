@@ -7,6 +7,7 @@ import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
+import { EntityContextMenu } from "./EntityContextMenu";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -38,6 +39,14 @@ interface TextContentProps {
   currentChapterIndex?: number;
   filePath?: string;
   bookTitle?: string;
+  simulateEnabled?: boolean;
+  onSimulateEntity?: (entity: { id: string; name: string; type: WikiEntryType; color: string }, paragraphIndex: number) => void;
+  onOpenWikiEntity?: (entryId: string) => void;
+  simulateMode?: boolean;
+  simulateInputVisible?: boolean;
+  simulateGenerating?: boolean;
+  onSimulateSubmit?: (text: string) => void;
+  branchEntityName?: string;
 }
 
 /*
@@ -100,10 +109,28 @@ export function TextContent({
   currentChapterIndex = 0,
   filePath,
   bookTitle,
+  simulateEnabled = false,
+  onSimulateEntity,
+  onOpenWikiEntity,
+  simulateMode = false,
+  simulateInputVisible = false,
+  simulateGenerating = false,
+  onSimulateSubmit,
+  branchEntityName,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const simInputRef = useRef<HTMLInputElement>(null);
+  const [simInputValue, setSimInputValue] = useState("");
+
+  // Auto-focus simulate input when it becomes visible
+  useEffect(() => {
+    if (simulateInputVisible && simInputRef.current) {
+      // Need timeout because slider may still be transitioning
+      setTimeout(() => simInputRef.current?.focus(), 300);
+    }
+  }, [simulateInputVisible, htmlParagraphs.length]);
 
   // Wiki tooltip state
   const [tooltipData, setTooltipData] = useState<{
@@ -120,6 +147,14 @@ export function TextContent({
     placement: "above" | "below";
   } | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  // Context menu state
+  const [contextMenuData, setContextMenuData] = useState<{
+    entity: { id: string; name: string; type: WikiEntryType; color: string };
+    x: number;
+    y: number;
+    paragraphIndex: number;
+  } | null>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -578,6 +613,41 @@ export function TextContent({
     return () => clipper.removeEventListener("click", handleClick);
   }, [wikiEnabled, filePath, tooltipData?.id, wikiEntityIndex]);
 
+  // ── Wiki entity right-click → context menu ────────────────
+  useEffect(() => {
+    const clipper = clipperRef.current;
+    if (!clipper || !wikiEnabled || !simulateEnabled || !filePath) return;
+
+    const handleContextMenu = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest("[data-wiki-id]") as HTMLElement | null;
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const id = target.getAttribute("data-wiki-id");
+      if (!id) return;
+
+      const entityInfo = wikiEntityIndex.find(ent => ent.id === id);
+      if (!entityInfo) return;
+
+      // Find paragraph index from the closest [data-para-idx] ancestor
+      const paraEl = (e.target as HTMLElement).closest("[data-para-idx]") as HTMLElement | null;
+      const paragraphIndex = paraEl ? parseInt(paraEl.getAttribute("data-para-idx") ?? "0", 10) : 0;
+
+      // Dismiss tooltip if open
+      setTooltipData(null);
+
+      setContextMenuData({
+        entity: entityInfo,
+        x: e.clientX,
+        y: e.clientY,
+        paragraphIndex,
+      });
+    };
+
+    clipper.addEventListener("contextmenu", handleContextMenu);
+    return () => clipper.removeEventListener("contextmenu", handleContextMenu);
+  }, [wikiEnabled, simulateEnabled, filePath, wikiEntityIndex]);
+
   // Dismiss tooltip on click outside
   useEffect(() => {
     if (!tooltipData) return;
@@ -596,9 +666,10 @@ export function TextContent({
     };
   }, [tooltipData]);
 
-  // Dismiss tooltip on page change or chapter change
+  // Dismiss tooltip and context menu on page change or chapter change
   useEffect(() => {
     setTooltipData(null);
+    setContextMenuData(null);
   }, [currentPage, currentChapterIndex]);
 
   // Dismiss tooltip on Escape
@@ -873,6 +944,77 @@ export function TextContent({
         >
           {titleJSX}
           {paragraphsJSX}
+
+          {/* Simulate: inline input or loading indicator */}
+          {simulateMode && simulateGenerating && (
+            <div
+              style={{
+                padding: `${paraSpacing}px 0`,
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                opacity: 0.5,
+                fontFamily,
+                fontSize: `${fontSize}px`,
+              }}
+            >
+              <div className="sim-loading-dots" style={{ display: "flex", gap: "4px" }}>
+                <span className="sim-dot" />
+                <span className="sim-dot" />
+                <span className="sim-dot" />
+              </div>
+              <span className={theme.muted} style={{ fontSize: `${fontSize * 0.85}px` }}>
+                Generating...
+              </span>
+            </div>
+          )}
+
+          {simulateMode && simulateInputVisible && (
+            <div
+              style={{
+                padding: `${paraSpacing}px 0`,
+                breakInside: "avoid",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  background: "var(--bg-inset)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <input
+                  ref={simInputRef}
+                  type="text"
+                  value={simInputValue}
+                  onChange={(e) => setSimInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && simInputValue.trim() && onSimulateSubmit) {
+                      onSimulateSubmit(simInputValue.trim());
+                      setSimInputValue("");
+                    }
+                    // Prevent space from triggering TTS
+                    e.stopPropagation();
+                  }}
+                  placeholder={branchEntityName ? `What happens next with ${branchEntityName}...` : "What happens next..."}
+                  className={theme.text}
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    fontFamily,
+                    fontSize: `${fontSize * 0.9}px`,
+                    lineHeight: 1.5,
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* TTS paragraph highlight overlay ("paragraph" and "both" modes) */}
@@ -952,6 +1094,26 @@ export function TextContent({
         />
       )}
 
+      {/* Wiki entity context menu */}
+      {contextMenuData && (
+        <EntityContextMenu
+          entity={contextMenuData.entity}
+          x={contextMenuData.x}
+          y={contextMenuData.y}
+          onSimulate={() => onSimulateEntity?.(contextMenuData.entity, contextMenuData.paragraphIndex)}
+          onOpenWiki={() => {
+            if (filePath && bookTitle) {
+              if (onOpenWikiEntity) {
+                onOpenWikiEntity(contextMenuData.entity.id);
+              } else {
+                window.electronAPI?.openWiki({ filePath, title: bookTitle, entryId: contextMenuData.entity.id });
+              }
+            }
+          }}
+          onClose={() => setContextMenuData(null)}
+        />
+      )}
+
       <style>{`
         .reader-image img {
           max-width: 100%;
@@ -984,6 +1146,19 @@ export function TextContent({
         @keyframes wikiTooltipIn {
           from { opacity: 0; transform: scale(0.95); }
           to { opacity: 1; transform: scale(1); }
+        }
+        .sim-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--accent-brand);
+          animation: simDotPulse 1.2s ease-in-out infinite;
+        }
+        .sim-dot:nth-child(2) { animation-delay: 0.2s; }
+        .sim-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes simDotPulse {
+          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+          40% { opacity: 1; transform: scale(1); }
         }
       `}</style>
     </div>

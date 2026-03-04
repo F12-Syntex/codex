@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { X, Search, List, Bookmark, Sparkles, Paintbrush, Loader2 } from "lucide-react";
+import { X, Search, List, Bookmark, Sparkles, Paintbrush, BookMarked, Loader2 } from "lucide-react";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 
@@ -20,6 +20,8 @@ interface TOCSidebarProps {
   formattedChapters?: Record<number, string[]>;
   formattingChapter?: number | null;
   onFormatChapter?: (index: number) => void;
+  wikiEnabled?: boolean;
+  wikiProcessedChapters?: Set<number>;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
   onDeleteBookmark: (id: number) => void;
@@ -39,6 +41,8 @@ export function TOCSidebar({
   formattedChapters = {},
   formattingChapter = null,
   onFormatChapter,
+  wikiEnabled = false,
+  wikiProcessedChapters = new Set(),
   onSelectChapter,
   onJumpToBookmark,
   onDeleteBookmark,
@@ -173,6 +177,11 @@ export function TOCSidebar({
               const canFormat = formattingEnabled && !formattedChapters[i];
               const isFormatting = formattingChapter === i;
 
+              const isEnriched = !!enrichedNames[i];
+              const isFormatted = !!formattedChapters[i];
+              const isWikiProcessed = wikiProcessedChapters.has(i);
+              const hasIndicators = (enrichEnabled && isEnriched) || (formattingEnabled && isFormatted) || (wikiEnabled && isWikiProcessed);
+
               return (
                 <div
                   key={i}
@@ -188,7 +197,20 @@ export function TOCSidebar({
                     onClick={() => { onSelectChapter(i); onClose(); }}
                     className="min-w-0 flex-1 truncate text-left"
                   >
-                    {displayTitle}
+                    <span>{displayTitle}</span>
+                    {hasIndicators && (
+                      <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
+                        {enrichEnabled && isEnriched && (
+                          <Sparkles className="inline h-2.5 w-2.5 text-[var(--accent-brand)] opacity-50" strokeWidth={1.5} />
+                        )}
+                        {formattingEnabled && isFormatted && (
+                          <Paintbrush className="inline h-2.5 w-2.5 text-[var(--accent-brand)] opacity-50" strokeWidth={1.5} />
+                        )}
+                        {wikiEnabled && isWikiProcessed && (
+                          <BookMarked className="inline h-2.5 w-2.5 text-[var(--accent-brand)] opacity-50" strokeWidth={1.5} />
+                        )}
+                      </span>
+                    )}
                   </button>
                   {(isEnriching || isFormatting) && (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={1.5} />
