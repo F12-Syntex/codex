@@ -114,6 +114,9 @@ interface ElectronAPI {
   // Style Dictionary
   openStyleDictionary: (info: { filePath: string; title: string }) => Promise<void>;
 
+  // Wiki
+  openWiki: (info: { filePath: string; title: string }) => Promise<void>;
+
   // Bookmarks
   getBookmarks: (filePath: string) => Promise<ReaderBookmark[]>;
   addBookmark: (filePath: string, chapterIndex: number, paragraphIndex: number, label: string) => Promise<ReaderBookmark>;

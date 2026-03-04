@@ -4,6 +4,8 @@ import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
+import type { BookWiki, WikiEntryType } from "@/lib/ai-wiki";
+import { WikiInfoPanel, buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -30,6 +32,12 @@ interface TextContentProps {
   onPlayFromParagraph?: (paraIndex: number) => void;
   readingTheme?: ReadingTheme;
   aiFormattingEnabled?: boolean;
+  wikiEnabled?: boolean;
+  wikiEntityIndex?: Array<{ id: string; name: string; type: WikiEntryType; color: string }>;
+  bookWiki?: BookWiki | null;
+  currentChapterIndex?: number;
+  selectedWikiEntryId?: string | null;
+  onWikiEntryClick?: (entryId: string | null) => void;
 }
 
 /*
@@ -87,6 +95,12 @@ export function TextContent({
   onPlayFromParagraph,
   readingTheme: readingThemeProp,
   aiFormattingEnabled = false,
+  wikiEnabled = false,
+  wikiEntityIndex = [],
+  bookWiki = null,
+  currentChapterIndex = 0,
+  selectedWikiEntryId = null,
+  onWikiEntryClick,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
@@ -103,6 +117,12 @@ export function TextContent({
   // Track chapter navigation direction for entrance animation
   const navDirectionRef = useRef<"forward" | "backward" | null>(null);
   const [slideClass, setSlideClass] = useState<string | null>(null);
+
+  // Build entity regex from index
+  const entityRegex = useMemo(() => {
+    if (!wikiEnabled || wikiEntityIndex.length === 0) return null;
+    return buildEntityRegex(wikiEntityIndex);
+  }, [wikiEnabled, wikiEntityIndex]);
 
   const columnGap = 48;
   const forceSingleCol = containerWidth > 0 && containerWidth < 1200;
@@ -294,10 +314,17 @@ export function TextContent({
 
   // ── Content processing ──────────────────────────────
 
-  const filteredHtml = useMemo(
+  const filteredHtmlRaw = useMemo(
     () => filterTitleParagraph(htmlParagraphs, chapterTitle),
     [htmlParagraphs, chapterTitle],
   );
+
+  // Inject wiki entity highlights
+  const filteredHtml = useMemo(() => {
+    if (!wikiEnabled || !entityRegex || wikiEntityIndex.length === 0) return filteredHtmlRaw;
+    return filteredHtmlRaw.map((html) => injectWikiEntities(html, wikiEntityIndex, entityRegex));
+  }, [filteredHtmlRaw, wikiEnabled, entityRegex, wikiEntityIndex]);
+
   // How many paragraphs were removed from the front (0 or 1)
   const filterOffset = htmlParagraphs.length - filteredHtml.length;
 
@@ -454,6 +481,25 @@ export function TextContent({
       />
     </div>
   ) : null;
+
+  // ── Wiki entity click handling ─────────────────────────
+  useEffect(() => {
+    const clipper = clipperRef.current;
+    if (!clipper || !wikiEnabled || !onWikiEntryClick) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest("[data-wiki-id]") as HTMLElement | null;
+      if (!target) return;
+      e.stopPropagation();
+      const id = target.getAttribute("data-wiki-id");
+      if (!id) return;
+      // Toggle: clicking same entity closes panel
+      onWikiEntryClick(selectedWikiEntryId === id ? null : id);
+    };
+
+    clipper.addEventListener("click", handleClick);
+    return () => clipper.removeEventListener("click", handleClick);
+  }, [wikiEnabled, onWikiEntryClick, selectedWikiEntryId]);
 
   // ── TTS auto-navigate: scroll to the page containing the active paragraph ──
 
@@ -678,6 +724,7 @@ export function TextContent({
       style={{
         padding: `${padding}px`,
         overflow: "hidden",
+        position: "relative",
       }}
     >
       {/* Clipper: shows exactly one page (1 or 2 columns depending on viewport/content) */}
@@ -781,7 +828,17 @@ export function TextContent({
           containerRef={clipperRef}
           onPlayFromParagraph={onPlayFromParagraph}
         />
+
       </div>
+
+      {/* Wiki info panel — bottom bar */}
+      {selectedWikiEntryId && bookWiki?.entries[selectedWikiEntryId] && (
+        <WikiInfoPanel
+          entry={bookWiki.entries[selectedWikiEntryId]}
+          currentChapter={currentChapterIndex}
+          onClose={() => onWikiEntryClick?.(null)}
+        />
+      )}
 
       <style>{`
         .reader-image img {
@@ -793,6 +850,22 @@ export function TextContent({
           background-color: ${sel.bg};
           color: ${sel.fg};
         }
+        .wiki-entity {
+          cursor: pointer;
+          border-bottom: 1px dotted;
+          padding-bottom: 1px;
+          transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+        .wiki-entity-blue { color: rgba(147, 197, 253, 0.9); border-color: rgba(96, 165, 250, 0.3); }
+        .wiki-entity-blue:hover { background: rgba(96, 165, 250, 0.08); border-color: rgba(96, 165, 250, 0.6); }
+        .wiki-entity-amber { color: rgba(252, 211, 77, 0.9); border-color: rgba(251, 191, 36, 0.3); }
+        .wiki-entity-amber:hover { background: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.6); }
+        .wiki-entity-emerald { color: rgba(110, 231, 183, 0.9); border-color: rgba(52, 211, 153, 0.3); }
+        .wiki-entity-emerald:hover { background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.6); }
+        .wiki-entity-rose { color: rgba(253, 164, 175, 0.9); border-color: rgba(251, 113, 133, 0.3); }
+        .wiki-entity-rose:hover { background: rgba(251, 113, 133, 0.08); border-color: rgba(251, 113, 133, 0.6); }
+        .wiki-entity-violet { color: rgba(196, 181, 253, 0.9); border-color: rgba(167, 139, 250, 0.3); }
+        .wiki-entity-violet:hover { background: rgba(167, 139, 250, 0.08); border-color: rgba(167, 139, 250, 0.6); }
       `}</style>
     </div>
   );

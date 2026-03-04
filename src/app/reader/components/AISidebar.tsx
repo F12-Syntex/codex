@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3 } from "lucide-react";
+import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3, BookMarked } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
+import type { BookWiki } from "@/lib/ai-wiki";
 
 interface AISidebarProps {
   theme: ThemeClasses;
@@ -26,6 +27,14 @@ interface AISidebarProps {
   styleDictionary: StyleDictionary | null;
   filePath: string;
   bookTitle: string;
+  wikiEnabled: boolean;
+  bookWiki: BookWiki | null;
+  wikiProcessingChapter: number | null;
+  totalChapters: number;
+  currentChapter: number;
+  onWikiToggle: () => void;
+  onWikiProcessAll: () => void;
+  onClearWiki: () => void;
   onClose: () => void;
 }
 
@@ -49,6 +58,14 @@ export function AISidebar({
   styleDictionary,
   filePath,
   bookTitle,
+  wikiEnabled,
+  bookWiki,
+  wikiProcessingChapter,
+  totalChapters,
+  currentChapter,
+  onWikiToggle,
+  onWikiProcessAll,
+  onClearWiki,
   onClose,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -63,6 +80,19 @@ export function AISidebar({
   const alreadyFormatted = Object.keys(formattedChapters).length;
   const chaptersToFormatCount = chapters.length - alreadyFormatted;
   const isFormattingAll = formatAllProgress !== null && formattingChapter !== null;
+
+  const wikiEntryCount = bookWiki ? Object.keys(bookWiki.entries).length : 0;
+  const wikiProcessedCount = bookWiki ? bookWiki.processedChapters.length : 0;
+  const wikiChaptersToProcess = totalChapters - wikiProcessedCount;
+
+  // Helper: get chapter display name
+  const chapterName = (idx: number) => {
+    const ch = chapters[idx];
+    if (!ch) return `Chapter ${idx + 1}`;
+    const enriched = enrichedNames[idx];
+    if (enriched) return enriched;
+    return ch.title || `Chapter ${idx + 1}`;
+  };
 
   useEffect(() => {
     window.electronAPI?.getSetting("openrouterApiKey").then((key) => {
@@ -93,6 +123,10 @@ export function AISidebar({
     window.electronAPI?.openStyleDictionary({ filePath, title: bookTitle });
   };
 
+  const openWikiViewer = () => {
+    window.electronAPI?.openWiki({ filePath, title: bookTitle });
+  };
+
   const Toggle = ({ value, onChange, isDisabled }: { value: boolean; onChange: () => void; isDisabled?: boolean }) => (
     <button
       onClick={isDisabled ? undefined : onChange}
@@ -110,11 +144,11 @@ export function AISidebar({
     </button>
   );
 
-  // Enrich sub-content: progress, idle actions, or single-chapter spinner
+  // ── Progress Indicators ──────────────────────────────
+
   const enrichSubContent = () => {
     if (!enrichEnabled || disabled) return null;
 
-    // Bulk enrichment running
     if (isRunningAll) {
       return (
         <div className="mt-2 space-y-1.5">
@@ -127,7 +161,7 @@ export function AISidebar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] ${theme.muted}`}>Chapter {enrichingChapter! + 1}</span>
+              <span className={`text-[11px] truncate max-w-[160px] ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
             </div>
             <span className={`text-[11px] tabular-nums ${theme.muted}`}>
               {enrichAllProgress.current + 1}/{enrichAllProgress.total}
@@ -137,17 +171,15 @@ export function AISidebar({
       );
     }
 
-    // Single chapter enrichment
     if (enrichingChapter !== null) {
       return (
         <div className="mt-1.5 flex items-center gap-1.5">
           <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          <span className={`text-[11px] ${theme.muted}`}>Renaming chapter {enrichingChapter + 1}...</span>
+          <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(enrichingChapter)}</span>
         </div>
       );
     }
 
-    // Idle — show actions
     return (
       <div className="mt-2 flex items-center gap-1.5">
         {chaptersToEnrichCount > 0 && (
@@ -176,11 +208,9 @@ export function AISidebar({
     );
   };
 
-  // Formatting sub-content: progress, idle actions, or single-chapter spinner
   const formattingSubContent = () => {
     if (!formattingEnabled || disabled) return null;
 
-    // Bulk formatting running
     if (isFormattingAll) {
       return (
         <div className="mt-2 space-y-1.5">
@@ -193,7 +223,7 @@ export function AISidebar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] ${theme.muted}`}>Chapter {formattingChapter! + 1}</span>
+              <span className={`text-[11px] truncate max-w-[160px] ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
             </div>
             <span className={`text-[11px] tabular-nums ${theme.muted}`}>
               {formatAllProgress.current + 1}/{formatAllProgress.total}
@@ -203,17 +233,15 @@ export function AISidebar({
       );
     }
 
-    // Single chapter formatting
     if (formattingChapter !== null) {
       return (
         <div className="mt-1.5 flex items-center gap-1.5">
           <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          <span className={`text-[11px] ${theme.muted}`}>Formatting chapter {formattingChapter + 1}...</span>
+          <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(formattingChapter)}</span>
         </div>
       );
     }
 
-    // Idle — show actions
     return (
       <div className="mt-2 flex items-center gap-1.5 flex-wrap">
         {chaptersToFormatCount > 0 && (
@@ -237,6 +265,64 @@ export function AISidebar({
         )}
         {chaptersToFormatCount === 0 && alreadyFormatted > 0 && (
           <span className={`text-[11px] ${theme.muted}`}>{alreadyFormatted} chapters formatted</span>
+        )}
+      </div>
+    );
+  };
+
+  const wikiSubContent = () => {
+    if (!wikiEnabled || disabled) return null;
+
+    // Processing indicator (formatting + wiki combined)
+    if (formattingChapter !== null || wikiProcessingChapter !== null) {
+      const activeChapter = wikiProcessingChapter ?? formattingChapter ?? 0;
+      const phase = formattingChapter !== null ? "Formatting" : "Analyzing";
+      return (
+        <div className="mt-2 space-y-1.5">
+          <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
+            <div
+              className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
+              style={{ width: `${totalChapters > 0 ? Math.round((wikiProcessedCount / totalChapters) * 100) : 0}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+              <span className={`text-[11px] truncate ${theme.muted}`}>{phase}: {chapterName(activeChapter)}</span>
+            </div>
+            <span className={`text-[11px] tabular-nums shrink-0 ${theme.muted}`}>
+              {wikiProcessedCount}/{totalChapters}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+        {wikiChaptersToProcess > 0 && (
+          <button
+            onClick={onWikiProcessAll}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors"
+            style={{ background: "var(--accent-brand-dim)" }}
+          >
+            <Zap className="h-3 w-3" strokeWidth={1.5} />
+            Analyze All ({wikiChaptersToProcess})
+          </button>
+        )}
+        {wikiEntryCount > 0 && (
+          <button
+            onClick={onClearWiki}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${theme.btn}`}
+          >
+            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+            Clear
+          </button>
+        )}
+        {wikiEntryCount > 0 && (
+          <span className={`text-[11px] ${theme.muted}`}>
+            {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} · {wikiProcessedCount} ch.
+          </span>
         )}
       </div>
     );
@@ -276,12 +362,50 @@ export function AISidebar({
 
       {/* Settings */}
       <div className={`flex-1 overflow-y-auto ${disabled ? "opacity-50 pointer-events-none select-none" : ""}`}>
+
+        {/* ── Intelligence section ── */}
         <div className="px-3 pb-1 pt-3">
-          <span className={`text-[11px] font-medium uppercase tracking-wider ${theme.muted}`}>Content</span>
+          <span className={`text-[11px] font-medium uppercase tracking-wider ${theme.muted}`}>Intelligence</span>
         </div>
 
         <div className="space-y-0.5 px-1.5">
-          {/* Enrich Chapters — functional */}
+          {/* AI Wiki — the main feature, auto-enables formatting */}
+          <div className={`rounded-lg px-3 py-2.5 transition-colors ${wikiEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <BookMarked className={`h-3.5 w-3.5 ${wikiEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[13px] font-medium ${theme.text}`}>AI Wiki</div>
+                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                  Progressive encyclopedia — click highlighted names for details
+                </div>
+                {wikiSubContent()}
+              </div>
+              <Toggle value={wikiEnabled} onChange={onWikiToggle} isDisabled={disabled} />
+            </div>
+          </div>
+
+          {/* Open Wiki Viewer */}
+          {wikiEnabled && wikiEntryCount > 0 && (
+            <button
+              onClick={openWikiViewer}
+              className="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-[var(--accent-brand)]/5"
+            >
+              <div className="mt-0.5">
+                <BookOpen className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <div className={`text-[13px] font-medium ${theme.text}`}>Open Wiki</div>
+                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                  {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} — full viewer
+                </div>
+              </div>
+              <ExternalLink className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
+            </button>
+          )}
+
+          {/* Enrich Chapters */}
           <div className={`rounded-lg px-3 py-2.5 transition-colors ${enrichEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
             <div className="flex items-start gap-3">
               <div className="mt-0.5">
@@ -310,6 +434,7 @@ export function AISidebar({
 
         <div className={`mx-3 my-2 h-px ${theme.subtle}`} />
 
+        {/* ── Experience section ── */}
         <div className="px-3 pb-1">
           <span className={`text-[11px] font-medium uppercase tracking-wider ${theme.muted}`}>Experience</span>
         </div>
@@ -324,24 +449,31 @@ export function AISidebar({
             comingSoon
           />
 
-          {/* Immersive Formatting — functional */}
+          {/* Immersive Formatting */}
           <div className={`rounded-lg px-3 py-2.5 transition-colors ${formattingEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
             <div className="flex items-start gap-3">
               <div className="mt-0.5">
                 <Paintbrush className={`h-3.5 w-3.5 ${formattingEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className={`text-[13px] font-medium ${theme.text}`}>Immersive Formatting</div>
+                <div className="flex items-center gap-2">
+                  <div className={`text-[13px] font-medium ${theme.text}`}>Immersive Formatting</div>
+                  {wikiEnabled && formattingEnabled && (
+                    <span className="rounded-lg px-1.5 py-0.5 text-[11px] text-[var(--accent-brand)]" style={{ background: "var(--accent-brand-dim)" }}>
+                      Auto
+                    </span>
+                  )}
+                </div>
                 <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
                   AI-enhanced typography, stat blocks, and dialogue
                 </div>
                 {formattingSubContent()}
               </div>
-              <Toggle value={formattingEnabled} onChange={onFormattingToggle} isDisabled={disabled} />
+              <Toggle value={formattingEnabled} onChange={onFormattingToggle} isDisabled={disabled || wikiEnabled} />
             </div>
           </div>
 
-          {/* Style Dictionary — open in new window */}
+          {/* Style Dictionary */}
           {formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 && (
             <button
               onClick={openStyleDictionary}

@@ -221,6 +221,42 @@ function createWindow() {
     });
   });
 
+  // ── Wiki: open in new window ─────────────────────
+  ipcMain.handle("wiki:open", (_event, info: { filePath: string; title: string }) => {
+    const wikiWindow = new BrowserWindow({
+      width: 1000,
+      height: 750,
+      minWidth: 700,
+      minHeight: 500,
+      frame: false,
+      titleBarStyle: "hidden",
+      icon: path.join(__dirname, "../build/icon.png"),
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    const params = new URLSearchParams({
+      filePath: info.filePath,
+      title: info.title,
+    });
+
+    if (isDev) {
+      wikiWindow.loadURL(`http://localhost:3000/wiki?${params.toString()}`);
+    } else {
+      wikiWindow.loadURL(`app://./wiki.html?${params.toString()}`);
+    }
+
+    wikiWindow.on("maximize", () => {
+      wikiWindow.webContents.send("window:maximized", true);
+    });
+    wikiWindow.on("unmaximize", () => {
+      wikiWindow.webContents.send("window:maximized", false);
+    });
+  });
+
   // ── Reader: get book content ──────────────────────
   ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
     return parseBookContent(filePath, format);
