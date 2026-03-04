@@ -24,6 +24,8 @@ export function initDatabase(): void {
 
   // Enable WAL mode for better concurrent read performance
   db.pragma("journal_mode = WAL");
+  // Enable foreign key enforcement (required for ON DELETE CASCADE)
+  db.pragma("foreign_keys = ON");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS items (
@@ -95,7 +97,7 @@ export function initDatabase(): void {
       entry_id TEXT NOT NULL,
       alias TEXT NOT NULL,
       PRIMARY KEY (file_path, entry_id, alias),
-      FOREIGN KEY (file_path, entry_id) REFERENCES wiki_entries(file_path, id)
+      FOREIGN KEY (file_path, entry_id) REFERENCES wiki_entries(file_path, id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS wiki_details (
@@ -105,7 +107,7 @@ export function initDatabase(): void {
       chapter_index INTEGER NOT NULL,
       category TEXT NOT NULL,
       content TEXT NOT NULL,
-      FOREIGN KEY (file_path, entry_id) REFERENCES wiki_entries(file_path, id)
+      FOREIGN KEY (file_path, entry_id) REFERENCES wiki_entries(file_path, id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_details_entry ON wiki_details(file_path, entry_id, chapter_index);
     CREATE INDEX IF NOT EXISTS idx_details_chapter ON wiki_details(file_path, chapter_index);
@@ -119,16 +121,18 @@ export function initDatabase(): void {
       since_chapter INTEGER NOT NULL,
       until_chapter INTEGER DEFAULT NULL,
       description TEXT DEFAULT '',
-      FOREIGN KEY (file_path, source_id) REFERENCES wiki_entries(file_path, id),
-      FOREIGN KEY (file_path, target_id) REFERENCES wiki_entries(file_path, id)
+      FOREIGN KEY (file_path, source_id) REFERENCES wiki_entries(file_path, id) ON DELETE CASCADE,
+      FOREIGN KEY (file_path, target_id) REFERENCES wiki_entries(file_path, id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_rel_source ON wiki_relationships(file_path, source_id);
+    CREATE INDEX IF NOT EXISTS idx_rel_target ON wiki_relationships(file_path, target_id);
 
     CREATE TABLE IF NOT EXISTS wiki_appearances (
       file_path TEXT NOT NULL,
       entry_id TEXT NOT NULL,
       chapter_index INTEGER NOT NULL,
-      PRIMARY KEY (file_path, entry_id, chapter_index)
+      PRIMARY KEY (file_path, entry_id, chapter_index),
+      FOREIGN KEY (file_path, entry_id) REFERENCES wiki_entries(file_path, id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_appearances_chapter ON wiki_appearances(file_path, chapter_index);
 
@@ -159,7 +163,9 @@ export function initDatabase(): void {
       arc_id TEXT NOT NULL,
       entry_id TEXT NOT NULL,
       role TEXT DEFAULT '',
-      PRIMARY KEY (file_path, arc_id, entry_id)
+      PRIMARY KEY (file_path, arc_id, entry_id),
+      FOREIGN KEY (file_path, arc_id) REFERENCES wiki_arcs(file_path, id) ON DELETE CASCADE,
+      FOREIGN KEY (file_path, entry_id) REFERENCES wiki_entries(file_path, id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS wiki_arc_beats (
@@ -397,6 +403,14 @@ export function getReadingStats(): {
   return { totalPagesRead, totalSessions: 0, booksRead, activityByBook };
 }
 
+// ── Wiki Tables (used for bulk clear) ─────────────
+const WIKI_TABLES = [
+  "wiki_arc_beats", "wiki_arc_entities", "wiki_arcs",
+  "wiki_chapter_summaries", "wiki_appearances",
+  "wiki_relationships", "wiki_details", "wiki_aliases",
+  "wiki_entries", "wiki_processed", "wiki_meta",
+] as const;
+
 // ── Wiki CRUD ─────────────────────────────────────
 
 export interface WikiEntryRow {
@@ -514,11 +528,6 @@ export function getWikiEntry(filePath: string, entryId: string): WikiEntryRow | 
 }
 
 export function deleteWikiEntry(filePath: string, entryId: string): void {
-  db.prepare("DELETE FROM wiki_details WHERE file_path = ? AND entry_id = ?").run(filePath, entryId);
-  db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ?").run(filePath, entryId);
-  db.prepare("DELETE FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?)").run(filePath, entryId, entryId);
-  db.prepare("DELETE FROM wiki_appearances WHERE file_path = ? AND entry_id = ?").run(filePath, entryId);
-  db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").run(filePath, entryId);
   db.prepare("DELETE FROM wiki_entries WHERE file_path = ? AND id = ?").run(filePath, entryId);
 }
 
@@ -528,9 +537,12 @@ export function addWikiAliases(filePath: string, entryId: string, aliases: strin
   const stmt = db.prepare(
     "INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)"
   );
-  for (const alias of aliases) {
-    if (alias) stmt.run(filePath, entryId, alias);
-  }
+  const insertAll = db.transaction(() => {
+    for (const alias of aliases) {
+      if (alias) stmt.run(filePath, entryId, alias);
+    }
+  });
+  insertAll();
 }
 
 export function getWikiAliases(filePath: string, entryId: string): string[] {
@@ -546,9 +558,12 @@ export function addWikiDetails(filePath: string, entryId: string, details: { cha
   const stmt = db.prepare(
     "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content) VALUES (?, ?, ?, ?, ?)"
   );
-  for (const d of details) {
-    stmt.run(filePath, entryId, d.chapterIndex, d.category, d.content);
-  }
+  const insertAll = db.transaction(() => {
+    for (const d of details) {
+      stmt.run(filePath, entryId, d.chapterIndex, d.category, d.content);
+    }
+  });
+  insertAll();
 }
 
 export function getWikiDetailsForEntry(filePath: string, entryId: string, maxChapter?: number): WikiDetailRow[] {
@@ -802,18 +817,19 @@ export function upsertWikiMeta(filePath: string, bookTitle: string): void {
 // ── Entity Index (compact, for AI context + highlighting) ──
 
 export function getEntityIndex(filePath: string): { id: string; name: string; type: string; color: string; aliases: string[] }[] {
-  const entries = db.prepare(
-    "SELECT id, name, type, color FROM wiki_entries WHERE file_path = ? ORDER BY first_appearance ASC"
-  ).all(filePath) as { id: string; name: string; type: string; color: string }[];
-
-  const aliasStmt = db.prepare(
-    "SELECT alias FROM wiki_aliases WHERE file_path = ? AND entry_id = ?"
-  );
-
-  return entries.map((e) => {
-    const aliases = (aliasStmt.all(filePath, e.id) as { alias: string }[]).map((r) => r.alias);
-    return { ...e, aliases };
-  });
+  const rows = db.prepare(`
+    SELECT e.id, e.name, e.type, e.color,
+           GROUP_CONCAT(a.alias, '||') as aliases_str
+    FROM wiki_entries e
+    LEFT JOIN wiki_aliases a ON a.file_path = e.file_path AND a.entry_id = e.id
+    WHERE e.file_path = ?
+    GROUP BY e.id
+    ORDER BY e.first_appearance ASC
+  `).all(filePath) as { id: string; name: string; type: string; color: string; aliases_str: string | null }[];
+  return rows.map(r => ({
+    id: r.id, name: r.name, type: r.type, color: r.color,
+    aliases: r.aliases_str ? r.aliases_str.split("||") : [],
+  }));
 }
 
 // ── Recent Entities (for AI context window) ──
@@ -831,14 +847,8 @@ export function getRecentEntities(filePath: string, lastNChapters: number, curre
 // ── Clear Wiki ──
 
 export function clearWiki(filePath: string): void {
-  const tables = [
-    "wiki_arc_beats", "wiki_arc_entities", "wiki_arcs",
-    "wiki_chapter_summaries", "wiki_appearances",
-    "wiki_relationships", "wiki_details", "wiki_aliases",
-    "wiki_entries", "wiki_processed", "wiki_meta",
-  ];
   const clearAll = db.transaction(() => {
-    for (const table of tables) {
+    for (const table of WIKI_TABLES) {
       db.prepare(`DELETE FROM ${table} WHERE file_path = ?`).run(filePath);
     }
   });
