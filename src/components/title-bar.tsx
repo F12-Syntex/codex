@@ -27,7 +27,7 @@ export function TitleBar({ breadcrumb }: TitleBarProps) {
           alt="Codex"
           width={18}
           height={18}
-          className="pointer-events-none rounded-[4px]"
+          className="pointer-events-none rounded-lg"
           draggable={false}
         />
         <div className="flex items-center gap-2">

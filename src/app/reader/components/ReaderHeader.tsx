@@ -82,7 +82,7 @@ export function ReaderHeader({
             <button
               key={t}
               onClick={() => onThemeChange(t)}
-              className={`rounded-[6px] px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+              className={`rounded-lg px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
                 readingTheme === t ? theme.btnActive : theme.btn
               }`}
             >

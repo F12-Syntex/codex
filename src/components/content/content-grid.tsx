@@ -175,7 +175,7 @@ function GroupCard({
 
           {/* Count badge */}
           <div
-            className="absolute bottom-1.5 right-1.5 rounded-[4px] bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-white/80 backdrop-blur-md"
+            className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-white/80 backdrop-blur-md"
             style={{ zIndex: 10 }}
           >
             {count}
@@ -253,7 +253,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                     <p className="truncate text-xs text-muted-foreground">{item.author}</p>
                   </div>
                   {showFormatBadge && (
-                    <span className="shrink-0 rounded-[4px] bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
+                    <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
                       {item.format}
                     </span>
                   )}
@@ -311,7 +311,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                     </div>
                     <div className="flex items-center gap-2">
                       {showFormatBadge && (
-                        <span className="rounded-[4px] bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
+                        <span className="rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
                           {item.format}
                         </span>
                       )}
