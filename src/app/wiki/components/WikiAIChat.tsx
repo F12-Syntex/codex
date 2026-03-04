@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Sparkles, Send, Loader2, X, ChevronDown,
+  Sparkles, Send, Loader2, ChevronDown, Maximize2, Minimize2,
   User, Swords, MapPin, Flame, Lightbulb,
 } from "lucide-react";
 import type { WikiEntryType } from "@/lib/ai-wiki";
@@ -58,6 +58,7 @@ const SUGGESTIONS = [
 
 export function WikiAIChat({ filePath, bookTitle, onEntryClick }: WikiAIChatProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -392,9 +393,11 @@ ${wikiContext}`;
   // ── Open state: chat panel ──
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-20 flex flex-col border-t border-white/[0.06]"
+      className={`absolute z-20 flex flex-col border-t border-white/[0.06] transition-all duration-200 ${
+        isExpanded ? "inset-0 border-t-0" : "bottom-0 left-0 right-0"
+      }`}
       style={{
-        height: "clamp(280px, 45%, 420px)",
+        height: isExpanded ? "100%" : "clamp(280px, 45%, 420px)",
         background: "var(--bg-surface)",
       }}
     >
@@ -415,7 +418,18 @@ ${wikiContext}`;
             </button>
           )}
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+            title={isExpanded ? "Collapse" : "Expand"}
+          >
+            {isExpanded ? (
+              <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+            )}
+          </button>
+          <button
+            onClick={() => { setIsOpen(false); setIsExpanded(false); }}
             className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
           >
             <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />

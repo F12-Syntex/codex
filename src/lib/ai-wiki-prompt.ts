@@ -14,6 +14,7 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progres
 - Assign significance: 1=minor/mentioned once, 2=recurring, 3=major/important, 4=protagonist/core
 - Track entity status changes: active, deceased, destroyed, unknown, transformed
 - When referencing existing entities in arcs/relationships, use their exact IDs from the entity index
+- IMPORTANT: For EVERY existing entity that appears in or is mentioned in this chapter, include them in "updates" even if there are no new details — this tracks chapter appearances. At minimum include their id with empty arrays.
 
 ## Entity Types
 - **character**: Named people/beings with agency
@@ -187,14 +188,14 @@ export function buildTieredContext(data: {
   recentEntities: { id: string; name: string; type: string; short_description: string; significance: number; status: string }[];
   recentRelationships: Map<string, { target_name: string; relation: string }[]>;
   activeArcs: { id: string; name: string; arc_type: string; status: string; description: string; latestBeat?: string }[];
-  entityIndex: { id: string; name: string; type: string }[];
+  entityIndex: { id: string; name: string; type: string; short_description?: string }[];
 }): TieredContext {
-  // Tier 1: Recent chapter summaries (last 5)
+  // Tier 1: Recent chapter summaries
   const recentSummaries = data.recentSummaries
     .map((s) => `- Ch. ${s.chapter_index}: ${s.summary} [${s.mood}]`)
     .join("\n");
 
-  // Tier 2: Active entity roster with key relationships
+  // Tier 2: Active entity roster with key relationships (significant + recent)
   const activeEntityRoster = data.recentEntities
     .map((e) => {
       let line = `- [${e.type}] ${e.name} (id: ${e.id}, significance: ${e.significance}, status: ${e.status}): ${e.short_description}`;
@@ -215,9 +216,14 @@ export function buildTieredContext(data: {
     })
     .join("\n");
 
-  // Tier 4: Compact entity index (just id: name [type])
+  // Tier 4: Entity index with descriptions (so AI can recognize all tracked entities)
+  const rosterIds = new Set(data.recentEntities.map((e) => e.id));
   const entityIndex = data.entityIndex
-    .map((e) => `${e.id}: ${e.name} [${e.type}]`)
+    .filter((e) => !rosterIds.has(e.id)) // skip entities already in roster
+    .map((e) => {
+      const desc = e.short_description ? `: ${e.short_description}` : "";
+      return `${e.id}: ${e.name} [${e.type}]${desc}`;
+    })
     .join("\n");
 
   return { recentSummaries, activeEntityRoster, activeArcs, entityIndex };

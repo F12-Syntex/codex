@@ -219,21 +219,32 @@ async function buildContextFromDB(
 ) {
   const api = window.electronAPI!;
 
-  // Recent summaries (last 5 chapters)
-  const fromCh = Math.max(0, currentChapter - 5);
+  // Recent summaries (last 8 chapters for better continuity)
+  const fromCh = Math.max(0, currentChapter - 8);
   const recentSummaries = currentChapter > 0
     ? await api.wikiGetChapterSummaries(filePath, fromCh, currentChapter - 1)
     : [];
 
-  // Recent entities (last 5 chapters)
-  const recentEntityRows = await api.wikiGetRecentEntities(filePath, 5, currentChapter - 1);
+  // ALL entries — the AI needs to know about all tracked entities
+  const allEntries = await api.wikiGetEntries(filePath);
 
-  // Get relationships for recent entities
+  // Build rich entity roster: all entities with significance >= 2, or recent ones
+  const recentEntityRows = await api.wikiGetRecentEntities(filePath, 8, currentChapter - 1);
+  const recentEntityIds = new Set(recentEntityRows.map((e) => e.id));
+
+  // Combine: recent entities + all significant entities (deduped)
+  const rosterEntries = [...recentEntityRows];
+  for (const e of allEntries) {
+    if (!recentEntityIds.has(e.id) && e.significance >= 2) {
+      rosterEntries.push(e);
+    }
+  }
+
+  // Get relationships for roster entities
   const recentRelationships = new Map<string, { target_name: string; relation: string }[]>();
-  const entityIndex = await api.wikiGetEntityIndex(filePath);
-  const nameMap = new Map(entityIndex.map((e) => [e.id, e.name]));
+  const nameMap = new Map(allEntries.map((e) => [e.id, e.name]));
 
-  for (const e of recentEntityRows) {
+  for (const e of rosterEntries) {
     const rels = await api.wikiGetRelationships(filePath, e.id, currentChapter - 1);
     if (rels.length > 0) {
       recentRelationships.set(
@@ -263,13 +274,16 @@ async function buildContextFromDB(
     }),
   );
 
+  // Entity index includes short description so AI can recognize characters
+  const entityIndex = await api.wikiGetEntityIndex(filePath);
+
   return buildTieredContext({
     recentSummaries: recentSummaries.map((s) => ({
       chapter_index: s.chapter_index,
       summary: s.summary,
       mood: s.mood,
     })),
-    recentEntities: recentEntityRows.map((e) => ({
+    recentEntities: rosterEntries.map((e) => ({
       id: e.id,
       name: e.name,
       type: e.type,
@@ -279,7 +293,12 @@ async function buildContextFromDB(
     })),
     recentRelationships,
     activeArcs,
-    entityIndex: entityIndex.map((e) => ({ id: e.id, name: e.name, type: e.type })),
+    entityIndex: entityIndex.map((e) => ({
+      id: e.id,
+      name: e.name,
+      type: e.type,
+      short_description: (allEntries.find((a) => a.id === e.id)?.short_description) ?? "",
+    })),
   });
 }
 
