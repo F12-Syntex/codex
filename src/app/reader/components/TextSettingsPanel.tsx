@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useState } from "react";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { Minus, Eye, ChevronDown, Type, Zap } from "lucide-react";
 import type { ThemeClasses, CustomFont } from "../lib/types";
 import { ALL_FONTS } from "../lib/constants";
@@ -56,27 +57,13 @@ export function TextSettingsPanel({
   const currentFontName = currentFont?.name ?? "Georgia";
 
   // Click outside to close panel (ignore clicks on header toolbar buttons)
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (panelRef.current && !panelRef.current.contains(target)) {
-        const header = document.querySelector("[data-reader-header]");
-        if (header?.contains(target)) return;
-        onClose();
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 10);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handler);
-    };
-  }, [onClose]);
+  useClickOutside(panelRef, onClose, "[data-reader-header]");
 
   const Toggle = ({ value, onChange, icon, label }: { value: boolean; onChange: (v: boolean) => void; icon: React.ReactNode; label: string }) => (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
         {icon}
-        <span className={`text-[11px] ${theme.muted}`}>{label}</span>
+        <span className={`text-xs ${theme.muted}`}>{label}</span>
       </div>
       <button
         onClick={() => onChange(!value)}
@@ -97,7 +84,7 @@ export function TextSettingsPanel({
       <div className="space-y-3 p-4">
         {/* Font family selector */}
         <div className="relative">
-          <span className={`mb-1.5 block text-[11px] ${theme.muted}`}>Font</span>
+          <span className={`mb-1.5 block text-xs ${theme.muted}`}>Font</span>
           <button
             onClick={() => setShowFontPicker(v => !v)}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${theme.subtle} ${theme.text}`}
@@ -129,7 +116,7 @@ export function TextSettingsPanel({
                 </button>
               ))}
               {customFonts.length === 0 && (
-                <p className={`px-2 py-2 text-[11px] ${theme.muted}`}>
+                <p className={`px-2 py-2 text-xs ${theme.muted}`}>
                   Add fonts to public/fonts/
                 </p>
               )}
@@ -139,7 +126,7 @@ export function TextSettingsPanel({
 
         {/* Font size */}
         <div className="flex items-center justify-between">
-          <span className={`text-[11px] ${theme.muted}`}>Size</span>
+          <span className={`text-xs ${theme.muted}`}>Size</span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => onFontSizeChange(Math.max(14, fontSize - 1))}
@@ -154,14 +141,14 @@ export function TextSettingsPanel({
               disabled={fontSize >= 28}
               className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
             >
-              <span className="text-[13px] leading-none">+</span>
+              <span className="text-sm leading-none">+</span>
             </button>
           </div>
         </div>
 
         {/* Line height */}
         <div className="flex items-center gap-3">
-          <span className={`w-16 text-[11px] ${theme.muted}`}>Line height</span>
+          <span className={`w-16 text-xs ${theme.muted}`}>Line height</span>
           <input
             type="range"
             min={1.2}
@@ -178,7 +165,7 @@ export function TextSettingsPanel({
 
         {/* Paragraph spacing */}
         <div className="flex items-center gap-3">
-          <span className={`w-16 text-[11px] ${theme.muted}`}>Spacing</span>
+          <span className={`w-16 text-xs ${theme.muted}`}>Spacing</span>
           <input
             type="range"
             min={0}
@@ -195,7 +182,7 @@ export function TextSettingsPanel({
 
         {/* Text padding */}
         <div className="flex items-center gap-3">
-          <span className={`w-16 text-[11px] ${theme.muted}`}>Padding</span>
+          <span className={`w-16 text-xs ${theme.muted}`}>Padding</span>
           <input
             type="range"
             min={16}
@@ -212,7 +199,7 @@ export function TextSettingsPanel({
 
         {/* Max text width */}
         <div className="flex items-center gap-3">
-          <span className={`w-16 text-[11px] ${theme.muted}`}>Max width</span>
+          <span className={`w-16 text-xs ${theme.muted}`}>Max width</span>
           <input
             type="range"
             min={600}

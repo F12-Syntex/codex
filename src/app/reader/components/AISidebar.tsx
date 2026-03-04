@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3, BookMarked, Square } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
@@ -108,21 +109,7 @@ export function AISidebar({
     });
   }, []);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (sidebarRef.current && !sidebarRef.current.contains(target)) {
-        const header = document.querySelector("[data-reader-header]");
-        if (header?.contains(target)) return;
-        onClose();
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 10);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handler);
-    };
-  }, [onClose]);
+  useClickOutside(sidebarRef, onClose, "[data-reader-header]");
 
   const disabled = hasApiKey === false;
   const loading = hasApiKey === null;
@@ -169,10 +156,10 @@ export function AISidebar({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
+              <span className={`text-xs truncate ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+              <span className={`text-xs tabular-nums ${theme.muted}`}>
                 {enrichAllProgress.current + 1}/{enrichAllProgress.total}
               </span>
               <button
@@ -192,7 +179,7 @@ export function AISidebar({
       return (
         <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
           <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(enrichingChapter)}</span>
+          <span className={`text-xs truncate ${theme.muted}`}>{chapterName(enrichingChapter)}</span>
         </div>
       );
     }
@@ -202,7 +189,7 @@ export function AISidebar({
         {chaptersToEnrichCount > 0 && (
           <button
             onClick={onEnrichAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--accent-brand)] transition-colors"
             style={{ background: "var(--accent-brand-dim)" }}
           >
             <Zap className="h-3 w-3" strokeWidth={1.5} />
@@ -212,14 +199,14 @@ export function AISidebar({
         {alreadyEnriched > 0 && (
           <button
             onClick={onClearEnrichedNames}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${theme.btn}`}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${theme.btn}`}
           >
             <Trash2 className="h-3 w-3" strokeWidth={1.5} />
             Clear
           </button>
         )}
         {chaptersToEnrichCount === 0 && alreadyEnriched > 0 && (
-          <span className={`text-[11px] ${theme.muted}`}>{alreadyEnriched} chapters renamed</span>
+          <span className={`text-xs ${theme.muted}`}>{alreadyEnriched} chapters renamed</span>
         )}
       </div>
     );
@@ -240,10 +227,10 @@ export function AISidebar({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
+              <span className={`text-xs truncate ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+              <span className={`text-xs tabular-nums ${theme.muted}`}>
                 {formatAllProgress.current + 1}/{formatAllProgress.total}
               </span>
               <button
@@ -263,7 +250,7 @@ export function AISidebar({
       return (
         <div className="mt-1.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
           <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          <span className={`text-[11px] truncate ${theme.muted}`}>{chapterName(formattingChapter)}</span>
+          <span className={`text-xs truncate ${theme.muted}`}>{chapterName(formattingChapter)}</span>
         </div>
       );
     }
@@ -273,7 +260,7 @@ export function AISidebar({
         {chaptersToFormatCount > 0 && (
           <button
             onClick={onFormatAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors shrink-0"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--accent-brand)] transition-colors shrink-0"
             style={{ background: "var(--accent-brand-dim)" }}
           >
             <Zap className="h-3 w-3" strokeWidth={1.5} />
@@ -283,14 +270,14 @@ export function AISidebar({
         {alreadyFormatted > 0 && (
           <button
             onClick={onClearFormatting}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors shrink-0 ${theme.btn}`}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors shrink-0 ${theme.btn}`}
           >
             <Trash2 className="h-3 w-3" strokeWidth={1.5} />
             Clear
           </button>
         )}
         {chaptersToFormatCount === 0 && alreadyFormatted > 0 && (
-          <span className={`text-[11px] ${theme.muted}`}>{alreadyFormatted} chapters formatted</span>
+          <span className={`text-xs ${theme.muted}`}>{alreadyFormatted} chapters formatted</span>
         )}
       </div>
     );
@@ -314,10 +301,10 @@ export function AISidebar({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate ${theme.muted}`}>{phase}: {chapterName(activeChapter)}</span>
+              <span className={`text-xs truncate ${theme.muted}`}>{phase}: {chapterName(activeChapter)}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+              <span className={`text-xs tabular-nums ${theme.muted}`}>
                 {wikiProcessedCount}/{totalChapters}
               </span>
               <button
@@ -338,7 +325,7 @@ export function AISidebar({
         {wikiChaptersToProcess > 0 && (
           <button
             onClick={onWikiProcessAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-[var(--accent-brand)] transition-colors shrink-0"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--accent-brand)] transition-colors shrink-0"
             style={{ background: "var(--accent-brand-dim)" }}
           >
             <Zap className="h-3 w-3" strokeWidth={1.5} />
@@ -348,14 +335,14 @@ export function AISidebar({
         {wikiEntryCount > 0 && (
           <button
             onClick={onClearWiki}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors shrink-0 ${theme.btn}`}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors shrink-0 ${theme.btn}`}
           >
             <Trash2 className="h-3 w-3" strokeWidth={1.5} />
             Clear
           </button>
         )}
         {wikiEntryCount > 0 && (
-          <span className={`text-[11px] truncate ${theme.muted}`}>
+          <span className={`text-xs truncate ${theme.muted}`}>
             {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} · {wikiProcessedCount} ch.
           </span>
         )}
@@ -375,7 +362,7 @@ export function AISidebar({
           <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
             <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
           </div>
-          <span className={`text-[13px] font-medium ${theme.text}`}>AI Tools</span>
+          <span className={`text-sm font-medium ${theme.text}`}>AI Tools</span>
         </div>
         <button
           onClick={onClose}
@@ -389,7 +376,7 @@ export function AISidebar({
       {!loading && disabled && (
         <div className={`flex items-start gap-2.5 border-b px-3 py-2.5 ${theme.border}`} style={{ background: "var(--bg-inset)" }}>
           <KeyRound className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
-          <p className={`text-[11px] leading-relaxed ${theme.muted}`}>
+          <p className={`text-xs leading-relaxed ${theme.muted}`}>
             API key required. Go to <span className={`font-medium ${theme.text}`}>Settings &rarr; AI &rarr; OpenRouter API Key</span> to configure.
           </p>
         </div>
@@ -400,7 +387,7 @@ export function AISidebar({
 
         {/* ── Intelligence section ── */}
         <div className="px-3 pb-1 pt-3">
-          <span className={`text-[11px] font-medium uppercase tracking-wider ${theme.muted}`}>Intelligence</span>
+          <span className={`text-xs font-medium uppercase tracking-wider ${theme.muted}`}>Intelligence</span>
         </div>
 
         <div className="space-y-0.5 px-1.5">
@@ -411,8 +398,8 @@ export function AISidebar({
                 <BookMarked className={`h-3.5 w-3.5 ${wikiEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className={`text-[13px] font-medium ${theme.text}`}>AI Wiki</div>
-                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                <div className={`text-sm font-medium ${theme.text}`}>AI Wiki</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
                   Progressive encyclopedia — click highlighted names for details
                 </div>
                 {wikiSubContent()}
@@ -431,8 +418,8 @@ export function AISidebar({
                 <BookOpen className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
               </div>
               <div className="min-w-0 flex-1 text-left">
-                <div className={`text-[13px] font-medium ${theme.text}`}>Open Wiki</div>
-                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                <div className={`text-sm font-medium ${theme.text}`}>Open Wiki</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
                   {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} — full viewer
                 </div>
               </div>
@@ -447,8 +434,8 @@ export function AISidebar({
                 <Type className={`h-3.5 w-3.5 ${enrichEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className={`text-[13px] font-medium ${theme.text}`}>Enrich Chapters</div>
-                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                <div className={`text-sm font-medium ${theme.text}`}>Enrich Chapters</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
                   AI-rename generic chapter titles
                 </div>
                 {enrichSubContent()}
@@ -471,7 +458,7 @@ export function AISidebar({
 
         {/* ── Experience section ── */}
         <div className="px-3 pb-1">
-          <span className={`text-[11px] font-medium uppercase tracking-wider ${theme.muted}`}>Experience</span>
+          <span className={`text-xs font-medium uppercase tracking-wider ${theme.muted}`}>Experience</span>
         </div>
 
         <div className="space-y-0.5 px-1.5">
@@ -492,14 +479,14 @@ export function AISidebar({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <div className={`text-[13px] font-medium ${theme.text}`}>Immersive Formatting</div>
+                  <div className={`text-sm font-medium ${theme.text}`}>Immersive Formatting</div>
                   {wikiEnabled && formattingEnabled && (
-                    <span className="rounded-lg px-1.5 py-0.5 text-[11px] text-[var(--accent-brand)]" style={{ background: "var(--accent-brand-dim)" }}>
+                    <span className="rounded-lg px-1.5 py-0.5 text-xs text-[var(--accent-brand)]" style={{ background: "var(--accent-brand-dim)" }}>
                       Auto
                     </span>
                   )}
                 </div>
-                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
                   AI-enhanced typography, stat blocks, and dialogue
                 </div>
                 {formattingSubContent()}
@@ -518,8 +505,8 @@ export function AISidebar({
                 <BarChart3 className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
               </div>
               <div className="min-w-0 flex-1 text-left">
-                <div className={`text-[13px] font-medium ${theme.text}`}>Style Dictionary</div>
-                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                <div className={`text-sm font-medium ${theme.text}`}>Style Dictionary</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
                   {styleDictionary.rules.length} learned {styleDictionary.rules.length === 1 ? "rule" : "rules"} — view and regenerate
                 </div>
               </div>
@@ -534,8 +521,8 @@ export function AISidebar({
                 <Clapperboard className={`h-3.5 w-3.5 ${simulateEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className={`text-[13px] font-medium ${theme.text}`}>Immersive Simulate</div>
-                <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>
+                <div className={`text-sm font-medium ${theme.text}`}>Immersive Simulate</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
                   Right-click wiki entities to chat in-character
                 </div>
               </div>
@@ -568,12 +555,12 @@ function SettingRow({
       <div className="mt-0.5">{icon}</div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className={`text-[13px] font-medium ${theme.text}`}>{label}</span>
+          <span className={`text-sm font-medium ${theme.text}`}>{label}</span>
           {comingSoon && (
-            <span className={`rounded-lg px-1.5 py-0.5 text-[11px] ${theme.subtle} ${theme.muted}`}>Soon</span>
+            <span className={`rounded-lg px-1.5 py-0.5 text-xs ${theme.subtle} ${theme.muted}`}>Soon</span>
           )}
         </div>
-        <div className={`mt-0.5 text-[11px] leading-relaxed ${theme.muted}`}>{description}</div>
+        <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>{description}</div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward } from "lucide-react";
 import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
 
@@ -65,18 +66,7 @@ export function TTSPanel({
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Click outside to close
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (panelRef.current && !panelRef.current.contains(target)) {
-        const header = document.querySelector("[data-reader-header]");
-        if (header?.contains(target)) return;
-        onClose();
-      }
-    };
-    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 10);
-    return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
-  }, [onClose]);
+  useClickOutside(panelRef, onClose, "[data-reader-header]");
 
   const voice = voices.find((v) => v.shortName === selectedVoice);
   const voiceLabel = voice
@@ -171,10 +161,10 @@ export function TTSPanel({
               </div>
               {/* Stats row */}
               <div className="flex items-center justify-between">
-                <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+                <span className={`text-xs tabular-nums ${theme.muted}`}>
                   {currentParagraph + 1}/{totalParagraphs}
                 </span>
-                <span className={`text-[11px] ${theme.muted}`}>
+                <span className={`text-xs ${theme.muted}`}>
                   ~{timeStr} left
                 </span>
               </div>
@@ -203,16 +193,16 @@ export function TTSPanel({
                   <button
                     key={v.shortName}
                     onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
                   >
                     <span className="min-w-0 flex-1 truncate">{label}</span>
-                    <span className={`shrink-0 text-[11px] ${theme.muted}`}>{v.gender}</span>
-                    <span className={`shrink-0 text-[11px] ${theme.muted}`}>{v.locale}</span>
+                    <span className={`shrink-0 text-xs ${theme.muted}`}>{v.gender}</span>
+                    <span className={`shrink-0 text-xs ${theme.muted}`}>{v.locale}</span>
                   </button>
                 );
               })}
               {voices.length === 0 && (
-                <p className={`px-2 py-3 text-center text-[11px] ${theme.muted}`}>Loading voices...</p>
+                <p className={`px-2 py-3 text-center text-xs ${theme.muted}`}>Loading voices...</p>
               )}
             </div>
           )}
@@ -224,7 +214,7 @@ export function TTSPanel({
 
         {/* Auto-advance toggle */}
         <div className="flex items-center justify-between">
-          <span className={`text-[11px] ${theme.muted}`}>Auto-advance chapters</span>
+          <span className={`text-xs ${theme.muted}`}>Auto-advance chapters</span>
           <button
             onClick={() => onAutoAdvanceChange(!autoAdvance)}
             className={`relative h-5 w-9 rounded-full transition-colors ${autoAdvance ? "bg-[var(--accent-brand)]" : theme.subtle}`}
@@ -238,7 +228,7 @@ export function TTSPanel({
 
         {/* Highlight mode */}
         <div className="space-y-2">
-          <span className={`text-[11px] ${theme.muted}`}>Highlight</span>
+          <span className={`text-xs ${theme.muted}`}>Highlight</span>
           <div className={`flex rounded-lg ${theme.subtle} p-0.5`}>
             {(["none", "word", "para", "both"] as const).map((mode) => {
               const value: TTSHighlightMode = mode === "para" ? "paragraph" : mode;
@@ -248,7 +238,7 @@ export function TTSPanel({
                 <button
                   key={mode}
                   onClick={() => onHighlightModeChange(value)}
-                  className={`flex-1 rounded-lg px-1 py-1 text-[11px] transition-colors ${active ? theme.btnActive : theme.btn}`}
+                  className={`flex-1 rounded-lg px-1 py-1 text-xs transition-colors ${active ? theme.btnActive : theme.btn}`}
                 >
                   {label}
                 </button>
@@ -259,7 +249,7 @@ export function TTSPanel({
 
         {/* Read mark toggle */}
         <div className="flex items-center justify-between">
-          <span className={`text-[11px] ${theme.muted}`}>Dim read paragraphs</span>
+          <span className={`text-xs ${theme.muted}`}>Dim read paragraphs</span>
           <button
             onClick={() => onShowReadMarkChange(!showReadMark)}
             className={`relative h-5 w-9 rounded-full transition-colors ${showReadMark ? "bg-[var(--accent-brand)]" : theme.subtle}`}
@@ -278,7 +268,7 @@ function SliderRow({ label, value, min, max, step, format, onChange, theme }: {
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className={`w-10 text-[11px] ${theme.muted}`}>{label}</span>
+      <span className={`w-10 text-xs ${theme.muted}`}>{label}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
