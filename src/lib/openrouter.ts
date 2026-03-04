@@ -29,14 +29,13 @@ interface ChatOptions {
 interface OpenRouterClient {
   chat(
     messages: OpenRouterMessage[],
-    model?: string,
+    model: string,
     options?: ChatOptions,
   ): Promise<OpenRouterResponse>;
 }
 
 const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_MODELS_API = "https://openrouter.ai/api/v1/models";
-const DEFAULT_MODEL = "x-ai/grok-4.1-fast";
 
 export interface OpenRouterModel {
   id: string;
@@ -65,10 +64,12 @@ export async function fetchModels(): Promise<OpenRouterModel[]> {
 /** Validate an API key by sending a minimal request. */
 export async function testApiKey(apiKey: string): Promise<{ ok: boolean; error?: string }> {
   try {
+    const preset = getPreset("quick");
+    const model = preset?.defaultModel ?? "openai/gpt-4o-mini";
     const client = createOpenRouterClient(apiKey);
     await client.chat(
       [{ role: "user", content: "hi" }],
-      DEFAULT_MODEL,
+      model,
       { max_tokens: 1 },
     );
     return { ok: true };
@@ -79,7 +80,7 @@ export async function testApiKey(apiKey: string): Promise<{ ok: boolean; error?:
 
 export function createOpenRouterClient(apiKey: string): OpenRouterClient {
   return {
-    async chat(messages, model = DEFAULT_MODEL, options = {}) {
+    async chat(messages, model, options = {}) {
       const res = await fetch(OPENROUTER_API, {
         method: "POST",
         headers: {
