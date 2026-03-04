@@ -183,7 +183,7 @@ export async function generateWikiForChapter(
       { role: "user", content: userPrompt },
     ],
     overrides,
-    { max_tokens: 8192 },
+    { max_tokens: 16384 },
   );
 
   if (isAborted()) return;
@@ -494,10 +494,19 @@ function validateWikiResponse(parsed: AIWikiResponse): AIWikiResponse {
 }
 
 function repairTruncatedJSON(s: string): string | null {
-  let repaired = s.replace(/,\s*"[^"]*$/, "");
-  repaired = repaired.replace(/,\s*$/, "");
-  repaired = repaired.replace(/:\s*"[^"]*$/, ': ""');
+  let repaired = s;
 
+  // Remove trailing incomplete key-value pairs (truncated mid-string)
+  // e.g. ..."summary": "Some text that got cut off
+  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, "");
+  // Truncated mid-key
+  repaired = repaired.replace(/,\s*"[^"]*$/, "");
+  // Truncated after colon
+  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, "");
+  // Trailing comma
+  repaired = repaired.replace(/,\s*$/, "");
+
+  // Count braces/brackets to close them
   let braces = 0;
   let brackets = 0;
   let inString = false;
@@ -514,7 +523,32 @@ function repairTruncatedJSON(s: string): string | null {
     else if (ch === "]") brackets--;
   }
 
-  if (inString) repaired += '"';
+  // Close unclosed string
+  if (inString) {
+    // Find the last quote and truncate the partial string value cleanly
+    const lastQuote = repaired.lastIndexOf('"');
+    if (lastQuote > 0) {
+      // Check if this is a value string (after a colon) — close it
+      repaired += '"';
+    }
+  }
+
+  // Re-count after potential string closure
+  braces = 0; brackets = 0; inString = false; escaped = false;
+  for (const ch of repaired) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") braces++;
+    else if (ch === "}") braces--;
+    else if (ch === "[") brackets++;
+    else if (ch === "]") brackets--;
+  }
+
+  // Remove trailing comma before closing brackets/braces
+  repaired = repaired.replace(/,\s*$/, "");
+
   while (brackets > 0) { repaired += "]"; brackets--; }
   while (braces > 0) { repaired += "}"; braces--; }
 

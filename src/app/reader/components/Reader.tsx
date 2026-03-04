@@ -524,45 +524,59 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
 
-  // Auto-format current + next chapter when formatting is enabled
+  // ── Queued auto-processing (format + wiki) ─────────────
+  // When the user navigates quickly through chapters, queue the current chapter
+  // and only process one at a time. New navigations replace the queue target.
+  const autoProcessTargetRef = useRef<number | null>(null);
+  const autoProcessingRef = useRef(false);
+
+  // Process one chapter: format (if needed) + wiki (if enabled)
+  const autoProcessChapter = useCallback(async (chapterIdx: number) => {
+    if (!chapters[chapterIdx] || isChapterTooLarge(chapters[chapterIdx])) return;
+
+    // Format current chapter if needed
+    if (formattingEnabled && !formattedChapters[chapterIdx]) {
+      await formatChapter(chapterIdx);
+    }
+
+    // Pre-format next chapter (fire and forget)
+    const next = chapterIdx + 1;
+    if (formattingEnabled && next < chapters.length && !formattedChapters[next] && chapters[next] && !isChapterTooLarge(chapters[next])) {
+      formatChapter(next);
+    }
+
+    // Wiki processing if enabled
+    if (wikiEnabled && !wikiProcessedChapters.has(chapterIdx)) {
+      await processWikiChapter(chapterIdx);
+    }
+  }, [chapters, formattingEnabled, formattedChapters, formatChapter, wikiEnabled, wikiProcessedChapters, processWikiChapter]);
+
+  // Queue loop: processes the latest target, checks if it changed during processing
+  const runAutoProcessQueue = useCallback(async () => {
+    if (autoProcessingRef.current) return; // Already running
+    autoProcessingRef.current = true;
+
+    while (autoProcessTargetRef.current !== null) {
+      const target = autoProcessTargetRef.current;
+      await autoProcessChapter(target);
+      // If target hasn't changed, we're done. If it changed, loop again.
+      if (autoProcessTargetRef.current === target) {
+        autoProcessTargetRef.current = null;
+      }
+    }
+
+    autoProcessingRef.current = false;
+  }, [autoProcessChapter]);
+
+  // Trigger auto-processing when chapter changes
   useEffect(() => {
-    if (!formattingEnabled || !bookContent || !filePath) return;
-    if (wikiEnabled) return; // Wiki effect handles formatting when wiki is on
+    if (!bookContent || !filePath) return;
+    if (!formattingEnabled && !wikiEnabled) return;
 
-    const run = async () => {
-      // Format current chapter if needed
-      if (!formattedChapters[currentChapter] && chapters[currentChapter] && !isChapterTooLarge(chapters[currentChapter])) {
-        await formatChapter(currentChapter);
-      }
-      // Pre-format next chapter if needed
-      const next = currentChapter + 1;
-      if (next < chapters.length && !formattedChapters[next] && chapters[next] && !isChapterTooLarge(chapters[next])) {
-        await formatChapter(next);
-      }
-    };
-    run();
+    autoProcessTargetRef.current = currentChapter;
+    runAutoProcessQueue();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formattingEnabled, currentChapter, bookContent]);
-
-  // Auto-process wiki when chapter changes (if enabled)
-  useEffect(() => {
-    if (!wikiEnabled || !bookContent || !filePath) return;
-    if (wikiProcessedChapters.has(currentChapter)) return;
-
-    const run = async () => {
-      // Format current + next chapter first if needed
-      if (!formattedChapters[currentChapter] && chapters[currentChapter] && !isChapterTooLarge(chapters[currentChapter])) {
-        await formatChapter(currentChapter);
-      }
-      const next = currentChapter + 1;
-      if (next < chapters.length && !formattedChapters[next] && chapters[next] && !isChapterTooLarge(chapters[next])) {
-        formatChapter(next); // Fire and forget — don't block wiki processing
-      }
-      await processWikiChapter(currentChapter);
-    };
-    run();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wikiEnabled, currentChapter, bookContent]);
+  }, [currentChapter, bookContent, formattingEnabled, wikiEnabled]);
 
   const toggleWikiEnabled = useCallback(() => {
     const next = !wikiEnabled;
