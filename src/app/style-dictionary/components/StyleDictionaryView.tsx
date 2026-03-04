@@ -177,7 +177,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
               <BarChart3 className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
             </div>
             <div>
-              <h2 className="text-[14px] font-medium text-white/85">Style Dictionary</h2>
+              <h2 className="text-sm font-medium text-white/85">Style Dictionary</h2>
               <p className="text-xs text-white/40">
                 {dictionary.rules.length} {dictionary.rules.length === 1 ? "rule" : "rules"} learned across {categories.length} {categories.length === 1 ? "category" : "categories"}
               </p>
@@ -191,7 +191,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                 {/* Category header */}
                 <div className="mb-3 flex items-center gap-2 text-white/40">
                   {getCategoryMeta(cat).icon}
-                  <span className="text-[12px] font-medium uppercase tracking-wider">
+                  <span className="text-xs font-medium uppercase tracking-wider">
                     {getCategoryMeta(cat).label}
                   </span>
                   <span className="text-xs text-white/25">({grouped[cat].length})</span>
@@ -227,7 +227,7 @@ function Header({ title, maximized }: { title: string; maximized: boolean }) {
         <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
           <BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
         </div>
-        <span className="text-[12px] text-white/40">Style Dictionary</span>
+        <span className="text-xs text-white/40">Style Dictionary</span>
         <span className="text-xs text-white/25">{title}</span>
       </div>
 

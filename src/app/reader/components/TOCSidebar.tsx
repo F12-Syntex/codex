@@ -113,7 +113,7 @@ export function TOCSidebar({
         <div className={`flex items-center gap-1 rounded-lg p-0.5 ${theme.subtle}`}>
           <button
             onClick={() => setTab("chapters")}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
               tab === "chapters" ? theme.btnActive : theme.btn
             }`}
           >
@@ -122,7 +122,7 @@ export function TOCSidebar({
           </button>
           <button
             onClick={() => setTab("bookmarks")}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-colors ${
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
               tab === "bookmarks" ? theme.btnActive : theme.btn
             }`}
           >
@@ -151,7 +151,7 @@ export function TOCSidebar({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={tab === "chapters" ? "Search chapters..." : "Search bookmarks..."}
-            className={`w-full bg-transparent text-[12px] outline-none placeholder:opacity-40 ${theme.text}`}
+            className={`w-full bg-transparent text-xs outline-none placeholder:opacity-40 ${theme.text}`}
           />
           {searchQuery && (
             <button
@@ -168,7 +168,7 @@ export function TOCSidebar({
       <div ref={listRef} className="flex-1 overflow-y-auto p-1.5">
         {tab === "chapters" ? (
           filteredChapters.length === 0 ? (
-            <p className={`py-8 text-center text-[12px] ${theme.muted}`}>No chapters found</p>
+            <p className={`py-8 text-center text-xs ${theme.muted}`}>No chapters found</p>
           ) : (
             filteredChapters.map(({ ch, i, displayTitle }) => {
               const canEnrich = enrichEnabled && needsEnrichment(ch.title);
@@ -240,7 +240,7 @@ export function TOCSidebar({
         ) : filteredBookmarks.length === 0 ? (
           <div className={`py-8 text-center ${theme.muted}`}>
             <Bookmark className="mx-auto mb-2 h-8 w-8 opacity-30" strokeWidth={1.5} />
-            <p className="text-[12px]">No bookmarks yet</p>
+            <p className="text-xs">No bookmarks yet</p>
             <p className="mt-1 text-xs opacity-60">Press Ctrl+B to add one</p>
           </div>
         ) : (

@@ -95,22 +95,22 @@ export function ReaderFooter({
             <>
               <div className="flex items-center gap-1.5">
                 <GitBranch className="h-3.5 w-3.5" style={{ color: "var(--accent-brand)" }} strokeWidth={1.5} />
-                <span className="text-[12px] font-medium" style={{ color: "var(--accent-brand)" }}>
+                <span className="text-xs font-medium" style={{ color: "var(--accent-brand)" }}>
                   Branch
                 </span>
               </div>
               <span className={`text-xs ${theme.muted} opacity-30`}>·</span>
-              <span className={`max-w-[200px] truncate text-[12px] ${theme.muted}`}>
+              <span className={`max-w-[200px] truncate text-xs ${theme.muted}`}>
                 {branchEntityName}
               </span>
             </>
           ) : (
             <>
-              <span className={`text-[12px] tabular-nums ${theme.muted}`}>
+              <span className={`text-xs tabular-nums ${theme.muted}`}>
                 Page {currentPage + 1} of {totalPages}
               </span>
               <span className={`text-xs ${theme.muted} opacity-30`}>·</span>
-              <span className={`max-w-[300px] truncate text-[12px] ${theme.muted}`}>
+              <span className={`max-w-[300px] truncate text-xs ${theme.muted}`}>
                 {chapterTitle}
               </span>
             </>
@@ -208,7 +208,7 @@ export function ReaderFooter({
                   onClick={() => onLoadBranch?.(branch)}
                   className="flex flex-1 flex-col items-start min-w-0"
                 >
-                  <span className="text-[12px] text-white/80 truncate w-full text-left">
+                  <span className="text-xs text-white/80 truncate w-full text-left">
                     {branch.entity_name}
                   </span>
                   <span className="text-xs text-white/30">

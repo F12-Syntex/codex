@@ -89,14 +89,14 @@ export function TTSPanel({
           <div className="flex gap-2">
             <button
               onClick={onPlayFromStart}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] transition-colors ${theme.subtle} ${theme.text}`}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
             >
               <Play className="h-3 w-3" strokeWidth={2} />
               From start
             </button>
             <button
               onClick={onPlayFromCurrent}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] transition-colors ${theme.subtle} ${theme.text}`}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
             >
               <Play className="h-3 w-3" strokeWidth={2} />
               From here
@@ -176,7 +176,7 @@ export function TTSPanel({
         <div className="relative">
           <button
             onClick={() => setShowVoicePicker((v) => !v)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${theme.subtle} ${theme.text}`}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
           >
             <div className="flex items-center gap-2">
               <Volume2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
@@ -273,7 +273,7 @@ function SliderRow({ label, value, min, max, step, format, onChange, theme }: {
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
       />
-      <span className={`w-[36px] text-right text-[12px] tabular-nums ${theme.text}`}>{format(value)}</span>
+      <span className={`w-[36px] text-right text-xs tabular-nums ${theme.text}`}>{format(value)}</span>
     </div>
   );
 }

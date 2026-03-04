@@ -92,14 +92,14 @@ function renderBody(body: string) {
       elements.push(
         <div key={i} className="flex gap-2 py-0.5">
           <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full bg-white/[0.25]" />
-          <span className="text-[12px] text-white/50">{applyBold(text)}</span>
+          <span className="text-xs text-white/50">{applyBold(text)}</span>
         </div>
       );
       continue;
     }
 
     elements.push(
-      <p key={i} className="text-[12px] text-white/40">
+      <p key={i} className="text-xs text-white/40">
         {applyBold(line)}
       </p>
     );
@@ -234,7 +234,7 @@ function VersionCard({
             renderBody(entry.release.body)
           ) : (
             entry.description.split("\n").map((line, i) => (
-              <p key={i} className="text-[12px] text-white/30">
+              <p key={i} className="text-xs text-white/30">
                 {line || "\u00A0"}
               </p>
             ))

@@ -120,7 +120,7 @@ function SectionTab({
     <button
       onClick={onClick}
       className={cn(
-        "rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
+        "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
         active
           ? "bg-white/[0.08] text-white/70"
           : "text-white/20 hover:bg-white/[0.04] hover:text-white/40"

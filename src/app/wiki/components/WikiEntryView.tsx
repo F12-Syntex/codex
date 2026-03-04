@@ -104,7 +104,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
           {entry.name}
         </h1>
 
-        <p className="mt-2 text-[14px] leading-relaxed text-white/60">
+        <p className="mt-2 text-sm leading-relaxed text-white/60">
           {entry.shortDescription}
         </p>
 
@@ -161,7 +161,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
                     <span className="shrink-0 text-xs tabular-nums text-white/25">
                       Ch. {item.chapterIndex + 1}
                     </span>
-                    <p className="text-[12px] leading-relaxed text-white/60">
+                    <p className="text-xs leading-relaxed text-white/60">
                       {item.content}
                     </p>
                   </div>
@@ -249,7 +249,7 @@ function RelationshipsSection({
                     style={{ background: "var(--bg-surface)" }}
                     title={`${rel.relation} (Ch. ${rel.since + 1})`}
                   >
-                    <span className="text-[12px] font-medium text-white/70 group-hover:text-white/90">
+                    <span className="text-xs font-medium text-white/70 group-hover:text-white/90">
                       {targetName}
                     </span>
                     <span className="text-xs text-white/25">{rel.relation}</span>

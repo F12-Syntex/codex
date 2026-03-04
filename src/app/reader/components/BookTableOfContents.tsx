@@ -87,7 +87,7 @@ export function BookTableOfContents({
             style={{ backgroundColor: "var(--accent-brand)", opacity: 0.5 }}
           />
 
-          <h2 className={`text-center text-[14px] font-medium tracking-wide uppercase ${theme.text}`}
+          <h2 className={`text-center text-sm font-medium tracking-wide uppercase ${theme.text}`}
             style={{ letterSpacing: "0.15em" }}
           >
             Contents
@@ -107,7 +107,7 @@ export function BookTableOfContents({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search chapters..."
-                className={`w-full bg-transparent text-[12px] outline-none placeholder:opacity-40 ${theme.text}`}
+                className={`w-full bg-transparent text-xs outline-none placeholder:opacity-40 ${theme.text}`}
               />
               {search && (
                 <button
@@ -133,7 +133,7 @@ export function BookTableOfContents({
           {filtered.length === 0 ? (
             <div className={`flex flex-col items-center py-12 ${theme.muted}`}>
               <Search className="mb-3 h-8 w-8 opacity-20" strokeWidth={1.5} />
-              <p className="text-[12px]">
+              <p className="text-xs">
                 {search ? "No matching entries" : "No entries found"}
               </p>
             </div>

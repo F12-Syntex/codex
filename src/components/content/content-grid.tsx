@@ -378,7 +378,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
       {/* Floating selection action bar */}
       {hasSelection && (
         <div className="absolute bottom-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] px-3 py-2 shadow-xl backdrop-blur-xl">
-          <span className="text-[12px] font-medium text-white/60">
+          <span className="text-xs font-medium text-white/60">
             {selectedIds.size} selected
           </span>
           <div className="mx-1 h-4 w-px bg-white/[0.08]" />
@@ -394,7 +394,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                 <button
                   key={t.view}
                   onClick={() => onBatchMove(selectedIds, t.view)}
-                  className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-white/60 transition-colors hover:bg-white/[0.06] hover:text-white/80"
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs text-white/60 transition-colors hover:bg-white/[0.06] hover:text-white/80"
                 >
                   <t.icon className="h-3 w-3" strokeWidth={1.5} />
                   {t.label}
@@ -425,19 +425,19 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="flex w-80 flex-col gap-4 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] p-5 shadow-2xl">
             <div>
-              <h3 className="text-[14px] font-semibold text-white/80">Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</h3>
-              <p className="mt-1 text-[12px] text-white/40">Files on disk are not affected.</p>
+              <h3 className="text-sm font-semibold text-white/80">Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</h3>
+              <p className="mt-1 text-xs text-white/40">Files on disk are not affected.</p>
             </div>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/70"
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/70"
               >
                 Cancel
               </button>
               <button
                 onClick={() => { onBatchDelete(selectedIds); setConfirmDelete(false); }}
-                className="rounded-lg bg-red-500/20 px-3 py-1.5 text-[12px] font-medium text-red-400 transition-colors hover:bg-red-500/30"
+                className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/30"
               >
                 Delete
               </button>

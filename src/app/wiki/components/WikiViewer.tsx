@@ -233,7 +233,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
                     placeholder="Search entries..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 bg-transparent text-[12px] text-white/80 placeholder:text-white/25 outline-none"
+                    className="flex-1 bg-transparent text-xs text-white/80 placeholder:text-white/25 outline-none"
                   />
                 </div>
               </div>
@@ -288,7 +288,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
                             }`}
                             strokeWidth={1.5}
                           />
-                          <span className="truncate text-[12px]">{entry.name}</span>
+                          <span className="truncate text-xs">{entry.name}</span>
                           {entry.significance >= 3 && (
                             <span className="ml-auto text-xs text-white/20">★</span>
                           )}
@@ -312,7 +312,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
                   <div key={arc.id} className="border-b border-white/[0.04] px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-3 w-3 shrink-0 text-white/30" strokeWidth={1.5} />
-                      <span className="text-[12px] font-medium text-white/70 truncate">{arc.name}</span>
+                      <span className="text-xs font-medium text-white/70 truncate">{arc.name}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="rounded-lg px-1.5 py-0.5 text-xs capitalize" style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}>

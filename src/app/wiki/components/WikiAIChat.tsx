@@ -356,7 +356,7 @@ ${wikiContext}`;
                 }
               }
             }}
-            className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[12px] font-medium transition-colors hover:brightness-125"
+            className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs font-medium transition-colors hover:brightness-125"
             style={{ background: colors.bg, color: colors.color }}
           >
             {TYPE_ICON[entityInfo.type]}
@@ -378,7 +378,7 @@ ${wikiContext}`;
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-white/[0.08] px-4 py-2.5 text-[12px] font-medium text-white/50 transition-all hover:border-white/[0.12] hover:text-white/70 hover:shadow-lg hover:shadow-black/20"
+        className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-white/[0.08] px-4 py-2.5 text-xs font-medium text-white/50 transition-all hover:border-white/[0.12] hover:text-white/70 hover:shadow-lg hover:shadow-black/20"
         style={{
           background: "var(--bg-surface)",
           boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)",
@@ -405,7 +405,7 @@ ${wikiContext}`;
       <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-4 py-2">
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          <span className="text-[12px] font-medium text-white/60">Wiki AI</span>
+          <span className="text-xs font-medium text-white/60">Wiki AI</span>
           <span className="text-xs text-white/25">{bookTitle}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -555,7 +555,7 @@ function RichBlockRenderer({
   switch (block.type) {
     case "heading":
       return (
-        <h4 className="text-[12px] font-semibold text-white/70 pt-1">
+        <h4 className="text-xs font-semibold text-white/70 pt-1">
           {block.content}
         </h4>
       );
@@ -571,7 +571,7 @@ function RichBlockRenderer({
       return (
         <div className="space-y-1 pl-1">
           {block.items.map((item, i) => (
-            <div key={i} className="flex gap-2 text-[12px] leading-relaxed text-white/55">
+            <div key={i} className="flex gap-2 text-xs leading-relaxed text-white/55">
               <span className="shrink-0 mt-1.5 h-1 w-1 rounded-full bg-white/20" />
               <span>{renderInline(item)}</span>
             </div>
@@ -585,7 +585,7 @@ function RichBlockRenderer({
           className="rounded-lg border-l-2 border-white/[0.12] pl-3 py-1.5"
           style={{ background: "rgba(255,255,255,0.02)" }}
         >
-          <p className="text-[12px] italic leading-relaxed text-white/45">
+          <p className="text-xs italic leading-relaxed text-white/45">
             {renderInline(block.content)}
           </p>
         </div>

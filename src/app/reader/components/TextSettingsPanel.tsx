@@ -87,7 +87,7 @@ export function TextSettingsPanel({
           <span className={`mb-1.5 block text-xs ${theme.muted}`}>Font</span>
           <button
             onClick={() => setShowFontPicker(v => !v)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[12px] transition-colors ${theme.subtle} ${theme.text}`}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
           >
             <div className="flex items-center gap-2">
               <Type className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
@@ -107,7 +107,7 @@ export function TextSettingsPanel({
                     onFontFamilyChange(font.family);
                     setShowFontPicker(false);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] transition-colors ${
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
                     font.family === fontFamily ? theme.btnActive : theme.btn
                   }`}
                   style={{ fontFamily: font.family }}
@@ -135,7 +135,7 @@ export function TextSettingsPanel({
             >
               <Minus className="h-3 w-3" strokeWidth={1.5} />
             </button>
-            <span className={`w-7 text-center text-[12px] tabular-nums ${theme.text}`}>{fontSize}</span>
+            <span className={`w-7 text-center text-xs tabular-nums ${theme.text}`}>{fontSize}</span>
             <button
               onClick={() => onFontSizeChange(Math.min(28, fontSize + 1))}
               disabled={fontSize >= 28}
@@ -158,7 +158,7 @@ export function TextSettingsPanel({
             onChange={(e) => onLineHeightChange(parseFloat(e.target.value))}
             className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
           />
-          <span className={`w-[32px] text-right text-[12px] tabular-nums ${theme.text}`}>
+          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
             {lineHeight.toFixed(1)}
           </span>
         </div>
@@ -175,7 +175,7 @@ export function TextSettingsPanel({
             onChange={(e) => onParaSpacingChange(parseInt(e.target.value))}
             className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
           />
-          <span className={`w-[32px] text-right text-[12px] tabular-nums ${theme.text}`}>
+          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
             {paraSpacing}px
           </span>
         </div>
@@ -192,7 +192,7 @@ export function TextSettingsPanel({
             onChange={(e) => onTextPaddingChange(parseInt(e.target.value))}
             className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
           />
-          <span className={`w-[32px] text-right text-[12px] tabular-nums ${theme.text}`}>
+          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
             {textPadding}px
           </span>
         </div>
@@ -209,7 +209,7 @@ export function TextSettingsPanel({
             onChange={(e) => onMaxTextWidthChange(parseInt(e.target.value))}
             className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
           />
-          <span className={`w-[32px] text-right text-[12px] tabular-nums ${theme.text}`}>
+          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
             {maxTextWidth}
           </span>
         </div>
