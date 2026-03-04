@@ -169,7 +169,7 @@ export function initDatabase(): void {
       chapter_index INTEGER NOT NULL,
       beat_type TEXT NOT NULL,
       description TEXT NOT NULL,
-      FOREIGN KEY (file_path, arc_id) REFERENCES wiki_arcs(file_path, id)
+      FOREIGN KEY (file_path, arc_id) REFERENCES wiki_arcs(file_path, id) ON DELETE CASCADE ON UPDATE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_arc_beats ON wiki_arc_beats(file_path, arc_id, chapter_index);
 
@@ -706,8 +706,20 @@ export function deleteArc(filePath: string, arcId: string): void {
 
 export function mergeArcs(filePath: string, sourceArcIds: string[], targetArcId: string): void {
   const merge = db.transaction(() => {
+    // Verify target arc exists
+    const target = db.prepare(
+      "SELECT id FROM wiki_arcs WHERE file_path = ? AND id = ?"
+    ).get(filePath, targetArcId);
+    if (!target) return;
+
     for (const sourceId of sourceArcIds) {
       if (sourceId === targetArcId) continue;
+      // Verify source arc exists
+      const source = db.prepare(
+        "SELECT id FROM wiki_arcs WHERE file_path = ? AND id = ?"
+      ).get(filePath, sourceId);
+      if (!source) continue;
+
       // Move beats to target arc
       db.prepare(
         "UPDATE wiki_arc_beats SET arc_id = ? WHERE file_path = ? AND arc_id = ?"
@@ -721,7 +733,7 @@ export function mergeArcs(filePath: string, sourceArcIds: string[], targetArcId:
           "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
         ).run(filePath, targetArcId, e.entry_id, e.role);
       }
-      // Delete source arc
+      // Delete source arc entities first, then arc (cascade handles beats)
       db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, sourceId);
       db.prepare("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?").run(filePath, sourceId);
     }
