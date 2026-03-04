@@ -29,6 +29,7 @@ import {
   stringifyOverrides,
   type PresetOverrides,
 } from "@/lib/ai-presets";
+import { CREATIVE_MODEL_KEY } from "@/lib/ai-formatting";
 
 interface SettingsPageProps {
   onImportItems: (items: LibraryItem[]) => void;
@@ -102,6 +103,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const [testingKey, setTestingKey] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [presetOverrides, setPresetOverrides] = useState<PresetOverrides>({});
+  const [creativeEnabled, setCreativeEnabled] = useState(false);
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
@@ -114,11 +116,13 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
       api!.getSetting("autoScan"),
       api!.getSetting("openrouterApiKey"),
       api!.getSetting(PRESET_OVERRIDES_KEY),
-    ]).then(([path, scan, key, overridesJson]) => {
+      api!.getSetting(CREATIVE_MODEL_KEY),
+    ]).then(([path, scan, key, overridesJson, creative]) => {
       if (path) setLibraryPath(path);
       if (scan) setAutoScan(scan === "true");
       if (key) setApiKey(key);
       setPresetOverrides(parseOverrides(overridesJson));
+      setCreativeEnabled(creative === "true");
     });
   });
 
@@ -404,6 +408,18 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
 
           {/* ── Model Presets ─────────────────────────── */}
           <SettingSection icon={Cpu} title="Model Presets">
+            <SettingRow
+              label="Creative Model"
+              description="Use a separate creative model for new formatting patterns. When off, the quick model handles everything."
+            >
+              <Switch
+                checked={creativeEnabled}
+                onCheckedChange={(v) => {
+                  setCreativeEnabled(v);
+                  if (hasApi) api!.setSetting(CREATIVE_MODEL_KEY, String(v));
+                }}
+              />
+            </SettingRow>
             {DEFAULT_PRESETS.map((preset) => {
               const isOverridden = !!presetOverrides[preset.id];
               const effectiveModel = getEffectiveModel(preset, presetOverrides);

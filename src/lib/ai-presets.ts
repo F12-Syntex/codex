@@ -24,9 +24,16 @@ export const DEFAULT_PRESETS: AIPreset[] = [
   {
     id: "quick",
     label: "Quick",
-    description: "Fast responses, lower cost",
+    description: "Fast analysis, rule detection, lower cost",
     icon: "Zap",
-    defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025", 
+    defaultModel: "x-ai/grok-4.1-fast",
+  },
+  {
+    id: "creative",
+    label: "Creative",
+    description: "High-quality formatting design and output",
+    icon: "Sparkles",
+    defaultModel: "google/gemini-2.5-flash",
   },
 ];
 

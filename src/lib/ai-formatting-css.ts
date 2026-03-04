@@ -32,6 +32,7 @@ export const AI_FORMATTING_STYLES = `
   --ai-fmt-thought-border: oklch(1 0 0 / 8%);
   --ai-fmt-sfx: oklch(0.75 0 0);
   --ai-fmt-reveal-bg: oklch(0.60 0.20 264 / 8%);
+
   --ai-fmt-icon-filter: brightness(0.8);
 }
 
@@ -52,6 +53,7 @@ export const AI_FORMATTING_STYLES = `
   --ai-fmt-thought-border: oklch(0 0 0 / 8%);
   --ai-fmt-sfx: oklch(0.35 0 0);
   --ai-fmt-reveal-bg: oklch(0.48 0.18 264 / 8%);
+
   --ai-fmt-icon-filter: brightness(0.3);
 }
 
@@ -72,6 +74,7 @@ export const AI_FORMATTING_STYLES = `
   --ai-fmt-thought-border: oklch(0.40 0.04 75 / 15%);
   --ai-fmt-sfx: oklch(0.38 0.03 55);
   --ai-fmt-reveal-bg: oklch(0.52 0.10 55 / 8%);
+
   --ai-fmt-icon-filter: brightness(0.4) sepia(0.3);
 }
 
