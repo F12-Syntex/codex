@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("style-dictionary:open", info),
 
   // Wiki
-  openWiki: (info: { filePath: string; title: string }) =>
+  openWiki: (info: { filePath: string; title: string; entryId?: string }) =>
     ipcRenderer.invoke("wiki:open", info),
 
   // Wiki DB operations
@@ -101,6 +101,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("wiki:add-arc-entity", filePath, arcId, entryId, role),
   wikiGetArcEntities: (filePath: string, arcId: string) =>
     ipcRenderer.invoke("wiki:get-arc-entities", filePath, arcId),
+  wikiDeleteArc: (filePath: string, arcId: string) =>
+    ipcRenderer.invoke("wiki:delete-arc", filePath, arcId),
+  wikiMergeArcs: (filePath: string, sourceArcIds: string[], targetArcId: string) =>
+    ipcRenderer.invoke("wiki:merge-arcs", filePath, sourceArcIds, targetArcId),
 
   wikiMarkProcessed: (filePath: string, chapterIndex: number) =>
     ipcRenderer.invoke("wiki:mark-processed", filePath, chapterIndex),

@@ -17,8 +17,9 @@ function WikiPage() {
   const searchParams = useSearchParams();
   const filePath = searchParams.get("filePath") || "";
   const bookTitle = searchParams.get("title") || "Untitled";
+  const initialEntryId = searchParams.get("entryId") || undefined;
 
-  return <WikiViewer filePath={filePath} bookTitle={bookTitle} />;
+  return <WikiViewer filePath={filePath} bookTitle={bookTitle} initialEntryId={initialEntryId} />;
 }
 
 export default function Page() {

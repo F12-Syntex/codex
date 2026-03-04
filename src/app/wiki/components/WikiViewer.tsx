@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  Loader2, Minus, Square, X, Search,
+  Loader2, Search,
   User, Swords, MapPin, Flame, Lightbulb,
   ChevronRight, BookOpen, GitBranch,
 } from "lucide-react";
+import { TitleBar } from "@/components/title-bar";
 import type { WikiEntry, WikiEntryType, WikiArc } from "@/lib/ai-wiki";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiEntryView } from "./WikiEntryView";
@@ -13,6 +14,7 @@ import { WikiEntryView } from "./WikiEntryView";
 interface WikiViewerProps {
   filePath: string;
   bookTitle: string;
+  initialEntryId?: string;
 }
 
 const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; plural: string }> = {
@@ -35,20 +37,26 @@ interface EntryListItem {
   status: string;
 }
 
-type ViewMode = "entries" | "arcs";
+interface ChapterSummary {
+  chapter_index: number;
+  summary: string;
+  key_events: string;
+  mood: string;
+}
 
-export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
+type ViewMode = "entries" | "arcs" | "chapters";
+
+export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerProps) {
   const [entries, setEntries] = useState<EntryListItem[]>([]);
   const [arcs, setArcs] = useState<WikiArc[]>([]);
+  const [chapterSummaries, setChapterSummaries] = useState<ChapterSummary[]>([]);
   const [processedCount, setProcessedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [maximized, setMaximized] = useState(false);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<WikiEntry | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<WikiEntryType | "all">("all");
   const [viewMode, setViewMode] = useState<ViewMode>("entries");
-
   // Load entries from DB
   useEffect(() => {
     if (!filePath) { setIsLoading(false); return; }
@@ -56,10 +64,11 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
       const api = window.electronAPI;
       if (!api) return;
 
-      const [entryRows, processed, arcRows] = await Promise.all([
+      const [entryRows, processed, arcRows, summaryRows] = await Promise.all([
         api.wikiGetEntries(filePath),
         api.wikiGetProcessed(filePath),
         api.wikiGetAllArcs(filePath),
+        api.wikiGetAllChapterSummaries(filePath),
       ]);
 
       setEntries(entryRows.map((e) => ({
@@ -84,9 +93,19 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
         endChapter: a.end_chapter,
       })));
 
+      setChapterSummaries(summaryRows.map((s) => ({
+        chapter_index: s.chapter_index,
+        summary: s.summary,
+        key_events: s.key_events,
+        mood: s.mood,
+      })));
+
       setIsLoading(false);
 
-      if (entryRows.length > 0) {
+      // Navigate to specific entry if requested, otherwise select first
+      if (initialEntryId && entryRows.some((e) => e.id === initialEntryId)) {
+        setSelectedEntryId(initialEntryId);
+      } else if (entryRows.length > 0) {
         setSelectedEntryId(entryRows[0].id);
       }
     };
@@ -98,8 +117,6 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
     if (!selectedEntryId || !filePath) { setSelectedEntry(null); return; }
     fetchWikiEntry(filePath, selectedEntryId).then(setSelectedEntry);
   }, [filePath, selectedEntryId]);
-
-  useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
   // Group entries by type
   const groupedEntries = useMemo(() => {
@@ -146,7 +163,7 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
   if (totalEntries === 0) {
     return (
       <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <TitleBar title={bookTitle} maximized={maximized} />
+        <TitleBar breadcrumb={["Wiki", bookTitle]} />
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <BookOpen className="mx-auto h-8 w-8 text-white/20" strokeWidth={1.5} />
@@ -162,7 +179,7 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-      <TitleBar title={`${bookTitle} — Wiki`} maximized={maximized} />
+      <TitleBar breadcrumb={["Wiki", bookTitle]} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
@@ -185,9 +202,17 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
             >
               Arcs ({arcs.length})
             </button>
+            <button
+              onClick={() => setViewMode("chapters")}
+              className={`flex-1 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors ${
+                viewMode === "chapters" ? "bg-[var(--accent-brand)]/15 text-[var(--accent-brand)]" : "text-white/40 hover:text-white/60"
+              }`}
+            >
+              Chapters
+            </button>
           </div>
 
-          {viewMode === "entries" ? (
+          {viewMode === "entries" && (
             <>
               {/* Search */}
               <div className="border-b border-white/[0.06] px-3 py-2">
@@ -264,8 +289,9 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
                 })}
               </div>
             </>
-          ) : (
-            /* Arc list */
+          )}
+
+          {viewMode === "arcs" && (
             <div className="flex-1 overflow-y-auto">
               {arcs.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
@@ -292,6 +318,47 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
                         {arc.description}
                       </p>
                     )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {viewMode === "chapters" && (
+            <div className="flex-1 overflow-y-auto">
+              {chapterSummaries.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-[11px] text-white/30">No chapter summaries yet</p>
+                </div>
+              ) : (
+                chapterSummaries.map((ch) => (
+                  <div key={ch.chapter_index} className="border-b border-white/[0.04] px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium tabular-nums" style={{ background: "var(--bg-inset)", color: "var(--text-muted)" }}>
+                        {ch.chapter_index + 1}
+                      </span>
+                      <MoodBadge mood={ch.mood} />
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-white/50">
+                      {ch.summary}
+                    </p>
+                    {ch.key_events && (() => {
+                      try {
+                        const events = JSON.parse(ch.key_events) as string[];
+                        if (events.length > 0) {
+                          return (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {events.map((ev, i) => (
+                                <span key={i} className="rounded-lg px-1.5 py-0.5 text-[10px] text-white/30" style={{ background: "var(--bg-inset)" }}>
+                                  {ev.replace(/-/g, " ")}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        }
+                      } catch { /* ignore */ }
+                      return null;
+                    })()}
                   </div>
                 ))
               )}
@@ -326,36 +393,33 @@ export function WikiViewer({ filePath, bookTitle }: WikiViewerProps) {
   );
 }
 
-/* ── Title Bar ────────────────────────────────────────── */
+/* ── Mood Badge ───────────────────────────────────────── */
 
-function TitleBar({ title, maximized }: { title: string; maximized: boolean }) {
+const MOOD_COLORS: Record<string, string> = {
+  tension: "rgba(251, 113, 133, 0.15)",
+  action: "rgba(251, 191, 36, 0.15)",
+  calm: "rgba(52, 211, 153, 0.15)",
+  mystery: "rgba(167, 139, 250, 0.15)",
+  revelation: "rgba(96, 165, 250, 0.15)",
+};
+
+const MOOD_TEXT: Record<string, string> = {
+  tension: "rgba(253, 164, 175, 0.9)",
+  action: "rgba(252, 211, 77, 0.9)",
+  calm: "rgba(110, 231, 183, 0.9)",
+  mystery: "rgba(196, 181, 253, 0.9)",
+  revelation: "rgba(147, 197, 253, 0.9)",
+};
+
+function MoodBadge({ mood }: { mood: string }) {
+  if (!mood) return null;
   return (
-    <div
-      className="flex h-9 shrink-0 items-center justify-between border-b border-white/[0.06] px-3"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    <span
+      className="rounded-lg px-1.5 py-0.5 text-[10px] font-medium capitalize"
+      style={{ background: MOOD_COLORS[mood] ?? "var(--bg-inset)", color: MOOD_TEXT[mood] ?? "var(--text-muted)" }}
     >
-      <span className="text-[12px] font-medium text-white/50">{title}</span>
-      <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-        <button
-          onClick={() => window.electronAPI?.minimize()}
-          className="flex h-6 w-8 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/60"
-        >
-          <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={() => window.electronAPI?.maximize()}
-          className="flex h-6 w-8 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/60"
-        >
-          <Square className="h-3 w-3" strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={() => window.electronAPI?.close()}
-          className="flex h-6 w-8 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-red-500/20 hover:text-red-400"
-        >
-          <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-      </div>
-    </div>
+      {mood}
+    </span>
   );
 }
 

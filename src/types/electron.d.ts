@@ -186,7 +186,7 @@ interface ElectronAPI {
   openStyleDictionary: (info: { filePath: string; title: string }) => Promise<void>;
 
   // Wiki
-  openWiki: (info: { filePath: string; title: string }) => Promise<void>;
+  openWiki: (info: { filePath: string; title: string; entryId?: string }) => Promise<void>;
 
   // Wiki DB operations
   wikiUpsertEntry: (entry: { id: string; filePath: string; name: string; type: string; shortDescription?: string; description?: string; color?: string; firstAppearance?: number; significance?: number; status?: string }) => Promise<void>;
@@ -217,6 +217,8 @@ interface ElectronAPI {
   wikiGetArcBeats: (filePath: string, arcId: string) => Promise<WikiArcBeatRow[]>;
   wikiAddArcEntity: (filePath: string, arcId: string, entryId: string, role: string) => Promise<void>;
   wikiGetArcEntities: (filePath: string, arcId: string) => Promise<{ entry_id: string; role: string }[]>;
+  wikiDeleteArc: (filePath: string, arcId: string) => Promise<void>;
+  wikiMergeArcs: (filePath: string, sourceArcIds: string[], targetArcId: string) => Promise<void>;
 
   wikiMarkProcessed: (filePath: string, chapterIndex: number) => Promise<void>;
   wikiGetProcessed: (filePath: string) => Promise<number[]>;

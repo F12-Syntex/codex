@@ -32,6 +32,26 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progres
 ## Detail Categories
 "personality", "ability", "backstory", "appearance", "speech_pattern", "motivation", "status", "role", "trait", "power", "skill", "title", "affiliation", "history", "geography", "function", "origin"
 
+## Story Arcs — IMPORTANT
+A story arc is a MAJOR narrative thread that spans multiple chapters and follows the classic structure: exposition → rising action → climax → falling action → resolution. Think of it as a macro-level plot line.
+
+**Create a new arc ONLY when:**
+- A significant, multi-chapter narrative thread is clearly being established
+- It involves major characters and meaningful stakes
+- It has a clear dramatic question that needs resolution
+- Examples: "The Quest for the Lost Kingdom", "Kael's Redemption", "The War Against the Dark Lord"
+
+**Do NOT create arcs for:**
+- Single-chapter events or encounters (those are just events/entities)
+- Minor subplots that resolve within 1-2 chapters
+- Character introductions or backstory reveals (those are entity details)
+- Repeated themes without narrative progression (those are concepts)
+- Scene-level conflicts or conversations
+
+**Aim for 3-8 arcs per book.** A typical novel has a main plot arc, 1-3 major subplot arcs, and maybe 1-2 character arcs. If you find yourself creating more than 8, you are being too granular.
+
+**Arc amendments:** You can merge redundant arcs or delete trivial ones as the story progresses. If two arcs are really the same narrative thread, merge them. If an arc turned out to be a minor event, delete it.
+
 ## Response Format
 Respond with ONLY valid JSON, no markdown code fences:
 {
@@ -52,9 +72,22 @@ Respond with ONLY valid JSON, no markdown code fences:
       "id": "arc-slug",
       "name": "Arc Name",
       "arc_type": "plot|character|world|mystery|conflict",
-      "description": "What this arc is about",
+      "description": "What this arc is about — must be a significant multi-chapter narrative thread",
       "entities": [{ "entry_id": "existing-entity-id", "role": "protagonist|antagonist|catalyst|supporter" }],
       "initial_beat": { "beat_type": "setup", "description": "How this arc begins" }
+    }
+  ],
+  "arc_amendments": [
+    {
+      "action": "merge",
+      "source_arc_ids": ["arc-id-1", "arc-id-2"],
+      "target_arc_id": "arc-id-1",
+      "reason": "Why these arcs are really the same narrative thread"
+    },
+    {
+      "action": "delete",
+      "arc_id": "trivial-arc-id",
+      "reason": "Why this arc is too minor to track"
     }
   ],
   "new_entries": [
@@ -85,7 +118,7 @@ Respond with ONLY valid JSON, no markdown code fences:
   ]
 }
 
-If nothing notable happens, return minimal: { "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "arc_updates": [], "new_arcs": [], "new_entries": [], "updates": [] }`;
+If nothing notable happens, return minimal: { "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "arc_updates": [], "new_arcs": [], "arc_amendments": [], "new_entries": [], "updates": [] }`;
 
 /* ── Tiered Context ─────────────────────────────────── */
 

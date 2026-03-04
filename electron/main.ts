@@ -15,7 +15,7 @@ import {
   addWikiAppearance, getAppearancesForEntry,
   upsertChapterSummary, getChapterSummaries, getAllChapterSummaries,
   upsertArc, getActiveArcs, getAllArcs, addArcBeat, getArcBeats,
-  addArcEntity, getArcEntities,
+  addArcEntity, getArcEntities, deleteArc, mergeArcs,
   markChapterProcessed, getProcessedChapters,
   getWikiMeta, upsertWikiMeta,
   getEntityIndex, getRecentEntities,
@@ -239,7 +239,7 @@ function createWindow() {
   });
 
   // ── Wiki: open in new window ─────────────────────
-  ipcMain.handle("wiki:open", (_event, info: { filePath: string; title: string }) => {
+  ipcMain.handle("wiki:open", (_event, info: { filePath: string; title: string; entryId?: string }) => {
     const wikiWindow = new BrowserWindow({
       width: 1000,
       height: 750,
@@ -259,6 +259,7 @@ function createWindow() {
       filePath: info.filePath,
       title: info.title,
     });
+    if (info.entryId) params.set("entryId", info.entryId);
 
     if (isDev) {
       wikiWindow.loadURL(`http://localhost:3000/wiki?${params.toString()}`);
@@ -469,6 +470,8 @@ function createWindow() {
   ipcMain.handle("wiki:get-arc-beats", (_event, filePath: string, arcId: string) => getArcBeats(filePath, arcId));
   ipcMain.handle("wiki:add-arc-entity", (_event, filePath: string, arcId: string, entryId: string, role: string) => { addArcEntity(filePath, arcId, entryId, role); });
   ipcMain.handle("wiki:get-arc-entities", (_event, filePath: string, arcId: string) => getArcEntities(filePath, arcId));
+  ipcMain.handle("wiki:delete-arc", (_event, filePath: string, arcId: string) => { deleteArc(filePath, arcId); });
+  ipcMain.handle("wiki:merge-arcs", (_event, filePath: string, sourceArcIds: string[], targetArcId: string) => { mergeArcs(filePath, sourceArcIds, targetArcId); });
 
   ipcMain.handle("wiki:mark-processed", (_event, filePath: string, chapterIndex: number) => { markChapterProcessed(filePath, chapterIndex); });
   ipcMain.handle("wiki:get-processed", (_event, filePath: string) => getProcessedChapters(filePath));

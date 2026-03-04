@@ -23,7 +23,6 @@ import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
-import { WikiSidebar } from "./WikiSidebar";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -74,7 +73,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [wikiEnabled, setWikiEnabled] = useState(false);
   const [wikiProcessingChapter, setWikiProcessingChapter] = useState<number | null>(null);
   const wikiAbortRef = useRef(false);
-  const [selectedWikiEntryId, setSelectedWikiEntryId] = useState<string | null>(null);
   const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
   const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
   const [wikiEntryCount, setWikiEntryCount] = useState(0);
@@ -530,9 +528,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const autoProcessTargetRef = useRef<number | null>(null);
   const autoProcessingRef = useRef(false);
 
-  // Process one chapter: format (if needed) + wiki (if enabled)
+  // Process one chapter: enrich (if needed) + format (if needed) + wiki (if enabled)
   const autoProcessChapter = useCallback(async (chapterIdx: number) => {
     if (!chapters[chapterIdx] || isChapterTooLarge(chapters[chapterIdx])) return;
+
+    // Enrich current chapter if needed
+    if (enrichEnabled && needsEnrichment(chapters[chapterIdx].title) && !enrichedNames[chapterIdx]) {
+      await enrichChapter(chapterIdx);
+    }
+
+    // Pre-enrich next chapter (fire and forget)
+    const nextIdx = chapterIdx + 1;
+    if (enrichEnabled && nextIdx < chapters.length && chapters[nextIdx] && needsEnrichment(chapters[nextIdx].title) && !enrichedNames[nextIdx]) {
+      enrichChapter(nextIdx);
+    }
 
     // Format current chapter if needed
     if (formattingEnabled && !formattedChapters[chapterIdx]) {
@@ -540,16 +549,15 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
 
     // Pre-format next chapter (fire and forget)
-    const next = chapterIdx + 1;
-    if (formattingEnabled && next < chapters.length && !formattedChapters[next] && chapters[next] && !isChapterTooLarge(chapters[next])) {
-      formatChapter(next);
+    if (formattingEnabled && nextIdx < chapters.length && !formattedChapters[nextIdx] && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
+      formatChapter(nextIdx);
     }
 
     // Wiki processing if enabled
     if (wikiEnabled && !wikiProcessedChapters.has(chapterIdx)) {
       await processWikiChapter(chapterIdx);
     }
-  }, [chapters, formattingEnabled, formattedChapters, formatChapter, wikiEnabled, wikiProcessedChapters, processWikiChapter]);
+  }, [chapters, enrichEnabled, enrichedNames, enrichChapter, formattingEnabled, formattedChapters, formatChapter, wikiEnabled, wikiProcessedChapters, processWikiChapter]);
 
   // Queue loop: processes the latest target, checks if it changed during processing
   const runAutoProcessQueue = useCallback(async () => {
@@ -571,12 +579,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   // Trigger auto-processing when chapter changes
   useEffect(() => {
     if (!bookContent || !filePath) return;
-    if (!formattingEnabled && !wikiEnabled) return;
+    if (!enrichEnabled && !formattingEnabled && !wikiEnabled) return;
 
     autoProcessTargetRef.current = currentChapter;
     runAutoProcessQueue();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, bookContent, formattingEnabled, wikiEnabled]);
+  }, [currentChapter, bookContent, enrichEnabled, formattingEnabled, wikiEnabled]);
 
   const toggleWikiEnabled = useCallback(() => {
     const next = !wikiEnabled;
@@ -601,7 +609,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setWikiEntityIndex([]);
     setWikiProcessedChapters(new Set());
     setWikiEntryCount(0);
-    setSelectedWikiEntryId(null);
     window.electronAPI?.wikiClear(filePath);
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(false));
   }, [filePath]);
@@ -807,8 +814,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           (e.target as HTMLElement).blur();
           return;
         }
-        if (selectedWikiEntryId) setSelectedWikiEntryId(null);
-        else if (showAI) setShowAI(false);
+        if (showAI) setShowAI(false);
         else if (showTextSettings) setShowTextSettings(false);
         else if (showTOC) setShowTOC(false);
         else if (showTTS) setShowTTS(false);
@@ -827,7 +833,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showTextSettings, showTOC, showTTS, showAI, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions, selectedWikiEntryId]);
+  }, [showTextSettings, showTOC, showTTS, showAI, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
 
   if (!isLoaded) return null;
 
@@ -970,18 +976,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             />
           )}
 
-          {selectedWikiEntryId && wikiEnabled && (
-            <WikiSidebar
-              filePath={filePath}
-              entryId={selectedWikiEntryId}
-              currentChapter={currentChapter}
-              bookTitle={title}
-              theme={theme}
-              onClose={() => setSelectedWikiEntryId(null)}
-              onEntryClick={(id) => setSelectedWikiEntryId(id)}
-            />
-          )}
-
           {isLoading ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
@@ -1024,8 +1018,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               wikiEnabled={wikiEnabled}
               wikiEntityIndex={effectiveWikiEntityIndex}
               currentChapterIndex={currentChapter}
-              selectedWikiEntryId={selectedWikiEntryId}
-              onWikiEntryClick={setSelectedWikiEntryId}
+              filePath={filePath}
+              bookTitle={title}
             />
           )}
 

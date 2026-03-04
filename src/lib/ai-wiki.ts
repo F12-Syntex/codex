@@ -113,10 +113,21 @@ interface AIUpdate {
   relationships?: WikiRelationship[];
 }
 
+interface AIArcAmendment {
+  action: "merge" | "delete";
+  // For merge
+  source_arc_ids?: string[];
+  target_arc_id?: string;
+  // For delete
+  arc_id?: string;
+  reason?: string;
+}
+
 interface AIWikiResponse {
   chapter_summary?: AIChapterSummary;
   arc_updates?: AIArcUpdate[];
   new_arcs?: AINewArc[];
+  arc_amendments?: AIArcAmendment[];
   new_entries: AINewEntry[];
   updates: AIUpdate[];
 }
@@ -441,6 +452,17 @@ async function writeResponseToDB(
     }
   }
 
+  // Arc amendments (merge/delete)
+  if (response.arc_amendments) {
+    for (const amendment of response.arc_amendments) {
+      if (amendment.action === "merge" && amendment.source_arc_ids && amendment.target_arc_id) {
+        await api.wikiMergeArcs(filePath, amendment.source_arc_ids, amendment.target_arc_id);
+      } else if (amendment.action === "delete" && amendment.arc_id) {
+        await api.wikiDeleteArc(filePath, amendment.arc_id);
+      }
+    }
+  }
+
   // Mark chapter processed
   await api.wikiMarkProcessed(filePath, chapterIndex);
 }
@@ -482,6 +504,7 @@ function validateWikiResponse(parsed: AIWikiResponse): AIWikiResponse {
   if (!Array.isArray(parsed.updates)) parsed.updates = [];
   if (!Array.isArray(parsed.arc_updates)) parsed.arc_updates = [];
   if (!Array.isArray(parsed.new_arcs)) parsed.new_arcs = [];
+  if (!Array.isArray(parsed.arc_amendments)) parsed.arc_amendments = [];
 
   parsed.new_entries = parsed.new_entries.filter(
     (e) => e && typeof e.id === "string" && typeof e.name === "string",

@@ -695,6 +695,40 @@ export function getArcEntities(filePath: string, arcId: string): { entry_id: str
   ).all(filePath, arcId) as { entry_id: string; role: string }[];
 }
 
+export function deleteArc(filePath: string, arcId: string): void {
+  const del = db.transaction(() => {
+    db.prepare("DELETE FROM wiki_arc_beats WHERE file_path = ? AND arc_id = ?").run(filePath, arcId);
+    db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, arcId);
+    db.prepare("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?").run(filePath, arcId);
+  });
+  del();
+}
+
+export function mergeArcs(filePath: string, sourceArcIds: string[], targetArcId: string): void {
+  const merge = db.transaction(() => {
+    for (const sourceId of sourceArcIds) {
+      if (sourceId === targetArcId) continue;
+      // Move beats to target arc
+      db.prepare(
+        "UPDATE wiki_arc_beats SET arc_id = ? WHERE file_path = ? AND arc_id = ?"
+      ).run(targetArcId, filePath, sourceId);
+      // Move entities to target arc (ignore duplicates)
+      const entities = db.prepare(
+        "SELECT entry_id, role FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?"
+      ).all(filePath, sourceId) as { entry_id: string; role: string }[];
+      for (const e of entities) {
+        db.prepare(
+          "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
+        ).run(filePath, targetArcId, e.entry_id, e.role);
+      }
+      // Delete source arc
+      db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, sourceId);
+      db.prepare("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?").run(filePath, sourceId);
+    }
+  });
+  merge();
+}
+
 // ── Processing State ──
 
 export function markChapterProcessed(filePath: string, chapterIndex: number): void {

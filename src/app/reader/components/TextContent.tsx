@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink } from "lucide-react";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
@@ -35,8 +36,8 @@ interface TextContentProps {
   wikiEnabled?: boolean;
   wikiEntityIndex?: Array<{ id: string; name: string; type: WikiEntryType; color: string }>;
   currentChapterIndex?: number;
-  selectedWikiEntryId?: string | null;
-  onWikiEntryClick?: (entryId: string | null) => void;
+  filePath?: string;
+  bookTitle?: string;
 }
 
 /*
@@ -97,12 +98,28 @@ export function TextContent({
   wikiEnabled = false,
   wikiEntityIndex = [],
   currentChapterIndex = 0,
-  selectedWikiEntryId = null,
-  onWikiEntryClick,
+  filePath,
+  bookTitle,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
+
+  // Wiki tooltip state
+  const [tooltipData, setTooltipData] = useState<{
+    id: string;
+    name: string;
+    type: WikiEntryType;
+    shortDescription: string;
+    status: string;
+    significance: number;
+    color: string;
+    x: number;
+    y: number;
+    arrowX: number;
+    placement: "above" | "below";
+  } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -484,24 +501,115 @@ export function TextContent({
     </div>
   ) : null;
 
-  // ── Wiki entity click handling ─────────────────────────
+  // ── Wiki entity click handling → tooltip ─────────────────
   useEffect(() => {
     const clipper = clipperRef.current;
-    if (!clipper || !wikiEnabled || !onWikiEntryClick) return;
+    if (!clipper || !wikiEnabled || !filePath) return;
 
-    const handleClick = (e: MouseEvent) => {
+    const handleClick = async (e: MouseEvent) => {
       const target = (e.target as HTMLElement).closest("[data-wiki-id]") as HTMLElement | null;
       if (!target) return;
       e.stopPropagation();
       const id = target.getAttribute("data-wiki-id");
       if (!id) return;
-      // Toggle: clicking same entity closes panel
-      onWikiEntryClick(selectedWikiEntryId === id ? null : id);
+
+      // Toggle: clicking same entity dismisses tooltip
+      if (tooltipData?.id === id) {
+        setTooltipData(null);
+        return;
+      }
+
+      // Fetch entry from DB (lightweight — just the row)
+      const row = await window.electronAPI?.wikiGetEntry(filePath, id);
+      if (!row) return;
+
+      // Get element position for tooltip placement
+      const rect = target.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const tooltipW = 280;
+      const tooltipH = 160; // estimate
+      const pad = 12;
+
+      // Center tooltip horizontally on entity
+      let x = rect.left + rect.width / 2 - tooltipW / 2;
+      x = Math.max(pad, Math.min(x, vw - tooltipW - pad));
+
+      // Arrow points at center of entity
+      const arrowX = Math.max(16, Math.min(rect.left + rect.width / 2 - x, tooltipW - 16));
+
+      // Prefer above, fallback below
+      const spaceAbove = rect.top;
+      const spaceBelow = vh - rect.bottom;
+      let placement: "above" | "below" = "above";
+      let y: number;
+
+      if (spaceAbove >= tooltipH + pad) {
+        placement = "above";
+        y = rect.top - 8; // tooltip bottom edge (will use bottom positioning)
+      } else if (spaceBelow >= tooltipH + pad) {
+        placement = "below";
+        y = rect.bottom + 8;
+      } else {
+        // Not enough space either way — use whichever has more
+        placement = spaceAbove >= spaceBelow ? "above" : "below";
+        y = placement === "above" ? rect.top - 8 : rect.bottom + 8;
+      }
+
+      // Find entity color from index
+      const entityInfo = wikiEntityIndex.find(e => e.id === id);
+
+      setTooltipData({
+        id,
+        name: row.name,
+        type: row.type as WikiEntryType,
+        shortDescription: row.short_description ?? "",
+        status: row.status ?? "active",
+        significance: row.significance ?? 1,
+        color: entityInfo?.color ?? "blue",
+        x,
+        y,
+        arrowX,
+        placement,
+      });
     };
 
     clipper.addEventListener("click", handleClick);
     return () => clipper.removeEventListener("click", handleClick);
-  }, [wikiEnabled, onWikiEntryClick, selectedWikiEntryId]);
+  }, [wikiEnabled, filePath, tooltipData?.id, wikiEntityIndex]);
+
+  // Dismiss tooltip on click outside
+  useEffect(() => {
+    if (!tooltipData) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't dismiss if clicking on a wiki entity (handled above) or tooltip itself
+      if (target.closest("[data-wiki-id]")) return;
+      if (tooltipRef.current?.contains(target)) return;
+      setTooltipData(null);
+    };
+    // Delay so the same click that opened it doesn't close it
+    const timer = setTimeout(() => document.addEventListener("mousedown", handleClickOutside), 10);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [tooltipData]);
+
+  // Dismiss tooltip on page change or chapter change
+  useEffect(() => {
+    setTooltipData(null);
+  }, [currentPage, currentChapterIndex]);
+
+  // Dismiss tooltip on Escape
+  useEffect(() => {
+    if (!tooltipData) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setTooltipData(null); e.stopPropagation(); }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [tooltipData]);
 
   // ── TTS auto-navigate: scroll to the page containing the active paragraph ──
 
@@ -833,7 +941,16 @@ export function TextContent({
 
       </div>
 
-      {/* Wiki sidebar is now rendered in Reader.tsx */}
+      {/* Wiki entity tooltip */}
+      {tooltipData && (
+        <WikiTooltipPopup
+          data={tooltipData}
+          tooltipRef={tooltipRef}
+          filePath={filePath}
+          bookTitle={bookTitle}
+          onClose={() => setTooltipData(null)}
+        />
+      )}
 
       <style>{`
         .reader-image img {
@@ -861,7 +978,146 @@ export function TextContent({
         .wiki-entity-rose:hover { background: rgba(251, 113, 133, 0.08); border-color: rgba(251, 113, 133, 0.6); }
         .wiki-entity-violet { color: rgba(196, 181, 253, 0.9); border-color: rgba(167, 139, 250, 0.3); }
         .wiki-entity-violet:hover { background: rgba(167, 139, 250, 0.08); border-color: rgba(167, 139, 250, 0.6); }
+        .wiki-tooltip-enter {
+          animation: wikiTooltipIn 0.15s ease-out;
+        }
+        @keyframes wikiTooltipIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
       `}</style>
+    </div>
+  );
+}
+
+// ── Wiki tooltip type metadata ──────────────────────────
+const WIKI_TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string; border: string }> = {
+  character: { icon: <User className="h-3 w-3" strokeWidth={1.5} />, label: "Character", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.15)", border: "rgba(96, 165, 250, 0.4)" },
+  item: { icon: <Swords className="h-3 w-3" strokeWidth={1.5} />, label: "Item", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.15)", border: "rgba(251, 191, 36, 0.4)" },
+  location: { icon: <MapPin className="h-3 w-3" strokeWidth={1.5} />, label: "Location", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.15)", border: "rgba(52, 211, 153, 0.4)" },
+  event: { icon: <Flame className="h-3 w-3" strokeWidth={1.5} />, label: "Event", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.15)", border: "rgba(251, 113, 133, 0.4)" },
+  concept: { icon: <Lightbulb className="h-3 w-3" strokeWidth={1.5} />, label: "Concept", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.15)", border: "rgba(167, 139, 250, 0.4)" },
+};
+
+function WikiTooltipPopup({
+  data,
+  tooltipRef,
+  filePath,
+  bookTitle,
+  onClose,
+}: {
+  data: {
+    id: string;
+    name: string;
+    type: WikiEntryType;
+    shortDescription: string;
+    status: string;
+    significance: number;
+    color: string;
+    x: number;
+    y: number;
+    arrowX: number;
+    placement: "above" | "below";
+  };
+  tooltipRef: React.RefObject<HTMLDivElement | null>;
+  filePath?: string;
+  bookTitle?: string;
+  onClose: () => void;
+}) {
+  const meta = WIKI_TYPE_META[data.type] ?? WIKI_TYPE_META.concept;
+
+  const openWiki = () => {
+    if (filePath && bookTitle) {
+      window.electronAPI?.openWiki({ filePath, title: bookTitle, entryId: data.id });
+    }
+    onClose();
+  };
+
+  const style: React.CSSProperties = {
+    position: "fixed",
+    zIndex: 50,
+    width: "280px",
+    left: `${data.x}px`,
+    borderLeft: `3px solid ${meta.border}`,
+  };
+
+  if (data.placement === "above") {
+    style.bottom = `${window.innerHeight - data.y}px`;
+  } else {
+    style.top = `${data.y}px`;
+  }
+
+  return (
+    <div
+      ref={tooltipRef}
+      className="rounded-lg shadow-lg shadow-black/40 wiki-tooltip-enter"
+      style={style}
+    >
+      <div
+        className="rounded-lg p-3 space-y-2"
+        style={{
+          background: "var(--bg-overlay)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+        }}
+      >
+        {/* Type badge + name */}
+        <div className="flex items-center gap-2">
+          <span
+            className="flex items-center gap-1 shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium"
+            style={{ background: meta.bg, color: meta.color }}
+          >
+            {meta.icon}
+            {meta.label}
+          </span>
+          <span className="text-[13px] font-semibold text-white/90 truncate">{data.name}</span>
+        </div>
+
+        {/* Short description */}
+        {data.shortDescription && (
+          <p className="text-[11px] leading-relaxed text-white/50 line-clamp-3">
+            {data.shortDescription}
+          </p>
+        )}
+
+        {/* Status + significance */}
+        <div className="flex items-center gap-2">
+          <span
+            className="rounded-lg px-1.5 py-0.5 text-[11px] font-medium capitalize"
+            style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}
+          >
+            {data.status}
+          </span>
+          <span className="text-[11px] text-white/25">·</span>
+          <span className="text-[11px] text-white/30">
+            {"★".repeat(data.significance)}{"☆".repeat(Math.max(0, 4 - data.significance))}
+          </span>
+        </div>
+
+        {/* Open Wiki button */}
+        <button
+          onClick={openWiki}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-colors hover:bg-white/[0.08]"
+          style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }}
+        >
+          <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
+          Open Wiki
+        </button>
+      </div>
+
+      {/* Arrow */}
+      <div
+        style={{
+          position: "absolute",
+          left: `${data.arrowX}px`,
+          [data.placement === "above" ? "bottom" : "top"]: "-5px",
+          width: "10px",
+          height: "10px",
+          background: "var(--bg-overlay)",
+          transform: "rotate(45deg)",
+          borderRadius: "2px",
+        }}
+      />
     </div>
   );
 }
