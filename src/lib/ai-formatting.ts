@@ -7,88 +7,14 @@ import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
 import type { StyleDictionary } from "./ai-style-dictionary";
 import { extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary } from "./ai-style-dictionary";
 
-const ANALYSIS_PRESET = "quick";
-const DESIGN_PRESET = "creative";
+const PRESET_ID = "quick";
 const CHUNK_SIZE = 40;
 const MAX_SINGLE_CALL = 50;
 const PARALLEL_CHUNKS = 3;
 
-/** Settings key for enabling/disabling the creative model (phase 2). Off by default. */
-export const CREATIVE_MODEL_KEY = "ai-creative-model-enabled";
+/** Any class starting with "ai-fmt-" is allowed — gives AI full creative freedom. */
+const AI_FMT_PREFIX = "ai-fmt-";
 
-// All allowed CSS class names — used for validation
-const ALLOWED_CLASSES = new Set([
-  "ai-fmt-stat-block",
-  "ai-fmt-stat-row",
-  "ai-fmt-stat-label",
-  "ai-fmt-stat-value",
-  "ai-fmt-xp-badge",
-  "ai-fmt-system-msg",
-  "ai-fmt-item-card",
-  "ai-fmt-item-name",
-  "ai-fmt-rarity-common",
-  "ai-fmt-rarity-uncommon",
-  "ai-fmt-rarity-rare",
-  "ai-fmt-rarity-epic",
-  "ai-fmt-rarity-legendary",
-  "ai-fmt-status-badge",
-  "ai-fmt-status-buff",
-  "ai-fmt-status-debuff",
-  "ai-fmt-dialogue-villain",
-  "ai-fmt-dialogue-divine",
-  "ai-fmt-dialogue-hero",
-  "ai-fmt-thought",
-  "ai-fmt-sfx",
-  "ai-fmt-reveal",
-  "ai-fmt-icon",
-  "ai-fmt-icon-sword",
-  "ai-fmt-icon-shield",
-  "ai-fmt-icon-sparkle",
-  "ai-fmt-icon-zap",
-  "ai-fmt-icon-scroll",
-  "ai-fmt-icon-skull",
-  "ai-fmt-icon-arrow-up",
-  "ai-fmt-icon-gem",
-  "ai-fmt-icon-trophy",
-  "ai-fmt-icon-heart",
-  "ai-fmt-icon-star",
-  "ai-fmt-icon-flame",
-  "ai-fmt-icon-eye",
-  "ai-fmt-icon-crown",
-  "ai-fmt-icon-book",
-  "ai-fmt-icon-target",
-  "ai-fmt-icon-plus",
-  "ai-fmt-icon-user",
-  "ai-fmt-icon-bolt",
-]);
-
-/* ── Phase 1: Analysis prompt (quick model) ── */
-const ANALYSIS_PROMPT = `You are a book content analyzer. You receive a JSON array of HTML paragraph strings and identify which paragraphs need visual formatting and what type of formatting each needs.
-
-Read the content, understand the genre and tone, and decide what deserves visual enhancement.
-
-# CONSTRAINTS
-1. Return a JSON object where keys are paragraph indices (0-based) and values are objects with: "type" (the formatting class to use) and "notes" (brief context for the designer, e.g. character names, stat names, item rarity).
-2. ONLY include paragraphs that genuinely benefit from enhancement or have grammar issues. Most paragraphs should stay as normal text — SKIP THEM.
-3. If consecutive paragraphs form one structured block (like a stat table), note "merge_with": [list of indices to consume].
-4. For dialogue: identify the speaker's actual name. Never use generic labels like "HERO" or "VILLAIN" — use the character's real name.
-
-# TYPES YOU CAN ASSIGN
-- "stat-block": structured data, stats, key-value info
-- "system-msg": system messages, announcements, warnings, formal text
-- "item-card": named items, skills, spells with descriptions
-- "xp-badge": inline numeric gains, rewards, scores
-- "status-badges": inline tags for buffs, debuffs, conditions
-- "dialogue": quoted speech — note the speaker name and type (hero/villain/divine)
-- "thought": internal monologue, inner voice
-- "sfx": sound effects, impact words
-- "reveal": first mention of important names/concepts
-- "grammar": only needs grammar/punctuation fixes, no visual enhancement
-
-# OUTPUT
-Return ONLY a valid JSON object, e.g. {"0":{"type":"stat-block","notes":"HP, MP, Level stats"},"5":{"type":"dialogue","notes":"speaker:Zephyr,type:hero"},"8":"skip"}. No markdown fences, no explanation. If nothing needs analysis, return {}.`;
-
-/* ── Phase 2: Design prompt (creative model) ── */
 const SYSTEM_PROMPT = `You are a book formatting AI. You receive a JSON array of HTML paragraph strings and return ONLY the paragraphs you changed, as a JSON object mapping index → formatted HTML.
 
 Read the content, understand the genre and tone, and decide what deserves visual enhancement. You have a toolkit of CSS classes below — use your judgement on what fits. A literary novel needs different treatment than a game-lit novel. Adapt.
@@ -240,13 +166,14 @@ export function parseFormattingResponse(
 }
 
 /**
- * Remove any class="..." values that aren't in the allowed set.
+ * Remove any class="..." values that don't start with "ai-fmt-".
+ * This gives the AI full creative freedom within the ai-fmt namespace.
  */
 function stripUnrecognizedClasses(html: string): string {
   return html.replace(/class="([^"]*)"/g, (_match, classes: string) => {
     const filtered = classes
       .split(/\s+/)
-      .filter((c: string) => c && ALLOWED_CLASSES.has(c))
+      .filter((c: string) => c && c.startsWith(AI_FMT_PREFIX))
       .join(" ");
     return filtered ? `class="${filtered}"` : "";
   });
@@ -256,12 +183,6 @@ function stripUnrecognizedClasses(html: string): string {
 async function loadOverrides() {
   const raw = await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY);
   return parseOverrides(raw ?? null);
-}
-
-/** Check if the creative model (phase 2) is enabled. Defaults to false. */
-async function isCreativeEnabled(): Promise<boolean> {
-  const raw = await window.electronAPI?.getSetting(CREATIVE_MODEL_KEY);
-  return raw === "true";
 }
 
 /**
@@ -290,14 +211,13 @@ export async function formatChapterContent(
   }
 
   const overrides = await loadOverrides();
-  const creativeEnabled = await isCreativeEnabled();
   const styleContext = existingDictionary ? buildStyleContext(existingDictionary) : "";
 
   let formatted: string[] | null;
 
   // Small enough for a single call
   if (htmlParagraphs.length <= MAX_SINGLE_CALL) {
-    formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext, existingDictionary, creativeEnabled);
+    formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext);
   } else {
     // Build all chunks
     const chunks: { start: number; paragraphs: string[] }[] = [];
@@ -314,7 +234,7 @@ export async function formatChapterContent(
 
       const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
       const batchResults = await Promise.all(
-        batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start, styleContext, existingDictionary, creativeEnabled)),
+        batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start, styleContext)),
       );
 
       for (let j = 0; j < batchResults.length; j++) {
@@ -349,226 +269,6 @@ export async function formatChapterContent(
 
 const MAX_RETRIES = 2;
 
-/**
- * Phase 1: Quick model analyzes content and identifies what needs formatting.
- * Returns a compact analysis plan (indices + types + notes).
- */
-async function analyzeChunk(
-  apiKey: string,
-  overrides: Record<string, { model: string }>,
-  paragraphs: string[],
-  bookTitle: string,
-): Promise<Record<number, { type: string; notes: string; merge_with?: number[] }> | null> {
-  const indexed: Record<number, string> = {};
-  for (let i = 0; i < paragraphs.length; i++) {
-    indexed[i] = paragraphs[i];
-  }
-
-  const messages: OpenRouterMessage[] = [
-    { role: "system", content: ANALYSIS_PROMPT },
-    {
-      role: "user",
-      content: `Book: "${bookTitle}"\n\nAnalyze these ${paragraphs.length} paragraphs (indices 0-${paragraphs.length - 1}). Identify which need formatting:\n${JSON.stringify(indexed)}`,
-    },
-  ];
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const response = await chatWithPreset(
-        apiKey, ANALYSIS_PRESET, messages, overrides,
-        { temperature: 0.2, max_tokens: 4096 },
-      );
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) continue;
-
-      let cleaned = content.trim();
-      if (cleaned.startsWith("```")) {
-        cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-      }
-
-      const parsed = JSON.parse(cleaned);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const result: Record<number, { type: string; notes: string; merge_with?: number[] }> = {};
-        for (const [key, value] of Object.entries(parsed)) {
-          const idx = Number(key);
-          if (Number.isNaN(idx) || idx < 0 || idx >= paragraphs.length) continue;
-          if (value === "skip" || typeof value !== "object") continue;
-          const v = value as Record<string, unknown>;
-          result[idx] = {
-            type: String(v.type ?? ""),
-            notes: String(v.notes ?? ""),
-            ...(Array.isArray(v.merge_with) ? { merge_with: v.merge_with as number[] } : {}),
-          };
-        }
-        console.log(`AI analysis: ${Object.keys(result).length}/${paragraphs.length} paragraphs flagged`);
-        return result;
-      }
-    } catch (err) {
-      console.error(`AI analysis failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
-    }
-  }
-  return null;
-}
-
-/**
- * Map analysis type strings to the style dictionary categories they correspond to.
- * If a type maps to a category that already has rules in the dictionary, it's "known".
- */
-const ANALYSIS_TYPE_TO_CATEGORY: Record<string, string> = {
-  "stat-block": "stat",
-  "system-msg": "system",
-  "item-card": "item",
-  "xp-badge": "badge",
-  "status-badges": "badge",
-  "dialogue": "dialogue",
-  "thought": "effect",
-  "sfx": "effect",
-  "reveal": "effect",
-  "grammar": "grammar",
-};
-
-/**
- * Check which analysis types are already covered by the style dictionary.
- */
-function getKnownCategories(dict: StyleDictionary | null | undefined): Set<string> {
-  if (!dict?.rules.length) return new Set();
-  return new Set(dict.rules.map(r => r.category));
-}
-
-type AnalysisEntry = { type: string; notes: string; merge_with?: number[] };
-
-/**
- * Apply formatting using the quick model for paragraphs with known patterns.
- * The style context already contains examples, so the quick model just follows them.
- */
-async function applyKnownPatterns(
-  apiKey: string,
-  overrides: Record<string, { model: string }>,
-  paragraphs: string[],
-  bookTitle: string,
-  analysis: Record<number, AnalysisEntry>,
-  styleContext: string,
-): Promise<string[] | null> {
-  const allIndices = new Set<number>();
-  for (const [key, entry] of Object.entries(analysis)) {
-    allIndices.add(Number(key));
-    if (entry.merge_with) {
-      for (const idx of entry.merge_with) allIndices.add(idx);
-    }
-  }
-
-  if (allIndices.size === 0) return [...paragraphs];
-
-  const subset: Record<number, { html: string; instruction: string }> = {};
-  for (const idx of allIndices) {
-    const entry = analysis[idx];
-    subset[idx] = {
-      html: paragraphs[idx],
-      instruction: entry
-        ? `Type: ${entry.type}. ${entry.notes}${entry.merge_with ? `. Merge with indices: ${entry.merge_with.join(", ")}` : ""}`
-        : "Part of a merge group — may be consumed by another paragraph",
-    };
-  }
-
-  const messages: OpenRouterMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT + styleContext },
-    {
-      role: "user",
-      content: `Book: "${bookTitle}"\n\nFormat ONLY these pre-analyzed paragraphs. Follow the ESTABLISHED STYLE RULES exactly — do not invent new designs. Each has an instruction from the analyzer. Return {index: html} for modified ones. Set consumed merge targets to "".\n${JSON.stringify(subset)}`,
-    },
-  ];
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const response = await chatWithPreset(
-        apiKey, ANALYSIS_PRESET, messages, overrides,
-        { temperature: 0.2, max_tokens: 16384 },
-      );
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) continue;
-
-      const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
-      if (result) return result;
-
-      console.warn(`AI apply-known: parse failed (attempt ${attempt + 1}/${MAX_RETRIES})`);
-    } catch (err) {
-      console.error(`AI apply-known failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
-    }
-  }
-  return null;
-}
-
-/**
- * Design new patterns using the creative model.
- * Only called for paragraph types not yet in the style dictionary.
- */
-async function designNewPatterns(
-  apiKey: string,
-  overrides: Record<string, { model: string }>,
-  paragraphs: string[],
-  bookTitle: string,
-  analysis: Record<number, AnalysisEntry>,
-  styleContext: string,
-): Promise<string[] | null> {
-  const allIndices = new Set<number>();
-  for (const [key, entry] of Object.entries(analysis)) {
-    allIndices.add(Number(key));
-    if (entry.merge_with) {
-      for (const idx of entry.merge_with) allIndices.add(idx);
-    }
-  }
-
-  if (allIndices.size === 0) return [...paragraphs];
-
-  const subset: Record<number, { html: string; instruction: string }> = {};
-  for (const idx of allIndices) {
-    const entry = analysis[idx];
-    subset[idx] = {
-      html: paragraphs[idx],
-      instruction: entry
-        ? `Type: ${entry.type}. ${entry.notes}${entry.merge_with ? `. Merge with indices: ${entry.merge_with.join(", ")}` : ""}`
-        : "Part of a merge group — may be consumed by another paragraph",
-    };
-  }
-
-  const messages: OpenRouterMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT + styleContext },
-    {
-      role: "user",
-      content: `Book: "${bookTitle}"\n\nFormat ONLY these pre-analyzed paragraphs. These are NEW pattern types — design creative, fitting visual treatments. Each has an instruction from the analyzer. Return {index: html} for modified ones. Set consumed merge targets to "".\n${JSON.stringify(subset)}`,
-    },
-  ];
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const response = await chatWithPreset(
-        apiKey, DESIGN_PRESET, messages, overrides,
-        { temperature: 0.3, max_tokens: 16384 },
-      );
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) continue;
-
-      const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
-      if (result) return result;
-
-      console.warn(`AI design-new: parse failed (attempt ${attempt + 1}/${MAX_RETRIES})`);
-    } catch (err) {
-      console.error(`AI design-new failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
-    }
-  }
-  return null;
-}
-
-/**
- * Two-phase formatting: analyze (quick) → route to quick or creative.
- *
- * - Known patterns (already in style dictionary): quick model applies them
- * - New patterns (not in dictionary): creative model designs them (if enabled)
- * - Creative disabled (default): quick model handles everything
- */
 async function formatChunk(
   apiKey: string,
   overrides: Record<string, { model: string }>,
@@ -576,73 +276,30 @@ async function formatChunk(
   bookTitle: string,
   chunkOffset: number = 0,
   styleContext: string = "",
-  existingDictionary?: StyleDictionary | null,
-  creativeEnabled: boolean = false,
 ): Promise<string[] | null> {
-  // Phase 1: Analyze with quick model
-  const analysis = await analyzeChunk(apiKey, overrides, paragraphs, bookTitle);
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext);
+      const response = await chatWithPreset(
+        apiKey, PRESET_ID, messages, overrides,
+        { temperature: 0.3, max_tokens: 16384 },
+      );
 
-  if (!analysis || Object.keys(analysis).length === 0) {
-    // Nothing to format — return originals as-is
-    console.log("AI formatting: analysis found nothing to format");
-    return [...paragraphs];
-  }
-
-  // If creative is disabled, send everything to the quick model
-  if (!creativeEnabled) {
-    console.log("AI formatting: creative model disabled — quick model handles all");
-    return applyKnownPatterns(apiKey, overrides, paragraphs, bookTitle, analysis, styleContext);
-  }
-
-  const knownCategories = getKnownCategories(existingDictionary);
-
-  // Split analysis into known vs new patterns
-  const knownAnalysis: Record<number, AnalysisEntry> = {};
-  const newAnalysis: Record<number, AnalysisEntry> = {};
-
-  for (const [key, entry] of Object.entries(analysis)) {
-    const category = ANALYSIS_TYPE_TO_CATEGORY[entry.type] ?? entry.type;
-    if (knownCategories.has(category) || entry.type === "grammar") {
-      knownAnalysis[Number(key)] = entry;
-    } else {
-      newAnalysis[Number(key)] = entry;
-    }
-  }
-
-  const knownCount = Object.keys(knownAnalysis).length;
-  const newCount = Object.keys(newAnalysis).length;
-  console.log(`AI formatting: ${knownCount} known patterns, ${newCount} new patterns`);
-
-  let result = [...paragraphs];
-
-  // Apply known patterns with quick model (cheap + fast)
-  if (knownCount > 0) {
-    const knownResult = await applyKnownPatterns(
-      apiKey, overrides, paragraphs, bookTitle, knownAnalysis, styleContext,
-    );
-    if (knownResult) {
-      for (let i = 0; i < knownResult.length; i++) {
-        if (knownResult[i] !== paragraphs[i]) result[i] = knownResult[i];
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) {
+        console.warn(`AI formatting: empty response (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        continue;
       }
+
+      const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
+      if (result) return result;
+
+      console.warn(`AI formatting: parse failed (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    } catch (err) {
+      console.error(`AI formatting chunk failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
     }
   }
-
-  // Design new patterns with creative model (only if needed)
-  if (newCount > 0) {
-    console.log(`AI formatting: sending ${newCount} new patterns to creative model`);
-    const newResult = await designNewPatterns(
-      apiKey, overrides, paragraphs, bookTitle, newAnalysis, styleContext,
-    );
-    if (newResult) {
-      for (let i = 0; i < newResult.length; i++) {
-        if (newResult[i] !== paragraphs[i]) result[i] = newResult[i];
-      }
-    }
-  } else {
-    console.log("AI formatting: all patterns known — skipping creative model");
-  }
-
-  return result;
+  return null;
 }
 
 /**
@@ -711,7 +368,7 @@ Creative freedom:
 
     try {
       const response = await chatWithPreset(
-        apiKey, DESIGN_PRESET, messages, overrides,
+        apiKey, PRESET_ID, messages, overrides,
         { temperature: 0.9, max_tokens: 16384 },
       );
 
