@@ -10,6 +10,7 @@ import { TitleBar } from "@/components/title-bar";
 import type { WikiEntry, WikiEntryType, WikiArc } from "@/lib/ai-wiki";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiEntryView } from "./WikiEntryView";
+import { WikiAIChat } from "./WikiAIChat";
 
 interface WikiViewerProps {
   filePath: string;
@@ -379,14 +380,23 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 overflow-y-auto bg-[var(--bg-inset)]">
-          {selectedEntry ? (
-            <WikiEntryView entry={selectedEntry} filePath={filePath} onEntryClick={setSelectedEntryId} />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-[13px] text-white/30">Select an entry to view</p>
-            </div>
-          )}
+        <div className="relative flex-1 overflow-hidden bg-[var(--bg-inset)]">
+          <div className="h-full overflow-y-auto">
+            {selectedEntry ? (
+              <WikiEntryView entry={selectedEntry} filePath={filePath} onEntryClick={setSelectedEntryId} />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-[13px] text-white/30">Select an entry to view</p>
+              </div>
+            )}
+          </div>
+
+          {/* AI Chat dock */}
+          <WikiAIChat
+            filePath={filePath}
+            bookTitle={bookTitle}
+            onEntryClick={setSelectedEntryId}
+          />
         </div>
       </div>
     </div>
