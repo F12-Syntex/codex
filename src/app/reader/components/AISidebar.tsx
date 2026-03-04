@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3, BookMarked, Square } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
@@ -147,12 +148,7 @@ export function AISidebar({
     if (isRunningAll) {
       return (
         <div className="mt-2 space-y-1.5 overflow-hidden">
-          <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
-            <div
-              className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
-              style={{ width: `${enrichAllProgress.total > 0 ? Math.round(((enrichAllProgress.current + 1) / enrichAllProgress.total) * 100) : 0}%` }}
-            />
-          </div>
+          <ProgressBar value={enrichAllProgress.total > 0 ? Math.round(((enrichAllProgress.current + 1) / enrichAllProgress.total) * 100) : 0} />
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
@@ -218,12 +214,7 @@ export function AISidebar({
     if (isFormattingAll) {
       return (
         <div className="mt-2 space-y-1.5 overflow-hidden">
-          <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
-            <div
-              className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
-              style={{ width: `${formatAllProgress.total > 0 ? Math.round(((formatAllProgress.current + 1) / formatAllProgress.total) * 100) : 0}%` }}
-            />
-          </div>
+          <ProgressBar value={formatAllProgress.total > 0 ? Math.round(((formatAllProgress.current + 1) / formatAllProgress.total) * 100) : 0} />
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
@@ -292,12 +283,7 @@ export function AISidebar({
       const phase = formattingChapter !== null ? "Formatting" : "Analyzing";
       return (
         <div className="mt-2 space-y-1.5 overflow-hidden">
-          <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-inset)" }}>
-            <div
-              className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
-              style={{ width: `${totalChapters > 0 ? Math.round((wikiProcessedCount / totalChapters) * 100) : 0}%` }}
-            />
-          </div>
+          <ProgressBar value={totalChapters > 0 ? Math.round((wikiProcessedCount / totalChapters) * 100) : 0} />
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
