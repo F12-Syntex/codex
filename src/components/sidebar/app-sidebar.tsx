@@ -90,11 +90,11 @@ function NavButton({
       )}
     >
       <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-      <span className="flex-1 text-left text-[13px]">{label}</span>
+      <span className="flex-1 text-left text-sm">{label}</span>
       {count !== undefined && count > 0 && (
         <span
           className={cn(
-            "text-[11px] tabular-nums",
+            "text-xs tabular-nums",
             active ? "text-white/25" : "text-white/[0.10]"
           )}
         >
@@ -193,7 +193,7 @@ export function AppSidebar({
           />
         ))}
         <div className="mt-1 px-2.5">
-          <span className="text-[11px] text-white/[0.10]">
+          <span className="text-xs text-white/[0.10]">
             {totalItems} item{totalItems !== 1 ? "s" : ""}
           </span>
         </div>

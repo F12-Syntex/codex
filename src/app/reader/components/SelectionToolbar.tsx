@@ -192,7 +192,7 @@ function ToolbarButton({ icon, label, onClick, theme }: {
       className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors ${theme.btn}`}
     >
       {icon}
-      <span className="text-[11px]">{label}</span>
+      <span className="text-xs">{label}</span>
     </button>
   );
 }

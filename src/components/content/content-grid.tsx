@@ -76,12 +76,12 @@ function ItemContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="min-w-[180px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]">
-        <ContextMenuLabel className="text-[11px] text-white/20">Move to</ContextMenuLabel>
+        <ContextMenuLabel className="text-xs text-white/20">Move to</ContextMenuLabel>
         {targets.map((t) => (
           <ContextMenuItem
             key={t.view}
             onClick={() => onMove(itemId, t.view)}
-            className="gap-2 text-[13px] text-white/60"
+            className="gap-2 text-sm text-white/60"
           >
             <t.icon className="h-3.5 w-3.5" strokeWidth={1.5} />
             {t.label}
@@ -90,7 +90,7 @@ function ItemContextMenu({
         <ContextMenuSeparator className="bg-white/[0.06]" />
         <ContextMenuItem
           onClick={() => onTransfer(itemId, transferSection)}
-          className="gap-2 text-[13px] text-white/60"
+          className="gap-2 text-sm text-white/60"
         >
           <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
           {transferLabel}
@@ -99,7 +99,7 @@ function ItemContextMenu({
         <ContextMenuItem
           variant="destructive"
           onClick={() => onDelete(itemId)}
-          className="gap-2 text-[13px]"
+          className="gap-2 text-sm"
         >
           <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
           Delete
@@ -175,7 +175,7 @@ function GroupCard({
 
           {/* Count badge */}
           <div
-            className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold leading-none text-white/80 backdrop-blur-md"
+            className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/60 px-1.5 py-[3px] text-xs font-semibold leading-none text-white/80 backdrop-blur-md"
             style={{ zIndex: 10 }}
           >
             {count}
@@ -184,7 +184,7 @@ function GroupCard({
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium leading-tight">{author}</p>
+        <p className="truncate text-sm font-medium leading-tight">{author}</p>
         <p className="mt-0.5 truncate text-xs text-white/40">{count} books</p>
       </div>
     </div>
@@ -221,7 +221,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         </div>
         <div className="text-center">
           <p className="text-sm font-medium text-muted-foreground">Nothing here yet</p>
-          <p className="text-[11px] text-muted-foreground/60">Import items to get started</p>
+          <p className="text-xs text-muted-foreground/60">Import items to get started</p>
         </div>
       </div>
     );
@@ -253,7 +253,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                     <p className="truncate text-xs text-muted-foreground">{item.author}</p>
                   </div>
                   {showFormatBadge && (
-                    <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
+                    <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-xs font-semibold uppercase tracking-wide text-white/35">
                       {item.format}
                     </span>
                   )}
@@ -311,11 +311,11 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                     </div>
                     <div className="flex items-center gap-2">
                       {showFormatBadge && (
-                        <span className="rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-[10px] font-semibold uppercase tracking-wide text-white/35">
+                        <span className="rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-xs font-semibold uppercase tracking-wide text-white/35">
                           {item.format}
                         </span>
                       )}
-                      <span className="text-[11px] text-white/15">Added recently</span>
+                      <span className="text-xs text-white/15">Added recently</span>
                     </div>
                   </div>
                 </div>
@@ -385,7 +385,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
 
           {/* Move to dropdown */}
           <div className="group relative">
-            <button className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/70">
+            <button className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/70">
               <ArrowRightLeft className="h-3 w-3" />
               Move to
             </button>
@@ -405,7 +405,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
 
           <button
             onClick={() => setConfirmDelete(true)}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-400/70 transition-colors hover:bg-red-500/10 hover:text-red-400"
           >
             <Trash2 className="h-3 w-3" />
             Delete
@@ -500,8 +500,8 @@ function GroupView({
           <div className="rounded-lg bg-white/[0.02] p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h2 className="text-[13px] font-medium">{expandedGroup}</h2>
-                <span className="text-[11px] text-white/30">
+                <h2 className="text-sm font-medium">{expandedGroup}</h2>
+                <span className="text-xs text-white/30">
                   {groupItems.length} {groupItems.length === 1 ? "book" : "books"}
                 </span>
               </div>

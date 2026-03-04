@@ -70,8 +70,8 @@ export function ReaderHeader({
 
       {/* Title (draggable area) */}
       <div className="app-drag-region flex h-full min-w-0 flex-1 items-center gap-2 pl-3">
-        <span className={`truncate text-[13px] font-medium ${theme.text}`}>{title}</span>
-        {author && <span className={`truncate text-[11px] ${theme.muted}`}>{author}</span>}
+        <span className={`truncate text-sm font-medium ${theme.text}`}>{title}</span>
+        {author && <span className={`truncate text-xs ${theme.muted}`}>{author}</span>}
       </div>
 
       {/* Controls */}
@@ -82,7 +82,7 @@ export function ReaderHeader({
             <button
               key={t}
               onClick={() => onThemeChange(t)}
-              className={`rounded-lg px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+              className={`rounded-lg px-2 py-1 text-xs font-medium capitalize transition-colors ${
                 readingTheme === t ? theme.btnActive : theme.btn
               }`}
             >

@@ -406,13 +406,13 @@ ${wikiContext}`;
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
           <span className="text-[12px] font-medium text-white/60">Wiki AI</span>
-          <span className="text-[11px] text-white/25">{bookTitle}</span>
+          <span className="text-xs text-white/25">{bookTitle}</span>
         </div>
         <div className="flex items-center gap-1">
           {messages.length > 0 && (
             <button
               onClick={() => setMessages([])}
-              className="rounded-lg px-2 py-1 text-[11px] text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+              className="rounded-lg px-2 py-1 text-xs text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
             >
               Clear
             </button>
@@ -443,15 +443,15 @@ ${wikiContext}`;
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <div className="text-center">
               <Sparkles className="mx-auto h-6 w-6 text-white/10 mb-2" strokeWidth={1.5} />
-              <p className="text-[13px] text-white/30">Ask anything about the story</p>
-              <p className="text-[11px] text-white/20 mt-1">Answers based on wiki data from analyzed chapters</p>
+              <p className="text-sm text-white/30">Ask anything about the story</p>
+              <p className="text-xs text-white/20 mt-1">Answers based on wiki data from analyzed chapters</p>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => sendMessage(s)}
-                  className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-[11px] text-white/40 transition-colors hover:border-white/[0.12] hover:text-white/60 hover:bg-white/[0.03]"
+                  className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-xs text-white/40 transition-colors hover:border-white/[0.12] hover:text-white/60 hover:bg-white/[0.03]"
                 >
                   {s}
                 </button>
@@ -465,7 +465,7 @@ ${wikiContext}`;
             {msg.role === "user" ? (
               <div className="flex justify-end">
                 <div
-                  className="max-w-[80%] rounded-lg rounded-br-sm px-3 py-2 text-[13px] leading-relaxed text-white/80"
+                  className="max-w-[80%] rounded-lg rounded-br-sm px-3 py-2 text-sm leading-relaxed text-white/80"
                   style={{ background: "var(--accent-brand-dim, rgba(99,102,241,0.15))" }}
                 >
                   {msg.content}
@@ -488,7 +488,7 @@ ${wikiContext}`;
               <span className="h-1.5 w-1.5 rounded-full bg-white/20 animate-bounce" style={{ animationDelay: "150ms" }} />
               <span className="h-1.5 w-1.5 rounded-full bg-white/20 animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
-            <span className="text-[11px] text-white/25">Thinking...</span>
+            <span className="text-xs text-white/25">Thinking...</span>
           </div>
         )}
 
@@ -517,7 +517,7 @@ ${wikiContext}`;
               }
             }}
             placeholder="Ask about characters, plot, relationships..."
-            className="flex-1 resize-none bg-transparent text-[13px] text-white/80 placeholder:text-white/25 outline-none"
+            className="flex-1 resize-none bg-transparent text-sm text-white/80 placeholder:text-white/25 outline-none"
             style={{ height: "20px", maxHeight: "100px" }}
             rows={1}
             disabled={isLoading}
@@ -562,7 +562,7 @@ function RichBlockRenderer({
 
     case "text":
       return (
-        <p className="text-[13px] leading-relaxed text-white/55">
+        <p className="text-sm leading-relaxed text-white/55">
           {renderInline(block.content)}
         </p>
       );

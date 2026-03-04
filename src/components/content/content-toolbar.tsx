@@ -103,12 +103,12 @@ export function ContentToolbar({
                     onSortChange(opt.field, "asc");
                   }
                 }}
-                className="gap-2 text-[13px] text-white/60"
+                className="gap-2 text-sm text-white/60"
               >
                 <Check className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-0")} />
                 {opt.label}
                 {active && (
-                  <span className="ml-auto text-[11px] text-white/25">
+                  <span className="ml-auto text-xs text-white/25">
                     {sortDir === "asc" ? "A→Z" : "Z→A"}
                   </span>
                 )}
@@ -143,7 +143,7 @@ export function ContentToolbar({
               <DropdownMenuItem
                 key={f}
                 onClick={() => onFormatFilterChange(f)}
-                className="gap-2 text-[13px] text-white/60"
+                className="gap-2 text-sm text-white/60"
               >
                 <Check className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-0")} />
                 {f === "all" ? "All formats" : f}

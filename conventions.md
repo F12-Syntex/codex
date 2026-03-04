@@ -53,14 +53,14 @@ In Tailwind use: `bg-[var(--bg-surface)]` etc.
 
 ## Typography
 
-| Size    | Tailwind   | Use                            |
-|---------|------------|--------------------------------|
-| 11px    | `text-[11px]` | Tertiary labels, hints      |
-| 12px    | `text-xs`  | Secondary text, badges, kbd    |
-| 13px    | `text-[13px]` | Body text in dense areas    |
-| 14px    | `text-sm`  | Primary body text              |
+Two sizes only. No arbitrary font sizes.
 
-Never use `text-[10px]` or `text-[15px]`. Pick from the scale above.
+| Size    | Tailwind   | Use                                          |
+|---------|------------|----------------------------------------------|
+| 12px    | `text-xs`  | Secondary text, labels, hints, badges, kbd   |
+| 14px    | `text-sm`  | Primary body text, headings in dense areas   |
+
+Never use arbitrary font sizes like `text-[10px]`, `text-[11px]`, `text-[13px]`, or `text-[15px]`. Pick from the two sizes above.
 
 ## Modals
 

@@ -76,25 +76,25 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
       <div className="mb-6">
         <div className="mb-3 flex items-center gap-2">
           <span
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium"
             style={{ background: typeMeta.bg, color: typeMeta.color }}
           >
             {typeMeta.icon}
             {typeMeta.label}
           </span>
           <span
-            className="rounded-lg px-1.5 py-0.5 text-[11px] capitalize"
+            className="rounded-lg px-1.5 py-0.5 text-xs capitalize"
             style={{ background: "var(--bg-surface)", color: "var(--text-muted)" }}
           >
             {entry.status}
           </span>
           {entry.significance >= 3 && (
-            <span className="text-[11px] text-amber-400/60">
+            <span className="text-xs text-amber-400/60">
               {"★".repeat(entry.significance)}
             </span>
           )}
           {entry.aliases.length > 0 && (
-            <span className="text-[11px] text-white/30">
+            <span className="text-xs text-white/30">
               aka {entry.aliases.join(", ")}
             </span>
           )}
@@ -111,11 +111,11 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
         {/* Chapter appearances */}
         <div className="mt-4 flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-white/25" strokeWidth={1.5} />
-          <span className="text-[11px] text-white/30">
+          <span className="text-xs text-white/30">
             First: Ch. {entry.firstAppearance + 1}
           </span>
-          <span className="text-[11px] text-white/20">·</span>
-          <span className="text-[11px] text-white/30">
+          <span className="text-xs text-white/20">·</span>
+          <span className="text-xs text-white/30">
             Appears in {entry.chapterAppearances.length} {entry.chapterAppearances.length === 1 ? "chapter" : "chapters"}
           </span>
         </div>
@@ -124,7 +124,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
           {entry.chapterAppearances.map((ch) => (
             <span
               key={ch}
-              className="rounded-lg px-1.5 py-0.5 text-[11px] tabular-nums font-medium"
+              className="rounded-lg px-1.5 py-0.5 text-xs tabular-nums font-medium"
               style={{ background: typeMeta.bg, color: typeMeta.color }}
             >
               {ch + 1}
@@ -139,7 +139,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
       {entry.description && (
         <div className="mt-6">
           <SectionTitle>Overview</SectionTitle>
-          <div className="mt-2 text-[13px] leading-relaxed text-white/60 whitespace-pre-wrap">
+          <div className="mt-2 text-sm leading-relaxed text-white/60 whitespace-pre-wrap">
             {entry.description}
           </div>
         </div>
@@ -158,7 +158,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
                     className="flex gap-3 rounded-lg px-3 py-2"
                     style={{ background: "var(--bg-surface)" }}
                   >
-                    <span className="shrink-0 text-[11px] tabular-nums text-white/25">
+                    <span className="shrink-0 text-xs tabular-nums text-white/25">
                       Ch. {item.chapterIndex + 1}
                     </span>
                     <p className="text-[12px] leading-relaxed text-white/60">
@@ -235,7 +235,7 @@ function RelationshipsSection({
       <div className="mt-2 space-y-3">
         {groups.map((group) => (
           <div key={group.label}>
-            <span className="text-[11px] font-medium text-white/25 px-1">
+            <span className="text-xs font-medium text-white/25 px-1">
               {group.label}
             </span>
             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -252,7 +252,7 @@ function RelationshipsSection({
                     <span className="text-[12px] font-medium text-white/70 group-hover:text-white/90">
                       {targetName}
                     </span>
-                    <span className="text-[10px] text-white/25">{rel.relation}</span>
+                    <span className="text-xs text-white/25">{rel.relation}</span>
                   </button>
                 );
               })}
@@ -268,7 +268,7 @@ function RelationshipsSection({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-[11px] font-medium uppercase tracking-wider text-white/30">
+    <h3 className="text-xs font-medium uppercase tracking-wider text-white/30">
       {children}
     </h3>
   );

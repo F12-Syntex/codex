@@ -31,10 +31,10 @@ export function TitleBar({ breadcrumb }: TitleBarProps) {
           draggable={false}
         />
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold tracking-tight text-white/70">
+          <span className="text-sm font-semibold tracking-tight text-white/70">
             Codex
           </span>
-          <span className="rounded bg-white/[0.06] px-1.5 py-px text-[10px] font-medium text-white/20">
+          <span className="rounded bg-white/[0.06] px-1.5 py-px text-xs font-medium text-white/20">
             v{APP_VERSION}
           </span>
         </div>
@@ -43,12 +43,12 @@ export function TitleBar({ breadcrumb }: TitleBarProps) {
         <div className="ml-3 flex items-center gap-1.5">
           {segments.map((segment, i) => (
             <span key={i} className="flex items-center gap-1.5">
-              <span className="text-[11px] text-white/15">/</span>
+              <span className="text-xs text-white/15">/</span>
               <span
                 className={
                   i === segments.length - 1
-                    ? "text-[11px] text-white/35"
-                    : "text-[11px] text-white/25"
+                    ? "text-xs text-white/35"
+                    : "text-xs text-white/25"
                 }
               >
                 {segment}

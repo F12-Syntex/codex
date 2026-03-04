@@ -93,7 +93,7 @@ export function BookTableOfContents({
             Contents
           </h2>
 
-          <p className={`mt-1.5 text-center text-[11px] ${theme.muted}`}>
+          <p className={`mt-1.5 text-center text-xs ${theme.muted}`}>
             {entries.length} entries · {matchedCount} linked
           </p>
 
@@ -165,14 +165,14 @@ export function BookTableOfContents({
                     )}
 
                     {/* Number */}
-                    <span className={`relative z-[1] w-6 shrink-0 text-right tabular-nums text-[11px] transition-colors ${
+                    <span className={`relative z-[1] w-6 shrink-0 text-right tabular-nums text-xs transition-colors ${
                       isLinked ? `${theme.muted} group-hover:opacity-80` : `${theme.muted} opacity-30`
                     }`}>
                       {i + 1}
                     </span>
 
                     {/* Title with dotted leader */}
-                    <span className={`relative z-[1] min-w-0 flex-1 text-[13px] transition-colors ${
+                    <span className={`relative z-[1] min-w-0 flex-1 text-sm transition-colors ${
                       isLinked
                         ? `${theme.text} opacity-80 group-hover:opacity-100`
                         : `${theme.muted} opacity-40`

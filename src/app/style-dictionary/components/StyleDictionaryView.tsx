@@ -146,8 +146,8 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
         <Header title={bookTitle} maximized={maximized} />
         <div className="flex flex-1 flex-col items-center justify-center gap-2">
           <BarChart3 className="h-8 w-8 text-white/20" strokeWidth={1.5} />
-          <p className="text-[13px] text-white/40">No style rules learned yet</p>
-          <p className="text-[11px] text-white/25">Format some chapters first to populate the style dictionary</p>
+          <p className="text-sm text-white/40">No style rules learned yet</p>
+          <p className="text-xs text-white/25">Format some chapters first to populate the style dictionary</p>
         </div>
       </div>
     );
@@ -178,7 +178,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
             </div>
             <div>
               <h2 className="text-[14px] font-medium text-white/85">Style Dictionary</h2>
-              <p className="text-[11px] text-white/40">
+              <p className="text-xs text-white/40">
                 {dictionary.rules.length} {dictionary.rules.length === 1 ? "rule" : "rules"} learned across {categories.length} {categories.length === 1 ? "category" : "categories"}
               </p>
             </div>
@@ -194,7 +194,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                   <span className="text-[12px] font-medium uppercase tracking-wider">
                     {getCategoryMeta(cat).label}
                   </span>
-                  <span className="text-[11px] text-white/25">({grouped[cat].length})</span>
+                  <span className="text-xs text-white/25">({grouped[cat].length})</span>
                 </div>
 
                 {/* Rules grid */}
@@ -228,7 +228,7 @@ function Header({ title, maximized }: { title: string; maximized: boolean }) {
           <BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
         </div>
         <span className="text-[12px] text-white/40">Style Dictionary</span>
-        <span className="text-[11px] text-white/25">{title}</span>
+        <span className="text-xs text-white/25">{title}</span>
       </div>
 
       {/* Window controls */}
@@ -287,14 +287,14 @@ function RuleCard({
       {/* Rule header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[13px] font-medium text-white/85">{rule.pattern}</div>
-          <div className="mt-0.5 font-mono text-[11px] text-white/30">{rule.component}</div>
+          <div className="text-sm font-medium text-white/85">{rule.pattern}</div>
+          <div className="mt-0.5 font-mono text-xs text-white/30">{rule.component}</div>
         </div>
         <button
           onClick={() => onRegenerate()}
           disabled={isRegenerating}
           title="Regenerate with a different style"
-          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
             isRegenerating
               ? "text-[var(--accent-brand)]"
               : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
@@ -322,7 +322,7 @@ function RuleCard({
         <button
           onClick={() => setShowInput(true)}
           disabled={isRegenerating}
-          className={`mt-2 text-[11px] transition-colors ${
+          className={`mt-2 text-xs transition-colors ${
             isRegenerating ? "text-white/15" : "text-white/30 hover:text-white/50"
           }`}
         >
@@ -337,7 +337,7 @@ function RuleCard({
             onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") { setShowInput(false); setInstruction(""); } }}
             placeholder='e.g. "use badges instead" or "make it more compact"'
             autoFocus
-            className="flex-1 rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] px-2.5 py-1.5 text-[11px] text-white/80 placeholder-white/20 outline-none focus:border-[var(--accent-brand)]/40"
+            className="flex-1 rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] px-2.5 py-1.5 text-xs text-white/80 placeholder-white/20 outline-none focus:border-[var(--accent-brand)]/40"
           />
           <button
             onClick={handleSubmit}

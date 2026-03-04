@@ -129,7 +129,7 @@ export function TOCSidebar({
             <Bookmark className="h-3.5 w-3.5" strokeWidth={1.5} />
             Bookmarks
             {bookmarks.length > 0 && (
-              <span className={`ml-0.5 text-[11px] ${theme.muted}`}>({bookmarks.length})</span>
+              <span className={`ml-0.5 text-xs ${theme.muted}`}>({bookmarks.length})</span>
             )}
           </button>
         </div>
@@ -186,11 +186,11 @@ export function TOCSidebar({
                 <div
                   key={i}
                   {...(i === currentChapter ? { "data-active-chapter": true } : {})}
-                  className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors ${
+                  className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                     i === currentChapter ? theme.btnActive : theme.btn
                   }`}
                 >
-                  <span className={`w-5 shrink-0 text-right tabular-nums text-[11px] ${theme.muted}`}>
+                  <span className={`w-5 shrink-0 text-right tabular-nums text-xs ${theme.muted}`}>
                     {i + 1}
                   </span>
                   <button
@@ -241,7 +241,7 @@ export function TOCSidebar({
           <div className={`py-8 text-center ${theme.muted}`}>
             <Bookmark className="mx-auto mb-2 h-8 w-8 opacity-30" strokeWidth={1.5} />
             <p className="text-[12px]">No bookmarks yet</p>
-            <p className="mt-1 text-[11px] opacity-60">Press Ctrl+B to add one</p>
+            <p className="mt-1 text-xs opacity-60">Press Ctrl+B to add one</p>
           </div>
         ) : (
           filteredBookmarks.map((bm) => (
@@ -256,8 +256,8 @@ export function TOCSidebar({
                 }}
                 className="flex min-w-0 flex-1 flex-col gap-0.5"
               >
-                <span className={`truncate text-[13px] ${theme.text}`}>{bm.label}</span>
-                <span className={`text-[11px] ${theme.muted}`}>
+                <span className={`truncate text-sm ${theme.text}`}>{bm.label}</span>
+                <span className={`text-xs ${theme.muted}`}>
                   Chapter {bm.chapterIndex + 1} · Page {bm.paragraphIndex + 1}
                 </span>
               </button>

@@ -66,7 +66,7 @@ function ContextMenuSubTrigger({
       data-slot="context-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[state=open]:bg-white/[0.07] [&_svg:not([class*='text-'])]:text-white/40 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[state=open]:bg-white/[0.07] [&_svg:not([class*='text-'])]:text-white/40 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -128,7 +128,7 @@ function ContextMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "relative flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-white/80 outline-hidden transition-colors duration-100 select-none",
+        "relative flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none",
         "focus:bg-white/[0.07] focus:text-white [&_svg:not([class*='text-'])]:text-white/40 focus:[&_svg:not([class*='text-'])]:text-white/60",
         "data-[variant=destructive]:text-red-400 data-[variant=destructive]:focus:bg-red-500/10 data-[variant=destructive]:focus:text-red-300 data-[variant=destructive]:*:[svg]:!text-red-400",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-35 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -149,7 +149,7 @@ function ContextMenuCheckboxItem({
     <ContextMenuPrimitive.CheckboxItem
       data-slot="context-menu-checkbox-item"
       className={cn(
-        "relative flex cursor-default items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-8 text-[13px] text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-35 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-8 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-35 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
@@ -174,7 +174,7 @@ function ContextMenuRadioItem({
     <ContextMenuPrimitive.RadioItem
       data-slot="context-menu-radio-item"
       className={cn(
-        "relative flex cursor-default items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-8 text-[13px] text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-35 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-8 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-35 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -201,7 +201,7 @@ function ContextMenuLabel({
       data-slot="context-menu-label"
       data-inset={inset}
       className={cn(
-        "px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-white/25 data-[inset]:pl-8",
+        "px-2.5 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-white/25 data-[inset]:pl-8",
         className
       )}
       {...props}
@@ -233,7 +233,7 @@ function ContextMenuShortcut({
     <span
       data-slot="context-menu-shortcut"
       className={cn(
-        "ml-auto rounded bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/30",
+        "ml-auto rounded bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium text-white/30",
         className
       )}
       {...props}

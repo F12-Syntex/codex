@@ -60,7 +60,7 @@ function ModalShell({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between px-4 pt-3 pb-0">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-white/30">{title}</span>
+        <span className="text-xs font-medium uppercase tracking-wider text-white/30">{title}</span>
         <button onClick={onClose} className="text-white/20 transition-colors hover:text-white/50">
           <X className="h-3 w-3" />
         </button>
@@ -88,7 +88,7 @@ function SliderRow({
 }) {
   return (
     <div className="flex items-center gap-3 py-1">
-      {label && <Label className="w-24 shrink-0 text-[13px] font-normal text-white/60">{label}</Label>}
+      {label && <Label className="w-24 shrink-0 text-sm font-normal text-white/60">{label}</Label>}
       <Slider
         value={[value]}
         min={min}
@@ -97,7 +97,7 @@ function SliderRow({
         onValueChange={([v]) => onChange(v)}
         className="flex-1"
       />
-      <span className="w-8 text-right text-[11px] text-white/30">{value}{suffix}</span>
+      <span className="w-8 text-right text-xs text-white/30">{value}{suffix}</span>
     </div>
   );
 }
@@ -114,7 +114,7 @@ function ToggleRow({
 }) {
   return (
     <div className="flex items-center justify-between py-1">
-      <Label className="text-[13px] font-normal text-white/60">{label}</Label>
+      <Label className="text-sm font-normal text-white/60">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
   );
@@ -136,19 +136,19 @@ function ThemeModal({
         <TabsList className="mx-4 mt-3 w-fit shrink-0 gap-0.5 bg-transparent p-0">
           <TabsTrigger
             value="colors"
-            className="h-auto rounded-lg border-none px-2.5 py-1 text-[11px] font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
+            className="h-auto rounded-lg border-none px-2.5 py-1 text-xs font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
           >
             Colors
           </TabsTrigger>
           <TabsTrigger
             value="appearance"
-            className="h-auto rounded-lg border-none px-2.5 py-1 text-[11px] font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
+            className="h-auto rounded-lg border-none px-2.5 py-1 text-xs font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
           >
             Style
           </TabsTrigger>
           <TabsTrigger
             value="background"
-            className="h-auto rounded-lg border-none px-2.5 py-1 text-[11px] font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
+            className="h-auto rounded-lg border-none px-2.5 py-1 text-xs font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=inactive]:text-white/30 data-[state=inactive]:hover:text-white/50"
           >
             Wallpaper
           </TabsTrigger>
@@ -159,7 +159,7 @@ function ThemeModal({
           <TabsContent value="colors" className="mt-0">
             <div className="flex flex-col gap-4">
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Accent</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Accent</p>
                 <div className="flex flex-wrap items-center gap-2">
                   {ACCENT_OPTIONS.map((opt) => (
                     <button
@@ -188,7 +188,7 @@ function ThemeModal({
                       title="Custom"
                     >
                       {theme.accent !== "custom" && (
-                        <span className="text-[11px] text-white/40">+</span>
+                        <span className="text-xs text-white/40">+</span>
                       )}
                     </button>
                   </div>
@@ -212,7 +212,7 @@ function ThemeModal({
                           const v = e.target.value;
                           if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onThemeChange({ customAccentColor: v });
                         }}
-                        className="w-20 rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] text-white/60 outline-none"
+                        className="w-20 rounded-lg bg-white/[0.06] px-2 py-1 text-xs text-white/60 outline-none"
                         spellCheck={false}
                       />
                     </div>
@@ -221,7 +221,7 @@ function ThemeModal({
               </div>
 
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Mode</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Mode</p>
                 <div className="flex gap-1">
                   {APPEARANCE_OPTIONS.map((opt) => (
                     <button
@@ -255,7 +255,7 @@ function ThemeModal({
           <TabsContent value="appearance" className="mt-0">
             <div className="flex flex-col gap-4">
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Font</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Font</p>
                 <div className="grid grid-cols-2 gap-1">
                   {FONT_OPTIONS.map((f) => (
                     <button
@@ -276,7 +276,7 @@ function ThemeModal({
               </div>
 
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Covers</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Covers</p>
                 <div className="flex gap-1">
                   <button
                     onClick={() => onThemeChange({ coverStyle: "rounded" })}
@@ -313,7 +313,7 @@ function ThemeModal({
               </div>
 
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Cursor</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Cursor</p>
                 <div className="grid grid-cols-4 gap-1">
                   {([
                     { id: "default" as CursorStyle, label: "System" },
@@ -325,7 +325,7 @@ function ThemeModal({
                       key={c.id}
                       onClick={() => onThemeChange({ cursorStyle: c.id })}
                       className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg py-2.5 text-[11px] transition-all",
+                        "flex flex-col items-center gap-1.5 rounded-lg py-2.5 text-xs transition-all",
                         theme.cursorStyle === c.id
                           ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
                           : "text-white/30 hover:text-white/50"
@@ -339,7 +339,7 @@ function ThemeModal({
               </div>
 
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Border Radius</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Border Radius</p>
                 <SliderRow
                   label=""
                   value={theme.borderRadius}
@@ -354,7 +354,7 @@ function ThemeModal({
                       key={v}
                       onClick={() => onThemeChange({ borderRadius: v })}
                       className={cn(
-                        "flex-1 rounded-lg py-1.5 text-[11px] transition-all",
+                        "flex-1 rounded-lg py-1.5 text-xs transition-all",
                         theme.borderRadius === v
                           ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
                           : "text-white/25 hover:text-white/40"
@@ -372,7 +372,7 @@ function ThemeModal({
           <TabsContent value="background" className="mt-0">
             <div className="flex flex-col gap-4">
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-white/20">Image</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/20">Image</p>
                 {theme.backgroundImage ? (
                   <div className="flex items-center gap-3">
                     <div
@@ -470,12 +470,12 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
       <div className="flex h-[400px] flex-col gap-3 overflow-y-auto p-4">
         {categories.map((cat) => (
           <div key={cat}>
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-white/20">{cat}</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-white/20">{cat}</p>
             <div className="flex flex-col gap-0.5">
               {SHORTCUT_REGISTRY.filter((s) => s.category === cat).map((s) => (
                 <div key={s.id} className="flex items-center justify-between py-1">
-                  <span className="text-[13px] text-white/50">{s.label}</span>
-                  <kbd className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/30">
+                  <span className="text-sm text-white/50">{s.label}</span>
+                  <kbd className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-xs text-white/30">
                     {s.keys}
                   </kbd>
                 </div>

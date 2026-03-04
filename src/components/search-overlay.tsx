@@ -140,7 +140,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
               spellCheck={false}
               className="flex-1 bg-transparent text-[15px] text-white/90 outline-none placeholder:text-white/20"
             />
-            <kbd className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] text-white/20">ESC</kbd>
+            <kbd className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-xs text-white/20">ESC</kbd>
           </div>
 
           {/* Divider + results */}
@@ -155,7 +155,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.04]">
                       <Search className="h-4 w-4 text-white/15" />
                     </div>
-                    <p className="text-[13px] text-white/30">
+                    <p className="text-sm text-white/30">
                       No results for &ldquo;<span className="text-white/50">{query}</span>&rdquo;
                     </p>
                   </div>
@@ -165,10 +165,10 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                 {Array.from(grouped.entries()).map(([section, items]) => (
                   <div key={section}>
                     <div className="flex items-center gap-2 px-5 pb-1 pt-3">
-                      <span className="text-[11px] font-medium uppercase tracking-wider text-white/20">
+                      <span className="text-xs font-medium uppercase tracking-wider text-white/20">
                         {section}
                       </span>
-                      <span className="text-[11px] text-white/10">{items.length}</span>
+                      <span className="text-xs text-white/10">{items.length}</span>
                     </div>
 
                     <div className="px-2">
@@ -202,14 +202,14 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
                             {/* Text */}
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-[13px] font-medium text-white/80">
+                              <p className="truncate text-sm font-medium text-white/80">
                                 {highlightMatch(r.item.title, query)}
                               </p>
                               <div className="mt-0.5 flex items-center gap-2">
-                                <p className="truncate text-[11px] text-white/30">
+                                <p className="truncate text-xs text-white/30">
                                   {highlightMatch(r.item.author, query)}
                                 </p>
-                                <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-white/30">
+                                <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[2px] text-xs font-semibold uppercase tracking-wide text-white/30">
                                   {r.item.format}
                                 </span>
                               </div>
@@ -232,16 +232,16 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                 <>
                   <div className="mx-4 h-px bg-white/[0.06]" />
                   <div className="flex items-center justify-between px-5 py-2.5">
-                    <span className="text-[11px] text-white/15">
+                    <span className="text-xs text-white/15">
                       {filtered.length} result{filtered.length !== 1 ? "s" : ""}
                     </span>
-                    <div className="flex items-center gap-3 text-[11px] text-white/15">
+                    <div className="flex items-center gap-3 text-xs text-white/15">
                       <span className="flex items-center gap-1">
-                        <kbd className="rounded bg-white/[0.06] px-1 py-px text-[10px]">&uarr;&darr;</kbd>
+                        <kbd className="rounded bg-white/[0.06] px-1 py-px text-xs">&uarr;&darr;</kbd>
                         navigate
                       </span>
                       <span className="flex items-center gap-1">
-                        <kbd className="rounded bg-white/[0.06] px-1 py-px text-[10px]">&crarr;</kbd>
+                        <kbd className="rounded bg-white/[0.06] px-1 py-px text-xs">&crarr;</kbd>
                         open
                       </span>
                     </div>
@@ -259,7 +259,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.04]">
                   <BookOpen className="h-4 w-4 text-white/15" />
                 </div>
-                <p className="text-[13px] text-white/25">Search by title or author</p>
+                <p className="text-sm text-white/25">Search by title or author</p>
               </div>
             </>
           )}

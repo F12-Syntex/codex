@@ -94,7 +94,7 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
           )}
 
           {showFormatBadge && !selected && (
-            <div className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/60 px-1.5 py-[3px] text-[10px] font-semibold uppercase leading-none tracking-wide text-white/80 backdrop-blur-md">
+            <div className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/60 px-1.5 py-[3px] text-xs font-semibold uppercase leading-none tracking-wide text-white/80 backdrop-blur-md">
               {format}
             </div>
           )}
@@ -112,7 +112,7 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium leading-tight">{title}</p>
+        <p className="truncate text-sm font-medium leading-tight">{title}</p>
         <p className="mt-0.5 truncate text-xs text-white/40">{author}</p>
       </div>
     </div>

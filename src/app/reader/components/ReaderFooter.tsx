@@ -72,7 +72,7 @@ export function ReaderFooter({
           <div className="flex items-center gap-2">
             <button
               onClick={onExitBranch}
-              className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium transition-colors ${theme.btn}`}
+              className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${theme.btn}`}
               title="Exit branch"
             >
               <X className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -99,7 +99,7 @@ export function ReaderFooter({
                   Branch
                 </span>
               </div>
-              <span className={`text-[11px] ${theme.muted} opacity-30`}>·</span>
+              <span className={`text-xs ${theme.muted} opacity-30`}>·</span>
               <span className={`max-w-[200px] truncate text-[12px] ${theme.muted}`}>
                 {branchEntityName}
               </span>
@@ -109,7 +109,7 @@ export function ReaderFooter({
               <span className={`text-[12px] tabular-nums ${theme.muted}`}>
                 Page {currentPage + 1} of {totalPages}
               </span>
-              <span className={`text-[11px] ${theme.muted} opacity-30`}>·</span>
+              <span className={`text-xs ${theme.muted} opacity-30`}>·</span>
               <span className={`max-w-[300px] truncate text-[12px] ${theme.muted}`}>
                 {chapterTitle}
               </span>
@@ -123,7 +123,7 @@ export function ReaderFooter({
             {savedBranches.length > 0 && (
               <button
                 onClick={onToggleBranchList}
-                className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium transition-colors ${theme.btn} ${showBranchList ? "bg-white/[0.08]" : ""}`}
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${theme.btn} ${showBranchList ? "bg-white/[0.08]" : ""}`}
                 title="Saved branches"
               >
                 <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -136,7 +136,7 @@ export function ReaderFooter({
             {savedBranches.length > 0 && (
               <button
                 onClick={onToggleBranchList}
-                className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium transition-colors ${theme.btn} ${showBranchList ? "bg-white/[0.08]" : ""}`}
+                className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${theme.btn} ${showBranchList ? "bg-white/[0.08]" : ""}`}
                 title="Saved branches"
               >
                 <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -192,7 +192,7 @@ export function ReaderFooter({
           }}
         >
           <div className="px-3 py-2 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <span className="text-[11px] font-medium text-white/40 uppercase tracking-wide">
+            <span className="text-xs font-medium text-white/40 uppercase tracking-wide">
               Saved Branches
             </span>
           </div>
@@ -211,7 +211,7 @@ export function ReaderFooter({
                   <span className="text-[12px] text-white/80 truncate w-full text-left">
                     {branch.entity_name}
                   </span>
-                  <span className="text-[11px] text-white/30">
+                  <span className="text-xs text-white/30">
                     Ch. {branch.chapter_index + 1} · {new Date(branch.created_at).toLocaleDateString()}
                   </span>
                 </button>
@@ -219,13 +219,13 @@ export function ReaderFooter({
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => { onDeleteBranch?.(branch.id); setConfirmDelete(null); }}
-                      className="rounded-lg px-1.5 py-0.5 text-[11px] text-red-400 hover:bg-red-500/10 transition-colors"
+                      className="rounded-lg px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
                     >
                       Delete
                     </button>
                     <button
                       onClick={() => setConfirmDelete(null)}
-                      className="rounded-lg px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-white/[0.05] transition-colors"
+                      className="rounded-lg px-1.5 py-0.5 text-xs text-white/40 hover:bg-white/[0.05] transition-colors"
                     >
                       Cancel
                     </button>

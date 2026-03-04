@@ -50,9 +50,9 @@ function SettingRow({
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <div className="flex flex-col gap-0.5">
-        <span className="text-[13px] text-white/70">{label}</span>
+        <span className="text-sm text-white/70">{label}</span>
         {description && (
-          <span className="text-[11px] text-white/25">{description}</span>
+          <span className="text-xs text-white/25">{description}</span>
         )}
       </div>
       <div className="shrink-0">{children}</div>
@@ -73,7 +73,7 @@ function SettingSection({
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2 px-1">
         <Icon className="h-3.5 w-3.5 text-white/20" strokeWidth={1.5} />
-        <span className="text-[11px] font-medium uppercase tracking-wider text-white/20">{title}</span>
+        <span className="text-xs font-medium uppercase tracking-wider text-white/20">{title}</span>
       </div>
       <div className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)]">
         <div className="flex flex-col divide-y divide-white/[0.04] px-4">
@@ -213,7 +213,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="px-6 pt-5 pb-1">
         <h1 className="text-sm font-medium text-white/80">Settings</h1>
-        <p className="mt-1 text-[11px] text-white/25">Manage your library, updates, and preferences.</p>
+        <p className="mt-1 text-xs text-white/25">Manage your library, updates, and preferences.</p>
       </div>
 
       {/* Tab bar */}
@@ -223,7 +223,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "pb-2 text-[11px] font-medium uppercase tracking-wider transition-colors",
+              "pb-2 text-xs font-medium uppercase tracking-wider transition-colors",
               activeTab === tab.id
                 ? "border-b-2 border-[var(--accent-brand)] text-white/70"
                 : "text-white/25 hover:text-white/40"
@@ -245,7 +245,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
             >
               <button
                 onClick={handleSelectFolder}
-                className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium text-white/50 transition-colors hover:bg-white/[0.10] hover:text-white/70"
+                className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/50 transition-colors hover:bg-white/[0.10] hover:text-white/70"
               >
                 Browse
               </button>
@@ -264,7 +264,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   onClick={handleScan}
                   disabled={scanning}
                   className={cn(
-                    "flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-medium transition-colors",
+                    "flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-colors",
                     scanning
                       ? "bg-white/[0.04] text-white/20"
                       : "bg-white/[0.06] text-white/50 hover:bg-white/[0.10] hover:text-white/70"
@@ -274,7 +274,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   {scanning ? "Scanning..." : "Scan Library Now"}
                 </button>
                 {lastScanCount !== null && (
-                  <p className="mt-2 text-center text-[11px] text-white/25">
+                  <p className="mt-2 text-center text-xs text-white/25">
                     {lastScanCount === 0 ? "No new files found" : `Imported ${lastScanCount} file${lastScanCount !== 1 ? "s" : ""}`}
                   </p>
                 )}
@@ -290,7 +290,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
             >
               <button
                 onClick={handleClearLibrary}
-                className="flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                className="flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-400"
               >
                 <Trash2 className="h-3 w-3" />
                 Clear
@@ -308,7 +308,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                 onClick={handleCheckUpdates}
                 disabled={checkingUpdates}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium transition-colors",
+                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium transition-colors",
                   checkingUpdates
                     ? "text-white/20"
                     : "text-white/50 hover:bg-white/[0.10] hover:text-white/70"
@@ -323,12 +323,12 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
           {/* ── About ──────────────────────────────── */}
           <SettingSection icon={Info} title="About">
             <SettingRow label="Version">
-              <span className="text-[11px] text-white/30">{APP_VERSION}</span>
+              <span className="text-xs text-white/30">{APP_VERSION}</span>
             </SettingRow>
             <SettingRow label="Source">
               <button
                 onClick={() => window.open("https://github.com/F12-Syntex/codex", "_blank")}
-                className="text-[11px] text-white/30 transition-colors hover:text-white/50"
+                className="text-xs text-white/30 transition-colors hover:text-white/50"
               >
                 github.com/F12-Syntex/codex
               </button>
@@ -350,7 +350,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   value={apiKey}
                   onChange={(e) => handleApiKeyChange(e.target.value)}
                   placeholder="sk-or-..."
-                  className="w-44 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
+                  className="w-44 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
                 />
                 <button
                   onClick={() => setShowApiKey(!showApiKey)}
@@ -378,7 +378,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                 onClick={handleTestKey}
                 disabled={testingKey || !apiKey.trim()}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium transition-colors",
+                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium transition-colors",
                   testingKey || !apiKey.trim()
                     ? "text-white/20"
                     : testResult?.ok
@@ -395,7 +395,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
             <SettingRow label="Get an API key">
               <button
                 onClick={() => window.open("https://openrouter.ai/keys", "_blank")}
-                className="flex items-center gap-1.5 text-[11px] text-white/30 transition-colors hover:text-white/50"
+                className="flex items-center gap-1.5 text-xs text-white/30 transition-colors hover:text-white/50"
               >
                 openrouter.ai/keys
                 <ExternalLink className="h-3 w-3" />

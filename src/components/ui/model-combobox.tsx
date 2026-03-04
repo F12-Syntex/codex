@@ -85,7 +85,7 @@ export function ModelCombobox({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          "flex w-56 items-center justify-between gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-left text-[11px] outline-none transition-colors hover:bg-white/[0.08]",
+          "flex w-56 items-center justify-between gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-left text-xs outline-none transition-colors hover:bg-white/[0.08]",
           value ? "text-white/70" : "text-white/25",
         )}
       >
@@ -113,20 +113,20 @@ export function ModelCombobox({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search models..."
-              className="w-full bg-transparent text-[11px] text-white/70 placeholder-white/20 outline-none"
+              className="w-full bg-transparent text-xs text-white/70 placeholder-white/20 outline-none"
             />
           </div>
 
           {/* Model list */}
           <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: "272px" }}>
             {loading && (
-              <div className="px-3 py-4 text-center text-[11px] text-white/25">
+              <div className="px-3 py-4 text-center text-xs text-white/25">
                 Loading models...
               </div>
             )}
 
             {!loading && visible.length === 0 && (
-              <div className="px-3 py-4 text-center text-[11px] text-white/25">
+              <div className="px-3 py-4 text-center text-xs text-white/25">
                 {search ? "No models match" : "No models available"}
               </div>
             )}
@@ -148,13 +148,13 @@ export function ModelCombobox({
                   >
                     <span
                       className={cn(
-                        "truncate text-[11px]",
+                        "truncate text-xs",
                         isSelected ? "text-[var(--accent-brand)]" : "text-white/60",
                       )}
                     >
                       {model.id}
                     </span>
-                    <span className="truncate text-[10px] text-white/25">
+                    <span className="truncate text-xs text-white/25">
                       {model.name}
                     </span>
                   </button>
@@ -162,7 +162,7 @@ export function ModelCombobox({
               })}
 
             {!loading && filtered.length > 80 && (
-              <div className="px-3 py-2 text-center text-[10px] text-white/20">
+              <div className="px-3 py-2 text-center text-xs text-white/20">
                 {filtered.length - 80} more — refine your search
               </div>
             )}

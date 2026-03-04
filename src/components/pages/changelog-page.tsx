@@ -79,7 +79,7 @@ function renderBody(body: string) {
       elements.push(
         <p
           key={i}
-          className="mt-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/25"
+          className="mt-3 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/25"
         >
           {text}
         </p>
@@ -173,7 +173,7 @@ function VersionCard({
         {entry.version && (
           <span
             className={cn(
-              "shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium",
+              "shrink-0 rounded-lg px-1.5 py-0.5 text-xs font-medium",
               isRelease
                 ? "bg-white/[0.08] text-white/70"
                 : "bg-white/[0.04] text-white/40"
@@ -185,12 +185,12 @@ function VersionCard({
 
         {/* Release badge */}
         {isRelease && (
-          <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/40">
+          <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium text-white/40">
             Release
           </span>
         )}
         {isLatest && (
-          <span className="shrink-0 rounded-lg bg-white/[0.08] px-1.5 py-0.5 text-[11px] font-medium text-white/50">
+          <span className="shrink-0 rounded-lg bg-white/[0.08] px-1.5 py-0.5 text-xs font-medium text-white/50">
             Latest
           </span>
         )}
@@ -198,7 +198,7 @@ function VersionCard({
         {/* Commit title */}
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-[13px]",
+            "min-w-0 flex-1 truncate text-sm",
             isRelease ? "text-white/50" : "text-white/35"
           )}
         >
@@ -216,7 +216,7 @@ function VersionCard({
               strokeWidth={1.5}
             />
           )}
-          <span className="text-[11px] text-white/15">{date}</span>
+          <span className="text-xs text-white/15">{date}</span>
         </div>
       </div>
 
@@ -225,7 +225,7 @@ function VersionCard({
         <div className="border-t border-white/[0.04] px-3 pt-2 pb-3">
           {/* Release name */}
           {entry.release?.name && entry.release.name !== entry.release.tag_name && (
-            <p className="mb-2 text-[13px] font-medium text-white/60">
+            <p className="mb-2 text-sm font-medium text-white/60">
               {entry.release.name}
             </p>
           )}
@@ -354,7 +354,7 @@ export function ChangelogPage() {
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="px-6 pt-5 pb-1">
         <h1 className="text-sm font-medium text-white/80">What&apos;s New</h1>
-        <p className="mt-1 text-[11px] text-white/25">
+        <p className="mt-1 text-xs text-white/25">
           Every commit and release to Codex.
         </p>
       </div>
@@ -365,17 +365,17 @@ export function ChangelogPage() {
         {error && (
           <div className="flex flex-col items-center justify-center py-16">
             <AlertCircle className="mb-3 h-4 w-4 text-white/20" />
-            <p className="text-[13px] text-white/30">
+            <p className="text-sm text-white/30">
               Couldn&apos;t load history
             </p>
-            <p className="mt-1 text-[11px] text-white/15">
+            <p className="mt-1 text-xs text-white/15">
               Check your connection and try again.
             </p>
           </div>
         )}
 
         {!loading && !error && entries.length === 0 && (
-          <p className="py-16 text-center text-[13px] text-white/30">
+          <p className="py-16 text-center text-sm text-white/30">
             No commits yet
           </p>
         )}

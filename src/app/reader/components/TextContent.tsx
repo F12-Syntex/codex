@@ -1360,18 +1360,18 @@ function WikiTooltipPopup({
         {/* Type badge + name */}
         <div className="flex items-center gap-2">
           <span
-            className="flex items-center gap-1 shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium"
+            className="flex items-center gap-1 shrink-0 rounded-lg px-1.5 py-0.5 text-xs font-medium"
             style={{ background: meta.bg, color: meta.color }}
           >
             {meta.icon}
             {meta.label}
           </span>
-          <span className="text-[13px] font-semibold text-white/90 truncate">{data.name}</span>
+          <span className="text-sm font-semibold text-white/90 truncate">{data.name}</span>
         </div>
 
         {/* Short description */}
         {data.shortDescription && (
-          <p className="text-[11px] leading-relaxed text-white/50 line-clamp-3">
+          <p className="text-xs leading-relaxed text-white/50 line-clamp-3">
             {data.shortDescription}
           </p>
         )}
@@ -1379,13 +1379,13 @@ function WikiTooltipPopup({
         {/* Status + significance */}
         <div className="flex items-center gap-2">
           <span
-            className="rounded-lg px-1.5 py-0.5 text-[11px] font-medium capitalize"
+            className="rounded-lg px-1.5 py-0.5 text-xs font-medium capitalize"
             style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}
           >
             {data.status}
           </span>
-          <span className="text-[11px] text-white/25">·</span>
-          <span className="text-[11px] text-white/30">
+          <span className="text-xs text-white/25">·</span>
+          <span className="text-xs text-white/30">
             {"★".repeat(data.significance)}{"☆".repeat(Math.max(0, 4 - data.significance))}
           </span>
         </div>
@@ -1393,7 +1393,7 @@ function WikiTooltipPopup({
         {/* Open Wiki button */}
         <button
           onClick={openWiki}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-colors hover:bg-white/[0.08]"
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors hover:bg-white/[0.08]"
           style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }}
         >
           <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
