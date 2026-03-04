@@ -42,6 +42,26 @@ export function WikiSidebar({ filePath, entryId, currentChapter, bookTitle, them
   const inputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
+  // Click outside to close
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (sidebarRef.current && !sidebarRef.current.contains(target)) {
+        const header = document.querySelector("[data-reader-header]");
+        if (header?.contains(target)) return;
+        // Don't close if clicking on a wiki entity highlight in the text
+        const el = e.target as HTMLElement;
+        if (el.closest?.("[data-wiki-id]")) return;
+        onClose();
+      }
+    };
+    const timer = setTimeout(() => document.addEventListener("mousedown", handler), 10);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [onClose]);
+
   // Load entry from DB
   useEffect(() => {
     setIsLoading(true);

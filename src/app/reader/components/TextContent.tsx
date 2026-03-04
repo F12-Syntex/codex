@@ -244,6 +244,10 @@ export function TextContent({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't intercept when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+
       if (e.key === "ArrowRight" || e.key === "PageDown") {
         e.preventDefault();
         if (currentPage >= totalPages - 1) {

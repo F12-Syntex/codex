@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3, BookMarked } from "lucide-react";
+import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3, BookMarked, Square } from "lucide-react";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
@@ -14,6 +14,7 @@ interface AISidebarProps {
   enrichAllProgress: { current: number; total: number } | null;
   onEnrichToggle: () => void;
   onEnrichAll: () => void;
+  onCancelEnrichAll: () => void;
   onClearEnrichedNames: () => void;
   formattingEnabled: boolean;
   formattedChapters: Record<number, string[]>;
@@ -21,6 +22,7 @@ interface AISidebarProps {
   formatAllProgress: { current: number; total: number } | null;
   onFormattingToggle: () => void;
   onFormatAll: () => void;
+  onCancelFormatAll: () => void;
   onClearFormatting: () => void;
   styleDictionary: StyleDictionary | null;
   filePath: string;
@@ -33,6 +35,7 @@ interface AISidebarProps {
   currentChapter: number;
   onWikiToggle: () => void;
   onWikiProcessAll: () => void;
+  onCancelWikiProcessAll: () => void;
   onClearWiki: () => void;
   onClose: () => void;
 }
@@ -46,6 +49,7 @@ export function AISidebar({
   enrichAllProgress,
   onEnrichToggle,
   onEnrichAll,
+  onCancelEnrichAll,
   onClearEnrichedNames,
   formattingEnabled,
   formattedChapters,
@@ -53,6 +57,7 @@ export function AISidebar({
   formatAllProgress,
   onFormattingToggle,
   onFormatAll,
+  onCancelFormatAll,
   onClearFormatting,
   styleDictionary,
   filePath,
@@ -65,6 +70,7 @@ export function AISidebar({
   currentChapter,
   onWikiToggle,
   onWikiProcessAll,
+  onCancelWikiProcessAll,
   onClearWiki,
   onClose,
 }: AISidebarProps) {
@@ -159,11 +165,20 @@ export function AISidebar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate max-w-[160px] ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
+              <span className={`text-[11px] truncate max-w-[130px] ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
             </div>
-            <span className={`text-[11px] tabular-nums ${theme.muted}`}>
-              {enrichAllProgress.current + 1}/{enrichAllProgress.total}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+                {enrichAllProgress.current + 1}/{enrichAllProgress.total}
+              </span>
+              <button
+                onClick={onCancelEnrichAll}
+                className={`flex h-5 w-5 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+                title="Stop"
+              >
+                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -221,11 +236,20 @@ export function AISidebar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-[11px] truncate max-w-[160px] ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
+              <span className={`text-[11px] truncate max-w-[130px] ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
             </div>
-            <span className={`text-[11px] tabular-nums ${theme.muted}`}>
-              {formatAllProgress.current + 1}/{formatAllProgress.total}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+                {formatAllProgress.current + 1}/{formatAllProgress.total}
+              </span>
+              <button
+                onClick={onCancelFormatAll}
+                className={`flex h-5 w-5 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+                title="Stop"
+              >
+                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -288,9 +312,18 @@ export function AISidebar({
               <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
               <span className={`text-[11px] truncate ${theme.muted}`}>{phase}: {chapterName(activeChapter)}</span>
             </div>
-            <span className={`text-[11px] tabular-nums shrink-0 ${theme.muted}`}>
-              {wikiProcessedCount}/{totalChapters}
-            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className={`text-[11px] tabular-nums ${theme.muted}`}>
+                {wikiProcessedCount}/{totalChapters}
+              </span>
+              <button
+                onClick={onCancelWikiProcessAll}
+                className={`flex h-5 w-5 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+                title="Stop"
+              >
+                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
+              </button>
+            </div>
           </div>
         </div>
       );

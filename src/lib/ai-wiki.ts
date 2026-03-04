@@ -152,6 +152,13 @@ export async function generateWikiForChapter(
   const apiKey = await api.getSetting("openrouterApiKey");
   if (!apiKey) throw new Error("No API key configured");
 
+  // Skip chapters with embedded images or excessive size
+  if (chapterText.includes("data:image/") || chapterText.includes("base64,") || chapterText.length > 500_000) {
+    console.warn(`Skipping wiki analysis for chapter ${chapterIndex}: contains images or too large`);
+    await api.wikiMarkProcessed(filePath, chapterIndex);
+    return;
+  }
+
   // Check if already processed
   const processed = await api.wikiGetProcessed(filePath);
   if (processed.includes(chapterIndex)) return;

@@ -175,6 +175,17 @@ export async function formatChapterContent(
     };
   }
 
+  // Skip chapters with embedded images or excessive size to avoid context overflow
+  const totalLen = htmlParagraphs.reduce((sum, p) => sum + p.length, 0);
+  const hasImages = htmlParagraphs.some(p => p.includes("data:image/") || p.includes("base64,"));
+  if (hasImages || totalLen > 500_000) {
+    console.warn(`Skipping AI formatting: chapter too large (${totalLen} chars) or contains images`);
+    return {
+      paragraphs: [...htmlParagraphs],
+      dictionary: existingDictionary ?? { rules: [], bookTitle, updatedAt: new Date().toISOString() },
+    };
+  }
+
   const overrides = await loadOverrides();
   const styleContext = existingDictionary ? buildStyleContext(existingDictionary) : "";
 
