@@ -8,7 +8,6 @@ import type { StyleDictionary } from "./ai-style-dictionary";
 import { extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary } from "./ai-style-dictionary";
 import { buildClassReference } from "./ai-formatting-classes";
 
-const PRESET_ID = "quick";
 const CHUNK_SIZE = 40;
 const MAX_SINGLE_CALL = 50;
 const PARALLEL_CHUNKS = 3;
@@ -251,8 +250,7 @@ async function formatChunk(
     try {
       const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext);
       const response = await chatWithPreset(
-        apiKey, PRESET_ID, messages, overrides,
-        { temperature: 0.3, max_tokens: 16384 },
+        apiKey, "format", messages, overrides,
       );
 
       const content = response.choices?.[0]?.message?.content;
@@ -338,8 +336,7 @@ Creative freedom:
 
     try {
       const response = await chatWithPreset(
-        apiKey, PRESET_ID, messages, overrides,
-        { temperature: 0.9, max_tokens: 16384 },
+        apiKey, "format-regen", messages, overrides,
       );
 
       const content = response.choices?.[0]?.message?.content;

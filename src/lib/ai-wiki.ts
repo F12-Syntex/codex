@@ -192,7 +192,6 @@ export async function generateWikiForChapter(
       { role: "user", content: userPrompt },
     ],
     overrides,
-    { max_tokens: 16384 },
   );
 
   if (isAborted()) return;
