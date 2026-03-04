@@ -51,7 +51,7 @@ export function ReaderHeader({
   onAIToggle,
 }: ReaderHeaderProps) {
   return (
-    <div className="flex h-11 items-center" data-reader-header>
+    <div className="flex h-11 min-w-0 items-center" data-reader-header>
       {/* TOC button */}
       <div className="flex h-full items-center">
         {hasMultipleChapters && (
@@ -69,13 +69,13 @@ export function ReaderHeader({
       </div>
 
       {/* Title (draggable area) */}
-      <div className="app-drag-region flex h-full flex-1 items-center gap-2 pl-3">
+      <div className="app-drag-region flex h-full min-w-0 flex-1 items-center gap-2 pl-3">
         <span className={`truncate text-[13px] font-medium ${theme.text}`}>{title}</span>
-        <span className={`shrink-0 text-[11px] ${theme.muted}`}>{author}</span>
+        {author && <span className={`truncate text-[11px] ${theme.muted}`}>{author}</span>}
       </div>
 
       {/* Controls */}
-      <div className="no-drag flex items-center gap-1 pr-1">
+      <div className="no-drag flex shrink-0 items-center gap-1 pr-1">
         {/* Theme switcher */}
         <div className={`flex items-center gap-0.5 rounded-lg p-0.5 ${theme.subtle}`}>
           {(["dark", "light", "sepia"] as const).map((t) => (
@@ -163,7 +163,7 @@ export function ReaderHeader({
       </div>
 
       {/* Window controls */}
-      <div className="flex h-full items-center">
+      <div className="flex h-full shrink-0 items-center">
         <button
           onClick={() => window.electronAPI?.minimize()}
           className={`inline-flex h-full w-11 items-center justify-center transition-colors ${theme.btn}`}

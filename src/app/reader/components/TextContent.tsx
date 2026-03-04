@@ -6,6 +6,7 @@ import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "..
 import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 import type { WikiEntryType } from "@/lib/ai-wiki";
+import type { SimChoice } from "@/lib/ai-simulate";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 import { EntityContextMenu } from "./EntityContextMenu";
 
@@ -47,6 +48,7 @@ interface TextContentProps {
   simulateGenerating?: boolean;
   onSimulateSubmit?: (text: string) => void;
   branchEntityName?: string;
+  simulateChoices?: SimChoice[];
 }
 
 /*
@@ -117,6 +119,7 @@ export function TextContent({
   simulateGenerating = false,
   onSimulateSubmit,
   branchEntityName,
+  simulateChoices = [],
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
@@ -945,7 +948,7 @@ export function TextContent({
           {titleJSX}
           {paragraphsJSX}
 
-          {/* Simulate: inline input or loading indicator */}
+          {/* Simulate: loading indicator */}
           {simulateMode && simulateGenerating && (
             <div
               style={{
@@ -964,18 +967,136 @@ export function TextContent({
                 <span className="sim-dot" />
               </div>
               <span className={theme.muted} style={{ fontSize: `${fontSize * 0.85}px` }}>
-                Generating...
+                Writing...
               </span>
             </div>
           )}
 
+          {/* Simulate: choices + input */}
           {simulateMode && simulateInputVisible && (
             <div
               style={{
-                padding: `${paraSpacing}px 0`,
+                padding: `${paraSpacing * 1.5}px 0`,
                 breakInside: "avoid",
               }}
             >
+              {/* Divider */}
+              <div
+                style={{
+                  height: "1px",
+                  background: "rgba(255,255,255,0.06)",
+                  marginBottom: `${paraSpacing}px`,
+                }}
+              />
+
+              {/* Choice buttons (from AI) */}
+              {simulateChoices.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: `${paraSpacing * 0.75}px` }}>
+                  {simulateChoices.map((choice, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        if (onSimulateSubmit) {
+                          onSimulateSubmit(choice.description);
+                        }
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        gap: "10px",
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        background: "var(--bg-inset)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontFamily,
+                        transition: "border-color 0.15s, background 0.15s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "var(--accent-brand)";
+                        e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+                        e.currentTarget.style.background = "var(--bg-inset)";
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: `${fontSize * 0.75}px`,
+                          fontWeight: 600,
+                          color: "var(--accent-brand)",
+                          opacity: 0.8,
+                          flexShrink: 0,
+                          lineHeight: 1,
+                          marginTop: "2px",
+                        }}
+                      >
+                        {String.fromCharCode(65 + i)}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          className={theme.text}
+                          style={{
+                            fontSize: `${fontSize * 0.85}px`,
+                            fontWeight: 500,
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          {choice.label}
+                        </div>
+                        <div
+                          className={theme.muted}
+                          style={{
+                            fontSize: `${fontSize * 0.75}px`,
+                            lineHeight: 1.4,
+                            marginTop: "2px",
+                          }}
+                        >
+                          {choice.description}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+
+                  {/* Continue Story button */}
+                  <button
+                    onClick={() => {
+                      if (onSimulateSubmit) {
+                        onSimulateSubmit("Continue the story naturally from where you left off.");
+                      }
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      background: "transparent",
+                      border: "1px dashed rgba(255,255,255,0.08)",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      fontFamily,
+                      fontSize: `${fontSize * 0.8}px`,
+                      fontWeight: 500,
+                      transition: "border-color 0.15s, background 0.15s",
+                    }}
+                    className={theme.muted}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
+                      e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    Continue story...
+                  </button>
+                </div>
+              )}
+
+              {/* Custom direction input */}
               <div
                 style={{
                   display: "flex",
@@ -1000,7 +1121,7 @@ export function TextContent({
                     // Prevent space from triggering TTS
                     e.stopPropagation();
                   }}
-                  placeholder={branchEntityName ? `What happens next with ${branchEntityName}...` : "What happens next..."}
+                  placeholder={branchEntityName ? `Or type your own direction for ${branchEntityName}...` : "Or type your own direction..."}
                   className={theme.text}
                   style={{
                     flex: 1,
@@ -1008,7 +1129,7 @@ export function TextContent({
                     border: "none",
                     outline: "none",
                     fontFamily,
-                    fontSize: `${fontSize * 0.9}px`,
+                    fontSize: `${fontSize * 0.85}px`,
                     lineHeight: 1.5,
                   }}
                 />

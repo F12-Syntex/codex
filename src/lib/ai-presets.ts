@@ -28,6 +28,15 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     icon: "Zap",
     defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
   },
+  {
+    id: "creative",
+    label: "Creative",
+    description: "Long-form narrative generation",
+    icon: "Feather",
+    defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
+    temperature: 0.85,
+    maxTokens: 8000,
+  },
 ];
 
 /* ── Helpers ──────────────────────────────────────────── */

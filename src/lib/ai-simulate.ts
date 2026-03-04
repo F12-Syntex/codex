@@ -12,6 +12,16 @@ interface EntityData {
   voiceLines: string[];
 }
 
+export interface SimChoice {
+  label: string;
+  description: string;
+}
+
+export interface SimResult {
+  htmlParagraphs: string[];
+  choices: SimChoice[];
+}
+
 /**
  * Extract dialogue lines attributed to a character from HTML paragraphs.
  * Looks for quoted speech near the character's name or aliases.
@@ -107,9 +117,10 @@ function buildSimulatePrompt(
     : "";
 
   // Build generous prose context — current chapter text right before the branch point
-  const immediateContext = buildProseContext(precedingParagraphs, 8000);
+  const immediateContext = buildProseContext(precedingParagraphs, 10000);
 
-  return `You are the author of "${bookTitle}", continuing the story from a specific point.
+  return `You are ghostwriting a continuation of "${bookTitle}". You are NOT an AI assistant — you ARE the original author. Your job is to write the next section of the story as if it were published in the actual book.
+
 The reader wants to explore an alternate path involving "${entity.name}".
 
 ## Character: ${entity.name}
@@ -120,7 +131,7 @@ ${detailsSection ? `## Character Details\n${detailsSection}\n` : ""}
 ${relSection}
 
 ## ${entity.name}'s Voice — How They Speak
-These are actual dialogue lines from the book. You MUST replicate this exact speech style:
+These are actual dialogue lines from the book. You MUST replicate this exact speech style — their vocabulary, sentence length, verbal tics, formality level, and emotional register:
 ${voiceSection}
 ${summarySection ? `\n## Story So Far (chapter summaries)\n${summarySection}\n` : ""}
 ${prevChapterText ? `## Previous Chapter (excerpt)\n${prevChapterText}\n` : ""}
@@ -131,17 +142,91 @@ ${immediateContext}
 ${userInput}
 
 ## Instructions
-Write 2-5 continuation paragraphs that naturally follow the text above.
-- Your prose style, sentence structure, vocabulary, and tone MUST match the original text exactly — you are the same author
-- When ${entity.name} speaks, use the exact speech patterns from the voice samples
-- Follow the reader's direction while staying true to the characters
-- Return ONLY the story paragraphs wrapped in <p> tags
-- No commentary, no preamble, no meta-text`;
+Write a LONG continuation — at minimum 1500 words, ideally 2000-3000 words. This should feel like reading the next several pages of the actual book.
+
+CRITICAL STYLE RULES:
+- You are the original author. Match the prose style EXACTLY — sentence structure, paragraph length, vocabulary level, pacing, narrative voice (first/third person), tense, and tone
+- Study the text above carefully. If it uses short punchy sentences, you do too. If it's flowery and descriptive, match that. If dialogue is sparse, keep it sparse. If it's dialogue-heavy, write lots of dialogue
+- When ${entity.name} speaks, replicate their exact speech patterns from the voice samples — their word choices, contractions, slang, formality
+- Maintain the same ratio of dialogue to narration as the source material
+- Include inner thoughts, sensory details, and environmental description at the same density as the original
+- DO NOT summarize or skip ahead. Write scene-by-scene, moment-by-moment, just like the original book does
+- DO NOT use phrases like "little did they know" or "and so it was" or any other cliché narrative shortcuts
+
+After the story text, provide exactly 3 branching choices for where the story could go next.
+
+OUTPUT FORMAT (follow exactly):
+<story>
+Your continuation paragraphs here, each wrapped in <p> tags.
+</story>
+<choices>
+<choice label="Short action label (2-5 words)">Brief description of what happens if the reader picks this path (1 sentence)</choice>
+<choice label="Short action label (2-5 words)">Brief description of what happens if the reader picks this path (1 sentence)</choice>
+<choice label="Short action label (2-5 words)">Brief description of what happens if the reader picks this path (1 sentence)</choice>
+</choices>`;
+}
+
+/**
+ * Parse the structured response from the AI into paragraphs + choices.
+ */
+function parseSimResponse(content: string): SimResult {
+  // Extract story section
+  const storyMatch = content.match(/<story>([\s\S]*?)<\/story>/i);
+  const choicesMatch = content.match(/<choices>([\s\S]*?)<\/choices>/i);
+
+  let htmlParagraphs: string[];
+
+  if (storyMatch) {
+    const storyContent = storyMatch[1].trim();
+    const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    const matches = [...storyContent.matchAll(pTagRegex)];
+    if (matches.length > 0) {
+      htmlParagraphs = matches.map(m => `<p>${m[1].trim()}</p>`);
+    } else {
+      htmlParagraphs = storyContent
+        .split(/\n{2,}/)
+        .map(p => p.trim())
+        .filter(Boolean)
+        .map(p => `<p>${p}</p>`);
+    }
+  } else {
+    // No <story> tags — try to extract everything before <choices> or the whole thing
+    const textBeforeChoices = choicesMatch
+      ? content.slice(0, content.indexOf(choicesMatch[0])).trim()
+      : content.trim();
+
+    const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    const matches = [...textBeforeChoices.matchAll(pTagRegex)];
+    if (matches.length > 0) {
+      htmlParagraphs = matches.map(m => `<p>${m[1].trim()}</p>`);
+    } else {
+      htmlParagraphs = textBeforeChoices
+        .split(/\n{2,}/)
+        .map(p => p.trim())
+        .filter(p => p && !p.startsWith("<choice") && !p.startsWith("<choices"))
+        .map(p => `<p>${p}</p>`);
+    }
+  }
+
+  // Parse choices
+  const choices: SimChoice[] = [];
+  if (choicesMatch) {
+    const choiceRegex = /<choice\s+label="([^"]+)">([\s\S]*?)<\/choice>/gi;
+    let choiceMatch;
+    while ((choiceMatch = choiceRegex.exec(choicesMatch[1])) !== null) {
+      choices.push({
+        label: choiceMatch[1].trim(),
+        description: choiceMatch[2].trim(),
+      });
+    }
+  }
+
+  return { htmlParagraphs, choices };
 }
 
 /**
  * Generate continuation paragraphs for a branching narrative simulation.
- * Returns an array of HTML paragraph strings.
+ * Returns paragraphs + branching choices.
  */
 export async function generateSimContinuation(
   bookTitle: string,
@@ -150,7 +235,7 @@ export async function generateSimContinuation(
   prevChapterText: string,
   chapterSummaries: string[],
   userInput: string,
-): Promise<string[]> {
+): Promise<SimResult> {
   const api = window.electronAPI;
   if (!api) throw new Error("No API");
 
@@ -168,23 +253,10 @@ export async function generateSimContinuation(
     { role: "user", content: userInput },
   ];
 
-  const response = await chatWithPreset(apiKey, "quick", messages, overrides, { max_tokens: 4096 });
+  const response = await chatWithPreset(apiKey, "creative", messages, overrides);
   const content = response.choices?.[0]?.message?.content?.trim();
 
   if (!content) throw new Error("No response from AI");
 
-  // Parse paragraphs from response — extract <p>...</p> tags, or split by double newline
-  const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-  const matches = [...content.matchAll(pTagRegex)];
-
-  if (matches.length > 0) {
-    return matches.map(m => `<p>${m[1].trim()}</p>`);
-  }
-
-  // Fallback: split by double newline and wrap in <p> tags
-  return content
-    .split(/\n{2,}/)
-    .map(p => p.trim())
-    .filter(Boolean)
-    .map(p => `<p>${p}</p>`);
+  return parseSimResponse(content);
 }

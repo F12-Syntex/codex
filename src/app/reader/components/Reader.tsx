@@ -23,7 +23,7 @@ import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
-import { generateSimContinuation, extractVoiceLines } from "@/lib/ai-simulate";
+import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -90,6 +90,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [activeBranchSegments, setActiveBranchSegments] = useState<
     { userInput: string; htmlParagraphs: string[] }[]
   >([]);
+  const [simulateChoices, setSimulateChoices] = useState<SimChoice[]>([]);
   const [simulateGenerating, setSimulateGenerating] = useState(false);
   const [showBranchList, setShowBranchList] = useState(false);
   const [savedBranches, setSavedBranches] = useState<SimBranchRow[]>([]);
@@ -687,6 +688,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       entityName: entity.name,
     });
     setActiveBranchSegments([]);
+    setSimulateChoices([]);
 
     // Refresh branch list
     const branches = await window.electronAPI?.simGetBranches(filePath) ?? [];
@@ -697,6 +699,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!activeBranch || !filePath || simulateGenerating) return;
 
     setSimulateGenerating(true);
+    setSimulateChoices([]);
 
     try {
       // Get entity data for AI context
@@ -778,7 +781,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         voiceLines: combinedVoice,
       };
 
-      const htmlParagraphs = await generateSimContinuation(
+      const result = await generateSimContinuation(
         title,
         entityData,
         allPrecedingParas,
@@ -787,16 +790,40 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         text,
       );
 
+      // Auto-format generated paragraphs if formatting is enabled
+      let finalParagraphs = result.htmlParagraphs;
+      if (formattingEnabled && styleDictionary) {
+        try {
+          const fmtApiKey = await api.getSetting("openrouterApiKey");
+          if (fmtApiKey) {
+            const syntheticChapter = {
+              title: "",
+              paragraphs: finalParagraphs.map(p => p.replace(/<[^>]+>/g, "").trim()),
+              htmlParagraphs: finalParagraphs,
+            };
+            const fmtResult = await formatChapterContent(
+              fmtApiKey, syntheticChapter, title, () => false, styleDictionary, filePath,
+            );
+            if (fmtResult) {
+              finalParagraphs = fmtResult.paragraphs;
+            }
+          }
+        } catch (fmtErr) {
+          console.warn("Failed to format simulate content:", fmtErr);
+        }
+      }
+
       const segmentIndex = activeBranchSegments.length;
       await api.simAddSegment({
         filePath,
         branchId: activeBranch.id,
         segmentIndex,
         userInput: text,
-        htmlParagraphs: JSON.stringify(htmlParagraphs),
+        htmlParagraphs: JSON.stringify(finalParagraphs),
       });
 
-      setActiveBranchSegments(prev => [...prev, { userInput: text, htmlParagraphs }]);
+      setActiveBranchSegments(prev => [...prev, { userInput: text, htmlParagraphs: finalParagraphs }]);
+      setSimulateChoices(result.choices);
 
       // Persist new voice lines to wiki DB (only ones not already saved)
       const newVoiceLines = voiceLines.filter(vl => !savedVoiceDetails.includes(vl));
@@ -816,11 +843,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     } finally {
       setSimulateGenerating(false);
     }
-  }, [activeBranch, filePath, simulateGenerating, formattingEnabled, formattedChapters, chapters, activeBranchSegments, title]);
+  }, [activeBranch, filePath, simulateGenerating, formattingEnabled, formattedChapters, chapters, activeBranchSegments, title, styleDictionary]);
 
   const handleExitBranch = useCallback(() => {
     setActiveBranch(null);
     setActiveBranchSegments([]);
+    setSimulateChoices([]);
   }, []);
 
   const handleLoadBranch = useCallback(async (branch: SimBranchRow) => {
@@ -938,8 +966,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   }, [wikiEnabled, wikiEntityIndex]);
 
   // Effective HTML paragraphs (formatted or original, with branch override)
+  // Branch only overrides content on the branch's own chapter — other chapters show normally
+  const isBranchChapter = activeBranch && currentChapter === activeBranch.chapterIndex;
   const effectiveHtml = useMemo(() => {
-    if (activeBranch) {
+    if (isBranchChapter && activeBranch) {
       const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
         ? formattedChapters[activeBranch.chapterIndex]
         : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
@@ -950,7 +980,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     return formattingEnabled && formattedChapters[currentChapter]
       ? formattedChapters[currentChapter]
       : chapter?.htmlParagraphs ?? [];
-  }, [activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapter, chapters]);
+  }, [isBranchChapter, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapter, chapters]);
 
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
@@ -1022,15 +1052,18 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const pendingStartPageRef = useRef<number | null>(null);
 
   const handleChapterChange = useCallback((index: number, startPage?: number) => {
+    // Block navigation to chapters after the branch point (alternate timeline)
+    if (activeBranch && index > activeBranch.chapterIndex) return;
     tts.actions.stop();
     pendingStartPageRef.current = startPage ?? null;
     setCurrentChapter(index);
     setShowTOC(false);
-  }, [tts.actions]);
+  }, [tts.actions, activeBranch]);
 
   // Chapter boundary navigation: page-forward at end → next chapter (page 0)
   const handleNextChapterFromPage = useCallback(() => {
-    if (activeBranch) return; // Block in branch mode
+    // Block navigation at or past the branch chapter (alternate timeline)
+    if (activeBranch && currentChapter >= activeBranch.chapterIndex) return;
     if (currentChapter < chapters.length - 1) {
       handleChapterChange(currentChapter + 1);
     }
@@ -1038,11 +1071,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // Chapter boundary navigation: page-back at start → prev chapter (last page)
   const handlePrevChapterFromPage = useCallback(() => {
-    if (activeBranch) return; // Block in branch mode
     if (currentChapter > 0) {
       handleChapterChange(currentChapter - 1, -1); // -1 signals "last page"
     }
-  }, [currentChapter, handleChapterChange, activeBranch]);
+  }, [currentChapter, handleChapterChange]);
 
   const [firstVisiblePara, setFirstVisiblePara] = useState(0);
   const handlePageChange = useCallback((page: number, total: number, firstPara?: number) => {
@@ -1293,11 +1325,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               bookTitle={title}
               simulateEnabled={simulateEnabled}
               onSimulateEntity={handleSimulateEntity}
-              simulateMode={!!activeBranch}
-              simulateInputVisible={!!activeBranch && !simulateGenerating}
-              simulateGenerating={simulateGenerating}
+              simulateMode={!!isBranchChapter}
+              simulateInputVisible={!!isBranchChapter && !simulateGenerating}
+              simulateGenerating={!!isBranchChapter && simulateGenerating}
               onSimulateSubmit={handleSimulateSubmit}
               branchEntityName={activeBranch?.entityName}
+              simulateChoices={isBranchChapter ? simulateChoices : []}
             />
           )}
 
