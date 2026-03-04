@@ -25,7 +25,6 @@ import {
 } from "./database";
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
-import type { LibraryItem } from "./database";
 import { EdgeTTS } from "@andresaya/edge-tts";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
@@ -119,15 +118,16 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
-function createWindow() {
-  // Initialize database before setting up IPC
-  initDatabase();
-
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
+function createAppWindow(
+  route: string,
+  params?: URLSearchParams,
+  size?: { width: number; height: number; minWidth: number; minHeight: number },
+): BrowserWindow {
+  const win = new BrowserWindow({
+    width: size?.width ?? 1000,
+    height: size?.height ?? 700,
+    minWidth: size?.minWidth ?? 600,
+    minHeight: size?.minHeight ?? 400,
     frame: false,
     titleBarStyle: "hidden",
     icon: path.join(__dirname, "../build/icon.png"),
@@ -137,6 +137,19 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  const query = params ? `?${params.toString()}` : "";
+  const prodRoute = route || "index";
+  win.loadURL(isDev ? `http://localhost:3000/${route}${query}` : `app://./${prodRoute}.html${query}`);
+  win.on("maximize", () => win.webContents.send("window:maximized", true));
+  win.on("unmaximize", () => win.webContents.send("window:maximized", false));
+  return win;
+}
+
+function createWindow() {
+  // Initialize database before setting up IPC
+  initDatabase();
+
+  mainWindow = createAppWindow("", undefined, { width: 1200, height: 800, minWidth: 800, minHeight: 600 });
 
   ipcMain.on("window:minimize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -168,122 +181,38 @@ function createWindow() {
 
   // ── Reader: open book in new window ──────────
   ipcMain.handle("reader:open", (_event, bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => {
-    console.log(`[main] reader:open — title="${bookInfo.title}", format="${bookInfo.format}", filePath="${bookInfo.filePath}"`);
-    const readerWindow = new BrowserWindow({
-      width: 1000,
-      height: 700,
-      minWidth: 600,
-      minHeight: 400,
-      frame: false,
-      titleBarStyle: "hidden",
-      icon: path.join(__dirname, "../build/icon.png"),
-      webPreferences: {
-        preload: path.join(__dirname, "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
     const params = new URLSearchParams({
       title: bookInfo.title,
       author: bookInfo.author,
       format: bookInfo.format,
       filePath: bookInfo.filePath,
     });
-
-    if (isDev) {
-      readerWindow.loadURL(`http://localhost:3000/reader?${params.toString()}`);
-    } else {
-      readerWindow.loadURL(`app://./reader.html?${params.toString()}`);
-    }
-
-    readerWindow.on("maximize", () => {
-      readerWindow.webContents.send("window:maximized", true);
-    });
-    readerWindow.on("unmaximize", () => {
-      readerWindow.webContents.send("window:maximized", false);
-    });
+    createAppWindow("reader", params);
   });
 
   // ── Style Dictionary: open in new window ─────────
   ipcMain.handle("style-dictionary:open", (_event, info: { filePath: string; title: string }) => {
-    const dictWindow = new BrowserWindow({
-      width: 900,
-      height: 700,
-      minWidth: 600,
-      minHeight: 400,
-      frame: false,
-      titleBarStyle: "hidden",
-      icon: path.join(__dirname, "../build/icon.png"),
-      webPreferences: {
-        preload: path.join(__dirname, "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
     const params = new URLSearchParams({
       filePath: info.filePath,
       title: info.title,
     });
-
-    if (isDev) {
-      dictWindow.loadURL(`http://localhost:3000/style-dictionary?${params.toString()}`);
-    } else {
-      dictWindow.loadURL(`app://./style-dictionary.html?${params.toString()}`);
-    }
-
-    dictWindow.on("maximize", () => {
-      dictWindow.webContents.send("window:maximized", true);
-    });
-    dictWindow.on("unmaximize", () => {
-      dictWindow.webContents.send("window:maximized", false);
-    });
+    createAppWindow("style-dictionary", params, { width: 900, height: 700, minWidth: 600, minHeight: 400 });
   });
 
   // ── Wiki: open in new window ─────────────────────
   ipcMain.handle("wiki:open", (_event, info: { filePath: string; title: string; entryId?: string }) => {
-    const wikiWindow = new BrowserWindow({
-      width: 1000,
-      height: 750,
-      minWidth: 700,
-      minHeight: 500,
-      frame: false,
-      titleBarStyle: "hidden",
-      icon: path.join(__dirname, "../build/icon.png"),
-      webPreferences: {
-        preload: path.join(__dirname, "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
     const params = new URLSearchParams({
       filePath: info.filePath,
       title: info.title,
     });
     if (info.entryId) params.set("entryId", info.entryId);
-
-    if (isDev) {
-      wikiWindow.loadURL(`http://localhost:3000/wiki?${params.toString()}`);
-    } else {
-      wikiWindow.loadURL(`app://./wiki.html?${params.toString()}`);
-    }
-
-    wikiWindow.on("maximize", () => {
-      wikiWindow.webContents.send("window:maximized", true);
-    });
-    wikiWindow.on("unmaximize", () => {
-      wikiWindow.webContents.send("window:maximized", false);
-    });
+    createAppWindow("wiki", params, { width: 1000, height: 750, minWidth: 700, minHeight: 500 });
   });
 
   // ── Reader: get book content ──────────────────────
   ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
-    console.log(`[main] reader:get-content — filePath="${filePath}", format="${format}"`);
     try {
       const result = parseBookContent(filePath, format);
-      console.log(`[main] reader:get-content — OK, ${result.chapters.length} chapters`);
       return result;
     } catch (err) {
       console.error(`[main] reader:get-content — EXCEPTION:`, err);
@@ -332,7 +261,8 @@ function createWindow() {
   // ── Library: import files via dialog ──────────────
 
   ipcMain.handle("library:import-files", async (_event, section: string, view: string) => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
+    if (!mainWindow) return [];
+    const result = await dialog.showOpenDialog(mainWindow, {
       title: "Import files",
       filters: [
         { name: "Books & Comics", extensions: ["epub", "pdf", "cbz", "cbr", "mobi"] },
@@ -368,7 +298,8 @@ function createWindow() {
   // ── Library: select folder ────────────────────────
 
   ipcMain.handle("library:select-folder", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
       title: "Select library folder",
       properties: ["openDirectory"],
     });
@@ -506,12 +437,6 @@ function createWindow() {
 
   // ── Window events ─────────────────────────────────
 
-  mainWindow.on("maximize", () => {
-    mainWindow!.webContents.send("window:maximized", true);
-  });
-  mainWindow.on("unmaximize", () => {
-    mainWindow!.webContents.send("window:maximized", false);
-  });
   mainWindow.on("closed", () => {
     const remainingWindows = BrowserWindow.getAllWindows();
     mainWindow = null;
@@ -522,11 +447,8 @@ function createWindow() {
     });
   });
 
-  if (isDev) {
-    mainWindow.loadURL("http://localhost:3000");
-  } else {
-    mainWindow.loadURL("app://./index.html");
-    initUpdater(mainWindow!);
+  if (!isDev && mainWindow) {
+    initUpdater(mainWindow);
   }
 }
 
