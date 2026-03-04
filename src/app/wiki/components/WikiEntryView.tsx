@@ -1,14 +1,16 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   User, Swords, MapPin, Flame, Lightbulb,
   Link2, Clock,
 } from "lucide-react";
-import type { BookWiki, WikiEntry, WikiEntryType } from "@/lib/ai-wiki";
+import type { WikiEntry, WikiEntryType } from "@/lib/ai-wiki";
 
 interface WikiEntryViewProps {
   entry: WikiEntry;
-  wiki: BookWiki;
+  filePath: string;
+  onEntryClick: (id: string) => void;
 }
 
 const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
@@ -44,8 +46,21 @@ const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; c
   },
 };
 
-export function WikiEntryView({ entry, wiki }: WikiEntryViewProps) {
+export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewProps) {
   const typeMeta = TYPE_META[entry.type];
+  const [resolvedNames, setResolvedNames] = useState<Map<string, string>>(new Map());
+
+  // Resolve relationship target names from DB
+  useEffect(() => {
+    const resolve = async () => {
+      const api = window.electronAPI;
+      if (!api) return;
+      const entries = await api.wikiGetEntries(filePath);
+      const nameMap = new Map(entries.map((e) => [e.id, e.name]));
+      setResolvedNames(nameMap);
+    };
+    resolve();
+  }, [filePath]);
 
   // Group details by category
   const detailsByCategory: Record<string, { chapterIndex: number; content: string }[]> = {};
@@ -54,12 +69,6 @@ export function WikiEntryView({ entry, wiki }: WikiEntryViewProps) {
     if (!detailsByCategory[cat]) detailsByCategory[cat] = [];
     detailsByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content });
   }
-
-  // Resolve relationship target names
-  const resolvedRelationships = entry.relationships.map((rel) => ({
-    ...rel,
-    targetName: wiki.entries[rel.targetId]?.name ?? rel.targetId.replace(/-/g, " "),
-  }));
 
   return (
     <div className="mx-auto max-w-[700px] px-8 py-6">
@@ -73,6 +82,17 @@ export function WikiEntryView({ entry, wiki }: WikiEntryViewProps) {
             {typeMeta.icon}
             {typeMeta.label}
           </span>
+          <span
+            className="rounded-lg px-1.5 py-0.5 text-[11px] capitalize"
+            style={{ background: "var(--bg-surface)", color: "var(--text-muted)" }}
+          >
+            {entry.status}
+          </span>
+          {entry.significance >= 3 && (
+            <span className="text-[11px] text-amber-400/60">
+              {"★".repeat(entry.significance)}
+            </span>
+          )}
           {entry.aliases.length > 0 && (
             <span className="text-[11px] text-white/30">
               aka {entry.aliases.join(", ")}
@@ -88,7 +108,7 @@ export function WikiEntryView({ entry, wiki }: WikiEntryViewProps) {
           {entry.shortDescription}
         </p>
 
-        {/* Chapter appearances bar */}
+        {/* Chapter appearances */}
         <div className="mt-4 flex items-center gap-2">
           <Clock className="h-3.5 w-3.5 text-white/25" strokeWidth={1.5} />
           <span className="text-[11px] text-white/30">
@@ -100,7 +120,6 @@ export function WikiEntryView({ entry, wiki }: WikiEntryViewProps) {
           </span>
         </div>
 
-        {/* Chapter appearance timeline */}
         <div className="mt-2 flex flex-wrap gap-1">
           {entry.chapterAppearances.map((ch) => (
             <span
@@ -154,34 +173,37 @@ export function WikiEntryView({ entry, wiki }: WikiEntryViewProps) {
       )}
 
       {/* Relationships */}
-      {resolvedRelationships.length > 0 && (
+      {entry.relationships.length > 0 && (
         <div className="mt-6">
           <SectionTitle>Relationships</SectionTitle>
           <div className="mt-2 space-y-1">
-            {resolvedRelationships.map((rel, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 rounded-lg px-3 py-2"
-                style={{ background: "var(--bg-surface)" }}
-              >
-                <Link2 className="h-3.5 w-3.5 shrink-0 text-white/25" strokeWidth={1.5} />
-                <div className="flex-1">
-                  <span className="text-[12px] font-medium capitalize text-white/70">
-                    {rel.targetName}
+            {entry.relationships.map((rel, i) => {
+              const targetName = resolvedNames.get(rel.targetId) ?? rel.targetId.replace(/-/g, " ");
+              return (
+                <button
+                  key={i}
+                  onClick={() => onEntryClick(rel.targetId)}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-white/[0.04]"
+                  style={{ background: "var(--bg-surface)" }}
+                >
+                  <Link2 className="h-3.5 w-3.5 shrink-0 text-white/25" strokeWidth={1.5} />
+                  <div className="flex-1">
+                    <span className="text-[12px] font-medium capitalize text-white/70">
+                      {targetName}
+                    </span>
+                    <span className="mx-2 text-[11px] text-white/25">—</span>
+                    <span className="text-[11px] capitalize text-white/40">{rel.relation}</span>
+                  </div>
+                  <span className="text-[11px] tabular-nums text-white/20">
+                    Ch. {rel.since + 1}
                   </span>
-                  <span className="mx-2 text-[11px] text-white/25">—</span>
-                  <span className="text-[11px] capitalize text-white/40">{rel.relation}</span>
-                </div>
-                <span className="text-[11px] tabular-nums text-white/20">
-                  Ch. {rel.since + 1}
-                </span>
-              </div>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Spacer */}
       <div className="h-12" />
     </div>
   );

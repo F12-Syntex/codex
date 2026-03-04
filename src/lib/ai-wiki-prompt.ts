@@ -1,9 +1,9 @@
-/* ── AI Wiki Prompt Templates ──────────────────────────── */
+/* ── AI Wiki Prompt Templates (DB-backed, tiered context) ── */
 
-export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progressive wiki/encyclopedia for a book. You extract entities (characters, items, locations, events, concepts) from a single chapter, given the existing wiki state so far.
+export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progressive wiki/encyclopedia for a book. You extract entities (characters, items, locations, events, concepts) from a single chapter, tracking story arcs, chapter summaries, and relationships.
 
 ## Rules
-- Only extract information that is EXPLICITLY stated or strongly implied in the chapter text
+- Only extract information EXPLICITLY stated or strongly implied in the chapter text
 - Do NOT speculate or infer information not present
 - Tag every detail with the chapter it comes from
 - For existing entities: only add NEW details not already in the wiki
@@ -11,7 +11,9 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progres
 - Use the entity's most common name as the primary name, put variants in aliases
 - Keep shortDescription to 1 sentence (for tooltips)
 - Keep detail content concise but specific
-- Assign appropriate categories: "personality", "ability", "backstory", "appearance", "speech_pattern", "motivation", "status", "role", "trait", "power", "skill", "title", "affiliation", etc.
+- Assign significance: 1=minor/mentioned once, 2=recurring, 3=major/important, 4=protagonist/core
+- Track entity status changes: active, deceased, destroyed, unknown, transformed
+- When referencing existing entities in arcs/relationships, use their exact IDs from the entity index
 
 ## Entity Types
 - **character**: Named people/beings with agency
@@ -27,65 +29,78 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progres
 - event: "rose"
 - concept: "violet"
 
+## Detail Categories
+"personality", "ability", "backstory", "appearance", "speech_pattern", "motivation", "status", "role", "trait", "power", "skill", "title", "affiliation", "history", "geography", "function", "origin"
+
 ## Response Format
 Respond with ONLY valid JSON, no markdown code fences:
 {
+  "chapter_summary": {
+    "summary": "2-4 sentence plot summary of what happens in this chapter",
+    "mood": "tension|calm|action|mystery|revelation",
+    "key_events": ["event-slug-1"]
+  },
+  "arc_updates": [
+    {
+      "arc_id": "existing-arc-id",
+      "status": "setup|active|climax|resolved|abandoned",
+      "beat": { "beat_type": "setup|escalation|twist|climax|resolution|aftermath", "description": "What happens in this arc beat" }
+    }
+  ],
+  "new_arcs": [
+    {
+      "id": "arc-slug",
+      "name": "Arc Name",
+      "arc_type": "plot|character|world|mystery|conflict",
+      "description": "What this arc is about",
+      "entities": [{ "entry_id": "existing-entity-id", "role": "protagonist|antagonist|catalyst|supporter" }],
+      "initial_beat": { "beat_type": "setup", "description": "How this arc begins" }
+    }
+  ],
   "new_entries": [
     {
       "id": "kebab-case-slug",
       "name": "Display Name",
       "type": "character|item|location|event|concept",
-      "aliases": ["Alt Name", "Title"],
-      "shortDescription": "One-line summary for tooltips",
-      "description": "Full wiki description in markdown",
-      "firstAppearance": <chapter_index>,
-      "details": [
-        {
-          "chapterIndex": <chapter_index>,
-          "content": "What is revealed/happens",
-          "category": "personality|ability|backstory|appearance|speech_pattern|motivation|status|role|trait|power|skill|title|affiliation"
-        }
-      ],
-      "relationships": [
-        {
-          "targetId": "other-entity-slug",
-          "relation": "ally|enemy|mentor|student|parent|child|sibling|friend|rival|subordinate|leader|owner|creator|member",
-          "since": <chapter_index>
-        }
-      ],
+      "aliases": ["Alt Name"],
+      "shortDescription": "One-line summary",
+      "description": "Full wiki description",
+      "significance": 2,
+      "status": "active",
+      "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality" }],
+      "relationships": [{ "targetId": "other-entity-slug", "relation": "ally|enemy|mentor|etc", "since": 0 }],
       "color": "blue|amber|emerald|rose|violet"
     }
   ],
   "updates": [
     {
       "id": "existing-entity-slug",
-      "newAliases": ["Any New Aliases"],
-      "descriptionAppend": "Additional description text to append (or empty string)",
-      "details": [
-        {
-          "chapterIndex": <chapter_index>,
-          "content": "New information revealed in this chapter",
-          "category": "category"
-        }
-      ],
-      "relationships": [
-        {
-          "targetId": "other-entity-slug",
-          "relation": "relation type",
-          "since": <chapter_index>
-        }
-      ]
+      "newAliases": [],
+      "descriptionAppend": "",
+      "significance": 3,
+      "status": "active",
+      "details": [{ "chapterIndex": 0, "content": "New information", "category": "category" }],
+      "relationships": [{ "targetId": "other-slug", "relation": "type", "since": 0 }]
     }
   ]
 }
 
-If no entities are found, return: { "new_entries": [], "updates": [] }`;
+If nothing notable happens, return minimal: { "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "arc_updates": [], "new_arcs": [], "new_entries": [], "updates": [] }`;
+
+/* ── Tiered Context ─────────────────────────────────── */
+
+export interface TieredContext {
+  recentSummaries: string;
+  activeEntityRoster: string;
+  activeArcs: string;
+  entityIndex: string;
+}
 
 export function buildWikiUserPrompt(
   chapterIndex: number,
   chapterText: string,
   bookTitle: string,
-  existingWikiSummary: string,
+  context: TieredContext,
 ): string {
   const truncated = chapterText.slice(0, 12000);
 
@@ -94,9 +109,30 @@ Chapter Index: ${chapterIndex}
 
 `;
 
-  if (existingWikiSummary) {
-    prompt += `## Existing Wiki State
-${existingWikiSummary}
+  if (context.recentSummaries) {
+    prompt += `## Recent Chapter Summaries
+${context.recentSummaries}
+
+`;
+  }
+
+  if (context.activeEntityRoster) {
+    prompt += `## Active Entity Roster (recent chapters)
+${context.activeEntityRoster}
+
+`;
+  }
+
+  if (context.activeArcs) {
+    prompt += `## Active Story Arcs
+${context.activeArcs}
+
+`;
+  }
+
+  if (context.entityIndex) {
+    prompt += `## Entity Index (all known entities — use these IDs for references)
+${context.entityIndex}
 
 `;
   }
@@ -104,14 +140,58 @@ ${existingWikiSummary}
   prompt += `## Chapter Text
 ${truncated}
 
-Extract all entities (characters, items, locations, events, concepts) from this chapter. For entities already in the wiki, only add NEW details revealed in this chapter.`;
+Extract all entities, update existing ones, track story arcs, and provide a chapter summary. For entities already known, only add NEW details from this chapter.`;
 
   return prompt;
 }
 
 /**
- * Build a compact summary of existing wiki state for the AI prompt.
- * This avoids sending the full wiki JSON and keeps the prompt size manageable.
+ * Build tiered context from DB query results.
+ * Keeps prompt at ~3-5K tokens regardless of book size.
+ */
+export function buildTieredContext(data: {
+  recentSummaries: { chapter_index: number; summary: string; mood: string }[];
+  recentEntities: { id: string; name: string; type: string; short_description: string; significance: number; status: string }[];
+  recentRelationships: Map<string, { target_name: string; relation: string }[]>;
+  activeArcs: { id: string; name: string; arc_type: string; status: string; description: string; latestBeat?: string }[];
+  entityIndex: { id: string; name: string; type: string }[];
+}): TieredContext {
+  // Tier 1: Recent chapter summaries (last 5)
+  const recentSummaries = data.recentSummaries
+    .map((s) => `- Ch. ${s.chapter_index}: ${s.summary} [${s.mood}]`)
+    .join("\n");
+
+  // Tier 2: Active entity roster with key relationships
+  const activeEntityRoster = data.recentEntities
+    .map((e) => {
+      let line = `- [${e.type}] ${e.name} (id: ${e.id}, significance: ${e.significance}, status: ${e.status}): ${e.short_description}`;
+      const rels = data.recentRelationships.get(e.id);
+      if (rels && rels.length > 0) {
+        line += ` | Relations: ${rels.map((r) => `${r.relation}→${r.target_name}`).join(", ")}`;
+      }
+      return line;
+    })
+    .join("\n");
+
+  // Tier 3: Active arcs
+  const activeArcs = data.activeArcs
+    .map((a) => {
+      let line = `- [${a.arc_type}] "${a.name}" (id: ${a.id}, status: ${a.status}): ${a.description}`;
+      if (a.latestBeat) line += ` | Latest: ${a.latestBeat}`;
+      return line;
+    })
+    .join("\n");
+
+  // Tier 4: Compact entity index (just id: name [type])
+  const entityIndex = data.entityIndex
+    .map((e) => `${e.id}: ${e.name} [${e.type}]`)
+    .join("\n");
+
+  return { recentSummaries, activeEntityRoster, activeArcs, entityIndex };
+}
+
+/**
+ * Legacy compat — build compact summary for old-style prompts.
  */
 export function summarizeWikiForPrompt(
   entries: Record<string, { name: string; type: string; aliases: string[]; shortDescription: string }>,

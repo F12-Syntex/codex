@@ -21,8 +21,9 @@ import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
 import { formatChapterContent } from "@/lib/ai-formatting";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
-import type { BookWiki } from "@/lib/ai-wiki";
-import { generateWikiForChapter, createEmptyWiki, loadWiki, saveWiki, buildEntityIndex } from "@/lib/ai-wiki";
+import type { WikiEntryType } from "@/lib/ai-wiki";
+import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
+import { WikiSidebar } from "./WikiSidebar";
 
 interface ReaderProps {
   filePath: string;
@@ -61,12 +62,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const formatAbortRef = useRef(false);
   const [styleDictionary, setStyleDictionary] = useState<StyleDictionary | null>(null);
 
-  // AI Wiki state
-  const [bookWiki, setBookWiki] = useState<BookWiki | null>(null);
+  // AI Wiki state (DB-backed — lightweight)
   const [wikiEnabled, setWikiEnabled] = useState(false);
   const [wikiProcessingChapter, setWikiProcessingChapter] = useState<number | null>(null);
   const wikiAbortRef = useRef(false);
   const [selectedWikiEntryId, setSelectedWikiEntryId] = useState<string | null>(null);
+  const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
+  const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
+  const [wikiEntryCount, setWikiEntryCount] = useState(0);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -335,10 +338,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     loadDictionary(filePath).then((dict) => {
       if (dict) setStyleDictionary(dict);
     });
-    // Load wiki state
-    loadWiki(filePath).then((wiki) => {
-      if (wiki) setBookWiki(wiki);
-    });
+    // Migrate old JSON wiki if exists, then load DB wiki state
+    const loadWikiState = async () => {
+      await attemptMigration(filePath);
+      const [processed, entityIdx] = await Promise.all([
+        window.electronAPI?.wikiGetProcessed(filePath),
+        window.electronAPI?.wikiGetEntityIndex(filePath),
+      ]);
+      if (processed) setWikiProcessedChapters(new Set(processed));
+      if (entityIdx) {
+        setWikiEntryCount(entityIdx.length);
+        setWikiEntityIndex(buildEntityIndexFromDB(entityIdx));
+      }
+    };
+    loadWikiState();
     window.electronAPI?.getSetting(`wikiEnabled:${filePath}`).then((raw) => {
       if (raw != null) {
         try { setWikiEnabled(JSON.parse(raw)); } catch { /* ignore */ }
@@ -451,44 +464,53 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // ── AI Wiki ──────────────────────────────────────────
 
+  // Refresh wiki state from DB (after processing)
+  const refreshWikiState = useCallback(async () => {
+    const [processed, entityIdx] = await Promise.all([
+      window.electronAPI?.wikiGetProcessed(filePath),
+      window.electronAPI?.wikiGetEntityIndex(filePath),
+    ]);
+    if (processed) setWikiProcessedChapters(new Set(processed));
+    if (entityIdx) {
+      setWikiEntryCount(entityIdx.length);
+      setWikiEntityIndex(buildEntityIndexFromDB(entityIdx));
+    }
+  }, [filePath]);
+
   const processWikiChapter = useCallback(async (chapterIndex: number) => {
     if (!chapters[chapterIndex]) return;
-    const wiki = bookWiki ?? createEmptyWiki(title, filePath);
-    if (wiki.processedChapters.includes(chapterIndex)) return;
+    if (wikiProcessedChapters.has(chapterIndex)) return;
 
     setWikiProcessingChapter(chapterIndex);
     wikiAbortRef.current = false;
 
     try {
       const chapterText = chapters[chapterIndex].paragraphs.join("\n");
-      const updated = await generateWikiForChapter(
+      await generateWikiForChapter(
         chapterIndex,
         chapterText,
         title,
-        wiki,
+        filePath,
         () => wikiAbortRef.current,
       );
 
       if (wikiAbortRef.current) return;
 
-      setBookWiki(updated);
-      await saveWiki(updated);
+      await refreshWikiState();
     } catch (err) {
       console.error(`Failed to process wiki for chapter ${chapterIndex}:`, err);
     } finally {
       setWikiProcessingChapter(null);
     }
-  }, [chapters, title, filePath, bookWiki]);
+  }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
 
   // Auto-process wiki when chapter changes (if enabled)
-  // Also auto-formats the chapter first if not already formatted
   useEffect(() => {
     if (!wikiEnabled || !bookContent || !filePath) return;
-    const wiki = bookWiki ?? createEmptyWiki(title, filePath);
-    if (wiki.processedChapters.includes(currentChapter)) return;
+    if (wikiProcessedChapters.has(currentChapter)) return;
 
     const run = async () => {
-      // Format first if needed (wiki depends on formatting)
+      // Format first if needed
       if (!formattedChapters[currentChapter] && chapters[currentChapter]) {
         await formatChapter(currentChapter);
       }
@@ -516,18 +538,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const clearWiki = useCallback(() => {
     wikiAbortRef.current = true;
-    setBookWiki(null);
     setWikiEnabled(false);
     setWikiProcessingChapter(null);
-    window.electronAPI?.setSetting(`wiki:${filePath}`, JSON.stringify(createEmptyWiki(title, filePath)));
+    setWikiEntityIndex([]);
+    setWikiProcessedChapters(new Set());
+    setWikiEntryCount(0);
+    setSelectedWikiEntryId(null);
+    window.electronAPI?.wikiClear(filePath);
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(false));
-  }, [filePath, title]);
+  }, [filePath]);
 
   const processAllWikiChapters = useCallback(async () => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
-    let wiki = bookWiki ?? createEmptyWiki(title, filePath);
     wikiAbortRef.current = false;
     formatAbortRef.current = false;
 
@@ -536,7 +560,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
     for (let i = 0; i < chapters.length; i++) {
       if (wikiAbortRef.current) break;
-      if (wiki.processedChapters.includes(i)) continue;
+      if (wikiProcessedChapters.has(i)) continue;
 
       setWikiProcessingChapter(i);
 
@@ -562,28 +586,30 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
         // Then process wiki
         const chapterText = chapters[i].paragraphs.join("\n");
-        wiki = await generateWikiForChapter(
-          i, chapterText, title, wiki,
+        await generateWikiForChapter(
+          i, chapterText, title, filePath,
           () => wikiAbortRef.current,
         );
         if (wikiAbortRef.current) break;
-        setBookWiki({ ...wiki });
+
+        // Refresh state periodically
+        await refreshWikiState();
       } catch (err) {
         console.error(`Failed to process wiki for chapter ${i}:`, err);
       }
     }
 
     await window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(currentFormatted));
-    await saveWiki(wiki);
+    await refreshWikiState();
     setWikiProcessingChapter(null);
     setFormattingChapter(null);
-  }, [chapters, title, filePath, bookWiki, formattedChapters, styleDictionary]);
+  }, [chapters, title, filePath, wikiProcessedChapters, formattedChapters, styleDictionary, refreshWikiState]);
 
-  // Wiki entity index for text highlighting
-  const wikiEntityIndex = useMemo(() => {
-    if (!wikiEnabled || !bookWiki) return [];
-    return buildEntityIndex(bookWiki);
-  }, [wikiEnabled, bookWiki]);
+  // Wiki entity index for text highlighting (already from DB)
+  const effectiveWikiEntityIndex = useMemo(() => {
+    if (!wikiEnabled) return [];
+    return wikiEntityIndex;
+  }, [wikiEnabled, wikiEntityIndex]);
 
   // Effective HTML paragraphs (formatted or original)
   const effectiveHtml = formattingEnabled && formattedChapters[currentChapter]
@@ -855,7 +881,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               filePath={filePath}
               bookTitle={title}
               wikiEnabled={wikiEnabled}
-              bookWiki={bookWiki}
+              wikiEntryCount={wikiEntryCount}
+              wikiProcessedCount={wikiProcessedChapters.size}
               wikiProcessingChapter={wikiProcessingChapter}
               totalChapters={chapters.length}
               currentChapter={currentChapter}
@@ -863,6 +890,18 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onWikiProcessAll={processAllWikiChapters}
               onClearWiki={clearWiki}
               onClose={() => setShowAI(false)}
+            />
+          )}
+
+          {selectedWikiEntryId && wikiEnabled && (
+            <WikiSidebar
+              filePath={filePath}
+              entryId={selectedWikiEntryId}
+              currentChapter={currentChapter}
+              bookTitle={title}
+              theme={theme}
+              onClose={() => setSelectedWikiEntryId(null)}
+              onEntryClick={(id) => setSelectedWikiEntryId(id)}
             />
           )}
 
@@ -906,8 +945,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               ttsShowReadMark={settings.ttsShowReadMark}
               onPlayFromParagraph={(idx) => tts.actions.playFrom(idx)}
               wikiEnabled={wikiEnabled}
-              wikiEntityIndex={wikiEntityIndex}
-              bookWiki={bookWiki}
+              wikiEntityIndex={effectiveWikiEntityIndex}
               currentChapterIndex={currentChapter}
               selectedWikiEntryId={selectedWikiEntryId}
               onWikiEntryClick={setSelectedWikiEntryId}

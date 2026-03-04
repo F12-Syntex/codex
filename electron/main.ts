@@ -3,7 +3,24 @@ import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
-import { initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark, getExcludedPaths, recordPageView, getReadingActivity, getReadingStats } from "./database";
+import {
+  initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem,
+  getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark,
+  getExcludedPaths, recordPageView, getReadingActivity, getReadingStats,
+  // Wiki
+  upsertWikiEntry, getWikiEntries, getWikiEntry, deleteWikiEntry,
+  addWikiAliases, getWikiAliases,
+  addWikiDetails, getWikiDetailsForEntry,
+  addWikiRelationship, getRelationshipsForEntry,
+  addWikiAppearance, getAppearancesForEntry,
+  upsertChapterSummary, getChapterSummaries, getAllChapterSummaries,
+  upsertArc, getActiveArcs, getAllArcs, addArcBeat, getArcBeats,
+  addArcEntity, getArcEntities,
+  markChapterProcessed, getProcessedChapters,
+  getWikiMeta, upsertWikiMeta,
+  getEntityIndex, getRecentEntities,
+  clearWiki, migrateJsonWiki,
+} from "./database";
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
 import type { LibraryItem } from "./database";
@@ -421,6 +438,49 @@ function createWindow() {
   ipcMain.handle("activity:stats", () => {
     return getReadingStats();
   });
+
+  // ── Wiki ────────────────────────────────────────────
+
+  ipcMain.handle("wiki:upsert-entry", (_event, entry) => { upsertWikiEntry(entry); });
+  ipcMain.handle("wiki:get-entries", (_event, filePath: string) => getWikiEntries(filePath));
+  ipcMain.handle("wiki:get-entry", (_event, filePath: string, entryId: string) => getWikiEntry(filePath, entryId));
+  ipcMain.handle("wiki:delete-entry", (_event, filePath: string, entryId: string) => { deleteWikiEntry(filePath, entryId); });
+
+  ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: string[]) => { addWikiAliases(filePath, entryId, aliases); });
+  ipcMain.handle("wiki:get-aliases", (_event, filePath: string, entryId: string) => getWikiAliases(filePath, entryId));
+
+  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]) => { addWikiDetails(filePath, entryId, details); });
+  ipcMain.handle("wiki:get-details", (_event, filePath: string, entryId: string, maxChapter?: number) => getWikiDetailsForEntry(filePath, entryId, maxChapter));
+
+  ipcMain.handle("wiki:add-relationship", (_event, filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) => { addWikiRelationship(filePath, rel); });
+  ipcMain.handle("wiki:get-relationships", (_event, filePath: string, entryId: string, maxChapter?: number) => getRelationshipsForEntry(filePath, entryId, maxChapter));
+
+  ipcMain.handle("wiki:add-appearance", (_event, filePath: string, entryId: string, chapterIndex: number) => { addWikiAppearance(filePath, entryId, chapterIndex); });
+  ipcMain.handle("wiki:get-appearances", (_event, filePath: string, entryId: string) => getAppearancesForEntry(filePath, entryId));
+
+  ipcMain.handle("wiki:upsert-chapter-summary", (_event, filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) => { upsertChapterSummary(filePath, summary); });
+  ipcMain.handle("wiki:get-chapter-summaries", (_event, filePath: string, fromCh: number, toCh: number) => getChapterSummaries(filePath, fromCh, toCh));
+  ipcMain.handle("wiki:get-all-chapter-summaries", (_event, filePath: string) => getAllChapterSummaries(filePath));
+
+  ipcMain.handle("wiki:upsert-arc", (_event, filePath: string, arc: { id: string; name: string; description?: string; arcType?: string; status?: string; startChapter: number; endChapter?: number | null }) => { upsertArc(filePath, arc); });
+  ipcMain.handle("wiki:get-active-arcs", (_event, filePath: string) => getActiveArcs(filePath));
+  ipcMain.handle("wiki:get-all-arcs", (_event, filePath: string) => getAllArcs(filePath));
+  ipcMain.handle("wiki:add-arc-beat", (_event, filePath: string, arcId: string, beat: { chapterIndex: number; beatType: string; description: string }) => { addArcBeat(filePath, arcId, beat); });
+  ipcMain.handle("wiki:get-arc-beats", (_event, filePath: string, arcId: string) => getArcBeats(filePath, arcId));
+  ipcMain.handle("wiki:add-arc-entity", (_event, filePath: string, arcId: string, entryId: string, role: string) => { addArcEntity(filePath, arcId, entryId, role); });
+  ipcMain.handle("wiki:get-arc-entities", (_event, filePath: string, arcId: string) => getArcEntities(filePath, arcId));
+
+  ipcMain.handle("wiki:mark-processed", (_event, filePath: string, chapterIndex: number) => { markChapterProcessed(filePath, chapterIndex); });
+  ipcMain.handle("wiki:get-processed", (_event, filePath: string) => getProcessedChapters(filePath));
+
+  ipcMain.handle("wiki:get-meta", (_event, filePath: string) => getWikiMeta(filePath));
+  ipcMain.handle("wiki:upsert-meta", (_event, filePath: string, bookTitle: string) => { upsertWikiMeta(filePath, bookTitle); });
+
+  ipcMain.handle("wiki:get-entity-index", (_event, filePath: string) => getEntityIndex(filePath));
+  ipcMain.handle("wiki:get-recent-entities", (_event, filePath: string, lastN: number, currentChapter: number) => getRecentEntities(filePath, lastN, currentChapter));
+
+  ipcMain.handle("wiki:clear", (_event, filePath: string) => { clearWiki(filePath); });
+  ipcMain.handle("wiki:migrate-json", (_event, filePath: string) => migrateJsonWiki(filePath));
 
   // ── Window events ─────────────────────────────────
 

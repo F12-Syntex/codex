@@ -4,8 +4,8 @@ import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
-import type { BookWiki, WikiEntryType } from "@/lib/ai-wiki";
-import { WikiInfoPanel, buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
+import type { WikiEntryType } from "@/lib/ai-wiki";
+import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -34,7 +34,6 @@ interface TextContentProps {
   aiFormattingEnabled?: boolean;
   wikiEnabled?: boolean;
   wikiEntityIndex?: Array<{ id: string; name: string; type: WikiEntryType; color: string }>;
-  bookWiki?: BookWiki | null;
   currentChapterIndex?: number;
   selectedWikiEntryId?: string | null;
   onWikiEntryClick?: (entryId: string | null) => void;
@@ -97,7 +96,6 @@ export function TextContent({
   aiFormattingEnabled = false,
   wikiEnabled = false,
   wikiEntityIndex = [],
-  bookWiki = null,
   currentChapterIndex = 0,
   selectedWikiEntryId = null,
   onWikiEntryClick,
@@ -831,14 +829,7 @@ export function TextContent({
 
       </div>
 
-      {/* Wiki info panel — bottom bar */}
-      {selectedWikiEntryId && bookWiki?.entries[selectedWikiEntryId] && (
-        <WikiInfoPanel
-          entry={bookWiki.entries[selectedWikiEntryId]}
-          currentChapter={currentChapterIndex}
-          onClose={() => onWikiEntryClick?.(null)}
-        />
-      )}
+      {/* Wiki sidebar is now rendered in Reader.tsx */}
 
       <style>{`
         .reader-image img {

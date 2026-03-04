@@ -5,8 +5,6 @@ import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loade
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
-import type { BookWiki } from "@/lib/ai-wiki";
-
 interface AISidebarProps {
   theme: ThemeClasses;
   chapters: BookChapter[];
@@ -28,7 +26,8 @@ interface AISidebarProps {
   filePath: string;
   bookTitle: string;
   wikiEnabled: boolean;
-  bookWiki: BookWiki | null;
+  wikiEntryCount: number;
+  wikiProcessedCount: number;
   wikiProcessingChapter: number | null;
   totalChapters: number;
   currentChapter: number;
@@ -59,7 +58,8 @@ export function AISidebar({
   filePath,
   bookTitle,
   wikiEnabled,
-  bookWiki,
+  wikiEntryCount,
+  wikiProcessedCount,
   wikiProcessingChapter,
   totalChapters,
   currentChapter,
@@ -81,8 +81,6 @@ export function AISidebar({
   const chaptersToFormatCount = chapters.length - alreadyFormatted;
   const isFormattingAll = formatAllProgress !== null && formattingChapter !== null;
 
-  const wikiEntryCount = bookWiki ? Object.keys(bookWiki.entries).length : 0;
-  const wikiProcessedCount = bookWiki ? bookWiki.processedChapters.length : 0;
   const wikiChaptersToProcess = totalChapters - wikiProcessedCount;
 
   // Helper: get chapter display name

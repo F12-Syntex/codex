@@ -91,6 +91,77 @@ interface ReadingStats {
   activityByBook: { filePath: string; title: string; pagesRead: number; lastRead: string }[];
 }
 
+// Wiki DB types
+interface WikiEntryRow {
+  id: string;
+  file_path: string;
+  name: string;
+  type: string;
+  short_description: string;
+  description: string;
+  color: string;
+  first_appearance: number;
+  significance: number;
+  status: string;
+}
+
+interface WikiDetailRow {
+  id: number;
+  file_path: string;
+  entry_id: string;
+  chapter_index: number;
+  category: string;
+  content: string;
+}
+
+interface WikiRelationshipRow {
+  id: number;
+  file_path: string;
+  source_id: string;
+  target_id: string;
+  relation: string;
+  since_chapter: number;
+  until_chapter: number | null;
+  description: string;
+}
+
+interface WikiChapterSummaryRow {
+  file_path: string;
+  chapter_index: number;
+  summary: string;
+  key_events: string;
+  active_entities: string;
+  mood: string;
+}
+
+interface WikiArcRow {
+  id: string;
+  file_path: string;
+  name: string;
+  description: string;
+  arc_type: string;
+  status: string;
+  start_chapter: number;
+  end_chapter: number | null;
+}
+
+interface WikiArcBeatRow {
+  id: number;
+  file_path: string;
+  arc_id: string;
+  chapter_index: number;
+  beat_type: string;
+  description: string;
+}
+
+interface WikiEntityIndexItem {
+  id: string;
+  name: string;
+  type: string;
+  color: string;
+  aliases: string[];
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
   minimize: () => void;
@@ -116,6 +187,48 @@ interface ElectronAPI {
 
   // Wiki
   openWiki: (info: { filePath: string; title: string }) => Promise<void>;
+
+  // Wiki DB operations
+  wikiUpsertEntry: (entry: { id: string; filePath: string; name: string; type: string; shortDescription?: string; description?: string; color?: string; firstAppearance?: number; significance?: number; status?: string }) => Promise<void>;
+  wikiGetEntries: (filePath: string) => Promise<WikiEntryRow[]>;
+  wikiGetEntry: (filePath: string, entryId: string) => Promise<WikiEntryRow | null>;
+  wikiDeleteEntry: (filePath: string, entryId: string) => Promise<void>;
+
+  wikiAddAliases: (filePath: string, entryId: string, aliases: string[]) => Promise<void>;
+  wikiGetAliases: (filePath: string, entryId: string) => Promise<string[]>;
+
+  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]) => Promise<void>;
+  wikiGetDetails: (filePath: string, entryId: string, maxChapter?: number) => Promise<WikiDetailRow[]>;
+
+  wikiAddRelationship: (filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) => Promise<void>;
+  wikiGetRelationships: (filePath: string, entryId: string, maxChapter?: number) => Promise<WikiRelationshipRow[]>;
+
+  wikiAddAppearance: (filePath: string, entryId: string, chapterIndex: number) => Promise<void>;
+  wikiGetAppearances: (filePath: string, entryId: string) => Promise<number[]>;
+
+  wikiUpsertChapterSummary: (filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) => Promise<void>;
+  wikiGetChapterSummaries: (filePath: string, fromCh: number, toCh: number) => Promise<WikiChapterSummaryRow[]>;
+  wikiGetAllChapterSummaries: (filePath: string) => Promise<WikiChapterSummaryRow[]>;
+
+  wikiUpsertArc: (filePath: string, arc: { id: string; name: string; description?: string; arcType?: string; status?: string; startChapter: number; endChapter?: number | null }) => Promise<void>;
+  wikiGetActiveArcs: (filePath: string) => Promise<WikiArcRow[]>;
+  wikiGetAllArcs: (filePath: string) => Promise<WikiArcRow[]>;
+  wikiAddArcBeat: (filePath: string, arcId: string, beat: { chapterIndex: number; beatType: string; description: string }) => Promise<void>;
+  wikiGetArcBeats: (filePath: string, arcId: string) => Promise<WikiArcBeatRow[]>;
+  wikiAddArcEntity: (filePath: string, arcId: string, entryId: string, role: string) => Promise<void>;
+  wikiGetArcEntities: (filePath: string, arcId: string) => Promise<{ entry_id: string; role: string }[]>;
+
+  wikiMarkProcessed: (filePath: string, chapterIndex: number) => Promise<void>;
+  wikiGetProcessed: (filePath: string) => Promise<number[]>;
+
+  wikiGetMeta: (filePath: string) => Promise<{ file_path: string; book_title: string; updated_at: string } | null>;
+  wikiUpsertMeta: (filePath: string, bookTitle: string) => Promise<void>;
+
+  wikiGetEntityIndex: (filePath: string) => Promise<WikiEntityIndexItem[]>;
+  wikiGetRecentEntities: (filePath: string, lastN: number, currentChapter: number) => Promise<WikiEntryRow[]>;
+
+  wikiClear: (filePath: string) => Promise<void>;
+  wikiMigrateJson: (filePath: string) => Promise<boolean>;
 
   // Bookmarks
   getBookmarks: (filePath: string) => Promise<ReaderBookmark[]>;

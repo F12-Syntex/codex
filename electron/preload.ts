@@ -50,6 +50,78 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openWiki: (info: { filePath: string; title: string }) =>
     ipcRenderer.invoke("wiki:open", info),
 
+  // Wiki DB operations
+  wikiUpsertEntry: (entry: { id: string; filePath: string; name: string; type: string; shortDescription?: string; description?: string; color?: string; firstAppearance?: number; significance?: number; status?: string }) =>
+    ipcRenderer.invoke("wiki:upsert-entry", entry),
+  wikiGetEntries: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-entries", filePath),
+  wikiGetEntry: (filePath: string, entryId: string) =>
+    ipcRenderer.invoke("wiki:get-entry", filePath, entryId),
+  wikiDeleteEntry: (filePath: string, entryId: string) =>
+    ipcRenderer.invoke("wiki:delete-entry", filePath, entryId),
+
+  wikiAddAliases: (filePath: string, entryId: string, aliases: string[]) =>
+    ipcRenderer.invoke("wiki:add-aliases", filePath, entryId, aliases),
+  wikiGetAliases: (filePath: string, entryId: string) =>
+    ipcRenderer.invoke("wiki:get-aliases", filePath, entryId),
+
+  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]) =>
+    ipcRenderer.invoke("wiki:add-details", filePath, entryId, details),
+  wikiGetDetails: (filePath: string, entryId: string, maxChapter?: number) =>
+    ipcRenderer.invoke("wiki:get-details", filePath, entryId, maxChapter),
+
+  wikiAddRelationship: (filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) =>
+    ipcRenderer.invoke("wiki:add-relationship", filePath, rel),
+  wikiGetRelationships: (filePath: string, entryId: string, maxChapter?: number) =>
+    ipcRenderer.invoke("wiki:get-relationships", filePath, entryId, maxChapter),
+
+  wikiAddAppearance: (filePath: string, entryId: string, chapterIndex: number) =>
+    ipcRenderer.invoke("wiki:add-appearance", filePath, entryId, chapterIndex),
+  wikiGetAppearances: (filePath: string, entryId: string) =>
+    ipcRenderer.invoke("wiki:get-appearances", filePath, entryId),
+
+  wikiUpsertChapterSummary: (filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) =>
+    ipcRenderer.invoke("wiki:upsert-chapter-summary", filePath, summary),
+  wikiGetChapterSummaries: (filePath: string, fromCh: number, toCh: number) =>
+    ipcRenderer.invoke("wiki:get-chapter-summaries", filePath, fromCh, toCh),
+  wikiGetAllChapterSummaries: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-all-chapter-summaries", filePath),
+
+  wikiUpsertArc: (filePath: string, arc: { id: string; name: string; description?: string; arcType?: string; status?: string; startChapter: number; endChapter?: number | null }) =>
+    ipcRenderer.invoke("wiki:upsert-arc", filePath, arc),
+  wikiGetActiveArcs: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-active-arcs", filePath),
+  wikiGetAllArcs: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-all-arcs", filePath),
+  wikiAddArcBeat: (filePath: string, arcId: string, beat: { chapterIndex: number; beatType: string; description: string }) =>
+    ipcRenderer.invoke("wiki:add-arc-beat", filePath, arcId, beat),
+  wikiGetArcBeats: (filePath: string, arcId: string) =>
+    ipcRenderer.invoke("wiki:get-arc-beats", filePath, arcId),
+  wikiAddArcEntity: (filePath: string, arcId: string, entryId: string, role: string) =>
+    ipcRenderer.invoke("wiki:add-arc-entity", filePath, arcId, entryId, role),
+  wikiGetArcEntities: (filePath: string, arcId: string) =>
+    ipcRenderer.invoke("wiki:get-arc-entities", filePath, arcId),
+
+  wikiMarkProcessed: (filePath: string, chapterIndex: number) =>
+    ipcRenderer.invoke("wiki:mark-processed", filePath, chapterIndex),
+  wikiGetProcessed: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-processed", filePath),
+
+  wikiGetMeta: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-meta", filePath),
+  wikiUpsertMeta: (filePath: string, bookTitle: string) =>
+    ipcRenderer.invoke("wiki:upsert-meta", filePath, bookTitle),
+
+  wikiGetEntityIndex: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-entity-index", filePath),
+  wikiGetRecentEntities: (filePath: string, lastN: number, currentChapter: number) =>
+    ipcRenderer.invoke("wiki:get-recent-entities", filePath, lastN, currentChapter),
+
+  wikiClear: (filePath: string) =>
+    ipcRenderer.invoke("wiki:clear", filePath),
+  wikiMigrateJson: (filePath: string) =>
+    ipcRenderer.invoke("wiki:migrate-json", filePath),
+
   // Bookmarks
   getBookmarks: (filePath: string) =>
     ipcRenderer.invoke("bookmarks:get", filePath),
