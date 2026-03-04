@@ -26,7 +26,7 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     label: "Quick",
     description: "Fast responses, lower cost",
     icon: "Zap",
-    defaultModel: "x-ai/grok-4.1-fast",
+    defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
   },
 ];
 

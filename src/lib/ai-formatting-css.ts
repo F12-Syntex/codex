@@ -32,7 +32,8 @@ export const AI_FORMATTING_STYLES = `
   --ai-fmt-thought-border: oklch(1 0 0 / 8%);
   --ai-fmt-sfx: oklch(0.75 0 0);
   --ai-fmt-reveal-bg: oklch(0.60 0.20 264 / 8%);
-
+  --ai-fmt-system-color: oklch(0.55 0 0);
+  --ai-fmt-system-rule: oklch(1 0 0 / 6%);
   --ai-fmt-icon-filter: brightness(0.8);
 }
 
@@ -53,7 +54,8 @@ export const AI_FORMATTING_STYLES = `
   --ai-fmt-thought-border: oklch(0 0 0 / 8%);
   --ai-fmt-sfx: oklch(0.35 0 0);
   --ai-fmt-reveal-bg: oklch(0.48 0.18 264 / 8%);
-
+  --ai-fmt-system-color: oklch(0.45 0 0);
+  --ai-fmt-system-rule: oklch(0 0 0 / 8%);
   --ai-fmt-icon-filter: brightness(0.3);
 }
 
@@ -74,7 +76,8 @@ export const AI_FORMATTING_STYLES = `
   --ai-fmt-thought-border: oklch(0.40 0.04 75 / 15%);
   --ai-fmt-sfx: oklch(0.38 0.03 55);
   --ai-fmt-reveal-bg: oklch(0.52 0.10 55 / 8%);
-
+  --ai-fmt-system-color: oklch(0.48 0.03 55);
+  --ai-fmt-system-rule: oklch(0.40 0.04 75 / 12%);
   --ai-fmt-icon-filter: brightness(0.4) sepia(0.3);
 }
 
@@ -172,15 +175,19 @@ export const AI_FORMATTING_STYLES = `
   font-size: 0.9em;
 }
 
-/* ── System Message — subtle left-border box ─────────────── */
+/* ── System Message — centered announcement block ─────────── */
 .ai-fmt-system-msg {
-  border-left: 2px solid var(--ai-fmt-accent);
-  padding: 4px 10px;
-  margin: 4px 0;
-  font-size: 0.93em;
-  color: var(--ai-fmt-text);
-  background: var(--ai-fmt-accent-dim);
-  border-radius: 0 8px 8px 0;
+  display: block;
+  text-align: center;
+  padding: 6px 16px;
+  margin: 8px 0;
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ai-fmt-system-color);
+  border-top: 1px solid var(--ai-fmt-system-rule);
+  border-bottom: 1px solid var(--ai-fmt-system-rule);
 }
 
 /* ── Item Card — tight inline card ───────────────────────── */

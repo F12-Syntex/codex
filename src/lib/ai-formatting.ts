@@ -6,6 +6,7 @@ import { chatWithPreset } from "./openrouter";
 import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
 import type { StyleDictionary } from "./ai-style-dictionary";
 import { extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary } from "./ai-style-dictionary";
+import { buildClassReference } from "./ai-formatting-classes";
 
 const PRESET_ID = "quick";
 const CHUNK_SIZE = 40;
@@ -15,64 +16,28 @@ const PARALLEL_CHUNKS = 3;
 /** Any class starting with "ai-fmt-" is allowed — gives AI full creative freedom. */
 const AI_FMT_PREFIX = "ai-fmt-";
 
-const SYSTEM_PROMPT = `You are a book formatting AI. You receive a JSON array of HTML paragraph strings and return ONLY the paragraphs you changed, as a JSON object mapping index → formatted HTML.
+const SYSTEM_RULES = `You are a book formatting AI. You receive a JSON object of HTML paragraphs (keyed by index) and return ONLY the ones you changed, as a JSON object mapping index → formatted HTML.
 
-Read the content, understand the genre and tone, and decide what deserves visual enhancement. You have a toolkit of CSS classes below — use your judgement on what fits. A literary novel needs different treatment than a game-lit novel. Adapt.
+Read the content, understand the genre and tone, and apply visual enhancements from the CLASS REFERENCE below. Use your judgement — a literary novel needs different treatment than a game-lit novel. Adapt.
 
-# CONSTRAINTS
-1. Return a JSON object where keys are paragraph indices (0-based) and values are the formatted HTML. ONLY include paragraphs you actually modified. Skip paragraphs that need no changes.
-2. Only use the CSS classes listed below. No inline styles. No Unicode emoji.
-3. Fix grammar and punctuation. Preserve tone, dialect, and style.
-4. For narration and dialogue: keep original text — don't rewrite or add content.
-5. For structured/game data (stats, skills, items, tables): you MAY restructure and abbreviate for clarity. Shorten labels, abbreviate skill names, split lists into badges. All original information must be preserved but the presentation can change.
-6. Most paragraphs should stay as normal text — SKIP THEM (don't include in output). Only include paragraphs that genuinely benefit from enhancement or need grammar fixes.
-7. Keep enhancements inline and compact. Don't make anything dominate the page.
-8. If consecutive paragraphs form one structured block (like a stat table), merge into the first slot's index and set consumed slot indices to "".
-
-# YOUR TOOLKIT
-
-## Structured data → ai-fmt-stat-block
-A full-width grid for key-value data. Use icons on EVERY label.
-Structure: <div class="ai-fmt-stat-block"> containing rows of <div class="ai-fmt-stat-row"><span class="ai-fmt-stat-label"><span class="ai-fmt-icon ai-fmt-icon-NAME"></span>Label</span><span class="ai-fmt-stat-value">Value</span></div>
-
-Rules for stat blocks:
-- Keep labels to 1-2 words. Use icons to replace words where possible (heart icon instead of writing "Health").
-- Numeric stats: put the number in the value column. If there are many numeric stats with short values, you can combine 2-3 per row separated by thin pipes: "1.5 | 1.4 | 1.6" with a combined label.
-- Lists of skills/items/traits: do NOT put long comma lists in a stat-value cell. Instead, put each one as a separate <span class="ai-fmt-status-badge ai-fmt-status-buff">Skill Name</span> in the value cell, or break them out below the stat block as individual badges.
-- Titles/ranks/evaluations: use an ai-fmt-xp-badge for the value.
-- Names: use a short header row or put the name in an ai-fmt-reveal span above the block.
-
-## Callout / notification → ai-fmt-system-msg
-A subtle left-bordered box for any text that stands apart from narration: system messages, announcements, letters, signs, inscriptions, warnings, formal declarations, etc.
-
-## Inline highlight → ai-fmt-xp-badge
-A small inline pill for numeric gains, rewards, scores, rankings, or any short value worth calling out.
-
-## Named item → ai-fmt-item-card + ai-fmt-item-name
-A compact card for named things being introduced with descriptions: items, skills, spells, locations, etc. Use a rarity class on the name if a quality/tier applies:
-ai-fmt-rarity-common, ai-fmt-rarity-uncommon, ai-fmt-rarity-rare, ai-fmt-rarity-epic, ai-fmt-rarity-legendary
-
-## Inline tags → ai-fmt-status-badge
-Tiny inline pills. Combine with ai-fmt-status-buff (positive) or ai-fmt-status-debuff (negative) for any status, condition, trait, or tag mentioned in text.
-
-## Dialogue tags → ai-fmt-dialogue-villain / ai-fmt-dialogue-divine / ai-fmt-dialogue-hero
-A tiny colored pill/tag placed BEFORE the quoted dialogue. Do NOT wrap the quote text itself — instead insert a <span class="ai-fmt-dialogue-hero">Zephyr</span> (using the CHARACTER'S NAME, not "HERO") right before the opening quote mark. The tag text MUST be the character's actual name (1-8 chars), never a generic role like "HERO", "VILLAIN", or "DIVINE". villain = antagonist/threatening characters, divine = otherworldly/authoritative/system voices, hero = protagonist and allies. Only tag truly notable dialogue — most quotes should stay untagged.
-
-## Internal monologue → ai-fmt-thought
-Left-bordered italic block for thoughts, reflections, or inner voice.
-
-## Emphasis → ai-fmt-sfx
-Bold treatment for impact words: sound effects, dramatic single words, etc.
-
-## First mention → ai-fmt-reveal
-Subtle background highlight for important names, titles, or concepts when first introduced.
-
-## Icons — use on EVERY stat label, and on badges/items/headers
-Add a <span class="ai-fmt-icon ai-fmt-icon-NAME"></span> before text. Every stat-label MUST have an icon. Also use on item names, system message headers, and badge text. Don't use on plain narration.
-Available: sword (combat/attack), shield (defense/armor), sparkle (magic/special), zap (speed/energy), scroll (knowledge/lore), skull (death/danger), arrow-up (level/increase), gem (rarity/treasure), trophy (rank/achievement), heart (health/HP), star (rating/level), flame (fire/power), eye (perception/spirit), crown (royalty/authority), book (skills/learning), target (accuracy/focus), plus (gain/addition), user (character/name), bolt (agility/lightning).
+# RULES
+1. Return {index: html} for modified paragraphs ONLY. Skip unchanged ones.
+2. Use ONLY classes from the reference. No inline styles. No Unicode emoji.
+3. Fix grammar/punctuation. Preserve tone, dialect, style.
+4. Narration/dialogue: keep original text — don't rewrite or add content.
+5. Structured data (stats, skills, tables): MAY restructure for clarity. Keep all info.
+6. Most paragraphs stay as plain text — SKIP THEM.
+7. Keep enhancements compact and inline. Don't dominate the page.
+8. Consecutive structured paragraphs: merge into first index, set consumed indices to "".
+9. Stat block labels: 1-2 words max, EVERY label gets an icon. Use icons to replace words.
+10. Dialogue tags: use the CHARACTER'S ACTUAL NAME, never generic roles like "HERO"/"VILLAIN".
+11. System messages: keep text SHORT and punchy.
 
 # OUTPUT
-Return ONLY a valid JSON object mapping indices to formatted strings, e.g. {"0":"<div>...</div>","3":"<p>fixed text</p>","4":""}. No markdown fences, no explanation. If nothing needs changing, return {}.`;
+Return ONLY valid JSON: {"0":"<div>...</div>","3":"<p>text</p>","4":""}. No markdown fences, no explanation.`;
+
+/** Full system prompt = rules + generated class reference */
+const SYSTEM_PROMPT = SYSTEM_RULES + "\n\n# CLASS REFERENCE\n" + buildClassReference();
 
 /**
  * Build the messages array for the AI formatting call.
