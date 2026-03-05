@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AlertCircle, Megaphone, ChevronDown, GitCommit } from "lucide-react";
+import { AlertCircle, Megaphone, ChevronDown, GitCommit, Download, Loader2, CheckCircle2, ArrowDownToLine } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 
 interface GitHubRelease {
   id: number;
@@ -44,6 +45,111 @@ function parseCommitMessage(message: string): { title: string; version: string |
     };
   }
   return { title: message, version: null };
+}
+
+/* ── Version comparison ───────────────────────────────────── */
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return -1;
+    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return 1;
+  }
+  return 0;
+}
+
+/* ── Update Banner ────────────────────────────────────────── */
+
+type UpdateState = "idle" | "checking" | "downloading" | "ready" | "error";
+
+function UpdateBanner({ latestVersion }: { latestVersion: string }) {
+  const [state, setState] = useState<UpdateState>("idle");
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    api.onUpdateStatus((event) => {
+      switch (event.status) {
+        case "checking":
+          setState("checking");
+          break;
+        case "available":
+          setState("downloading");
+          break;
+        case "not-available":
+          setState("idle");
+          break;
+        case "progress": {
+          setState("downloading");
+          const data = event.data as { percent: number } | undefined;
+          if (data) setProgress(data.percent);
+          break;
+        }
+        case "downloaded":
+          setState("ready");
+          break;
+        case "error":
+          setState("error");
+          break;
+      }
+    });
+  }, []);
+
+  const handleUpdate = () => {
+    setState("checking");
+    window.electronAPI?.checkForUpdates();
+  };
+
+  const handleInstall = () => {
+    window.electronAPI?.installUpdate();
+  };
+
+  return (
+    <div className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-[var(--accent-brand)]/20 bg-[var(--accent-brand)]/[0.06] px-4 py-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
+        <ArrowDownToLine className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-white/70">Update available</p>
+        <p className="text-xs text-white/35">
+          {state === "downloading"
+            ? `Downloading v${latestVersion}... ${progress}%`
+            : state === "ready"
+              ? `v${latestVersion} is ready to install`
+              : state === "checking"
+                ? "Checking for updates..."
+                : state === "error"
+                  ? "Update failed — try again"
+                  : `v${APP_VERSION} → v${latestVersion}`}
+        </p>
+      </div>
+
+      {state === "ready" ? (
+        <button
+          onClick={handleInstall}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--accent-brand)] px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:brightness-110"
+        >
+          <Download className="h-3 w-3" strokeWidth={2} />
+          Restart &amp; Update
+        </button>
+      ) : state === "downloading" || state === "checking" ? (
+        <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/[0.06] px-3.5 py-1.5 text-xs text-white/30">
+          <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+          {state === "checking" ? "Checking..." : `${progress}%`}
+        </div>
+      ) : (
+        <button
+          onClick={handleUpdate}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--accent-brand)] px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:brightness-110"
+        >
+          <Download className="h-3 w-3" strokeWidth={2} />
+          Update Now
+        </button>
+      )}
+    </div>
+  );
 }
 
 /* ── Markdown helpers ─────────────────────────────────────── */
@@ -262,7 +368,7 @@ async function fetchAllPages<T>(baseUrl: string, maxPages = 5): Promise<T[]> {
   return all;
 }
 
-async function fetchData(): Promise<CommitEntry[]> {
+async function fetchData(): Promise<{ entries: CommitEntry[]; latestRelease: string | null }> {
   const [commits, releases, tags] = await Promise.all([
     fetchAllPages<GitHubCommitRaw>(
       `https://api.github.com/repos/${REPO}/commits`
@@ -281,7 +387,13 @@ async function fetchData(): Promise<CommitEntry[]> {
   const tagBySha = new Map<string, string>();
   for (const t of tags) tagBySha.set(t.commit.sha, t.name);
 
-  return commits.map((c) => {
+  // Find latest release version
+  let latestRelease: string | null = null;
+  if (releases.length > 0) {
+    latestRelease = releases[0].tag_name.replace(/^v/, "");
+  }
+
+  const entries = commits.map((c) => {
     const fullMessage = c.commit.message;
     const firstLine = fullMessage.split("\n")[0];
     const rest = fullMessage.split("\n").slice(1).join("\n").trim();
@@ -308,6 +420,8 @@ async function fetchData(): Promise<CommitEntry[]> {
       release,
     };
   });
+
+  return { entries, latestRelease };
 }
 
 /* ── Page component ───────────────────────────────────────── */
@@ -317,11 +431,13 @@ export function ChangelogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [expandedShas, setExpandedShas] = useState<Set<string>>(new Set());
+  const [latestRelease, setLatestRelease] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData()
       .then((data) => {
-        setEntries(data);
+        setEntries(data.entries);
+        setLatestRelease(data.latestRelease);
         setLoading(false);
       })
       .catch(() => {
@@ -349,6 +465,7 @@ export function ChangelogPage() {
   };
 
   const firstReleaseIdx = entries.findIndex((e) => e.release);
+  const isOutdated = latestRelease !== null && compareVersions(APP_VERSION, latestRelease) < 0;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -358,6 +475,13 @@ export function ChangelogPage() {
           Every commit and release to Codex.
         </p>
       </div>
+
+      {/* Update banner */}
+      {!loading && isOutdated && (
+        <div className="pt-3">
+          <UpdateBanner latestVersion={latestRelease!} />
+        </div>
+      )}
 
       <div className="flex max-w-[640px] flex-col gap-1.5 px-4 py-4">
         {loading && <Skeleton />}
