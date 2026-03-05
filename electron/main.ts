@@ -26,7 +26,8 @@ import {
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
 import { EdgeTTS } from "@andresaya/edge-tts";
-import { searchNovels, getNovelInfo, downloadNovel, cancelDownload, type NovelInfo } from "./installer";
+import { searchNovels, getNovelInfo, getDownloadManager, fetchImageAsDataUrl, getAvailableSources, type NovelInfo } from "./installer";
+import { getDownloads, removeDownload, clearCompletedDownloads, getDownload } from "./database";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
 
@@ -296,6 +297,10 @@ function createWindow() {
     return shell.openExternal(url);
   });
 
+  ipcMain.handle("shell:show-item-in-folder", (_event, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
+
   // ── Library: select folder ────────────────────────
 
   ipcMain.handle("library:select-folder", async () => {
@@ -438,18 +443,48 @@ function createWindow() {
 
   // ── Installer (dev-only) ──────────────────────────────
 
-  ipcMain.handle("installer:search", async (_event, keyword: string, page: number) => {
-    return searchNovels(keyword, page);
+  ipcMain.handle("installer:sources", () => {
+    return getAvailableSources();
   });
 
-  ipcMain.handle("installer:novel-info", async (_event, url: string) => {
-    return getNovelInfo(url);
+  ipcMain.handle("installer:search", async (_event, sourceId: string, keyword: string, page: number) => {
+    return searchNovels(sourceId, keyword, page);
   });
 
-  ipcMain.handle("installer:download", async (event, novelInfo: NovelInfo) => {
-    const epubPath = await downloadNovel(novelInfo, event.sender);
-    // Auto-import the downloaded EPUB into the library
-    const enriched = enrichFile(epubPath);
+  ipcMain.handle("installer:novel-info", async (_event, sourceId: string, url: string) => {
+    return getNovelInfo(sourceId, url);
+  });
+
+  ipcMain.handle("installer:queue-download", async (_event, sourceId: string, novelInfo: NovelInfo) => {
+    const mgr = getDownloadManager();
+    const id = await mgr.queueDownload(sourceId, novelInfo);
+    return id;
+  });
+
+  ipcMain.handle("installer:cancel-download", (_event, id: number) => {
+    getDownloadManager().cancelDownload(id);
+  });
+
+  ipcMain.handle("installer:retry-download", (_event, id: number) => {
+    getDownloadManager().retryDownload(id);
+  });
+
+  ipcMain.handle("installer:remove-download", (_event, id: number) => {
+    removeDownload(id);
+  });
+
+  ipcMain.handle("installer:get-downloads", () => {
+    return getDownloads();
+  });
+
+  ipcMain.handle("installer:clear-completed", () => {
+    clearCompletedDownloads();
+  });
+
+  ipcMain.handle("installer:import-completed", (_event, id: number) => {
+    const row = getDownload(id);
+    if (!row?.epub_path) return null;
+    const enriched = enrichFile(row.epub_path);
     const dbItems = [{
       title: enriched.title,
       author: enriched.author,
@@ -462,12 +497,21 @@ function createWindow() {
       view: "bookshelf",
     }];
     const imported = addItems(dbItems);
-    return { epubPath, imported };
+    // Notify all windows so the bookshelf refreshes
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send("library:items-changed");
+      }
+    }
+    return imported;
   });
 
-  ipcMain.handle("installer:cancel-download", () => {
-    cancelDownload();
+  ipcMain.handle("installer:proxy-image", async (_event, url: string) => {
+    return fetchImageAsDataUrl(url);
   });
+
+  // Resume any interrupted downloads
+  getDownloadManager().resumeOnStartup();
 
   // ── Window events ─────────────────────────────────
 

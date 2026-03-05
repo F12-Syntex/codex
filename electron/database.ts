@@ -205,6 +205,25 @@ export function initDatabase(): void {
       PRIMARY KEY (file_path, id)
     );
 
+    -- ── Installer Downloads ─────────────────────────────
+    CREATE TABLE IF NOT EXISTS installer_downloads (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_id       TEXT NOT NULL,
+      novel_title     TEXT NOT NULL,
+      novel_author    TEXT,
+      novel_url       TEXT NOT NULL,
+      thumbnail       TEXT,
+      chapters_json   TEXT NOT NULL,
+      total_chapters  INTEGER NOT NULL,
+      current_chapter INTEGER DEFAULT 0,
+      status          TEXT DEFAULT 'queued',
+      error           TEXT,
+      epub_path       TEXT,
+      started_at      TEXT,
+      completed_at    TEXT,
+      created_at      TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS sim_segments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       file_path TEXT NOT NULL,
@@ -999,4 +1018,72 @@ export function addSegment(segment: {
 export function deleteBranch(filePath: string, branchId: string): void {
   db.prepare("DELETE FROM sim_segments WHERE file_path = ? AND branch_id = ?").run(filePath, branchId);
   db.prepare("DELETE FROM sim_branches WHERE file_path = ? AND id = ?").run(filePath, branchId);
+}
+
+// ── Installer Downloads ──────────────────────────────
+
+export interface InstallerDownloadRow {
+  id: number;
+  source_id: string;
+  novel_title: string;
+  novel_author: string | null;
+  novel_url: string;
+  thumbnail: string | null;
+  chapters_json: string;
+  total_chapters: number;
+  current_chapter: number;
+  status: string;
+  error: string | null;
+  epub_path: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export function addDownload(dl: {
+  sourceId: string;
+  novelTitle: string;
+  novelAuthor: string | null;
+  novelUrl: string;
+  thumbnail: string | null;
+  chaptersJson: string;
+  totalChapters: number;
+}): number {
+  const result = db.prepare(`
+    INSERT INTO installer_downloads (source_id, novel_title, novel_author, novel_url, thumbnail, chapters_json, total_chapters)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(dl.sourceId, dl.novelTitle, dl.novelAuthor, dl.novelUrl, dl.thumbnail, dl.chaptersJson, dl.totalChapters);
+  return Number(result.lastInsertRowid);
+}
+
+export function updateDownloadProgress(id: number, currentChapter: number): void {
+  db.prepare("UPDATE installer_downloads SET current_chapter = ? WHERE id = ?").run(currentChapter, id);
+}
+
+export function updateDownloadStatus(id: number, status: string, extra?: { error?: string; epubPath?: string }): void {
+  if (status === "downloading") {
+    db.prepare("UPDATE installer_downloads SET status = ?, started_at = datetime('now') WHERE id = ?").run(status, id);
+  } else if (status === "completed") {
+    db.prepare("UPDATE installer_downloads SET status = ?, epub_path = ?, completed_at = datetime('now') WHERE id = ?").run(status, extra?.epubPath ?? null, id);
+  } else if (status === "failed") {
+    db.prepare("UPDATE installer_downloads SET status = ?, error = ? WHERE id = ?").run(status, extra?.error ?? null, id);
+  } else {
+    db.prepare("UPDATE installer_downloads SET status = ? WHERE id = ?").run(status, id);
+  }
+}
+
+export function getDownloads(): InstallerDownloadRow[] {
+  return db.prepare("SELECT * FROM installer_downloads ORDER BY created_at DESC").all() as InstallerDownloadRow[];
+}
+
+export function getDownload(id: number): InstallerDownloadRow | null {
+  return (db.prepare("SELECT * FROM installer_downloads WHERE id = ?").get(id) as InstallerDownloadRow) ?? null;
+}
+
+export function removeDownload(id: number): void {
+  db.prepare("DELETE FROM installer_downloads WHERE id = ?").run(id);
+}
+
+export function clearCompletedDownloads(): void {
+  db.prepare("DELETE FROM installer_downloads WHERE status IN ('completed', 'failed', 'cancelled')").run();
 }

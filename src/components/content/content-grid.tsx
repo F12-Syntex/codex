@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft, X, Check } from "lucide-react";
+import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft, X, Check, FolderOpen } from "lucide-react";
 import { BookCard } from "./book-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -52,6 +52,7 @@ const comicMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] =
 /* ── Item context menu wrapper ──────────────────────────── */
 function ItemContextMenu({
   itemId,
+  filePath,
   activeView,
   section,
   onMove,
@@ -60,6 +61,7 @@ function ItemContextMenu({
   children,
 }: {
   itemId: number;
+  filePath: string;
   activeView: NavView;
   section: Section;
   onMove: (id: number, view: NavView) => void;
@@ -76,6 +78,14 @@ function ItemContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="min-w-[180px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]">
+        <ContextMenuItem
+          onClick={() => window.electronAPI?.showItemInFolder(filePath)}
+          className="gap-2 text-sm text-white/60"
+        >
+          <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Show in Folder
+        </ContextMenuItem>
+        <ContextMenuSeparator className="bg-white/[0.06]" />
         <ContextMenuLabel className="text-xs text-white/20">Move to</ContextMenuLabel>
         {targets.map((t) => (
           <ContextMenuItem
@@ -237,7 +247,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           {items.map((item) => {
             const isSelected = selectedIds.has(item.id);
             return (
-              <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+              <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
                 <div
                   onClick={(e) => handleItemClick(e, item)}
                   onDoubleClick={() => handleItemDoubleClick(item)}
@@ -274,7 +284,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           {items.map((item) => {
             const isSelected = selectedIds.has(item.id);
             return (
-              <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+              <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
                 <div
                   onClick={(e) => handleItemClick(e, item)}
                   onDoubleClick={() => handleItemDoubleClick(item)}
@@ -349,7 +359,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
     <ScrollArea className="min-h-0 flex-1">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
         {items.map((item) => (
-          <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+          <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
             <div
               onClick={(e) => handleItemClick(e, item)}
               onDoubleClick={() => handleItemDoubleClick(item)}
@@ -514,7 +524,7 @@ function GroupView({
             </div>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
               {groupItems.map((item) => (
-                <ItemContextMenu key={item.id} itemId={item.id} {...ctxProps}>
+                <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
                   <div
                     onClick={(e) => onItemClick(e, item)}
                     onDoubleClick={() => onItemDoubleClick(item)}
@@ -541,7 +551,7 @@ function GroupView({
       <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
         {groups.map(([author, groupItems]) =>
           groupItems.length === 1 ? (
-            <ItemContextMenu key={author} itemId={groupItems[0].id} {...ctxProps}>
+            <ItemContextMenu key={author} itemId={groupItems[0].id} filePath={groupItems[0].filePath} {...ctxProps}>
               <div
                 onClick={(e) => onItemClick(e, groupItems[0])}
                 onDoubleClick={() => onItemDoubleClick(groupItems[0])}

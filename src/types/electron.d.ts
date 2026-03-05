@@ -204,9 +204,30 @@ interface InstallerNovelInfo {
 }
 
 interface InstallerDownloadProgress {
+  id: number;
   current: number;
   total: number;
   chapterTitle: string;
+  eta: number | null;
+  status: string;
+}
+
+interface InstallerDownloadRow {
+  id: number;
+  source_id: string;
+  novel_title: string;
+  novel_author: string | null;
+  novel_url: string;
+  thumbnail: string | null;
+  chapters_json: string;
+  total_chapters: number;
+  current_chapter: number;
+  status: string;
+  error: string | null;
+  epub_path: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
 }
 
 interface ElectronAPI {
@@ -298,6 +319,10 @@ interface ElectronAPI {
 
   // Shell
   openExternal: (url: string) => Promise<void>;
+  showItemInFolder: (filePath: string) => Promise<void>;
+
+  // Library change events
+  onLibraryChanged: (callback: () => void) => void;
 
   // Settings
   getSetting: (key: string) => Promise<string | null>;
@@ -310,10 +335,17 @@ interface ElectronAPI {
   getReadingStats: () => Promise<ReadingStats>;
 
   // Installer (dev-only)
-  installerSearch: (keyword: string, page: number) => Promise<{ results: InstallerSearchResult[]; page: number; totalPages: number }>;
-  installerNovelInfo: (url: string) => Promise<InstallerNovelInfo>;
-  installerDownload: (novelInfo: InstallerNovelInfo) => Promise<{ epubPath: string; imported: LibraryItem[] }>;
-  installerCancelDownload: () => Promise<void>;
+  installerGetSources: () => Promise<{ id: string; name: string; url: string }[]>;
+  installerSearch: (sourceId: string, keyword: string, page: number) => Promise<{ results: InstallerSearchResult[]; page: number; totalPages: number }>;
+  installerNovelInfo: (sourceId: string, url: string) => Promise<InstallerNovelInfo>;
+  installerQueueDownload: (sourceId: string, novelInfo: InstallerNovelInfo) => Promise<number>;
+  installerCancelDownload: (id: number) => Promise<void>;
+  installerRetryDownload: (id: number) => Promise<void>;
+  installerRemoveDownload: (id: number) => Promise<void>;
+  installerGetDownloads: () => Promise<InstallerDownloadRow[]>;
+  installerClearCompleted: () => Promise<void>;
+  installerImportCompleted: (id: number) => Promise<LibraryItem[] | null>;
+  installerProxyImage: (url: string) => Promise<string>;
   onInstallerProgress: (callback: (progress: InstallerDownloadProgress) => void) => void;
 
   // Updates

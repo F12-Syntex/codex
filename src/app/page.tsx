@@ -69,7 +69,7 @@ export default function Home() {
 
   // ── Load data from database on mount ──────────────
 
-  useEffect(() => {
+  const refreshLibrary = useCallback(() => {
     if (!window.electronAPI?.getItems) return;
     Promise.all([
       window.electronAPI.getItems("books"),
@@ -79,6 +79,15 @@ export default function Home() {
       setComicData(groupByView(comics));
     });
   }, []);
+
+  useEffect(() => {
+    refreshLibrary();
+  }, [refreshLibrary]);
+
+  // Listen for library changes (e.g. download auto-import)
+  useEffect(() => {
+    window.electronAPI?.onLibraryChanged?.(() => refreshLibrary());
+  }, [refreshLibrary]);
 
   // ── Load settings from database on mount ──────────
 

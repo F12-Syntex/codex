@@ -155,6 +155,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Shell
   openExternal: (url: string) =>
     ipcRenderer.invoke("shell:open-external", url),
+  showItemInFolder: (filePath: string) =>
+    ipcRenderer.invoke("shell:show-item-in-folder", filePath),
+
+  // Library change events
+  onLibraryChanged: (callback: () => void) => {
+    ipcRenderer.on("library:items-changed", () => callback());
+  },
 
   // Reading Activity
   recordPageView: (filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) =>
@@ -165,15 +172,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("activity:stats"),
 
   // Installer (dev-only)
-  installerSearch: (keyword: string, page: number) =>
-    ipcRenderer.invoke("installer:search", keyword, page),
-  installerNovelInfo: (url: string) =>
-    ipcRenderer.invoke("installer:novel-info", url),
-  installerDownload: (novelInfo: unknown) =>
-    ipcRenderer.invoke("installer:download", novelInfo),
-  installerCancelDownload: () =>
-    ipcRenderer.invoke("installer:cancel-download"),
-  onInstallerProgress: (callback: (progress: { current: number; total: number; chapterTitle: string }) => void) => {
+  installerGetSources: () =>
+    ipcRenderer.invoke("installer:sources"),
+  installerSearch: (sourceId: string, keyword: string, page: number) =>
+    ipcRenderer.invoke("installer:search", sourceId, keyword, page),
+  installerNovelInfo: (sourceId: string, url: string) =>
+    ipcRenderer.invoke("installer:novel-info", sourceId, url),
+  installerQueueDownload: (sourceId: string, novelInfo: unknown) =>
+    ipcRenderer.invoke("installer:queue-download", sourceId, novelInfo),
+  installerCancelDownload: (id: number) =>
+    ipcRenderer.invoke("installer:cancel-download", id),
+  installerRetryDownload: (id: number) =>
+    ipcRenderer.invoke("installer:retry-download", id),
+  installerRemoveDownload: (id: number) =>
+    ipcRenderer.invoke("installer:remove-download", id),
+  installerGetDownloads: () =>
+    ipcRenderer.invoke("installer:get-downloads"),
+  installerClearCompleted: () =>
+    ipcRenderer.invoke("installer:clear-completed"),
+  installerImportCompleted: (id: number) =>
+    ipcRenderer.invoke("installer:import-completed", id),
+  installerProxyImage: (url: string) =>
+    ipcRenderer.invoke("installer:proxy-image", url),
+  onInstallerProgress: (callback: (progress: { id: number; current: number; total: number; chapterTitle: string; eta: number | null; status: string }) => void) => {
     ipcRenderer.on("installer:download-progress", (_event, progress) => callback(progress));
   },
 
