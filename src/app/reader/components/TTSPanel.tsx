@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward } from "lucide-react";
+import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward, Search } from "lucide-react";
 import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
 
 interface TTSPanelProps {
@@ -63,6 +63,7 @@ export function TTSPanel({
   onClose,
 }: TTSPanelProps) {
   const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Click outside to close
@@ -173,7 +174,7 @@ export function TTSPanel({
         {/* Voice selector */}
         <div className="relative">
           <button
-            onClick={() => setShowVoicePicker((v) => !v)}
+            onClick={() => { setShowVoicePicker((v) => !v); setVoiceSearch(""); }}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
           >
             <div className="flex items-center gap-2">
@@ -184,24 +185,44 @@ export function TTSPanel({
           </button>
 
           {showVoicePicker && (
-            <div className={`absolute top-full left-0 z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}>
-              {voices.map((v) => {
-                const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
-                return (
-                  <button
-                    key={v.shortName}
-                    onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    <span className={`shrink-0 text-xs ${theme.muted}`}>{v.gender}</span>
-                    <span className={`shrink-0 text-xs ${theme.muted}`}>{v.locale}</span>
-                  </button>
-                );
-              })}
-              {voices.length === 0 && (
-                <p className={`px-2 py-3 text-center text-xs ${theme.muted}`}>Loading voices...</p>
-              )}
+            <div className={`absolute top-full left-0 z-50 mt-1 max-h-[260px] w-full overflow-hidden rounded-lg border shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}>
+              {/* Search input */}
+              <div className={`flex items-center gap-1.5 border-b px-2 py-1.5 ${theme.border}`}>
+                <Search className={`h-3 w-3 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
+                <input
+                  type="text"
+                  value={voiceSearch}
+                  onChange={(e) => setVoiceSearch(e.target.value)}
+                  placeholder="Search voices..."
+                  autoFocus
+                  className={`w-full bg-transparent text-xs outline-none placeholder:opacity-40 ${theme.text}`}
+                />
+              </div>
+              <div className="max-h-[220px] overflow-y-auto p-1">
+                {voices
+                  .filter((v) => {
+                    if (!voiceSearch) return true;
+                    const q = voiceSearch.toLowerCase();
+                    return v.shortName.toLowerCase().includes(q) || v.locale.toLowerCase().includes(q) || v.gender.toLowerCase().includes(q);
+                  })
+                  .map((v) => {
+                    const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
+                    return (
+                      <button
+                        key={v.shortName}
+                        onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); setVoiceSearch(""); }}
+                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                        <span className={`shrink-0 text-xs ${theme.muted}`}>{v.gender}</span>
+                        <span className={`shrink-0 text-xs ${theme.muted}`}>{v.locale}</span>
+                      </button>
+                    );
+                  })}
+                {voices.length === 0 && (
+                  <p className={`px-2 py-3 text-center text-xs ${theme.muted}`}>Loading voices...</p>
+                )}
+              </div>
             </div>
           )}
         </div>
