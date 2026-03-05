@@ -1,10 +1,25 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { EdgeVoice, TTSState, WordBoundary } from "../lib/types";
+import type { EdgeVoice, TTSProvider, TTSState, WordBoundary } from "../lib/types";
+
+// OpenRouter TTS voices (openai/gpt-4o-mini-tts)
+export const OPENROUTER_TTS_VOICES = [
+  { id: "alloy", label: "Alloy" },
+  { id: "ash", label: "Ash" },
+  { id: "ballad", label: "Ballad" },
+  { id: "coral", label: "Coral" },
+  { id: "echo", label: "Echo" },
+  { id: "fable", label: "Fable" },
+  { id: "nova", label: "Nova" },
+  { id: "onyx", label: "Onyx" },
+  { id: "sage", label: "Sage" },
+  { id: "shimmer", label: "Shimmer" },
+] as const;
 
 interface UseTTSOptions {
   paragraphs: string[];
+  provider: TTSProvider;
   voice: string;
   rate: number;
   pitch: number;
@@ -21,6 +36,7 @@ interface SynthResult {
 
 export function useTTS({
   paragraphs,
+  provider,
   voice,
   rate,
   pitch,
@@ -52,6 +68,8 @@ export function useTTS({
   onParagraphChangeRef.current = onParagraphChange;
 
   // Keep refs for synthesis params so prefetch uses current values
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
   const voiceRef = useRef(voice);
   voiceRef.current = voice;
   const rateRef = useRef(rate);
@@ -71,7 +89,7 @@ export function useTTS({
   // Clear prefetch cache when paragraphs or voice settings change
   useEffect(() => {
     prefetchCache.current.clear();
-  }, [paragraphs, voice, rate, pitch, volume]);
+  }, [paragraphs, provider, voice, rate, pitch, volume]);
 
   // Clean up audio on unmount
   useEffect(() => {
@@ -126,6 +144,17 @@ export function useTTS({
     }
   }, []);
 
+  // Call the appropriate TTS API based on provider
+  const callTTSAPI = useCallback((text: string): Promise<SynthResult | null> => {
+    if (providerRef.current === "openrouter") {
+      return window.electronAPI?.ttsSynthesizeOpenRouter(text, voiceRef.current, rateRef.current) ?? Promise.resolve(null);
+    }
+    const rateStr = `${rateRef.current >= 0 ? "+" : ""}${Math.round((rateRef.current - 1) * 100)}%`;
+    const pitchStr = `${pitchRef.current >= 0 ? "+" : ""}${pitchRef.current}Hz`;
+    const volStr = `${volumeRef.current}%`;
+    return window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr) ?? Promise.resolve(null);
+  }, []);
+
   // Synthesize a paragraph (uses cache if available, otherwise calls API)
   const synthesize = useCallback((paraIndex: number): Promise<SynthResult | null> => {
     const cached = prefetchCache.current.get(paraIndex);
@@ -137,12 +166,8 @@ export function useTTS({
     const text = paragraphsRef.current[paraIndex];
     if (!text || text.trim().length === 0) return Promise.resolve(null);
 
-    const rateStr = `${rateRef.current >= 0 ? "+" : ""}${Math.round((rateRef.current - 1) * 100)}%`;
-    const pitchStr = `${pitchRef.current >= 0 ? "+" : ""}${pitchRef.current}Hz`;
-    const volStr = `${volumeRef.current}%`;
-
-    return window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr) ?? Promise.resolve(null);
-  }, []);
+    return callTTSAPI(text);
+  }, [callTTSAPI]);
 
   // Kick off prefetch for the next non-empty paragraph
   const prefetchNext = useCallback((afterIndex: number) => {
@@ -153,14 +178,9 @@ export function useTTS({
     const text = paras[next];
     if (!text || text.trim().length === 0) return;
 
-    const rateStr = `${rateRef.current >= 0 ? "+" : ""}${Math.round((rateRef.current - 1) * 100)}%`;
-    const pitchStr = `${pitchRef.current >= 0 ? "+" : ""}${pitchRef.current}Hz`;
-    const volStr = `${volumeRef.current}%`;
-
-    const promise = window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr)
-      ?? Promise.resolve(null);
+    const promise = callTTSAPI(text);
     prefetchCache.current.set(next, promise);
-  }, []);
+  }, [callTTSAPI]);
 
   // Synthesize and play a single paragraph
   const synthesizeAndPlay = useCallback(async (paraIndex: number, session: number) => {
@@ -200,6 +220,8 @@ export function useTTS({
       setActiveWordIndex(-1);
 
       audio.volume = volume / 100;
+      // Edge TTS bakes rate into audio; OpenRouter returns fixed-rate audio
+      audio.playbackRate = provider === "openrouter" ? rate : 1;
 
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => resolve();
@@ -237,7 +259,7 @@ export function useTTS({
         stopWordTracking();
       }
     }
-  }, [paragraphs, volume, startWordTracking, stopWordTracking, synthesize, prefetchNext]);
+  }, [paragraphs, provider, rate, volume, startWordTracking, stopWordTracking, synthesize, prefetchNext]);
 
   // Public actions
   const play = useCallback((fromParagraph?: number) => {

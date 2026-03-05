@@ -316,6 +316,7 @@ interface ElectronAPI {
   // TTS
   ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;
   ttsSynthesize: (text: string, voice: string, rate: string, pitch?: string, volume?: string) => Promise<TTSSynthesisResult>;
+  ttsSynthesizeOpenRouter: (text: string, voice: string, rate: number) => Promise<TTSSynthesisResult>;
 
   // Shell
   openExternal: (url: string) => Promise<void>;

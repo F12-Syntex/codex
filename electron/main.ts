@@ -273,6 +273,72 @@ function createWindow() {
     }
   });
 
+  ipcMain.handle("tts:synthesize-openrouter", async (_event, text: string, voiceName: string, rate: number) => {
+    const apiKey = getSetting("openrouterApiKey");
+    if (!apiKey) throw new Error("OpenRouter API key not set");
+
+    const resp = await net.fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://github.com/F12-Syntex/codex",
+        "X-Title": "Codex",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini-tts",
+        messages: [
+          { role: "user", content: text },
+        ],
+        modalities: ["text", "audio"],
+        audio: { voice: voiceName, format: "mp3" },
+        stream: true,
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "Unknown error");
+      throw new Error(`OpenRouter TTS ${resp.status}: ${errText}`);
+    }
+
+    // Stream SSE and collect base64 audio chunks
+    const body = resp.body;
+    if (!body) throw new Error("No response body");
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const audioChunks: string[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE lines
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+        try {
+          const json = JSON.parse(line.slice(6));
+          const audioData = json?.choices?.[0]?.delta?.audio?.data;
+          if (audioData) audioChunks.push(audioData);
+        } catch { /* skip malformed chunks */ }
+      }
+    }
+
+    if (audioChunks.length === 0) throw new Error("No audio data received");
+
+    // Combine all base64 chunks into one buffer, then re-encode as single base64
+    const combined = Buffer.concat(audioChunks.map(c => Buffer.from(c, "base64")));
+
+    // Apply rate by re-encoding isn't feasible client-side, so we return raw audio
+    // Rate adjustment is handled by HTMLAudioElement.playbackRate on the renderer
+    return { audio: combined.toString("base64"), wordBoundaries: [] };
+  });
+
   // ── Library: import files via dialog ──────────────
 
   ipcMain.handle("library:import-files", async (_event, section: string, view: string) => {
