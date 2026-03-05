@@ -418,8 +418,8 @@ export function AIBuddyPanel({
 
   return (
     <div
-      className={`absolute bottom-14 right-4 z-50 flex w-[420px] flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl`}
-      style={{ height: "min(560px, calc(100vh - 120px))" }}
+      className={`absolute bottom-full right-0 z-50 mb-3 flex w-[420px] flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl`}
+      style={{ height: "min(560px, calc(100vh - 140px))" }}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}

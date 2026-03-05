@@ -1458,31 +1458,31 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           />
         </div>
 
-        {/* AI Buddy floating button + panel */}
+        {/* AI Buddy dock + panel — centered above footer */}
         {buddyEnabled && wikiEnabled && (
-          <div className="absolute bottom-4 right-4 z-40">
-            {showBuddy && (
-              <AIBuddyPanel
-                theme={theme}
-                filePath={filePath}
-                bookTitle={title}
-                currentChapter={currentChapter}
-                wikiEntryCount={wikiEntryCount}
-                onEntityClick={(entityId) => {
-                  window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
-                }}
-                onClose={() => setShowBuddy(false)}
-              />
-            )}
-            {!showBuddy && (
+          <div className="absolute bottom-14 right-4 z-40">
+            <div className="relative">
+              {showBuddy && (
+                <AIBuddyPanel
+                  theme={theme}
+                  filePath={filePath}
+                  bookTitle={title}
+                  currentChapter={currentChapter}
+                  wikiEntryCount={wikiEntryCount}
+                  onEntityClick={(entityId) => {
+                    window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
+                  }}
+                  onClose={() => setShowBuddy(false)}
+                />
+              )}
               <button
-                onClick={() => setShowBuddy(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)]"
+                onClick={() => setShowBuddy((v) => !v)}
+                className={`flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)] ${showBuddy ? "bg-white/[0.08]" : ""}`}
                 style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
               >
-                <MessageCircle className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
+                <MessageCircle className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
               </button>
-            )}
+            </div>
           </div>
         )}
 
