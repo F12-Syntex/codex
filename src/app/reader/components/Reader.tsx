@@ -1468,7 +1468,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                   filePath={filePath}
                   bookTitle={title}
                   currentChapter={currentChapter}
+                  totalChapters={chapters.length}
                   wikiEntryCount={wikiEntryCount}
+                  readChapter={(idx) => chapters[idx]?.paragraphs?.join("\n") ?? null}
                   onEntityClick={(entityId) => {
                     window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
                   }}

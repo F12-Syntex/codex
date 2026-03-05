@@ -12,6 +12,10 @@ export interface BuddyMessage {
   pendingActions?: WikiAction[];
   /** Whether the actions have been resolved (approved/rejected) */
   actionsResolved?: boolean;
+  /** Pending plan attached to this message (assistant only) */
+  pendingPlan?: BuddyPlan;
+  /** Whether the plan has been resolved */
+  planResolved?: boolean;
 }
 
 /* ── Wiki action types ─────────────────────────────────── */
@@ -87,16 +91,47 @@ interface WikiMergeEntities {
   addAliases?: string[];
 }
 
+/* ── Tool call types ───────────────────────────────────── */
+
+export type BuddyToolCall =
+  | { tool: "read_chapter"; chapterIndex: number }
+  | { tool: "search_chapters"; query: string; maxResults?: number };
+
+/* ── Plan types ────────────────────────────────────────── */
+
+export interface BuddyPlanStep {
+  description: string;
+  toolCalls?: BuddyToolCall[];
+  wikiActions?: WikiAction[];
+}
+
+export interface BuddyPlan {
+  goal: string;
+  steps: BuddyPlanStep[];
+}
+
+/** Callback for reading chapter content — provided by the Reader component */
+export type ChapterReader = (chapterIndex: number) => string | null;
+
+/* ── Parsed AI response ────────────────────────────────── */
+
+interface ParsedBuddyResponse {
+  html: string;
+  wikiActions: WikiAction[];
+  toolCalls: BuddyToolCall[];
+  plan: BuddyPlan | null;
+}
+
 /**
  * Build the system prompt for the AI Buddy.
- * The AI returns raw HTML using ai-fmt-* classes for full visual control.
  */
 function buildBuddySystemPrompt(
   bookTitle: string,
   currentChapter: number,
+  totalChapters: number,
   wikiContext: string,
 ): string {
-  return `You are an AI reading companion for "${bookTitle}". The reader is on chapter ${currentChapter + 1}.
+  return `You are an AI reading companion for "${bookTitle}". The reader is on chapter ${currentChapter + 1} of ${totalChapters}.
 
 You have the book's wiki data. Answer questions accurately using it.
 
@@ -179,24 +214,74 @@ Character profile:
   </div>
 </div>
 
-Relationship map:
-<div class="buddy-card">
-  <div class="buddy-heading">Relationships</div>
-  <div class="buddy-list">
-    <div><a data-entity="suzy" class="buddy-entity-link">Suzy</a> — <span class="buddy-tag-positive">Ally</span> Loyal companion since Ch. 3</div>
-    <div><a data-entity="wung-chun" class="buddy-entity-link">Wung Chun</a> — <span class="buddy-tag-negative">Enemy</span> Demon lord antagonist</div>
-  </div>
-</div>
-
 Simple answer:
 <p class="buddy-text">The battle happened in chapter 12 when <a data-entity="muyoung" class="buddy-entity-link">Muyoung</a> fought the <a data-entity="forest-guardian" class="buddy-entity-link">Forest Guardian</a>. He used <span class="ai-fmt-skill-name">Shadow Slash</span> to deal the final blow.</p>
 
+## Tools — Reading Chapters
+You can request to read chapter content to answer questions that need the actual text.
+When you need to read chapters, include a tool call block at the END of your HTML response:
+
+<!--BUDDY_TOOLS:[
+  { "tool": "read_chapter", "chapterIndex": 3 },
+  { "tool": "search_chapters", "query": "Soyoung", "maxResults": 5 }
+]-->
+
+**Available tools:**
+- \`read_chapter\` — Read full text of a chapter. Use 0-based index. Only request chapters ≤ ${currentChapter} (the reader's current position). The book has ${totalChapters} chapters total.
+- \`search_chapters\` — Search for a text pattern across all chapters up to the current one. Returns matching chapter indices + surrounding context. maxResults defaults to 5.
+
+**Tool call rules:**
+- Tool results are automatically fed back to you — you will get a follow-up with the content and then respond with your final answer.
+- You can request multiple chapters/searches at once.
+- Include a brief HTML message explaining what you're doing (e.g. "Let me check that chapter...") BEFORE the tool block.
+- Do NOT include <!--WIKI_ACTIONS--> in the same response as <!--BUDDY_TOOLS-->. Tools execute first, then you can propose wiki edits in your follow-up response.
+- Only read chapters the user has reached (≤ chapter ${currentChapter + 1}).
+
+## Plans — Complex Multi-Step Tasks
+For complex tasks that require multiple steps (e.g. "scan all chapters for a character", "rebuild the wiki for characters X, Y, Z"), create a plan instead of trying to do everything at once.
+
+Include a plan block at the END of your HTML response:
+
+<!--BUDDY_PLAN:{
+  "goal": "Scan chapters 1-${currentChapter + 1} for all mentions of Soyoung and create a wiki entry",
+  "steps": [
+    {
+      "description": "Read chapters 1-3 to find Soyoung's first appearance and role",
+      "toolCalls": [
+        { "tool": "read_chapter", "chapterIndex": 0 },
+        { "tool": "read_chapter", "chapterIndex": 1 },
+        { "tool": "read_chapter", "chapterIndex": 2 }
+      ]
+    },
+    {
+      "description": "Read chapters 4-6 for more details",
+      "toolCalls": [
+        { "tool": "read_chapter", "chapterIndex": 3 },
+        { "tool": "read_chapter", "chapterIndex": 4 },
+        { "tool": "read_chapter", "chapterIndex": 5 }
+      ]
+    },
+    {
+      "description": "Create wiki entry with collected information",
+      "wikiActions": []
+    }
+  ]
+}-->
+
+**Plan rules:**
+- The user must approve the plan before execution starts.
+- Each step runs sequentially. For steps with toolCalls, the chapter content is read and fed to you, and you respond with findings.
+- The last step's wikiActions can be empty [] — you'll fill them in based on what you found during execution.
+- Keep plans concise. Batch chapter reads (3-5 per step max to stay within context limits).
+- Include a clear HTML explanation of the plan BEFORE the plan block.
+- Do NOT include <!--BUDDY_TOOLS--> or <!--WIKI_ACTIONS--> in the same response as <!--BUDDY_PLAN-->.
+- Only plan to read chapters the user has reached (≤ chapter ${currentChapter + 1}).
+
 ## Wiki Editing — IMPORTANT
 You can propose changes to the wiki when the reader asks you to fix, add, or update wiki entries.
-When you want to modify the wiki, include a JSON action block at the END of your HTML response using this exact format:
+When you want to modify the wiki, include a JSON action block at the END of your HTML response:
 
 <!--WIKI_ACTIONS:[
-  { ... action object ... },
   { ... action object ... }
 ]-->
 
@@ -205,62 +290,37 @@ The user will see a confirmation prompt and must approve before changes are appl
 ### Available Actions
 
 **create_entry** — Add a new entity to the wiki
-\`\`\`
-{ "action": "create_entry", "id": "slug-id", "name": "Display Name", "type": "character|location|item|concept|faction|event", "shortDescription": "Brief description", "significance": 3, "status": "active", "firstAppearance": 0, "aliases": ["Alt Name"] }
-\`\`\`
-- id: lowercase slug (e.g. "kim-soyoung")
-- significance: 1 (minor) to 5 (protagonist)
-- firstAppearance: 0-based chapter index
-- aliases: optional array of alternative names
+\`{ "action": "create_entry", "id": "slug-id", "name": "Display Name", "type": "character|location|item|concept|faction|event", "shortDescription": "Brief description", "significance": 3, "status": "active", "firstAppearance": 0, "aliases": ["Alt Name"] }\`
 
 **update_entry** — Update fields on an existing entity
-\`\`\`
-{ "action": "update_entry", "id": "existing-id", "fields": { "shortDescription": "New description", "status": "deceased", "significance": 4 } }
-\`\`\`
-- Only include fields that need changing
+\`{ "action": "update_entry", "id": "existing-id", "fields": { "shortDescription": "New desc", "status": "deceased" } }\`
 
-**delete_entry** — Remove an entity (use sparingly)
-\`\`\`
-{ "action": "delete_entry", "id": "entity-id", "name": "Display Name" }
-\`\`\`
+**delete_entry** — Remove an entity
+\`{ "action": "delete_entry", "id": "entity-id", "name": "Display Name" }\`
 
-**add_aliases** — Add alternative names to an entity
-\`\`\`
-{ "action": "add_aliases", "id": "entity-id", "name": "Display Name", "aliases": ["Alias1", "Alias2"] }
-\`\`\`
+**add_aliases** — Add alternative names
+\`{ "action": "add_aliases", "id": "entity-id", "name": "Display Name", "aliases": ["Alias1"] }\`
 
-**add_relationship** — Add a relationship between two entities
-\`\`\`
-{ "action": "add_relationship", "sourceId": "entity-a", "targetId": "entity-b", "relation": "ally_of|enemy_of|family|mentor|subordinate|romantic|rival|etc", "sinceChapter": 0, "description": "Optional detail" }
-\`\`\`
+**add_relationship** — Link two entities
+\`{ "action": "add_relationship", "sourceId": "a", "targetId": "b", "relation": "ally_of", "sinceChapter": 0 }\`
 
-**add_appearance** — Mark entity as appearing in a chapter
-\`\`\`
-{ "action": "add_appearance", "id": "entity-id", "name": "Display Name", "chapterIndex": 3 }
-\`\`\`
+**add_appearance** — Mark entity in a chapter
+\`{ "action": "add_appearance", "id": "entity-id", "name": "Name", "chapterIndex": 3 }\`
 
-**merge_entities** — Merge a duplicate into the correct entity (keeps keepId, deletes removeId)
-\`\`\`
-{ "action": "merge_entities", "keepId": "correct-entity", "keepName": "Correct Name", "removeId": "duplicate-entity", "removeName": "Duplicate Name", "addAliases": ["Duplicate Name"] }
-\`\`\`
+**merge_entities** — Merge duplicate into correct entity
+\`{ "action": "merge_entities", "keepId": "correct", "keepName": "Name", "removeId": "dup", "removeName": "Dup", "addAliases": ["Dup"] }\`
 
 ### Wiki Editing Rules
-- ALWAYS explain what you're going to change in your HTML response BEFORE the action block
-- Use a visually clear summary of proposed changes so the user understands what will happen
-- Only propose changes the user has asked for or clearly implied
-- For new characters the user mentions aren't in the wiki, propose create_entry
-- For duplicate entities, propose merge_entities
-- Use the entity IDs from the wiki data when referencing existing entries
-- The reader is on chapter ${currentChapter + 1} (0-based index: ${currentChapter}), use this for firstAppearance/sinceChapter when unsure
+- ALWAYS explain changes in HTML BEFORE the action block
+- Only propose changes the user asked for or clearly implied
+- Use entity IDs from the wiki data for existing entries
+- Current chapter: ${currentChapter + 1} (0-based: ${currentChapter})
 
-### Rules
-- Return ONLY raw HTML (plus optional <!--WIKI_ACTIONS:[...]-->). No markdown, no code fences, no \`\`\`.
-- Use the classes creatively — mix and match.
+### Output Rules
+- Return ONLY raw HTML + optional action/tool/plan block. No markdown, no code fences.
+- Only ONE action block per response: either <!--WIKI_ACTIONS-->, <!--BUDDY_TOOLS-->, or <!--BUDDY_PLAN-->.
 - Link every entity mention with <a data-entity="..." class="buddy-entity-link">
-- Keep text readable and well-structured.
-- Use cards, grids, and badges to organize complex answers.
-- Short answers can be just a <p class="buddy-text">.
-- Be creative with the visual presentation — make it look great.
+- Be creative with visual presentation.
 
 ## Wiki Data (up to chapter ${currentChapter + 1})
 ${wikiContext || "No wiki data available yet."}`;
@@ -320,38 +380,142 @@ export async function buildBuddyWikiContext(
   return sections.join("\n\n");
 }
 
-/**
- * Parse wiki actions from the AI response.
- * Returns [htmlContent, actions].
- */
-function parseWikiActions(raw: string): [string, WikiAction[]] {
-  const match = raw.match(/<!--WIKI_ACTIONS:\s*(\[[\s\S]*?\])\s*-->/);
-  if (!match) return [raw, []];
+/* ── Response parsing ──────────────────────────────────── */
 
-  const html = raw.slice(0, match.index).trim();
-  try {
-    const actions = JSON.parse(match[1]) as WikiAction[];
-    return [html, actions];
-  } catch {
-    return [raw, []];
-  }
+function stripCodeFences(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith("```html")) s = s.slice(7);
+  else if (s.startsWith("```")) s = s.slice(3);
+  if (s.endsWith("```")) s = s.slice(0, -3);
+  return s.trim();
 }
 
+function parseResponse(raw: string): ParsedBuddyResponse {
+  let html = raw;
+  let wikiActions: WikiAction[] = [];
+  let toolCalls: BuddyToolCall[] = [];
+  let plan: BuddyPlan | null = null;
+
+  // Parse wiki actions
+  const wikiMatch = html.match(/<!--WIKI_ACTIONS:\s*(\[[\s\S]*?\])\s*-->/);
+  if (wikiMatch) {
+    html = html.slice(0, wikiMatch.index).trim();
+    try { wikiActions = JSON.parse(wikiMatch[1]); } catch { /* ignore */ }
+  }
+
+  // Parse tool calls
+  const toolMatch = html.match(/<!--BUDDY_TOOLS:\s*(\[[\s\S]*?\])\s*-->/);
+  if (toolMatch) {
+    html = html.slice(0, toolMatch.index).trim();
+    try { toolCalls = JSON.parse(toolMatch[1]); } catch { /* ignore */ }
+  }
+
+  // Parse plan
+  const planMatch = html.match(/<!--BUDDY_PLAN:\s*(\{[\s\S]*?\})\s*-->/);
+  if (planMatch) {
+    html = html.slice(0, planMatch.index).trim();
+    try { plan = JSON.parse(planMatch[1]); } catch { /* ignore */ }
+  }
+
+  return { html, wikiActions, toolCalls, plan };
+}
+
+/* ── Tool execution ────────────────────────────────────── */
+
 /**
- * Send a message to the AI Buddy and get a response.
- * Returns [htmlContent, wikiActions].
+ * Execute tool calls and return results as a context string.
+ */
+function executeToolCalls(
+  toolCalls: BuddyToolCall[],
+  readChapter: ChapterReader,
+  currentChapter: number,
+): string {
+  const results: string[] = [];
+
+  for (const tc of toolCalls) {
+    switch (tc.tool) {
+      case "read_chapter": {
+        if (tc.chapterIndex > currentChapter) {
+          results.push(`[read_chapter ${tc.chapterIndex}] ERROR: Chapter ${tc.chapterIndex + 1} is beyond the reader's current position (chapter ${currentChapter + 1}).`);
+          continue;
+        }
+        const text = readChapter(tc.chapterIndex);
+        if (text === null) {
+          results.push(`[read_chapter ${tc.chapterIndex}] ERROR: Chapter ${tc.chapterIndex + 1} not found.`);
+        } else {
+          // Truncate very long chapters to keep context manageable
+          const maxLen = 12000;
+          const truncated = text.length > maxLen ? text.slice(0, maxLen) + "\n[... truncated ...]" : text;
+          results.push(`[read_chapter ${tc.chapterIndex}] Chapter ${tc.chapterIndex + 1} content:\n${truncated}`);
+        }
+        break;
+      }
+      case "search_chapters": {
+        const max = tc.maxResults ?? 5;
+        const query = tc.query.toLowerCase();
+        const matches: { chapterIndex: number; snippets: string[] }[] = [];
+
+        for (let i = 0; i <= currentChapter; i++) {
+          const text = readChapter(i);
+          if (!text) continue;
+          const lower = text.toLowerCase();
+          const idx = lower.indexOf(query);
+          if (idx === -1) continue;
+
+          // Extract snippets around matches
+          const snippets: string[] = [];
+          let searchFrom = 0;
+          while (snippets.length < 3) {
+            const pos = lower.indexOf(query, searchFrom);
+            if (pos === -1) break;
+            const start = Math.max(0, pos - 100);
+            const end = Math.min(text.length, pos + query.length + 100);
+            snippets.push(`...${text.slice(start, end)}...`);
+            searchFrom = pos + query.length;
+          }
+          matches.push({ chapterIndex: i, snippets });
+          if (matches.length >= max) break;
+        }
+
+        if (matches.length === 0) {
+          results.push(`[search_chapters "${tc.query}"] No matches found in chapters 1-${currentChapter + 1}.`);
+        } else {
+          const lines = matches.map((m) =>
+            `Chapter ${m.chapterIndex + 1}:\n${m.snippets.join("\n")}`
+          );
+          results.push(`[search_chapters "${tc.query}"] Found ${matches.length} chapter(s):\n${lines.join("\n\n")}`);
+        }
+        break;
+      }
+    }
+  }
+
+  return results.join("\n\n---\n\n");
+}
+
+/* ── Core send function ────────────────────────────────── */
+
+/** Progress callback for streaming status updates to the UI */
+export type BuddyProgressCallback = (status: string) => void;
+
+/**
+ * Send a message to the AI Buddy with automatic tool call resolution.
+ * Returns [htmlContent, wikiActions, plan].
  */
 export async function sendBuddyMessage(
   bookTitle: string,
   currentChapter: number,
+  totalChapters: number,
   wikiContext: string,
   history: BuddyMessage[],
   userMessage: string,
-): Promise<[string, WikiAction[]]> {
+  readChapter: ChapterReader,
+  onProgress?: BuddyProgressCallback,
+): Promise<[string, WikiAction[], BuddyPlan | null]> {
   const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
   if (!apiKey) throw new Error("OpenRouter API key not set");
 
-  const systemPrompt = buildBuddySystemPrompt(bookTitle, currentChapter, wikiContext);
+  const systemPrompt = buildBuddySystemPrompt(bookTitle, currentChapter, totalChapters, wikiContext);
   const overrides = await loadOverrides();
 
   const recentHistory = history.slice(-20);
@@ -364,17 +528,111 @@ export async function sendBuddyMessage(
     { role: "user", content: userMessage },
   ];
 
-  const response = await chatWithPreset(apiKey, "quick", messages, overrides);
-  let content = response.choices?.[0]?.message?.content?.trim() ?? "";
+  const maxIterations = 5;
+  let accumulatedHtml = "";
 
-  // Strip markdown code fences if AI wrapped in them anyway
-  if (content.startsWith("```html")) content = content.slice(7);
-  else if (content.startsWith("```")) content = content.slice(3);
-  if (content.endsWith("```")) content = content.slice(0, -3);
-  content = content.trim();
+  for (let i = 0; i < maxIterations; i++) {
+    const response = await chatWithPreset(apiKey, "quick", messages, overrides);
+    const raw = stripCodeFences(response.choices?.[0]?.message?.content?.trim() ?? "");
+    const parsed = parseResponse(raw);
 
-  return parseWikiActions(content);
+    accumulatedHtml += (accumulatedHtml ? "\n" : "") + parsed.html;
+
+    // If there are wiki actions or a plan, return immediately (no auto-resolution)
+    if (parsed.wikiActions.length > 0 || parsed.plan) {
+      return [accumulatedHtml, parsed.wikiActions, parsed.plan];
+    }
+
+    // If there are tool calls, execute them and feed results back
+    if (parsed.toolCalls.length > 0) {
+      const toolDescs = parsed.toolCalls.map((tc) => {
+        if (tc.tool === "read_chapter") return `Reading chapter ${tc.chapterIndex + 1}`;
+        return `Searching for "${tc.query}"`;
+      });
+      onProgress?.(`${toolDescs.join(", ")}...`);
+
+      const toolResults = executeToolCalls(parsed.toolCalls, readChapter, currentChapter);
+
+      // Add the AI's response + tool results to context for the next iteration
+      messages.push({ role: "assistant", content: parsed.html });
+      messages.push({
+        role: "user",
+        content: `[Tool results — use this data to answer the original question. Respond with your final answer in HTML.]\n\n${toolResults}`,
+      });
+      continue;
+    }
+
+    // No tools, no actions, no plan — final response
+    return [accumulatedHtml, [], null];
+  }
+
+  // Max iterations reached
+  return [accumulatedHtml, [], null];
 }
+
+/* ── Plan step execution ───────────────────────────────── */
+
+/**
+ * Execute a single plan step. Returns [htmlResponse, wikiActions].
+ * The AI receives the plan context + tool results and responds.
+ */
+export async function executePlanStep(
+  bookTitle: string,
+  currentChapter: number,
+  totalChapters: number,
+  wikiContext: string,
+  plan: BuddyPlan,
+  stepIndex: number,
+  previousResults: string[],
+  readChapter: ChapterReader,
+): Promise<[string, WikiAction[]]> {
+  const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+  if (!apiKey) throw new Error("OpenRouter API key not set");
+
+  const step = plan.steps[stepIndex];
+  if (!step) throw new Error(`Step ${stepIndex} not found`);
+
+  const overrides = await loadOverrides();
+  const systemPrompt = buildBuddySystemPrompt(bookTitle, currentChapter, totalChapters, wikiContext);
+
+  // Build context with previous step results
+  let stepContext = `You are executing a plan. Goal: "${plan.goal}"\n\n`;
+  stepContext += `This is step ${stepIndex + 1} of ${plan.steps.length}: "${step.description}"\n\n`;
+
+  if (previousResults.length > 0) {
+    stepContext += `Previous step results:\n${previousResults.map((r, i) => `--- Step ${i + 1} ---\n${r}`).join("\n\n")}\n\n`;
+  }
+
+  // Execute tool calls for this step
+  let toolResults = "";
+  if (step.toolCalls && step.toolCalls.length > 0) {
+    toolResults = executeToolCalls(step.toolCalls, readChapter, currentChapter);
+    stepContext += `Tool results for this step:\n${toolResults}\n\n`;
+  }
+
+  // For the last step, or steps with wiki actions, ask for wiki actions
+  const isLastStep = stepIndex === plan.steps.length - 1;
+  if (isLastStep) {
+    stepContext += `This is the FINAL step. Provide your complete analysis and propose any wiki edits using <!--WIKI_ACTIONS:[...]-->.\n`;
+  } else {
+    stepContext += `Summarize what you found in this step. Your findings will be passed to subsequent steps.\n`;
+  }
+
+  stepContext += `Respond with HTML as usual.`;
+
+  const messages: OpenRouterMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: stepContext },
+  ];
+
+  const response = await chatWithPreset(apiKey, "quick", messages, overrides);
+  const raw = stripCodeFences(response.choices?.[0]?.message?.content?.trim() ?? "");
+  const parsed = parseResponse(raw);
+
+  return [parsed.html, parsed.wikiActions];
+}
+
+/* ── Wiki action execution ─────────────────────────────── */
 
 /**
  * Execute a single wiki action via the Electron IPC API.
@@ -441,12 +699,11 @@ export async function executeWikiAction(
       break;
     }
     case "merge_entities": {
-      // Copy relationships/appearances from removeId to keepId, then delete removeId
       const rels = await api.wikiGetRelationships(filePath, action.removeId);
       for (const r of rels) {
         const src = r.source_id === action.removeId ? action.keepId : r.source_id;
         const tgt = r.target_id === action.removeId ? action.keepId : r.target_id;
-        if (src === tgt) continue; // self-ref after merge
+        if (src === tgt) continue;
         await api.wikiAddRelationship(filePath, {
           sourceId: src,
           targetId: tgt,
@@ -462,7 +719,6 @@ export async function executeWikiAction(
       if (action.addAliases && action.addAliases.length > 0) {
         await api.wikiAddAliases(filePath, action.keepId, action.addAliases);
       }
-      // Also carry over aliases from the removed entity
       const oldAliases = await api.wikiGetAliases(filePath, action.removeId);
       if (oldAliases.length > 0) {
         await api.wikiAddAliases(filePath, action.keepId, oldAliases);

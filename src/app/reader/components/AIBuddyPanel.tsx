@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Send, Loader2, MessageCircle, Trash2, Sparkles, User, Check, XCircle, AlertTriangle, Plus, Pencil, Trash, GitMerge, Link, Eye } from "lucide-react";
+import { X, Send, Loader2, MessageCircle, Trash2, Sparkles, User, Check, XCircle, AlertTriangle, Plus, Pencil, Trash, GitMerge, Link, Eye, ListChecks, BookOpen } from "lucide-react";
 import type { ThemeClasses } from "../lib/types";
-import type { BuddyMessage, WikiAction } from "@/lib/ai-buddy";
-import { sendBuddyMessage, buildBuddyWikiContext, executeWikiAction, describeWikiAction } from "@/lib/ai-buddy";
+import type { BuddyMessage, WikiAction, BuddyPlan, ChapterReader } from "@/lib/ai-buddy";
+import { sendBuddyMessage, buildBuddyWikiContext, executeWikiAction, describeWikiAction, executePlanStep } from "@/lib/ai-buddy";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
 /* ── Buddy-specific CSS ───────────────────────────────────── */
@@ -172,7 +172,9 @@ interface AIBuddyPanelProps {
   filePath: string;
   bookTitle: string;
   currentChapter: number;
+  totalChapters: number;
   wikiEntryCount: number;
+  readChapter: ChapterReader;
   onEntityClick: (entityId: string) => void;
   onClose: () => void;
   onWikiUpdated?: () => void;
@@ -218,14 +220,13 @@ function WikiActionCard({
   const descriptions = actions.map(describeWikiAction);
 
   const colorMap = {
-    green: { border: "border-emerald-500/20", bg: "bg-emerald-500/[0.04]", dot: "bg-emerald-400" },
-    yellow: { border: "border-amber-500/20", bg: "bg-amber-500/[0.04]", dot: "bg-amber-400" },
-    red: { border: "border-red-500/20", bg: "bg-red-500/[0.04]", dot: "bg-red-400" },
+    green: { border: "border-emerald-500/20", bg: "bg-emerald-500/[0.04]" },
+    yellow: { border: "border-amber-500/20", bg: "bg-amber-500/[0.04]" },
+    red: { border: "border-red-500/20", bg: "bg-red-500/[0.04]" },
   };
 
   return (
     <div className="mt-3 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
-      {/* Header */}
       <div className="mb-2.5 flex items-center gap-2">
         <AlertTriangle className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.5} />
         <span className="text-xs font-medium text-amber-400/90">
@@ -236,7 +237,6 @@ function WikiActionCard({
         )}
       </div>
 
-      {/* Action list */}
       <div className="space-y-1.5">
         {descriptions.map((desc, i) => {
           const c = colorMap[desc.color];
@@ -254,7 +254,6 @@ function WikiActionCard({
         })}
       </div>
 
-      {/* Approve / Reject buttons */}
       {!resolved && (
         <div className="mt-3 flex items-center gap-2">
           <button
@@ -277,6 +276,102 @@ function WikiActionCard({
   );
 }
 
+/* ── Plan Card ─────────────────────────────────────────── */
+
+function PlanCard({
+  plan,
+  onApprove,
+  onReject,
+  resolved,
+  executingStep,
+}: {
+  plan: BuddyPlan;
+  onApprove: () => void;
+  onReject: () => void;
+  resolved: boolean;
+  executingStep: number | null;
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--accent-brand)]/15 bg-[var(--accent-brand)]/[0.03] p-3">
+      <div className="mb-2.5 flex items-center gap-2">
+        <ListChecks className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+        <span className="text-xs font-medium text-[var(--accent-brand)]/90">
+          Plan — {plan.steps.length} steps
+        </span>
+        {resolved && executingStep === null && (
+          <span className="ml-auto text-[10px] text-white/25">Resolved</span>
+        )}
+      </div>
+
+      <div className="mb-2 text-xs text-white/60">{plan.goal}</div>
+
+      <div className="space-y-1">
+        {plan.steps.map((step, i) => {
+          const isExecuting = executingStep === i;
+          const isDone = executingStep !== null && i < executingStep;
+          const isPending = executingStep === null || i > (executingStep ?? -1);
+
+          let statusColor = "text-white/30";
+          let bgColor = "bg-white/[0.02]";
+          if (isExecuting) { statusColor = "text-[var(--accent-brand)]"; bgColor = "bg-[var(--accent-brand)]/[0.06]"; }
+          else if (isDone) { statusColor = "text-emerald-400"; bgColor = "bg-emerald-500/[0.04]"; }
+
+          const toolCount = (step.toolCalls?.length ?? 0);
+          const actionCount = (step.wikiActions?.length ?? 0);
+
+          return (
+            <div key={i} className={`flex items-start gap-2.5 rounded-lg border border-white/[0.04] ${bgColor} px-2.5 py-2`}>
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${statusColor} ${isDone ? "bg-emerald-500/15" : isExecuting ? "bg-[var(--accent-brand)]/15" : "bg-white/[0.04]"}`}>
+                {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : isExecuting ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2} /> : i + 1}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-xs ${isDone ? "text-white/50" : isExecuting ? "text-white/80" : "text-white/60"}`}>
+                  {step.description}
+                </div>
+                {(toolCount > 0 || actionCount > 0) && (
+                  <div className="mt-0.5 flex gap-2">
+                    {toolCount > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] text-white/25">
+                        <BookOpen className="h-2.5 w-2.5" strokeWidth={1.5} />
+                        {toolCount} read{toolCount !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {actionCount > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] text-white/25">
+                        <Pencil className="h-2.5 w-2.5" strokeWidth={1.5} />
+                        {actionCount} edit{actionCount !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {!resolved && executingStep === null && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={onApprove}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--accent-brand)]/15 px-3 py-1.5 text-xs font-medium text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/25"
+          >
+            <Check className="h-3 w-3" strokeWidth={2} />
+            Execute Plan
+          </button>
+          <button
+            onClick={onReject}
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
+          >
+            <XCircle className="h-3 w-3" strokeWidth={2} />
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── AI Buddy Panel ────────────────────────────────────── */
 
 export function AIBuddyPanel({
@@ -284,7 +379,9 @@ export function AIBuddyPanel({
   filePath,
   bookTitle,
   currentChapter,
+  totalChapters,
   wikiEntryCount,
+  readChapter,
   onEntityClick,
   onClose,
   onWikiUpdated,
@@ -292,8 +389,11 @@ export function AIBuddyPanel({
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [wikiContext, setWikiContext] = useState("");
   const [applyingActions, setApplyingActions] = useState<string | null>(null);
+  const [executingPlanMsgId, setExecutingPlanMsgId] = useState<string | null>(null);
+  const [executingPlanStep, setExecutingPlanStep] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -306,7 +406,7 @@ export function AIBuddyPanel({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages, isLoading, executingPlanStep]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -355,7 +455,6 @@ export function AIBuddyPanel({
       );
       await refreshWikiContext();
     } catch (err) {
-      // Add error message
       setMessages((prev) => [...prev, {
         id: `error-${Date.now()}`,
         role: "assistant",
@@ -376,6 +475,79 @@ export function AIBuddyPanel({
     );
   }, []);
 
+  /* Execute a plan */
+  const executePlan = useCallback(async (msgId: string) => {
+    const msg = messages.find((m) => m.id === msgId);
+    if (!msg?.pendingPlan) return;
+
+    const plan = msg.pendingPlan;
+    setExecutingPlanMsgId(msgId);
+    const previousResults: string[] = [];
+
+    try {
+      for (let i = 0; i < plan.steps.length; i++) {
+        setExecutingPlanStep(i);
+
+        const [stepHtml, stepActions] = await executePlanStep(
+          bookTitle, currentChapter, totalChapters, wikiContext,
+          plan, i, previousResults, readChapter,
+        );
+
+        previousResults.push(stepHtml);
+
+        // Add step result as a message
+        const stepMsg: BuddyMessage = {
+          id: `plan-step-${Date.now()}-${i}`,
+          role: "assistant",
+          content: stepHtml,
+          timestamp: Date.now(),
+          pendingActions: stepActions.length > 0 ? stepActions : undefined,
+          actionsResolved: stepActions.length === 0 ? undefined : false,
+        };
+        setMessages((prev) => [...prev, stepMsg]);
+
+        // If this step has wiki actions, apply them automatically (plan was already approved)
+        if (stepActions.length > 0) {
+          for (const action of stepActions) {
+            await executeWikiAction(filePath, action);
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === stepMsg.id ? { ...m, actionsResolved: true } : m,
+            ),
+          );
+          await refreshWikiContext();
+        }
+      }
+
+      // Mark plan as resolved
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId ? { ...m, planResolved: true } : m,
+        ),
+      );
+    } catch (err) {
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `<p class="buddy-text" style="color: oklch(0.65 0.18 25);">Plan execution failed at step ${(executingPlanStep ?? 0) + 1}: ${err instanceof Error ? err.message : "Unknown error"}</p>`,
+        timestamp: Date.now(),
+      }]);
+    } finally {
+      setExecutingPlanMsgId(null);
+      setExecutingPlanStep(null);
+    }
+  }, [messages, bookTitle, currentChapter, totalChapters, wikiContext, readChapter, filePath, refreshWikiContext, executingPlanStep]);
+
+  /* Reject a plan */
+  const rejectPlan = useCallback((msgId: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msgId ? { ...m, planResolved: true } : m,
+      ),
+    );
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
 
@@ -389,10 +561,13 @@ export function AIBuddyPanel({
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
+    setLoadingStatus(null);
 
     try {
-      const [htmlContent, actions] = await sendBuddyMessage(
-        bookTitle, currentChapter, wikiContext, messages, text.trim(),
+      const [htmlContent, actions, plan] = await sendBuddyMessage(
+        bookTitle, currentChapter, totalChapters, wikiContext, messages, text.trim(),
+        readChapter,
+        (status) => setLoadingStatus(status),
       );
       setMessages((prev) => [...prev, {
         id: `assistant-${Date.now()}`,
@@ -401,6 +576,8 @@ export function AIBuddyPanel({
         timestamp: Date.now(),
         pendingActions: actions.length > 0 ? actions : undefined,
         actionsResolved: actions.length === 0 ? undefined : false,
+        pendingPlan: plan ?? undefined,
+        planResolved: plan ? false : undefined,
       }]);
     } catch (err) {
       setMessages((prev) => [...prev, {
@@ -411,9 +588,10 @@ export function AIBuddyPanel({
       }]);
     } finally {
       setIsLoading(false);
+      setLoadingStatus(null);
       inputRef.current?.focus();
     }
-  }, [isLoading, bookTitle, currentChapter, wikiContext, messages]);
+  }, [isLoading, bookTitle, currentChapter, totalChapters, wikiContext, messages, readChapter]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -475,7 +653,7 @@ export function AIBuddyPanel({
             <div className="text-center">
               <p className="text-sm font-medium text-white/70">Ask me anything about the book</p>
               <p className="mt-1.5 text-xs leading-relaxed text-white/30">
-                Characters, plot, relationships, arcs — I have full wiki context up to your current chapter.
+                Characters, plot, relationships, arcs — I have full wiki context and can read chapters to answer questions.
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
@@ -534,6 +712,17 @@ export function AIBuddyPanel({
                       />
                     )}
 
+                    {/* Plan confirmation card */}
+                    {msg.pendingPlan && (
+                      <PlanCard
+                        plan={msg.pendingPlan}
+                        onApprove={() => executePlan(msg.id)}
+                        onReject={() => rejectPlan(msg.id)}
+                        resolved={msg.planResolved ?? false}
+                        executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null}
+                      />
+                    )}
+
                     {/* Applying spinner */}
                     {applyingActions === msg.id && (
                       <div className="mt-2 flex items-center gap-2">
@@ -556,7 +745,9 @@ export function AIBuddyPanel({
                 </div>
                 <div className="flex items-center gap-2 pl-7">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-                  <span className="text-xs text-white/30">Thinking...</span>
+                  <span className="text-xs text-white/30">
+                    {loadingStatus ?? "Thinking..."}
+                  </span>
                 </div>
               </div>
             )}
@@ -576,12 +767,13 @@ export function AIBuddyPanel({
             rows={1}
             className="flex-1 resize-none bg-transparent text-xs leading-relaxed text-white/80 outline-none placeholder:text-white/20"
             style={{ maxHeight: "80px" }}
+            disabled={isLoading || executingPlanMsgId !== null}
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isLoading}
+            disabled={!input.trim() || isLoading || executingPlanMsgId !== null}
             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all ${
-              input.trim() && !isLoading
+              input.trim() && !isLoading && executingPlanMsgId === null
                 ? "bg-[var(--accent-brand)] text-white hover:brightness-110"
                 : "text-white/15"
             }`}
