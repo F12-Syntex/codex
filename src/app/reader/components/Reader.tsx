@@ -45,7 +45,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [currentChapter, setCurrentChapter] = useState(0);
   const [customFonts] = useState<CustomFont[]>([]);
-  const [initialPage, setInitialPage] = useState<number | null>(null);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -992,7 +991,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         const { chapter, page } = JSON.parse(raw);
         const ch = Math.min(chapter ?? 0, bookContent.chapters.length - 1);
         setCurrentChapter(ch);
-        setInitialPage(page ?? 0);
+        if (page && page > 0) {
+          // pendingLastPageRef is repurposed: store the exact page to restore.
+          // handleMeasure will resolve it once TextContent measures.
+          pendingLastPageRef.current = false;
+          // Set page directly; handleMeasure will clamp if needed
+          setCurrentPage(page);
+        }
       } catch { /* ignore corrupt data */ }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1049,48 +1054,53 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     return () => { window.removeEventListener("mousemove", handler); if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current); };
   }, [settings.immersiveMode]);
 
-  const pendingStartPageRef = useRef<number | null>(null);
+  // ── Page navigation (Reader owns all state) ─────────────
+  // When navigating to a chapter's last page, we store -1 here.
+  // Once TextContent measures the real page count, we resolve it.
+  const pendingLastPageRef = useRef(false);
 
-  const handleChapterChange = useCallback((index: number, startPage?: number) => {
-    // Block navigation to chapters after the branch point (alternate timeline)
+  const handleChapterChange = useCallback((index: number, goToLastPage = false) => {
     if (activeBranch && index > activeBranch.chapterIndex) return;
     tts.actions.stop();
-    pendingStartPageRef.current = startPage ?? null;
+    pendingLastPageRef.current = goToLastPage;
+    setCurrentPage(0);
+    setTotalPages(1);
     setCurrentChapter(index);
     setShowTOC(false);
   }, [tts.actions, activeBranch]);
 
-  // Chapter boundary navigation: page-forward at end → next chapter (page 0)
-  const handleNextChapterFromPage = useCallback(() => {
-    // Block navigation at or past the branch chapter (alternate timeline)
-    if (activeBranch && currentChapter >= activeBranch.chapterIndex) return;
-    if (currentChapter < chapters.length - 1) {
-      handleChapterChange(currentChapter + 1);
-    }
-  }, [currentChapter, chapters.length, handleChapterChange, activeBranch]);
-
-  // Chapter boundary navigation: page-back at start → prev chapter (last page)
-  const handlePrevChapterFromPage = useCallback(() => {
-    if (currentChapter > 0) {
-      handleChapterChange(currentChapter - 1, -1); // -1 signals "last page"
-    }
-  }, [currentChapter, handleChapterChange]);
-
-  const [firstVisiblePara, setFirstVisiblePara] = useState(0);
-  const handlePageChange = useCallback((page: number, total: number, firstPara?: number) => {
-    setCurrentPage(page);
-    setTotalPages(total);
-    if (firstPara != null) setFirstVisiblePara(firstPara);
-
-    // Apply pending "go to last page" after chapter loads with correct totalPages
-    if (pendingStartPageRef.current !== null && total > 1) {
-      const target = pendingStartPageRef.current === -1 ? total - 1 : pendingStartPageRef.current;
-      pendingStartPageRef.current = null;
-      if (target > 0) {
-        setInitialPage(target);
-      }
+  // Called by TextContent when it measures the real page count
+  const handleMeasure = useCallback((measured: number) => {
+    setTotalPages(measured);
+    if (pendingLastPageRef.current && measured > 1) {
+      pendingLastPageRef.current = false;
+      setCurrentPage(measured - 1);
+    } else {
+      // Clamp current page to valid range
+      setCurrentPage((prev) => Math.min(prev, measured - 1));
     }
   }, []);
+
+  // Simple page navigation
+  const goNextPage = useCallback(() => {
+    if (currentPage < totalPages - 1) {
+      setCurrentPage(currentPage + 1);
+    } else if (!activeBranch || currentChapter < (activeBranch?.chapterIndex ?? Infinity)) {
+      if (currentChapter < chapters.length - 1) {
+        handleChapterChange(currentChapter + 1);
+      }
+    }
+  }, [currentPage, totalPages, currentChapter, chapters.length, handleChapterChange, activeBranch]);
+
+  const goPrevPage = useCallback(() => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    } else if (currentChapter > 0) {
+      handleChapterChange(currentChapter - 1, true);
+    }
+  }, [currentPage, currentChapter, handleChapterChange]);
+
+  const [firstVisiblePara, setFirstVisiblePara] = useState(0);
 
   const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowAI(false); setShowTOC(v => !v); }, []);
   const toggleTTS = useCallback(() => { setShowTOC(false); setShowTextSettings(false); setShowAI(false); setShowTTS(v => !v); }, []);
@@ -1133,6 +1143,52 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [showTextSettings, showTOC, showTTS, showAI, activeBranch, handleExitBranch, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
+
+  // Arrow key page navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+      if (e.key === "ArrowRight" || e.key === "PageDown") {
+        e.preventDefault();
+        goNextPage();
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        goPrevPage();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [goNextPage, goPrevPage]);
+
+  // Scroll wheel / trackpad page navigation
+  const scrollAccum = useRef(0);
+  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readerContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = readerContentRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      scrollAccum.current += e.deltaY;
+      const threshold = 80;
+      if (scrollAccum.current > threshold) {
+        goNextPage();
+        scrollAccum.current = 0;
+      } else if (scrollAccum.current < -threshold) {
+        goPrevPage();
+        scrollAccum.current = 0;
+      }
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+      scrollTimeout.current = setTimeout(() => { scrollAccum.current = 0; }, 200);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", handler);
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    };
+  }, [goNextPage, goPrevPage]);
 
   if (!isLoaded) return null;
 
@@ -1218,7 +1274,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       {/* Main area: content + footer as siblings in a column */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Content area — sidebar overlays this, not the footer */}
-        <div className="relative flex-1 overflow-hidden">
+        <div ref={readerContentRef} className="relative flex-1 overflow-hidden">
           {showTOC && chapters.length > 1 && (
             <TOCSidebar
               chapters={chapters} currentChapter={currentChapter}
@@ -1306,11 +1362,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               padding={settings.textPadding}
               maxTextWidth={settings.maxTextWidth}
               animated={settings.animatedPageTurn}
-              initialPage={initialPage}
-              onInitialPageConsumed={() => setInitialPage(null)}
-              onPageChange={handlePageChange}
-              onNextChapter={handleNextChapterFromPage}
-              onPrevChapter={handlePrevChapterFromPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onMeasure={handleMeasure}
+              onFirstParaChange={setFirstVisiblePara}
+              onPageRequest={setCurrentPage}
               ttsStatus={tts.state.status}
               ttsParagraphIndex={tts.state.currentParagraph}
               ttsActiveWordIndex={tts.activeWordIndex}
@@ -1358,10 +1414,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           chapterIndex={currentChapter} chapterCount={chapters.length}
           chapterTitle={chapterTitle} theme={theme} immersiveMode={settings.immersiveMode}
           immersiveVisible={immersiveVisible}
-          canGoPrev={!activeBranch && currentChapter > 0}
-          canGoNext={!activeBranch && currentChapter < chapters.length - 1}
-          onPrev={() => handleChapterChange(currentChapter - 1)}
-          onNext={() => handleChapterChange(currentChapter + 1)}
+          canGoPrev={!activeBranch && (currentPage > 0 || currentChapter > 0)}
+          canGoNext={!activeBranch && (currentPage < totalPages - 1 || currentChapter < chapters.length - 1)}
+          onPrev={goPrevPage}
+          onNext={goNextPage}
           branchMode={!!activeBranch}
           branchEntityName={activeBranch?.entityName}
           onExitBranch={handleExitBranch}

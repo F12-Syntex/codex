@@ -21,11 +21,11 @@ interface TextContentProps {
   padding: number;
   maxTextWidth: number;
   animated: boolean;
-  initialPage?: number | null;
-  onInitialPageConsumed?: () => void;
-  onPageChange: (current: number, total: number, firstVisibleParagraph?: number) => void;
-  onNextChapter?: () => void;
-  onPrevChapter?: () => void;
+  currentPage: number;
+  totalPages: number;
+  onMeasure: (totalPages: number) => void;
+  onFirstParaChange?: (index: number) => void;
+  onPageRequest?: (page: number) => void;
   ttsStatus?: TTSStatus;
   ttsParagraphIndex?: number;
   ttsActiveWordIndex?: number;
@@ -92,11 +92,11 @@ export function TextContent({
   padding,
   maxTextWidth,
   animated,
-  initialPage,
-  onInitialPageConsumed,
-  onPageChange,
-  onNextChapter,
-  onPrevChapter,
+  currentPage,
+  totalPages,
+  onMeasure,
+  onFirstParaChange,
+  onPageRequest,
   ttsStatus,
   ttsParagraphIndex = -1,
   ttsActiveWordIndex = -1,
@@ -159,16 +159,11 @@ export function TextContent({
     paragraphIndex: number;
   } | null>(null);
 
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [pageWidth, setPageWidth] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentFitsSingleCol, setContentFitsSingleCol] = useState(false);
-  // Ref to prevent oscillation: once we decide content fits in 1 col, don't re-evaluate until chapter changes
   const singleColFrozenRef = useRef(false);
-  // Track chapter navigation direction for entrance animation
-  const navDirectionRef = useRef<"forward" | "backward" | null>(null);
   const [slideClass, setSlideClass] = useState<string | null>(null);
 
   // Build entity regex from index
@@ -207,8 +202,7 @@ export function TextContent({
       const scrollW = slider.scrollWidth;
       const s = pw + columnGap;
       const pages = Math.max(1, Math.ceil(scrollW / s));
-      setTotalPages(pages);
-      setCurrentPage((prev) => Math.min(prev, pages - 1));
+      onMeasure(pages);
 
       // Detect if all content fits in a single column (only evaluate once per chapter)
       if (!singleColFrozenRef.current) {
@@ -220,7 +214,7 @@ export function TextContent({
         }
       }
     });
-  }, [padding, maxTextWidth, columnGap]);
+  }, [padding, maxTextWidth, columnGap, onMeasure]);
 
   useEffect(() => {
     measure();
@@ -239,135 +233,30 @@ export function TextContent({
     return () => ro.disconnect();
   }, [measure]);
 
+  // Report first visible paragraph whenever currentPage changes
   useEffect(() => {
-    // Find the first paragraph visible on this page
     const slider = sliderRef.current;
-    let firstPara = 0;
-    if (slider && stride > 0) {
-      const pageStart = currentPage * stride;
-      const pageEnd = pageStart + pageWidth;
-      const paraEls = slider.querySelectorAll("[data-para-idx]");
-      for (const el of paraEls) {
-        const htmlEl = el as HTMLElement;
-        const left = htmlEl.offsetLeft;
-        const right = left + htmlEl.offsetWidth;
-        if (right > pageStart && left < pageEnd) {
-          firstPara = parseInt(htmlEl.getAttribute("data-para-idx") ?? "0", 10);
-          break;
-        }
+    if (!slider || stride <= 0 || !onFirstParaChange) return;
+    const pageStart = currentPage * stride;
+    const pageEnd = pageStart + pageWidth;
+    const paraEls = slider.querySelectorAll("[data-para-idx]");
+    for (const el of paraEls) {
+      const htmlEl = el as HTMLElement;
+      const left = htmlEl.offsetLeft;
+      const right = left + htmlEl.offsetWidth;
+      if (right > pageStart && left < pageEnd) {
+        onFirstParaChange(parseInt(htmlEl.getAttribute("data-para-idx") ?? "0", 10));
+        return;
       }
     }
-    onPageChange(currentPage, totalPages, firstPara);
-  }, [currentPage, totalPages, onPageChange, stride, pageWidth]);
+    onFirstParaChange(0);
+  }, [currentPage, stride, pageWidth, onFirstParaChange]);
 
-  // Reset to page 0 on chapter change; trigger entrance animation
+  // Reset single-col detection on chapter change
   useEffect(() => {
-    setCurrentPage(0);
     singleColFrozenRef.current = false;
     setContentFitsSingleCol(false);
-
-    const dir = navDirectionRef.current;
-    if (dir && animated) {
-      setSlideClass(dir === "forward" ? "chapter-enter-forward" : "chapter-enter-backward");
-      const id = setTimeout(() => setSlideClass(null), 300);
-      return () => clearTimeout(id);
-    }
-    navDirectionRef.current = null;
-  }, [htmlParagraphs]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Restore initial page from saved reading position
-  useEffect(() => {
-    if (initialPage != null && initialPage > 0 && totalPages > 1) {
-      const target = Math.min(initialPage, totalPages - 1);
-      setCurrentPage(target);
-      onInitialPageConsumed?.();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPage, totalPages]);
-
-  // ── Navigation ──────────────────────────────────────
-
-  const goTo = useCallback(
-    (page: number) => {
-      const clamped = Math.max(0, Math.min(page, totalPages - 1));
-      setCurrentPage(clamped);
-    },
-    [totalPages],
-  );
-
-  // Removed: click-to-navigate regions. Page turns are keyboard/scroll/arrow-button only.
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in an input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
-
-      if (e.key === "ArrowRight" || e.key === "PageDown") {
-        e.preventDefault();
-        if (currentPage >= totalPages - 1) {
-          navDirectionRef.current = "forward";
-          onNextChapter?.();
-        } else {
-          goTo(currentPage + 1);
-        }
-      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        e.preventDefault();
-        if (currentPage <= 0) {
-          navDirectionRef.current = "backward";
-          onPrevChapter?.();
-        } else {
-          goTo(currentPage - 1);
-        }
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [currentPage, totalPages, goTo, onNextChapter, onPrevChapter]);
-
-  // Scroll wheel / trackpad navigation
-  const scrollAccum = useRef(0);
-  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const outer = outerRef.current;
-    if (!outer) return;
-
-    const handler = (e: WheelEvent) => {
-      e.preventDefault();
-      scrollAccum.current += e.deltaY;
-      const threshold = 80;
-
-      if (scrollAccum.current > threshold) {
-        if (currentPage >= totalPages - 1) {
-          navDirectionRef.current = "forward";
-          onNextChapter?.();
-        } else {
-          goTo(currentPage + 1);
-        }
-        scrollAccum.current = 0;
-      } else if (scrollAccum.current < -threshold) {
-        if (currentPage <= 0) {
-          navDirectionRef.current = "backward";
-          onPrevChapter?.();
-        } else {
-          goTo(currentPage - 1);
-        }
-        scrollAccum.current = 0;
-      }
-
-      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
-      scrollTimeout.current = setTimeout(() => {
-        scrollAccum.current = 0;
-      }, 200);
-    };
-
-    outer.addEventListener("wheel", handler, { passive: false });
-    return () => {
-      outer.removeEventListener("wheel", handler);
-      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
-    };
-  }, [currentPage, totalPages, goTo, onNextChapter, onPrevChapter]);
+  }, [htmlParagraphs]);
 
   // ── Content processing ──────────────────────────────
 
@@ -701,7 +590,7 @@ export function TextContent({
     const paraLeft = paraEl.offsetLeft;
     const targetPage = Math.floor(paraLeft / stride);
     if (targetPage !== currentPage && targetPage >= 0 && targetPage < totalPages) {
-      setCurrentPage(targetPage);
+      onPageRequest?.(targetPage);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ttsParagraphIndex, ttsStatus, stride, totalPages]);
