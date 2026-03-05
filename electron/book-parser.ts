@@ -377,6 +377,88 @@ function parseSpine(opfXml: string): string[] {
   return ids;
 }
 
+/** Parse the NCX (EPUB 2) table of contents — returns a map of href → label */
+function parseNcx(zip: AdmZip, opfXml: string, opfDir: string): Map<string, string> {
+  const map = new Map<string, string>();
+
+  // Find NCX item in manifest (media-type="application/x-dtbncx+xml")
+  const ncxMatch = opfXml.match(/<(?:\w+:)?item\b[^>]*?media-type=["']application\/x-dtbncx\+xml["'][^>]*?\/?>/i);
+  if (!ncxMatch) return map;
+
+  const hrefMatch = ncxMatch[0].match(/\bhref=["']([^"']+)["']/i);
+  if (!hrefMatch) return map;
+
+  const ncxPath = resolveRelativePath(opfDir, decodeURIComponent(hrefMatch[1]));
+  const entry = getZipEntry(zip, ncxPath);
+  if (!entry) return map;
+
+  const ncxXml = entry.getData().toString("utf-8");
+  const ncxDir = path.posix.dirname(ncxPath);
+
+  // Extract <navPoint> entries: <navLabel><text>TITLE</text></navLabel><content src="HREF"/>
+  const navPointRegex = /<navPoint\b[^>]*>[\s\S]*?<\/navPoint>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = navPointRegex.exec(ncxXml)) !== null) {
+    const block = m[0];
+    const textMatch = block.match(/<navLabel>\s*<text>([^<]*)<\/text>\s*<\/navLabel>/i);
+    const srcMatch = block.match(/<content\b[^>]*?src=["']([^"']+)["']/i);
+    if (textMatch && srcMatch) {
+      const label = stripHtml(textMatch[1]).trim();
+      // Normalize href: resolve relative to NCX dir, strip fragment
+      const rawHref = decodeURIComponent(srcMatch[1]).split("#")[0];
+      const resolved = resolveRelativePath(ncxDir, rawHref);
+      if (label) map.set(resolved, label);
+    }
+  }
+  return map;
+}
+
+/** Parse the EPUB 3 NAV document — returns a map of href → label */
+function parseNav(zip: AdmZip, opfXml: string, opfDir: string): Map<string, string> {
+  const map = new Map<string, string>();
+
+  // Find NAV item in manifest (properties="nav")
+  const navMatch = opfXml.match(/<(?:\w+:)?item\b[^>]*?properties=["'][^"']*\bnav\b[^"']*["'][^>]*?\/?>/i);
+  if (!navMatch) return map;
+
+  const hrefMatch = navMatch[0].match(/\bhref=["']([^"']+)["']/i);
+  if (!hrefMatch) return map;
+
+  const navPath = resolveRelativePath(opfDir, decodeURIComponent(hrefMatch[1]));
+  const entry = getZipEntry(zip, navPath);
+  if (!entry) return map;
+
+  const navHtml = entry.getData().toString("utf-8");
+  const navDir = path.posix.dirname(navPath);
+
+  // Find <nav epub:type="toc"> section
+  const tocNav = navHtml.match(/<nav\b[^>]*epub:type=["'][^"']*\btoc\b[^"']*["'][^>]*>([\s\S]*?)<\/nav>/i);
+  if (!tocNav) return map;
+
+  // Extract <a href="...">TITLE</a> entries
+  const linkRegex = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = linkRegex.exec(tocNav[1])) !== null) {
+    const rawHref = decodeURIComponent(m[1]).split("#")[0];
+    const label = stripHtml(m[2]).trim();
+    const resolved = resolveRelativePath(navDir, rawHref);
+    if (label) map.set(resolved, label);
+  }
+  return map;
+}
+
+/** Patterns that indicate a spine item is a TOC/nav page (by href or title) */
+const TOC_HREF_PATTERNS = [/\btoc\b/i, /\bnav\b/i, /table.?of.?contents/i, /\bcontents\b/i];
+const TOC_TITLE_PATTERNS = [/^(table\s+of\s+contents|contents|toc)$/i];
+
+function isTocItem(href: string, title: string): boolean {
+  const trimTitle = title.trim();
+  if (TOC_TITLE_PATTERNS.some((p) => p.test(trimTitle))) return true;
+  // Only match href if it's clearly a dedicated TOC file (not "introduction" etc.)
+  const filename = href.split("/").pop()?.split(".")[0]?.toLowerCase() ?? "";
+  return filename === "toc" || filename === "nav" || filename === "contents" || filename === "tableofcontents";
+}
+
 // ── EPUB Parser ──────────────────────────────────────
 
 function parseEpubChapters(filePath: string): BookContent {
@@ -440,7 +522,12 @@ function parseEpubChapters(filePath: string): BookContent {
     return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"], htmlParagraphs: ["<p>No chapters found in EPUB spine</p>"] }], isImageBook: false };
   }
 
-  // 4. Extract each chapter
+  // 4. Parse NCX / NAV for chapter names (the "skeleton")
+  const ncxTitles = parseNcx(zip, opfXml, opfDir);
+  const navTitles = parseNav(zip, opfXml, opfDir);
+  console.log(`[book-parser] NCX titles: ${ncxTitles.size}, NAV titles: ${navTitles.size}`);
+
+  // 5. Extract each chapter
   const chapters: BookChapter[] = [];
   let chapterNum = 0;
 
@@ -467,10 +554,16 @@ function parseEpubChapters(filePath: string): BookContent {
     if (plain.length === 0) continue;
 
     chapterNum++;
-    const title = extractTitle(xhtml) || `Chapter ${chapterNum}`;
 
-    // Skip the EPUB's built-in table of contents page — we render our own
-    if (/^(table\s+of\s+contents|contents|toc)$/i.test(title.trim())) continue;
+    // Title priority: NCX skeleton → NAV skeleton → extracted <title>/<h1> → generic
+    const skeletonTitle = ncxTitles.get(entryPath) || navTitles.get(entryPath)
+      || ncxTitles.get(decodedHref) || navTitles.get(decodedHref);
+    const extractedTitle = extractTitle(xhtml);
+    const title = skeletonTitle || extractedTitle || `Chapter ${chapterNum}`;
+
+    // Skip built-in TOC pages — check both href and title
+    if (isTocItem(entryPath, title)) continue;
+    if (isTocItem(decodedHref, extractedTitle)) continue;
 
     chapters.push({ title, paragraphs: plain, htmlParagraphs: html });
   }
