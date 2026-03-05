@@ -292,7 +292,8 @@ function createWindow() {
           { role: "user", content: text },
         ],
         modalities: ["text", "audio"],
-        audio: { voice: voiceName, format: "wav" },
+        audio: { voice: voiceName, format: "pcm16" },
+        stream: true,
       }),
     });
 
@@ -301,12 +302,61 @@ function createWindow() {
       throw new Error(`OpenRouter TTS ${resp.status}: ${errText}`);
     }
 
-    const json = await resp.json() as { choices?: { message?: { audio?: { data?: string } } }[] };
-    const audioData = json?.choices?.[0]?.message?.audio?.data;
-    if (!audioData) throw new Error("No audio data in response");
+    // Stream SSE and collect base64-encoded PCM16 chunks
+    const body = resp.body;
+    if (!body) throw new Error("No response body");
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+    const audioChunks: Buffer[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      sseBuffer += decoder.decode(value, { stream: true });
+
+      const lines = sseBuffer.split("\n");
+      sseBuffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+        try {
+          const json = JSON.parse(line.slice(6));
+          const audioData = json?.choices?.[0]?.delta?.audio?.data;
+          if (audioData) audioChunks.push(Buffer.from(audioData, "base64"));
+        } catch { /* skip malformed chunks */ }
+      }
+    }
+
+    if (audioChunks.length === 0) throw new Error("No audio data received");
+
+    // Combine PCM16 chunks and wrap in a WAV header
+    const pcm = Buffer.concat(audioChunks);
+    const sampleRate = 24000; // OpenAI audio models output 24kHz
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+    const blockAlign = numChannels * (bitsPerSample / 8);
+    const wavHeader = Buffer.alloc(44);
+    wavHeader.write("RIFF", 0);
+    wavHeader.writeUInt32LE(36 + pcm.length, 4);
+    wavHeader.write("WAVE", 8);
+    wavHeader.write("fmt ", 12);
+    wavHeader.writeUInt32LE(16, 16);
+    wavHeader.writeUInt16LE(1, 20); // PCM format
+    wavHeader.writeUInt16LE(numChannels, 22);
+    wavHeader.writeUInt32LE(sampleRate, 24);
+    wavHeader.writeUInt32LE(byteRate, 28);
+    wavHeader.writeUInt16LE(blockAlign, 32);
+    wavHeader.writeUInt16LE(bitsPerSample, 34);
+    wavHeader.write("data", 36);
+    wavHeader.writeUInt32LE(pcm.length, 40);
+
+    const wav = Buffer.concat([wavHeader, pcm]);
 
     // Rate adjustment is handled by HTMLAudioElement.playbackRate on the renderer
-    return { audio: audioData, wordBoundaries: [] };
+    return { audio: wav.toString("base64"), wordBoundaries: [] };
   });
 
   // ── Library: import files via dialog ──────────────
