@@ -1170,6 +1170,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     const el = readerContentRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
+      // Don't hijack scroll from sidebars/panels/scrollable children
+      let node = e.target as HTMLElement | null;
+      while (node && node !== el) {
+        const { overflowY } = getComputedStyle(node);
+        if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return;
+        node = node.parentElement;
+      }
       e.preventDefault();
       scrollAccum.current += e.deltaY;
       const threshold = 80;

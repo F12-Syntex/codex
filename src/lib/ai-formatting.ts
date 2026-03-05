@@ -82,7 +82,18 @@ export function parseFormattingResponse(
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
     }
 
-    const parsed = JSON.parse(cleaned);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // AI response may be truncated — try to salvage by closing open strings/braces
+      const repaired = repairJson(cleaned);
+      if (repaired) {
+        parsed = JSON.parse(repaired);
+      } else {
+        throw new Error("Unrecoverable JSON");
+      }
+    }
 
     // Handle sparse object format: {index: html}
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -133,6 +144,36 @@ export function parseFormattingResponse(
  * Remove any class="..." values that don't start with "ai-fmt-".
  * This gives the AI full creative freedom within the ai-fmt namespace.
  */
+/**
+ * Attempt to repair truncated JSON from AI responses.
+ * Handles common cases: unclosed strings, missing closing braces/brackets.
+ */
+function repairJson(raw: string): string | null {
+  let s = raw.trim();
+
+  // If it's an object, try to close it
+  if (s.startsWith("{")) {
+    // Remove trailing comma or incomplete key-value
+    s = s.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, "");
+    // Close any unclosed string value
+    const quoteCount = (s.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) s += '"';
+    // Ensure closing brace
+    if (!s.endsWith("}")) s += "}";
+    try { JSON.parse(s); return s; } catch { /* fall through */ }
+  }
+
+  // If it's an array, try to close it
+  if (s.startsWith("[")) {
+    const quoteCount = (s.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) s += '"';
+    if (!s.endsWith("]")) s += "]";
+    try { JSON.parse(s); return s; } catch { /* fall through */ }
+  }
+
+  return null;
+}
+
 function stripUnrecognizedClasses(html: string): string {
   return html.replace(/class="([^"]*)"/g, (_match, classes: string) => {
     const filtered = classes
