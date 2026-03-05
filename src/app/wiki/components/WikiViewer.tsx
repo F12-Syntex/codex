@@ -6,7 +6,7 @@ import {
   User, Swords, MapPin, Flame, Lightbulb,
   ChevronRight, BookOpen, GitBranch,
 } from "lucide-react";
-import { TitleBar } from "@/components/title-bar";
+import { WindowHeader } from "@/components/window-header";
 import type { WikiEntry, WikiEntryType, WikiArc } from "@/lib/ai-wiki";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiEntryView } from "./WikiEntryView";
@@ -58,6 +58,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<WikiEntryType | "all">("all");
   const [viewMode, setViewMode] = useState<ViewMode>("entries");
+  const [zoom, setZoom] = useState(100);
   // Load entries from DB — runs on mount and polls for updates
   const initialSelectionDone = useRef(false);
 
@@ -173,7 +174,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   if (totalEntries === 0) {
     return (
       <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <TitleBar breadcrumb={["Wiki", bookTitle]} />
+        <WindowHeader icon={<BookOpen className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <BookOpen className="mx-auto h-8 w-8 text-white/20" strokeWidth={1.5} />
@@ -189,9 +190,9 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-      <TitleBar breadcrumb={["Wiki", bookTitle]} />
+      <WindowHeader icon={<BookOpen className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden" style={{ fontSize: `${zoom}%` }}>
         {/* Sidebar */}
         <div className="flex w-[260px] flex-col border-r border-white/[0.06] bg-[var(--bg-surface)]">
           {/* View mode toggle */}

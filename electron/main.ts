@@ -201,6 +201,17 @@ function createWindow() {
     createAppWindow("style-dictionary", params, { width: 900, height: 700, minWidth: 600, minHeight: 400 });
   });
 
+  // ── Buddy: open in new window ────────────────────
+  ipcMain.handle("buddy:open", (_event, info: { filePath: string; title: string; currentChapter: number; totalChapters: number }) => {
+    const params = new URLSearchParams({
+      filePath: info.filePath,
+      title: info.title,
+      currentChapter: String(info.currentChapter),
+      totalChapters: String(info.totalChapters),
+    });
+    createAppWindow("buddy", params, { width: 600, height: 700, minWidth: 400, minHeight: 400 });
+  });
+
   // ── Wiki: open in new window ─────────────────────
   ipcMain.handle("wiki:open", (_event, info: { filePath: string; title: string; entryId?: string }) => {
     const params = new URLSearchParams({

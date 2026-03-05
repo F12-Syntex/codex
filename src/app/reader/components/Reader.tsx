@@ -1458,6 +1458,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           />
         </div>
 
+        {/* AI Buddy backdrop — click to close */}
+        {showBuddy && buddyEnabled && wikiEnabled && (
+          <div className="fixed inset-0 z-30" onClick={() => setShowBuddy(false)} />
+        )}
+
         {/* AI Buddy dock + panel — centered above footer */}
         {buddyEnabled && wikiEnabled && (
           <div className="absolute bottom-14 right-4 z-40">
@@ -1475,6 +1480,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                     window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
                   }}
                   onClose={() => setShowBuddy(false)}
+                  onDetach={() => {
+                    setShowBuddy(false);
+                    window.electronAPI?.openBuddy({ filePath, title, currentChapter, totalChapters: chapters.length });
+                  }}
                   onWikiUpdated={refreshWikiState}
                 />
               )}

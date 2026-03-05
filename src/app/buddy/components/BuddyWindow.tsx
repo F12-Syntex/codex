@@ -1,16 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Send, Loader2, Sparkles, Trash2, Check, XCircle, Plus, Pencil, Trash, GitMerge, Link, Eye, ListChecks, BookOpen, ArrowUp, ExternalLink } from "lucide-react";
-import type { ThemeClasses } from "../lib/types";
+import { Send, Loader2, Sparkles, Trash2, Check, XCircle, Plus, Pencil, Trash, GitMerge, Link, Eye, ListChecks, BookOpen, ArrowUp, X } from "lucide-react";
 import type { BuddyMessage, WikiAction, BuddyPlan, ChapterReader } from "@/lib/ai-buddy";
 import { sendBuddyMessage, buildBuddyWikiContext, executeWikiAction, describeWikiAction, executePlanStep } from "@/lib/ai-buddy";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
+import { WindowHeader } from "@/components/window-header";
 
-/* ── Buddy CSS — scoped styles for AI content + buddy classes ── */
+/* ── Buddy CSS ── */
 
 const BUDDY_STYLES = `
-/* ── Content resets ── */
 .buddy-content { font-size: 13px; line-height: 1.75; color: oklch(0.78 0 0); }
 .buddy-content p { margin: 0.5rem 0; }
 .buddy-content p:first-child { margin-top: 0; }
@@ -21,11 +20,10 @@ const BUDDY_STYLES = `
 .buddy-content ul, .buddy-content ol { margin: 0.5rem 0; padding-left: 1.4rem; }
 .buddy-content li { margin: 0.2rem 0; }
 
-/* ── Buddy layout ── */
 .buddy-section { padding-top: 0.75rem; margin-top: 0.75rem; border-top: 1px solid oklch(1 0 0 / 5%); }
 .buddy-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
-.buddy-heading { font-size: 14px; font-weight: 600; color: oklch(0.92 0 0); margin-bottom: 0.5rem; letter-spacing: -0.01em; }
-.buddy-subheading { font-size: 12px; font-weight: 600; color: oklch(0.78 0 0); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.buddy-heading { font-size: 15px; font-weight: 600; color: oklch(0.92 0 0); margin-bottom: 0.5rem; letter-spacing: -0.01em; }
+.buddy-subheading { font-size: 13px; font-weight: 600; color: oklch(0.78 0 0); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .buddy-text { font-size: 13px; line-height: 1.75; color: oklch(0.72 0 0); margin-bottom: 0.35rem; }
 .buddy-text:last-child { margin-bottom: 0; }
 .buddy-muted { font-size: 12px; color: oklch(0.48 0 0); }
@@ -60,7 +58,7 @@ const BUDDY_STYLES = `
 .buddy-card:first-child { margin-top: 0; }
 .buddy-card-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 0.5rem; font-size: 14px;
+  margin-bottom: 0.5rem; font-size: 15px;
 }
 .buddy-tag, .buddy-tag-accent, .buddy-tag-positive, .buddy-tag-negative, .buddy-tag-neutral {
   display: inline-block; font-size: 12px; font-weight: 500;
@@ -82,8 +80,6 @@ const BUDDY_STYLES = `
   padding: 0.5rem 0.75rem; border-radius: 8px;
   font-size: 12px; color: oklch(0.75 0.12 80); font-weight: 500; margin: 0.6rem 0;
 }
-
-/* ── Entity links ── */
 .buddy-entity-link {
   display: inline; background: oklch(0.65 0.20 264 / 8%);
   color: var(--accent-brand, oklch(0.65 0.20 264));
@@ -94,23 +90,16 @@ const BUDDY_STYLES = `
 .buddy-entity-link:hover { background: oklch(0.65 0.20 264 / 16%); }
 `;
 
-/* ── Types ─────────────────────────────────────────────── */
+/* ── Types ── */
 
-interface AIBuddyPanelProps {
-  theme: ThemeClasses;
+interface BuddyWindowProps {
   filePath: string;
   bookTitle: string;
   currentChapter: number;
   totalChapters: number;
-  wikiEntryCount: number;
-  readChapter: ChapterReader;
-  onEntityClick: (entityId: string) => void;
-  onClose: () => void;
-  onDetach: () => void;
-  onWikiUpdated?: () => void;
 }
 
-/* ── Sub-components ────────────────────────────────────── */
+/* ── Quick Actions ── */
 
 const QUICK_ACTIONS = [
   { label: "Recap so far", prompt: "Give me a brief recap of what's happened so far in the story." },
@@ -118,6 +107,8 @@ const QUICK_ACTIONS = [
   { label: "Relationships", prompt: "What are the key relationships between characters right now?" },
   { label: "Story arcs", prompt: "What are the active story arcs and where do they stand?" },
 ];
+
+/* ── Sub-components ── */
 
 function ActionIcon({ action }: { action: WikiAction["action"] }) {
   const cls = "h-3.5 w-3.5 shrink-0";
@@ -227,25 +218,41 @@ function PlanCard({ plan, onApprove, onReject, resolved, executingStep }: {
   );
 }
 
-/* ── Main Panel ────────────────────────────────────────── */
+/* ── Main Window ── */
 
-export function AIBuddyPanel({
-  theme, filePath, bookTitle, currentChapter, totalChapters,
-  wikiEntryCount, readChapter, onEntityClick, onClose, onDetach, onWikiUpdated,
-}: AIBuddyPanelProps) {
+export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters }: BuddyWindowProps) {
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [wikiContext, setWikiContext] = useState("");
+  const [wikiEntryCount, setWikiEntryCount] = useState(0);
   const [applyingActions, setApplyingActions] = useState<string | null>(null);
   const [executingPlanMsgId, setExecutingPlanMsgId] = useState<string | null>(null);
   const [executingPlanStep, setExecutingPlanStep] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(100);
+  const [bookChapters, setBookChapters] = useState<Array<{ paragraphs: string[] }> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { buildBuddyWikiContext(filePath, currentChapter).then(setWikiContext); }, [filePath, currentChapter]);
+  // Load book content once on mount so readChapter can be sync
+  useEffect(() => {
+    const format = new URLSearchParams(window.location.search).get("format") || "EPUB";
+    window.electronAPI?.getBookContent(filePath, format).then((content: { chapters: Array<{ paragraphs: string[] }> } | undefined) => {
+      if (content?.chapters) setBookChapters(content.chapters);
+    });
+  }, [filePath]);
+
+  const readChapter: ChapterReader = useCallback((idx: number) => {
+    return bookChapters?.[idx]?.paragraphs?.join("\n") ?? null;
+  }, [bookChapters]);
+
+  useEffect(() => {
+    buildBuddyWikiContext(filePath, currentChapter).then(setWikiContext);
+    window.electronAPI?.wikiGetEntries(filePath).then((entries) => setWikiEntryCount(entries?.length ?? 0));
+  }, [filePath, currentChapter]);
+
   useEffect(() => { scrollRef.current && (scrollRef.current.scrollTop = scrollRef.current.scrollHeight); }, [messages, isLoading, executingPlanStep]);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -254,16 +261,19 @@ export function AIBuddyPanel({
     if (!el) return;
     const handler = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest<HTMLElement>("[data-entity]");
-      if (link) { e.preventDefault(); e.stopPropagation(); const id = link.getAttribute("data-entity"); if (id) onEntityClick(id); }
+      if (link) {
+        e.preventDefault(); e.stopPropagation();
+        const id = link.getAttribute("data-entity");
+        if (id) window.electronAPI?.openWiki({ filePath, title: bookTitle, entryId: id });
+      }
     };
     el.addEventListener("click", handler);
     return () => el.removeEventListener("click", handler);
-  }, [onEntityClick]);
+  }, [filePath, bookTitle]);
 
   const refreshWikiContext = useCallback(async () => {
     setWikiContext(await buildBuddyWikiContext(filePath, currentChapter));
-    onWikiUpdated?.();
-  }, [filePath, currentChapter, onWikiUpdated]);
+  }, [filePath, currentChapter]);
 
   const approveActions = useCallback(async (msgId: string) => {
     const msg = messages.find((m) => m.id === msgId);
@@ -327,136 +337,126 @@ export function AIBuddyPanel({
   const busy = isLoading || executingPlanMsgId !== null;
 
   return (
-    <div
-      className="absolute bottom-full right-0 z-50 mb-3 flex w-[540px] flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
-      style={{ height: "min(640px, calc(100vh - 140px))" }}
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
+      <WindowHeader
+        icon={<Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />}
+        title="AI Buddy"
+        subtitle={bookTitle}
+        zoomKey="buddy"
+        zoom={zoom}
+        onZoomChange={setZoom}
+      >
+        {wikiEntryCount > 0 && (
+          <span className="ml-2 text-xs text-white/15">{wikiEntryCount} wiki entries</span>
+        )}
+      </WindowHeader>
+
       <style dangerouslySetInnerHTML={{ __html: AI_FORMATTING_STYLES + BUDDY_STYLES }} />
 
-      {/* ── Header ── */}
-      <div className="flex shrink-0 items-center justify-between px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          <span className="text-xs font-medium text-white/50">Buddy</span>
-          {wikiEntryCount > 0 && (
-            <span className="text-xs text-white/15">&middot; {wikiEntryCount} wiki entries</span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          {messages.length > 0 && (
-            <button onClick={() => setMessages([])} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40" title="Clear">
-              <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-            </button>
-          )}
-          <button onClick={onDetach} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40" title="Open in separate window">
-            <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
-          </button>
-          <button onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40">
-            <X className="h-3 w-3" strokeWidth={1.5} />
-          </button>
-        </div>
-      </div>
-
-      <div className="h-px bg-white/[0.04]" />
-
-      {/* ── Messages ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {messages.length === 0 ? (
-          /* Empty state */
-          <div className="flex h-full flex-col items-center justify-center px-10">
-            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-brand)]/8">
-              <Sparkles className="h-5 w-5 text-[var(--accent-brand)]/60" strokeWidth={1.5} />
+      <div className="flex flex-1 flex-col overflow-hidden" style={{ fontSize: `${zoom}%` }}>
+        {/* Messages */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          {messages.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-12">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-brand)]/8">
+                <Sparkles className="h-6 w-6 text-[var(--accent-brand)]/60" strokeWidth={1.5} />
+              </div>
+              <p className="mb-1 text-sm font-medium text-white/50">What would you like to know?</p>
+              <p className="mb-6 text-center text-xs leading-relaxed text-white/20">
+                I can read chapters, search the text, browse the wiki, and help you track the story.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {QUICK_ACTIONS.map((a) => (
+                  <button key={a.label} onClick={() => sendMessage(a.prompt)}
+                    className="rounded-lg border border-white/[0.05] px-3.5 py-2 text-xs text-white/30 transition-all hover:border-white/[0.1] hover:bg-white/[0.03] hover:text-white/50">
+                    {a.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="mb-1 text-sm font-medium text-white/50">What would you like to know?</p>
-            <p className="mb-5 text-center text-xs leading-relaxed text-white/20">
-              I can read chapters, search the text, browse the wiki, and help you track the story.
-            </p>
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {QUICK_ACTIONS.map((a) => (
-                <button key={a.label} onClick={() => sendMessage(a.prompt)}
-                  className="rounded-lg border border-white/[0.05] px-3 py-1.5 text-xs text-white/30 transition-all hover:border-white/[0.1] hover:bg-white/[0.03] hover:text-white/50">
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div ref={contentRef} className="px-5 py-3">
-            {messages.map((msg, idx) => (
-              <div key={msg.id} className={idx > 0 ? "mt-5" : ""}>
-                {msg.role === "user" ? (
-                  /* ── User bubble ── */
-                  <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-lg rounded-br-sm bg-[var(--accent-brand)]/12 px-3.5 py-2 text-xs leading-relaxed text-white/75">
-                      {msg.content}
-                    </div>
-                  </div>
-                ) : (
-                  /* ── AI response ── */
-                  <div>
-                    <div
-                      className="buddy-content"
-                      data-reading-theme="dark"
-                      dangerouslySetInnerHTML={{ __html: msg.content }}
-                    />
-                    {msg.pendingActions && msg.pendingActions.length > 0 && (
-                      <WikiActionCard actions={msg.pendingActions} onApprove={() => approveActions(msg.id)} onReject={() => rejectActions(msg.id)} resolved={msg.actionsResolved ?? false} />
-                    )}
-                    {msg.pendingPlan && (
-                      <PlanCard plan={msg.pendingPlan} onApprove={() => doExecutePlan(msg.id)} onReject={() => rejectPlan(msg.id)} resolved={msg.planResolved ?? false} executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null} />
-                    )}
-                    {applyingActions === msg.id && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Loader2 className="h-3 w-3 animate-spin text-emerald-400" strokeWidth={2} />
-                        <span className="text-xs text-emerald-400/60">Applying...</span>
+          ) : (
+            <div ref={contentRef} className="mx-auto max-w-[700px] px-6 py-4">
+              {messages.map((msg, idx) => (
+                <div key={msg.id} className={idx > 0 ? "mt-5" : ""}>
+                  {msg.role === "user" ? (
+                    <div className="flex justify-end">
+                      <div className="max-w-[80%] rounded-lg rounded-br-sm bg-[var(--accent-brand)]/12 px-4 py-2.5 text-sm leading-relaxed text-white/75">
+                        {msg.content}
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Loading indicator */}
-            {isLoading && (
-              <div className="mt-5 flex items-center gap-2.5">
-                <div className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "0ms" }} />
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "150ms" }} />
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  ) : (
+                    <div>
+                      <div
+                        className="buddy-content"
+                        data-reading-theme="dark"
+                        dangerouslySetInnerHTML={{ __html: msg.content }}
+                      />
+                      {msg.pendingActions && msg.pendingActions.length > 0 && (
+                        <WikiActionCard actions={msg.pendingActions} onApprove={() => approveActions(msg.id)} onReject={() => rejectActions(msg.id)} resolved={msg.actionsResolved ?? false} />
+                      )}
+                      {msg.pendingPlan && (
+                        <PlanCard plan={msg.pendingPlan} onApprove={() => doExecutePlan(msg.id)} onReject={() => rejectPlan(msg.id)} resolved={msg.planResolved ?? false} executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null} />
+                      )}
+                      {applyingActions === msg.id && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin text-emerald-400" strokeWidth={2} />
+                          <span className="text-xs text-emerald-400/60">Applying...</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {loadingStatus && <span className="text-xs text-white/20">{loadingStatus}</span>}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              ))}
 
-      {/* ── Input ── */}
-      <div className="shrink-0 px-3 pb-3 pt-1">
-        <div className="flex items-end gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 transition-colors focus-within:border-white/[0.1] focus-within:bg-white/[0.04]">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything..."
-            rows={1}
-            disabled={busy}
-            className="flex-1 resize-none bg-transparent text-xs leading-relaxed text-white/80 outline-none placeholder:text-white/20"
-            style={{ maxHeight: "80px" }}
-          />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || busy}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-all ${
-              input.trim() && !busy
-                ? "bg-[var(--accent-brand)] text-white shadow-sm shadow-black/20"
-                : "text-white/10"
-            }`}
-          >
-            <ArrowUp className="h-3.5 w-3.5" strokeWidth={2} />
-          </button>
+              {isLoading && (
+                <div className="mt-5 flex items-center gap-2.5">
+                  <div className="flex gap-1">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "0ms" }} />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "150ms" }} />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  {loadingStatus && <span className="text-xs text-white/20">{loadingStatus}</span>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="shrink-0 border-t border-white/[0.04] px-4 pb-4 pt-3">
+          <div className="mx-auto max-w-[700px]">
+            <div className="flex items-center justify-between mb-2">
+              {messages.length > 0 && (
+                <button onClick={() => setMessages([])} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/20 transition-colors hover:bg-white/[0.04] hover:text-white/40">
+                  <Trash2 className="h-3 w-3" strokeWidth={1.5} /> Clear
+                </button>
+              )}
+            </div>
+            <div className="flex items-end gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 transition-colors focus-within:border-white/[0.1] focus-within:bg-white/[0.04]">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything..."
+                rows={1}
+                disabled={busy}
+                className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-white/80 outline-none placeholder:text-white/20"
+                style={{ maxHeight: "120px" }}
+              />
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={!input.trim() || busy}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all ${
+                  input.trim() && !busy
+                    ? "bg-[var(--accent-brand)] text-white shadow-sm shadow-black/20"
+                    : "text-white/10"
+                }`}
+              >
+                <ArrowUp className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

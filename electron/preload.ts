@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openStyleDictionary: (info: { filePath: string; title: string }) =>
     ipcRenderer.invoke("style-dictionary:open", info),
 
+  // Buddy
+  openBuddy: (info: { filePath: string; title: string; currentChapter: number; totalChapters: number }) =>
+    ipcRenderer.invoke("buddy:open", info),
+
   // Wiki
   openWiki: (info: { filePath: string; title: string; entryId?: string }) =>
     ipcRenderer.invoke("wiki:open", info),

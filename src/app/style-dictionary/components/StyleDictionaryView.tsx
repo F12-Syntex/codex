@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Loader2, RefreshCw, BarChart3, Tag, MessageCircle, Package,
-  Monitor, Wand2, Minus, Square, X, Copy, Send,
+  Monitor, Wand2, Send,
 } from "lucide-react";
+import { WindowHeader } from "@/components/window-header";
 import type { StyleDictionary, StyleRule } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary, extractRulesFromFormatted } from "@/lib/ai-style-dictionary";
 import { regenerateRule } from "@/lib/ai-formatting";
@@ -34,7 +35,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
   const [dictionary, setDictionary] = useState<StyleDictionary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [regeneratingRule, setRegeneratingRule] = useState<string | null>(null);
-  const [maximized, setMaximized] = useState(false);
+  const [zoom, setZoom] = useState(100);
 
   useEffect(() => {
     if (!filePath) { setIsLoading(false); return; }
@@ -43,8 +44,6 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
       setIsLoading(false);
     });
   }, [filePath]);
-
-  useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
   const handleRegenerate = useCallback(async (componentClass: string, instruction?: string) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
@@ -132,7 +131,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
   if (isLoading) {
     return (
       <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <Header title={bookTitle} maximized={maximized} />
+        <WindowHeader icon={<BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-white/40" strokeWidth={1.5} />
         </div>
@@ -143,7 +142,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
   if (!dictionary || dictionary.rules.length === 0) {
     return (
       <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <Header title={bookTitle} maximized={maximized} />
+        <WindowHeader icon={<BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
         <div className="flex flex-1 flex-col items-center justify-center gap-2">
           <BarChart3 className="h-8 w-8 text-white/20" strokeWidth={1.5} />
           <p className="text-sm text-white/40">No style rules learned yet</p>
@@ -164,12 +163,12 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-      <Header title={bookTitle} maximized={maximized} />
+      <WindowHeader icon={<BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
 
       {/* Inject AI formatting CSS so examples render correctly */}
       <style>{AI_FORMATTING_STYLES}</style>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ fontSize: `${zoom}%` }}>
         <div className="mx-auto max-w-[1000px] px-8 py-6">
           {/* Summary bar */}
           <div className="mb-6 flex items-center gap-3">
@@ -217,47 +216,6 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
   );
 }
 
-/* ── Header (title bar) ──────────────────────────── */
-
-function Header({ title, maximized }: { title: string; maximized: boolean }) {
-  return (
-    <header className="flex h-10 shrink-0 items-center border-b border-white/[0.06] bg-[var(--bg-surface)]">
-      {/* Drag region */}
-      <div className="app-drag-region flex h-full flex-1 items-center gap-2 pl-3">
-        <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
-          <BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
-        </div>
-        <span className="text-xs text-white/40">Style Dictionary</span>
-        <span className="text-xs text-white/25">{title}</span>
-      </div>
-
-      {/* Window controls */}
-      <div className="no-drag flex items-center">
-        <button
-          onClick={() => window.electronAPI?.minimize()}
-          className="flex h-10 w-10 items-center justify-center text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80"
-        >
-          <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={() => window.electronAPI?.maximize()}
-          className="flex h-10 w-10 items-center justify-center text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80"
-        >
-          {maximized
-            ? <Copy className="h-3 w-3" strokeWidth={1.5} />
-            : <Square className="h-3 w-3" strokeWidth={1.5} />
-          }
-        </button>
-        <button
-          onClick={() => window.electronAPI?.close()}
-          className="flex h-10 w-10 items-center justify-center text-white/40 transition-colors hover:bg-red-500/80 hover:text-white"
-        >
-          <X className="h-4 w-4" strokeWidth={1.5} />
-        </button>
-      </div>
-    </header>
-  );
-}
 
 /* ── Rule Card ───────────────────────────────────── */
 
