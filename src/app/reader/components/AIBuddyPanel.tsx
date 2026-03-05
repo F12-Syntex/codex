@@ -1,171 +1,100 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Send, Loader2, MessageCircle, Trash2, Sparkles, User, Check, XCircle, AlertTriangle, Plus, Pencil, Trash, GitMerge, Link, Eye, ListChecks, BookOpen } from "lucide-react";
+import { X, Send, Loader2, Sparkles, Trash2, Check, XCircle, Plus, Pencil, Trash, GitMerge, Link, Eye, ListChecks, BookOpen, ArrowUp } from "lucide-react";
 import type { ThemeClasses } from "../lib/types";
 import type { BuddyMessage, WikiAction, BuddyPlan, ChapterReader } from "@/lib/ai-buddy";
 import { sendBuddyMessage, buildBuddyWikiContext, executeWikiAction, describeWikiAction, executePlanStep } from "@/lib/ai-buddy";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
-/* ── Buddy-specific CSS ───────────────────────────────────── */
+/* ── Buddy CSS — scoped styles for AI content + buddy classes ── */
 
 const BUDDY_STYLES = `
-/* ── Buddy layout classes ── */
-.buddy-section { padding-top: 0.75rem; border-top: 1px solid oklch(1 0 0 / 6%); margin-top: 0.75rem; }
-.buddy-section:first-child { padding-top: 0; border-top: none; margin-top: 0; }
-.buddy-heading { font-size: 13px; font-weight: 600; color: oklch(0.90 0 0); margin-bottom: 0.5rem; }
-.buddy-subheading { font-size: 12px; font-weight: 600; color: oklch(0.75 0 0); margin-bottom: 0.35rem; }
-.buddy-text { font-size: 12px; line-height: 1.7; color: oklch(0.70 0 0); margin-bottom: 0.35rem; }
+/* ── Content resets ── */
+.buddy-content { font-size: 12px; line-height: 1.75; color: oklch(0.78 0 0); }
+.buddy-content p { margin: 0.4rem 0; }
+.buddy-content p:first-child { margin-top: 0; }
+.buddy-content p:last-child { margin-bottom: 0; }
+.buddy-content strong { color: oklch(0.92 0 0); font-weight: 600; }
+.buddy-content em { color: oklch(0.68 0 0); font-style: italic; }
+.buddy-content a { color: var(--accent-brand, oklch(0.65 0.20 264)); text-decoration: none; }
+.buddy-content ul, .buddy-content ol { margin: 0.4rem 0; padding-left: 1.2rem; }
+.buddy-content li { margin: 0.15rem 0; }
+
+/* ── Buddy layout ── */
+.buddy-section { padding-top: 0.6rem; margin-top: 0.6rem; border-top: 1px solid oklch(1 0 0 / 5%); }
+.buddy-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
+.buddy-heading { font-size: 14px; font-weight: 600; color: oklch(0.92 0 0); margin-bottom: 0.4rem; letter-spacing: -0.01em; }
+.buddy-subheading { font-size: 12px; font-weight: 600; color: oklch(0.78 0 0); margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.buddy-text { font-size: 12px; line-height: 1.75; color: oklch(0.72 0 0); margin-bottom: 0.3rem; }
 .buddy-text:last-child { margin-bottom: 0; }
-.buddy-muted { font-size: 11px; color: oklch(0.50 0 0); }
+.buddy-muted { font-size: 12px; color: oklch(0.48 0 0); }
 .buddy-quote {
-  border-left: 2px solid var(--accent-brand, oklch(0.60 0.20 264));
-  padding: 0.5rem 0.75rem;
+  border-left: 2px solid var(--accent-brand, oklch(0.65 0.20 264));
+  padding: 0.4rem 0.65rem;
   margin: 0.5rem 0;
   background: oklch(1 0 0 / 2%);
   border-radius: 0 8px 8px 0;
   font-style: italic;
   font-size: 12px;
-  color: oklch(0.65 0 0);
-  line-height: 1.7;
+  color: oklch(0.62 0 0);
+  line-height: 1.75;
 }
-.buddy-list { list-style: none; padding: 0; margin: 0.35rem 0; }
+.buddy-list { list-style: none; padding: 0; margin: 0.3rem 0; }
 .buddy-list > div, .buddy-list > li {
-  font-size: 12px;
-  line-height: 1.7;
-  color: oklch(0.70 0 0);
-  padding: 0.15rem 0;
-  padding-left: 0.75rem;
-  position: relative;
+  font-size: 12px; line-height: 1.75; color: oklch(0.72 0 0);
+  padding: 0.12rem 0 0.12rem 0.85rem; position: relative;
 }
 .buddy-list > div::before, .buddy-list > li::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.65rem;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: oklch(1 0 0 / 15%);
+  content: ""; position: absolute; left: 0; top: 0.6rem;
+  width: 3px; height: 3px; border-radius: 50%; background: oklch(1 0 0 / 18%);
 }
 .buddy-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.2rem 0.75rem;
-  font-size: 12px;
-  line-height: 1.7;
-  margin: 0.35rem 0;
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem; font-size: 12px; line-height: 1.75; margin: 0.3rem 0;
 }
 .buddy-card {
-  border: 1px solid oklch(1 0 0 / 6%);
-  background: oklch(1 0 0 / 2%);
-  border-radius: 8px;
-  padding: 0.75rem;
-  margin: 0.5rem 0;
+  border: 1px solid oklch(1 0 0 / 6%); background: oklch(1 0 0 / 2.5%);
+  border-radius: 8px; padding: 0.65rem; margin: 0.5rem 0;
 }
+.buddy-card:first-child { margin-top: 0; }
 .buddy-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-  font-size: 13px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 0.4rem; font-size: 14px;
 }
-.buddy-tag {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  background: oklch(1 0 0 / 6%);
-  color: oklch(0.60 0 0);
+.buddy-tag, .buddy-tag-accent, .buddy-tag-positive, .buddy-tag-negative, .buddy-tag-neutral {
+  display: inline-block; font-size: 12px; font-weight: 500;
+  padding: 0.05rem 0.4rem; border-radius: 8px; vertical-align: middle;
 }
-.buddy-tag-accent {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  background: var(--accent-brand, oklch(0.60 0.20 264));
-  color: oklch(0.98 0 0);
-  opacity: 0.85;
-}
-.buddy-tag-positive {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  background: oklch(0.65 0.14 150 / 15%);
-  color: oklch(0.65 0.14 150);
-}
-.buddy-tag-negative {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  background: oklch(0.65 0.18 25 / 15%);
-  color: oklch(0.65 0.18 25);
-}
-.buddy-tag-neutral {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  background: oklch(1 0 0 / 6%);
-  color: oklch(0.55 0 0);
-}
-.buddy-divider { height: 1px; background: oklch(1 0 0 / 6%); margin: 0.5rem 0; }
+.buddy-tag { background: oklch(1 0 0 / 6%); color: oklch(0.58 0 0); }
+.buddy-tag-accent { background: var(--accent-brand, oklch(0.65 0.20 264)); color: oklch(0.98 0 0); opacity: 0.85; }
+.buddy-tag-positive { background: oklch(0.65 0.14 150 / 15%); color: oklch(0.65 0.14 150); }
+.buddy-tag-negative { background: oklch(0.65 0.18 25 / 15%); color: oklch(0.65 0.18 25); }
+.buddy-tag-neutral { background: oklch(1 0 0 / 6%); color: oklch(0.52 0 0); }
+.buddy-divider { height: 1px; background: oklch(1 0 0 / 5%); margin: 0.5rem 0; }
 .buddy-highlight {
-  background: oklch(0.60 0.20 264 / 12%);
-  padding: 0.05rem 0.3rem;
-  border-radius: 4px;
-  color: oklch(0.85 0 0);
+  background: oklch(0.65 0.20 264 / 10%); padding: 0.02rem 0.25rem;
+  border-radius: 4px; color: oklch(0.88 0 0);
 }
 .buddy-spoiler-warning {
-  border: 1px solid oklch(0.75 0.12 80 / 20%);
-  background: oklch(0.75 0.12 80 / 6%);
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  font-size: 11px;
-  color: oklch(0.75 0.12 80);
-  font-weight: 500;
-  margin: 0.5rem 0;
+  border: 1px solid oklch(0.75 0.12 80 / 18%);
+  background: oklch(0.75 0.12 80 / 5%);
+  padding: 0.4rem 0.65rem; border-radius: 8px;
+  font-size: 12px; color: oklch(0.75 0.12 80); font-weight: 500; margin: 0.5rem 0;
 }
 
 /* ── Entity links ── */
 .buddy-entity-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: oklch(0.60 0.20 264 / 10%);
-  color: var(--accent-brand, oklch(0.60 0.20 264));
-  padding: 0.05rem 0.35rem;
-  border-radius: 8px;
-  font-size: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  text-decoration: none;
-  transition: background 0.15s;
+  display: inline; background: oklch(0.65 0.20 264 / 8%);
+  color: var(--accent-brand, oklch(0.65 0.20 264));
+  padding: 0.02rem 0.3rem; border-radius: 4px;
+  font-size: inherit; font-weight: 500; cursor: pointer;
+  text-decoration: none; transition: background 0.15s;
 }
-.buddy-entity-link:hover {
-  background: oklch(0.60 0.20 264 / 18%);
-}
-
-/* ── Buddy panel resets (scope ai-fmt styles) ── */
-.buddy-content p { margin: 0.25rem 0; font-size: 12px; line-height: 1.7; color: oklch(0.70 0 0); }
-.buddy-content p:first-child { margin-top: 0; }
-.buddy-content p:last-child { margin-bottom: 0; }
-.buddy-content strong { color: oklch(0.85 0 0); font-weight: 600; }
-.buddy-content em { color: oklch(0.65 0 0); }
-.buddy-content a { color: var(--accent-brand, oklch(0.60 0.20 264)); text-decoration: none; }
+.buddy-entity-link:hover { background: oklch(0.65 0.20 264 / 16%); }
 `;
+
+/* ── Types ─────────────────────────────────────────────── */
 
 interface AIBuddyPanelProps {
   theme: ThemeClasses;
@@ -180,19 +109,17 @@ interface AIBuddyPanelProps {
   onWikiUpdated?: () => void;
 }
 
-/* ── Quick Actions ─────────────────────────────────────── */
+/* ── Sub-components ────────────────────────────────────── */
 
 const QUICK_ACTIONS = [
-  { label: "Recap", prompt: "Give me a brief recap of what's happened so far in the story." },
+  { label: "Recap so far", prompt: "Give me a brief recap of what's happened so far in the story." },
   { label: "Characters", prompt: "Who are the main characters and what are their current situations?" },
   { label: "Relationships", prompt: "What are the key relationships between characters right now?" },
-  { label: "Arcs", prompt: "What are the active story arcs and where do they stand?" },
+  { label: "Story arcs", prompt: "What are the active story arcs and where do they stand?" },
 ];
 
-/* ── Action icon helper ────────────────────────────────── */
-
 function ActionIcon({ action }: { action: WikiAction["action"] }) {
-  const cls = "h-3 w-3 shrink-0";
+  const cls = "h-3.5 w-3.5 shrink-0";
   switch (action) {
     case "create_entry": return <Plus className={cls} />;
     case "update_entry": return <Pencil className={cls} />;
@@ -204,71 +131,43 @@ function ActionIcon({ action }: { action: WikiAction["action"] }) {
   }
 }
 
-/* ── Wiki Action Card ──────────────────────────────────── */
-
-function WikiActionCard({
-  actions,
-  onApprove,
-  onReject,
-  resolved,
-}: {
-  actions: WikiAction[];
-  onApprove: () => void;
-  onReject: () => void;
-  resolved: boolean;
+function WikiActionCard({ actions, onApprove, onReject, resolved }: {
+  actions: WikiAction[]; onApprove: () => void; onReject: () => void; resolved: boolean;
 }) {
   const descriptions = actions.map(describeWikiAction);
-
   const colorMap = {
-    green: { border: "border-emerald-500/20", bg: "bg-emerald-500/[0.04]" },
-    yellow: { border: "border-amber-500/20", bg: "bg-amber-500/[0.04]" },
-    red: { border: "border-red-500/20", bg: "bg-red-500/[0.04]" },
+    green: "border-emerald-400/10 bg-emerald-400/[0.03]",
+    yellow: "border-amber-400/10 bg-amber-400/[0.03]",
+    red: "border-red-400/10 bg-red-400/[0.03]",
   };
 
   return (
-    <div className="mt-3 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
-      <div className="mb-2.5 flex items-center gap-2">
-        <AlertTriangle className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.5} />
-        <span className="text-xs font-medium text-amber-400/90">
-          Wiki {actions.length === 1 ? "Change" : "Changes"} Proposed
+    <div className="mt-4 overflow-hidden rounded-lg border border-white/[0.06]">
+      <div className="flex items-center gap-2 border-b border-white/[0.04] bg-white/[0.02] px-3 py-2">
+        <Pencil className="h-3.5 w-3.5 text-amber-400/80" strokeWidth={1.5} />
+        <span className="text-xs font-medium text-white/60">
+          {actions.length} wiki {actions.length === 1 ? "change" : "changes"}
         </span>
-        {resolved && (
-          <span className="ml-auto text-[10px] text-white/25">Resolved</span>
-        )}
+        {resolved && <span className="ml-auto text-xs text-white/20">done</span>}
       </div>
-
-      <div className="space-y-1.5">
-        {descriptions.map((desc, i) => {
-          const c = colorMap[desc.color];
-          return (
-            <div key={i} className={`flex items-start gap-2 rounded-lg ${c.border} ${c.bg} border px-2.5 py-2`}>
-              <div className="mt-0.5 text-white/40">
-                <ActionIcon action={actions[i].action} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium text-white/80">{desc.label}</div>
-                <div className="mt-0.5 text-[11px] leading-relaxed text-white/40">{desc.detail}</div>
-              </div>
+      <div className="space-y-px bg-white/[0.01] p-1.5">
+        {descriptions.map((desc, i) => (
+          <div key={i} className={`flex items-start gap-2 rounded-lg border ${colorMap[desc.color]} px-2.5 py-2`}>
+            <div className="mt-px text-white/30"><ActionIcon action={actions[i].action} /></div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-white/75">{desc.label}</div>
+              <div className="text-xs leading-relaxed text-white/35">{desc.detail}</div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
-
       {!resolved && (
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            onClick={onApprove}
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/25"
-          >
-            <Check className="h-3 w-3" strokeWidth={2} />
-            Apply {actions.length === 1 ? "Change" : `All (${actions.length})`}
+        <div className="flex gap-2 border-t border-white/[0.04] px-3 py-2">
+          <button onClick={onApprove} className="flex items-center gap-1.5 rounded-lg bg-emerald-500/12 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20">
+            <Check className="h-3 w-3" strokeWidth={2.5} /> Apply
           </button>
-          <button
-            onClick={onReject}
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
-          >
-            <XCircle className="h-3 w-3" strokeWidth={2} />
-            Reject
+          <button onClick={onReject} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
+            <XCircle className="h-3 w-3" strokeWidth={2} /> Skip
           </button>
         </div>
       )}
@@ -276,95 +175,50 @@ function WikiActionCard({
   );
 }
 
-/* ── Plan Card ─────────────────────────────────────────── */
-
-function PlanCard({
-  plan,
-  onApprove,
-  onReject,
-  resolved,
-  executingStep,
-}: {
-  plan: BuddyPlan;
-  onApprove: () => void;
-  onReject: () => void;
-  resolved: boolean;
-  executingStep: number | null;
+function PlanCard({ plan, onApprove, onReject, resolved, executingStep }: {
+  plan: BuddyPlan; onApprove: () => void; onReject: () => void; resolved: boolean; executingStep: number | null;
 }) {
   return (
-    <div className="mt-3 rounded-lg border border-[var(--accent-brand)]/15 bg-[var(--accent-brand)]/[0.03] p-3">
-      <div className="mb-2.5 flex items-center gap-2">
+    <div className="mt-4 overflow-hidden rounded-lg border border-white/[0.06]">
+      <div className="flex items-center gap-2 border-b border-white/[0.04] bg-white/[0.02] px-3 py-2">
         <ListChecks className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-        <span className="text-xs font-medium text-[var(--accent-brand)]/90">
-          Plan — {plan.steps.length} steps
-        </span>
-        {resolved && executingStep === null && (
-          <span className="ml-auto text-[10px] text-white/25">Resolved</span>
-        )}
+        <span className="text-xs font-medium text-white/60">Plan — {plan.steps.length} steps</span>
+        {resolved && executingStep === null && <span className="ml-auto text-xs text-white/20">done</span>}
       </div>
-
-      <div className="mb-2 text-xs text-white/60">{plan.goal}</div>
-
-      <div className="space-y-1">
-        {plan.steps.map((step, i) => {
-          const isExecuting = executingStep === i;
-          const isDone = executingStep !== null && i < executingStep;
-          const isPending = executingStep === null || i > (executingStep ?? -1);
-
-          let statusColor = "text-white/30";
-          let bgColor = "bg-white/[0.02]";
-          if (isExecuting) { statusColor = "text-[var(--accent-brand)]"; bgColor = "bg-[var(--accent-brand)]/[0.06]"; }
-          else if (isDone) { statusColor = "text-emerald-400"; bgColor = "bg-emerald-500/[0.04]"; }
-
-          const toolCount = (step.toolCalls?.length ?? 0);
-          const actionCount = (step.wikiActions?.length ?? 0);
-
-          return (
-            <div key={i} className={`flex items-start gap-2.5 rounded-lg border border-white/[0.04] ${bgColor} px-2.5 py-2`}>
-              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${statusColor} ${isDone ? "bg-emerald-500/15" : isExecuting ? "bg-[var(--accent-brand)]/15" : "bg-white/[0.04]"}`}>
-                {isDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : isExecuting ? <Loader2 className="h-2.5 w-2.5 animate-spin" strokeWidth={2} /> : i + 1}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-xs ${isDone ? "text-white/50" : isExecuting ? "text-white/80" : "text-white/60"}`}>
-                  {step.description}
+      <div className="px-3 py-2">
+        <p className="mb-2 text-xs text-white/45">{plan.goal}</p>
+        <div className="space-y-1">
+          {plan.steps.map((step, i) => {
+            const active = executingStep === i;
+            const done = executingStep !== null && i < executingStep;
+            const toolCount = step.toolCalls?.length ?? 0;
+            const actionCount = step.wikiActions?.length ?? 0;
+            return (
+              <div key={i} className={`flex items-start gap-2 rounded-lg px-2 py-1.5 ${active ? "bg-[var(--accent-brand)]/[0.06]" : done ? "bg-emerald-500/[0.03]" : ""}`}>
+                <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${done ? "bg-emerald-500/15 text-emerald-400" : active ? "bg-[var(--accent-brand)]/15 text-[var(--accent-brand)]" : "bg-white/[0.04] text-white/25"}`}>
+                  {done ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : active ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <span className="text-xs">{i + 1}</span>}
                 </div>
-                {(toolCount > 0 || actionCount > 0) && (
-                  <div className="mt-0.5 flex gap-2">
-                    {toolCount > 0 && (
-                      <span className="flex items-center gap-1 text-[10px] text-white/25">
-                        <BookOpen className="h-2.5 w-2.5" strokeWidth={1.5} />
-                        {toolCount} read{toolCount !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {actionCount > 0 && (
-                      <span className="flex items-center gap-1 text-[10px] text-white/25">
-                        <Pencil className="h-2.5 w-2.5" strokeWidth={1.5} />
-                        {actionCount} edit{actionCount !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                )}
+                <div className="min-w-0 flex-1">
+                  <div className={`text-xs ${active ? "text-white/75" : done ? "text-white/45" : "text-white/50"}`}>{step.description}</div>
+                  {(toolCount > 0 || actionCount > 0) && (
+                    <div className="mt-0.5 flex gap-2 text-xs text-white/20">
+                      {toolCount > 0 && <span className="flex items-center gap-0.5"><BookOpen className="h-3 w-3" /> {toolCount}</span>}
+                      {actionCount > 0 && <span className="flex items-center gap-0.5"><Pencil className="h-3 w-3" /> {actionCount}</span>}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-
       {!resolved && executingStep === null && (
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            onClick={onApprove}
-            className="flex items-center gap-1.5 rounded-lg bg-[var(--accent-brand)]/15 px-3 py-1.5 text-xs font-medium text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/25"
-          >
-            <Check className="h-3 w-3" strokeWidth={2} />
-            Execute Plan
+        <div className="flex gap-2 border-t border-white/[0.04] px-3 py-2">
+          <button onClick={onApprove} className="flex items-center gap-1.5 rounded-lg bg-[var(--accent-brand)]/12 px-3 py-1.5 text-xs font-medium text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/20">
+            <Check className="h-3 w-3" strokeWidth={2.5} /> Execute
           </button>
-          <button
-            onClick={onReject}
-            className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
-          >
-            <XCircle className="h-3 w-3" strokeWidth={2} />
-            Cancel
+          <button onClick={onReject} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
+            <XCircle className="h-3 w-3" strokeWidth={2} /> Cancel
           </button>
         </div>
       )}
@@ -372,19 +226,11 @@ function PlanCard({
   );
 }
 
-/* ── AI Buddy Panel ────────────────────────────────────── */
+/* ── Main Panel ────────────────────────────────────────── */
 
 export function AIBuddyPanel({
-  theme,
-  filePath,
-  bookTitle,
-  currentChapter,
-  totalChapters,
-  wikiEntryCount,
-  readChapter,
-  onEntityClick,
-  onClose,
-  onWikiUpdated,
+  theme, filePath, bookTitle, currentChapter, totalChapters,
+  wikiEntryCount, readChapter, onEntityClick, onClose, onWikiUpdated,
 }: AIBuddyPanelProps) {
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
   const [input, setInput] = useState("");
@@ -398,336 +244,168 @@ export function AIBuddyPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    buildBuddyWikiContext(filePath, currentChapter).then(setWikiContext);
-  }, [filePath, currentChapter]);
+  useEffect(() => { buildBuddyWikiContext(filePath, currentChapter).then(setWikiContext); }, [filePath, currentChapter]);
+  useEffect(() => { scrollRef.current && (scrollRef.current.scrollTop = scrollRef.current.scrollHeight); }, [messages, isLoading, executingPlanStep]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isLoading, executingPlanStep]);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  /* Delegate clicks on entity links inside rendered HTML */
-  useEffect(() => {
-    const container = contentRef.current;
-    if (!container) return;
-
-    const handleClick = (e: MouseEvent) => {
+    const el = contentRef.current;
+    if (!el) return;
+    const handler = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest<HTMLElement>("[data-entity]");
-      if (link) {
-        e.preventDefault();
-        e.stopPropagation();
-        const entityId = link.getAttribute("data-entity");
-        if (entityId) onEntityClick(entityId);
-      }
+      if (link) { e.preventDefault(); e.stopPropagation(); const id = link.getAttribute("data-entity"); if (id) onEntityClick(id); }
     };
-
-    container.addEventListener("click", handleClick);
-    return () => container.removeEventListener("click", handleClick);
+    el.addEventListener("click", handler);
+    return () => el.removeEventListener("click", handler);
   }, [onEntityClick]);
 
-  /* Refresh wiki context after changes */
   const refreshWikiContext = useCallback(async () => {
-    const ctx = await buildBuddyWikiContext(filePath, currentChapter);
-    setWikiContext(ctx);
+    setWikiContext(await buildBuddyWikiContext(filePath, currentChapter));
     onWikiUpdated?.();
   }, [filePath, currentChapter, onWikiUpdated]);
 
-  /* Approve wiki actions for a message */
   const approveActions = useCallback(async (msgId: string) => {
     const msg = messages.find((m) => m.id === msgId);
     if (!msg?.pendingActions?.length) return;
-
     setApplyingActions(msgId);
     try {
-      for (const action of msg.pendingActions) {
-        await executeWikiAction(filePath, action);
-      }
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msgId ? { ...m, actionsResolved: true } : m,
-        ),
-      );
+      for (const a of msg.pendingActions) await executeWikiAction(filePath, a);
+      setMessages((p) => p.map((m) => m.id === msgId ? { ...m, actionsResolved: true } : m));
       await refreshWikiContext();
     } catch (err) {
-      setMessages((prev) => [...prev, {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: `<p class="buddy-text" style="color: oklch(0.65 0.18 25);">Failed to apply wiki changes: ${err instanceof Error ? err.message : "Unknown error"}</p>`,
-        timestamp: Date.now(),
-      }]);
-    } finally {
-      setApplyingActions(null);
-    }
+      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:oklch(0.65 0.18 25)">Failed: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
+    } finally { setApplyingActions(null); }
   }, [messages, filePath, refreshWikiContext]);
 
-  /* Reject wiki actions for a message */
   const rejectActions = useCallback((msgId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, actionsResolved: true } : m,
-      ),
-    );
+    setMessages((p) => p.map((m) => m.id === msgId ? { ...m, actionsResolved: true } : m));
   }, []);
 
-  /* Execute a plan */
-  const executePlan = useCallback(async (msgId: string) => {
+  const doExecutePlan = useCallback(async (msgId: string) => {
     const msg = messages.find((m) => m.id === msgId);
     if (!msg?.pendingPlan) return;
-
     const plan = msg.pendingPlan;
     setExecutingPlanMsgId(msgId);
-    const previousResults: string[] = [];
-
+    const prev: string[] = [];
     try {
       for (let i = 0; i < plan.steps.length; i++) {
         setExecutingPlanStep(i);
-
-        const [stepHtml, stepActions] = await executePlanStep(
-          bookTitle, currentChapter, totalChapters, wikiContext,
-          plan, i, previousResults, readChapter,
-        );
-
-        previousResults.push(stepHtml);
-
-        // Add step result as a message
-        const stepMsg: BuddyMessage = {
-          id: `plan-step-${Date.now()}-${i}`,
-          role: "assistant",
-          content: stepHtml,
-          timestamp: Date.now(),
-          pendingActions: stepActions.length > 0 ? stepActions : undefined,
-          actionsResolved: stepActions.length === 0 ? undefined : false,
-        };
-        setMessages((prev) => [...prev, stepMsg]);
-
-        // If this step has wiki actions, apply them automatically (plan was already approved)
-        if (stepActions.length > 0) {
-          for (const action of stepActions) {
-            await executeWikiAction(filePath, action);
-          }
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === stepMsg.id ? { ...m, actionsResolved: true } : m,
-            ),
-          );
+        const [html, acts] = await executePlanStep(bookTitle, currentChapter, totalChapters, wikiContext, plan, i, prev, readChapter);
+        prev.push(html);
+        const sid = `plan-${Date.now()}-${i}`;
+        setMessages((p) => [...p, { id: sid, role: "assistant", content: html, timestamp: Date.now(), pendingActions: acts.length > 0 ? acts : undefined, actionsResolved: acts.length === 0 ? undefined : false }]);
+        if (acts.length > 0) {
+          for (const a of acts) await executeWikiAction(filePath, a);
+          setMessages((p) => p.map((m) => m.id === sid ? { ...m, actionsResolved: true } : m));
           await refreshWikiContext();
         }
       }
-
-      // Mark plan as resolved
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msgId ? { ...m, planResolved: true } : m,
-        ),
-      );
+      setMessages((p) => p.map((m) => m.id === msgId ? { ...m, planResolved: true } : m));
     } catch (err) {
-      setMessages((prev) => [...prev, {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: `<p class="buddy-text" style="color: oklch(0.65 0.18 25);">Plan execution failed at step ${(executingPlanStep ?? 0) + 1}: ${err instanceof Error ? err.message : "Unknown error"}</p>`,
-        timestamp: Date.now(),
-      }]);
-    } finally {
-      setExecutingPlanMsgId(null);
-      setExecutingPlanStep(null);
-    }
-  }, [messages, bookTitle, currentChapter, totalChapters, wikiContext, readChapter, filePath, refreshWikiContext, executingPlanStep]);
+      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:oklch(0.65 0.18 25)">Plan failed: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
+    } finally { setExecutingPlanMsgId(null); setExecutingPlanStep(null); }
+  }, [messages, bookTitle, currentChapter, totalChapters, wikiContext, readChapter, filePath, refreshWikiContext]);
 
-  /* Reject a plan */
   const rejectPlan = useCallback((msgId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, planResolved: true } : m,
-      ),
-    );
+    setMessages((p) => p.map((m) => m.id === msgId ? { ...m, planResolved: true } : m));
   }, []);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
-
-    const userMsg: BuddyMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: text.trim(),
-      timestamp: Date.now(),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setIsLoading(true);
-    setLoadingStatus(null);
-
+    setMessages((p) => [...p, { id: `u-${Date.now()}`, role: "user", content: text.trim(), timestamp: Date.now() }]);
+    setInput(""); setIsLoading(true); setLoadingStatus(null);
     try {
-      const [htmlContent, actions, plan] = await sendBuddyMessage(
-        bookTitle, currentChapter, totalChapters, wikiContext, messages, text.trim(),
-        readChapter,
-        (status) => setLoadingStatus(status),
-      );
-      setMessages((prev) => [...prev, {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: htmlContent,
-        timestamp: Date.now(),
-        pendingActions: actions.length > 0 ? actions : undefined,
-        actionsResolved: actions.length === 0 ? undefined : false,
-        pendingPlan: plan ?? undefined,
-        planResolved: plan ? false : undefined,
-      }]);
+      const [html, acts, plan] = await sendBuddyMessage(bookTitle, currentChapter, totalChapters, wikiContext, messages, text.trim(), readChapter, (s) => setLoadingStatus(s));
+      setMessages((p) => [...p, { id: `a-${Date.now()}`, role: "assistant", content: html, timestamp: Date.now(), pendingActions: acts.length > 0 ? acts : undefined, actionsResolved: acts.length === 0 ? undefined : false, pendingPlan: plan ?? undefined, planResolved: plan ? false : undefined }]);
     } catch (err) {
-      setMessages((prev) => [...prev, {
-        id: `error-${Date.now()}`,
-        role: "assistant",
-        content: `<p class="buddy-text" style="color: oklch(0.65 0.18 25);">Something went wrong: ${err instanceof Error ? err.message : "Unknown error"}</p>`,
-        timestamp: Date.now(),
-      }]);
-    } finally {
-      setIsLoading(false);
-      setLoadingStatus(null);
-      inputRef.current?.focus();
-    }
+      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:oklch(0.65 0.18 25)">Error: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
+    } finally { setIsLoading(false); setLoadingStatus(null); inputRef.current?.focus(); }
   }, [isLoading, bookTitle, currentChapter, totalChapters, wikiContext, messages, readChapter]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
-  };
-
-  const hasMessages = messages.length > 0;
+  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } };
+  const busy = isLoading || executingPlanMsgId !== null;
 
   return (
     <div
-      className="absolute bottom-full right-0 z-50 mb-3 flex w-[440px] flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
-      style={{ height: "min(600px, calc(100vh - 140px))" }}
+      className="absolute bottom-full right-0 z-50 mb-3 flex w-[460px] flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
+      style={{ height: "min(640px, calc(100vh - 140px))" }}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Inject ai-fmt + buddy styles */}
       <style dangerouslySetInnerHTML={{ __html: AI_FORMATTING_STYLES + BUDDY_STYLES }} />
 
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-brand)]/15">
-            <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          </div>
-          <div>
-            <span className="text-sm font-medium text-white/80">AI Buddy</span>
-            {wikiEntryCount > 0 && (
-              <span className="ml-2 text-xs text-white/25">{wikiEntryCount} entries loaded</span>
-            )}
-          </div>
+      {/* ── Header ── */}
+      <div className="flex shrink-0 items-center justify-between px-4 py-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+          <span className="text-xs font-medium text-white/50">Buddy</span>
+          {wikiEntryCount > 0 && (
+            <span className="text-xs text-white/15">&middot; {wikiEntryCount} wiki entries</span>
+          )}
         </div>
-        <div className="flex items-center gap-1">
-          {hasMessages && (
-            <button
-              onClick={() => setMessages([])}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-white/20 transition-colors hover:bg-white/[0.06] hover:text-white/50"
-              title="Clear chat"
-            >
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+        <div className="flex items-center gap-0.5">
+          {messages.length > 0 && (
+            <button onClick={() => setMessages([])} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40" title="Clear">
+              <Trash2 className="h-3 w-3" strokeWidth={1.5} />
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-white/20 transition-colors hover:bg-white/[0.06] hover:text-white/50"
-          >
-            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <button onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40">
+            <X className="h-3 w-3" strokeWidth={1.5} />
           </button>
         </div>
       </div>
 
-      {/* Messages */}
+      <div className="h-px bg-white/[0.04]" />
+
+      {/* ── Messages ── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {!hasMessages ? (
-          <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-brand)]/10">
-              <MessageCircle className="h-7 w-7 text-[var(--accent-brand)]" strokeWidth={1.5} />
+        {messages.length === 0 ? (
+          /* Empty state */
+          <div className="flex h-full flex-col items-center justify-center px-8">
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent-brand)]/8">
+              <Sparkles className="h-5 w-5 text-[var(--accent-brand)]/60" strokeWidth={1.5} />
             </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-white/70">Ask me anything about the book</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-white/30">
-                Characters, plot, relationships, arcs — I have full wiki context and can read chapters to answer questions.
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-center gap-2">
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action.label}
-                  onClick={() => sendMessage(action.prompt)}
-                  className="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-xs text-white/50 transition-all hover:border-white/[0.12] hover:bg-white/[0.06] hover:text-white/70"
-                >
-                  {action.label}
+            <p className="mb-1 text-sm font-medium text-white/50">What would you like to know?</p>
+            <p className="mb-5 text-center text-xs leading-relaxed text-white/20">
+              I can read chapters, search the text, browse the wiki, and help you track the story.
+            </p>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {QUICK_ACTIONS.map((a) => (
+                <button key={a.label} onClick={() => sendMessage(a.prompt)}
+                  className="rounded-lg border border-white/[0.05] px-3 py-1.5 text-xs text-white/30 transition-all hover:border-white/[0.1] hover:bg-white/[0.03] hover:text-white/50">
+                  {a.label}
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <div ref={contentRef} className="divide-y divide-white/[0.04]">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`px-4 py-3 ${msg.role === "user" ? "bg-white/[0.02]" : ""}`}>
-                {/* Role indicator */}
-                <div className="mb-2 flex items-center gap-2">
-                  {msg.role === "user" ? (
-                    <>
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white/[0.08]">
-                        <User className="h-3 w-3 text-white/40" strokeWidth={1.5} />
-                      </div>
-                      <span className="text-xs font-medium text-white/40">You</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-brand)]/15">
-                        <Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
-                      </div>
-                      <span className="text-xs font-medium text-[var(--accent-brand)]/70">Buddy</span>
-                    </>
-                  )}
-                </div>
-
-                {/* Content */}
+          <div ref={contentRef} className="px-4 py-3">
+            {messages.map((msg, idx) => (
+              <div key={msg.id} className={idx > 0 ? "mt-4" : ""}>
                 {msg.role === "user" ? (
-                  <p className="pl-7 text-xs leading-[1.7] text-white/70">{msg.content}</p>
+                  /* ── User bubble ── */
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-lg rounded-br-sm bg-[var(--accent-brand)]/12 px-3 py-2 text-xs leading-relaxed text-white/75">
+                      {msg.content}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="pl-7">
+                  /* ── AI response ── */
+                  <div>
                     <div
                       className="buddy-content"
                       data-reading-theme="dark"
                       dangerouslySetInnerHTML={{ __html: msg.content }}
                     />
-
-                    {/* Wiki action confirmation card */}
                     {msg.pendingActions && msg.pendingActions.length > 0 && (
-                      <WikiActionCard
-                        actions={msg.pendingActions}
-                        onApprove={() => approveActions(msg.id)}
-                        onReject={() => rejectActions(msg.id)}
-                        resolved={msg.actionsResolved ?? false}
-                      />
+                      <WikiActionCard actions={msg.pendingActions} onApprove={() => approveActions(msg.id)} onReject={() => rejectActions(msg.id)} resolved={msg.actionsResolved ?? false} />
                     )}
-
-                    {/* Plan confirmation card */}
                     {msg.pendingPlan && (
-                      <PlanCard
-                        plan={msg.pendingPlan}
-                        onApprove={() => executePlan(msg.id)}
-                        onReject={() => rejectPlan(msg.id)}
-                        resolved={msg.planResolved ?? false}
-                        executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null}
-                      />
+                      <PlanCard plan={msg.pendingPlan} onApprove={() => doExecutePlan(msg.id)} onReject={() => rejectPlan(msg.id)} resolved={msg.planResolved ?? false} executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null} />
                     )}
-
-                    {/* Applying spinner */}
                     {applyingActions === msg.id && (
                       <div className="mt-2 flex items-center gap-2">
                         <Loader2 className="h-3 w-3 animate-spin text-emerald-400" strokeWidth={2} />
-                        <span className="text-[11px] text-emerald-400/70">Applying changes...</span>
+                        <span className="text-xs text-emerald-400/60">Applying...</span>
                       </div>
                     )}
                   </div>
@@ -735,50 +413,45 @@ export function AIBuddyPanel({
               </div>
             ))}
 
+            {/* Loading indicator */}
             {isLoading && (
-              <div className="px-4 py-3">
-                <div className="mb-2 flex items-center gap-2">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-brand)]/15">
-                    <Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
-                  </div>
-                  <span className="text-xs font-medium text-[var(--accent-brand)]/70">Buddy</span>
+              <div className="mt-4 flex items-center gap-2.5">
+                <div className="flex gap-1">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "300ms" }} />
                 </div>
-                <div className="flex items-center gap-2 pl-7">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-                  <span className="text-xs text-white/30">
-                    {loadingStatus ?? "Thinking..."}
-                  </span>
-                </div>
+                {loadingStatus && <span className="text-xs text-white/20">{loadingStatus}</span>}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Input */}
-      <div className="border-t border-white/[0.06] p-3">
-        <div className="flex items-end gap-2 rounded-lg bg-white/[0.04] px-3 py-2 focus-within:bg-white/[0.06]">
+      {/* ── Input ── */}
+      <div className="shrink-0 px-3 pb-3 pt-1">
+        <div className="flex items-end gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 transition-colors focus-within:border-white/[0.1] focus-within:bg-white/[0.04]">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about the book..."
+            placeholder="Ask anything..."
             rows={1}
+            disabled={busy}
             className="flex-1 resize-none bg-transparent text-xs leading-relaxed text-white/80 outline-none placeholder:text-white/20"
             style={{ maxHeight: "80px" }}
-            disabled={isLoading || executingPlanMsgId !== null}
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isLoading || executingPlanMsgId !== null}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all ${
-              input.trim() && !isLoading && executingPlanMsgId === null
-                ? "bg-[var(--accent-brand)] text-white hover:brightness-110"
-                : "text-white/15"
+            disabled={!input.trim() || busy}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-all ${
+              input.trim() && !busy
+                ? "bg-[var(--accent-brand)] text-white shadow-sm shadow-black/20"
+                : "text-white/10"
             }`}
           >
-            <Send className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <ArrowUp className="h-3.5 w-3.5" strokeWidth={2} />
           </button>
         </div>
       </div>
