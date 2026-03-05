@@ -288,8 +288,7 @@ function createWindow() {
       body: JSON.stringify({
         model: "openai/gpt-audio-mini",
         messages: [
-          { role: "system", content: "You are a text-to-speech assistant. Read the user's text aloud exactly as written. Do not add commentary or change the text." },
-          { role: "user", content: text },
+          { role: "user", content: `Read the following text aloud exactly as written. Do not respond, comment, summarize, or add anything. Only speak the exact words below:\n\n${text}` },
         ],
         modalities: ["text", "audio"],
         audio: { voice: voiceName, format: "pcm16" },
