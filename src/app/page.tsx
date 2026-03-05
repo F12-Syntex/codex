@@ -11,6 +11,7 @@ import { Dock } from "@/components/dock";
 import { SearchOverlay } from "@/components/search-overlay";
 import { SettingsPage } from "@/components/pages/settings-page";
 import { ChangelogPage } from "@/components/pages/changelog-page";
+import { InstallerPage } from "@/components/pages/installer-page";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   ResizablePanelGroup,
@@ -30,6 +31,7 @@ const viewLabelMap: Record<NavView, string> = {
   completed: "Completed",
   settings: "Settings",
   changelog: "What's New",
+  installer: "Installer",
 };
 
 const sectionLabelMap: Record<string, string> = {
@@ -57,8 +59,13 @@ export default function Home() {
   const [bookData, setBookData] = useState<LibraryData>({});
   const [comicData, setComicData] = useState<LibraryData>({});
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isDev, setIsDev] = useState(false);
   const lastSelectedIdRef = useRef<number | null>(null);
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setIsDev(window.electronAPI?.isDev ?? false);
+  }, []);
 
   // ── Load data from database on mount ──────────────
 
@@ -421,6 +428,7 @@ export default function Home() {
   const breadcrumb = useMemo(() => {
     if (activeView === "settings") return ["Settings"];
     if (activeView === "changelog") return ["What's New"];
+    if (activeView === "installer") return ["Installer"];
     const sectionLabel = sectionLabelMap[activeSection] ?? activeSection;
     const vLabel = viewLabelMap[activeView] ?? activeView;
     return [sectionLabel, vLabel];
@@ -452,6 +460,7 @@ export default function Home() {
                   onViewChange={(v: NavView) => { setActiveView(v); setSelectedIds(new Set()); }}
                   data={data}
                   onImport={handleImport}
+                  isDev={isDev}
                 />
               </ResizablePanel>
               <ResizableHandle />
@@ -473,6 +482,8 @@ export default function Home() {
                   <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} />
                 ) : activeView === "changelog" ? (
                   <ChangelogPage />
+                ) : activeView === "installer" ? (
+                  <InstallerPage />
                 ) : (
                   <>
                     <ContentToolbar

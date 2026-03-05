@@ -1,6 +1,6 @@
 {
   "name": "codex",
-  "version": "0.51.2",
+  "version": "0.52.0",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -17,8 +17,10 @@
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
+    "@types/cheerio": "^1.0.0",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
+    "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.3",

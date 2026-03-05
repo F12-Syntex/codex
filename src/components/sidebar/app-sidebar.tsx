@@ -8,6 +8,7 @@ import {
   Layers,
   Settings,
   Gift,
+  Download,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LibraryData } from "@/lib/mock-data";
@@ -23,7 +24,8 @@ export type NavView =
   | "series"
   | "completed"
   | "settings"
-  | "changelog";
+  | "changelog"
+  | "installer";
 
 interface AppSidebarProps {
   activeSection: Section;
@@ -32,6 +34,7 @@ interface AppSidebarProps {
   onViewChange: (view: NavView) => void;
   data: LibraryData;
   onImport: () => void;
+  isDev?: boolean;
 }
 
 /* ── Section definitions (scalable — just add entries) ──── */
@@ -139,6 +142,7 @@ export function AppSidebar({
   activeView,
   onViewChange,
   data,
+  isDev,
 }: AppSidebarProps) {
   const navItems = sectionNavItems[activeSection];
 
@@ -182,6 +186,15 @@ export function AppSidebar({
       {/* ── Bottom pinned nav ────────────────────── */}
       <div className="flex flex-col gap-px px-2 pb-2">
         <div className="mx-2.5 mb-1.5 h-px bg-white/[0.04]" />
+        {isDev && (
+          <NavButton
+            active={activeView === "installer"}
+            icon={Download}
+            label="Installer"
+            compact
+            onClick={() => onViewChange("installer")}
+          />
+        )}
         {bottomNavItems.map((item) => (
           <NavButton
             key={item.id}

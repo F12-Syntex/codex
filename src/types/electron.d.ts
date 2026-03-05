@@ -183,8 +183,35 @@ interface SimSegmentRow {
   created_at: string;
 }
 
+interface InstallerSearchResult {
+  title: string;
+  url: string;
+  slug: string;
+  thumbnail: string;
+  author: string;
+}
+
+interface InstallerNovelInfo {
+  title: string;
+  author: string;
+  genres: string[];
+  status: string;
+  rating: string;
+  description: string;
+  thumbnail: string;
+  totalChapters: number;
+  chapters: { title: string; url: string }[];
+}
+
+interface InstallerDownloadProgress {
+  current: number;
+  total: number;
+  chapterTitle: string;
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
+  isDev: boolean;
   minimize: () => void;
   maximize: () => void;
   close: () => void;
@@ -281,6 +308,13 @@ interface ElectronAPI {
   recordPageView: (filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) => Promise<void>;
   getReadingActivity: (filePath?: string, limit?: number) => Promise<ReadingActivityRecord[]>;
   getReadingStats: () => Promise<ReadingStats>;
+
+  // Installer (dev-only)
+  installerSearch: (keyword: string, page: number) => Promise<{ results: InstallerSearchResult[]; page: number; totalPages: number }>;
+  installerNovelInfo: (url: string) => Promise<InstallerNovelInfo>;
+  installerDownload: (novelInfo: InstallerNovelInfo) => Promise<{ epubPath: string; imported: LibraryItem[] }>;
+  installerCancelDownload: () => Promise<void>;
+  onInstallerProgress: (callback: (progress: InstallerDownloadProgress) => void) => void;
 
   // Updates
   checkForUpdates: () => Promise<unknown>;

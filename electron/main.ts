@@ -26,6 +26,7 @@ import {
 import { extractMetadata } from "./metadata";
 import { parseBookContent } from "./book-parser";
 import { EdgeTTS } from "@andresaya/edge-tts";
+import { searchNovels, getNovelInfo, downloadNovel, cancelDownload, type NovelInfo } from "./installer";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
 
@@ -434,6 +435,39 @@ function createWindow() {
   ipcMain.handle("sim:get-segments", (_event, filePath: string, branchId: string) => getBranchSegments(filePath, branchId));
   ipcMain.handle("sim:add-segment", (_event, segment: { filePath: string; branchId: string; segmentIndex: number; userInput: string; htmlParagraphs: string }) => addSegment(segment));
   ipcMain.handle("sim:delete-branch", (_event, filePath: string, branchId: string) => { deleteBranch(filePath, branchId); });
+
+  // ── Installer (dev-only) ──────────────────────────────
+
+  ipcMain.handle("installer:search", async (_event, keyword: string, page: number) => {
+    return searchNovels(keyword, page);
+  });
+
+  ipcMain.handle("installer:novel-info", async (_event, url: string) => {
+    return getNovelInfo(url);
+  });
+
+  ipcMain.handle("installer:download", async (event, novelInfo: NovelInfo) => {
+    const epubPath = await downloadNovel(novelInfo, event.sender);
+    // Auto-import the downloaded EPUB into the library
+    const enriched = enrichFile(epubPath);
+    const dbItems = [{
+      title: enriched.title,
+      author: enriched.author,
+      cover: enriched.coverBase64,
+      gradient: enriched.gradient,
+      format: enriched.format,
+      filePath: enriched.filePath,
+      size: enriched.size,
+      section: "books",
+      view: "bookshelf",
+    }];
+    const imported = addItems(dbItems);
+    return { epubPath, imported };
+  });
+
+  ipcMain.handle("installer:cancel-download", () => {
+    cancelDownload();
+  });
 
   // ── Window events ─────────────────────────────────
 

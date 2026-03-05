@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
+  isDev: process.env.NODE_ENV === "development",
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),
   close: () => ipcRenderer.send("window:close"),
@@ -162,6 +163,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("activity:get", filePath, limit),
   getReadingStats: () =>
     ipcRenderer.invoke("activity:stats"),
+
+  // Installer (dev-only)
+  installerSearch: (keyword: string, page: number) =>
+    ipcRenderer.invoke("installer:search", keyword, page),
+  installerNovelInfo: (url: string) =>
+    ipcRenderer.invoke("installer:novel-info", url),
+  installerDownload: (novelInfo: unknown) =>
+    ipcRenderer.invoke("installer:download", novelInfo),
+  installerCancelDownload: () =>
+    ipcRenderer.invoke("installer:cancel-download"),
+  onInstallerProgress: (callback: (progress: { current: number; total: number; chapterTitle: string }) => void) => {
+    ipcRenderer.on("installer:download-progress", (_event, progress) => callback(progress));
+  },
 
   // Updates
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
