@@ -250,14 +250,27 @@ function createWindow() {
   });
 
   ipcMain.handle("tts:synthesize", async (_event, text: string, voice: string, rate: string, pitch?: string, volume?: string) => {
-    const tts = new EdgeTTS();
     const options: { rate: string; pitch?: string; volume?: string } = { rate };
     if (pitch) options.pitch = pitch;
     if (volume) options.volume = volume;
-    await tts.synthesize(text, voice, options);
-    const buffer = tts.toBuffer();
-    const wordBoundaries = tts.getWordBoundaries();
-    return { audio: buffer.toString("base64"), wordBoundaries };
+
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const tts = new EdgeTTS();
+        await tts.synthesize(text, voice, options);
+        const buffer = tts.toBuffer();
+        const wordBoundaries = tts.getWordBoundaries();
+        return { audio: buffer.toString("base64"), wordBoundaries };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (attempt < maxRetries - 1 && (msg.includes("503") || msg.includes("server"))) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
   });
 
   // ── Library: import files via dialog ──────────────

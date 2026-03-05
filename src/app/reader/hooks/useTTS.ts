@@ -14,6 +14,11 @@ interface UseTTSOptions {
   onChapterEnd: () => void;
 }
 
+interface SynthResult {
+  audio: string;
+  wordBoundaries: WordBoundary[];
+}
+
 export function useTTS({
   paragraphs,
   voice,
@@ -35,6 +40,9 @@ export function useTTS({
   // Tracks the current/target paragraph synchronously for rapid skip support
   const currentParaRef = useRef(0);
 
+  // Prefetch cache: stores pre-synthesized result for the next paragraph
+  const prefetchCache = useRef<Map<number, Promise<SynthResult | null>>>(new Map());
+
   // Refs for callbacks/options to avoid stale closures in long-running synthesis chains
   const autoAdvanceRef = useRef(autoAdvance);
   autoAdvanceRef.current = autoAdvance;
@@ -43,10 +51,27 @@ export function useTTS({
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
 
+  // Keep refs for synthesis params so prefetch uses current values
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  const pitchRef = useRef(pitch);
+  pitchRef.current = pitch;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+  const paragraphsRef = useRef(paragraphs);
+  paragraphsRef.current = paragraphs;
+
   // Load voices on mount
   useEffect(() => {
     window.electronAPI?.ttsGetVoices().then(setVoices).catch(() => {});
   }, []);
+
+  // Clear prefetch cache when paragraphs or voice settings change
+  useEffect(() => {
+    prefetchCache.current.clear();
+  }, [paragraphs, voice, rate, pitch, volume]);
 
   // Clean up audio on unmount
   useEffect(() => {
@@ -101,6 +126,42 @@ export function useTTS({
     }
   }, []);
 
+  // Synthesize a paragraph (uses cache if available, otherwise calls API)
+  const synthesize = useCallback((paraIndex: number): Promise<SynthResult | null> => {
+    const cached = prefetchCache.current.get(paraIndex);
+    if (cached) {
+      prefetchCache.current.delete(paraIndex);
+      return cached;
+    }
+
+    const text = paragraphsRef.current[paraIndex];
+    if (!text || text.trim().length === 0) return Promise.resolve(null);
+
+    const rateStr = `${rateRef.current >= 0 ? "+" : ""}${Math.round((rateRef.current - 1) * 100)}%`;
+    const pitchStr = `${pitchRef.current >= 0 ? "+" : ""}${pitchRef.current}Hz`;
+    const volStr = `${volumeRef.current}%`;
+
+    return window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr) ?? Promise.resolve(null);
+  }, []);
+
+  // Kick off prefetch for the next non-empty paragraph
+  const prefetchNext = useCallback((afterIndex: number) => {
+    const paras = paragraphsRef.current;
+    const next = paras.findIndex((p, i) => i > afterIndex && p.trim().length > 0);
+    if (next === -1 || prefetchCache.current.has(next)) return;
+
+    const text = paras[next];
+    if (!text || text.trim().length === 0) return;
+
+    const rateStr = `${rateRef.current >= 0 ? "+" : ""}${Math.round((rateRef.current - 1) * 100)}%`;
+    const pitchStr = `${pitchRef.current >= 0 ? "+" : ""}${pitchRef.current}Hz`;
+    const volStr = `${volumeRef.current}%`;
+
+    const promise = window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr)
+      ?? Promise.resolve(null);
+    prefetchCache.current.set(next, promise);
+  }, []);
+
   // Synthesize and play a single paragraph
   const synthesizeAndPlay = useCallback(async (paraIndex: number, session: number) => {
     const text = paragraphs[paraIndex];
@@ -125,12 +186,11 @@ export function useTTS({
     onParagraphChangeRef.current(paraIndex);
 
     try {
-      const rateStr = `${rate >= 0 ? "+" : ""}${Math.round((rate - 1) * 100)}%`;
-      const pitchStr = `${pitch >= 0 ? "+" : ""}${pitch}Hz`;
-      const volStr = `${volume}%`;
-
-      const result = await window.electronAPI?.ttsSynthesize(text, voice, rateStr, pitchStr, volStr);
+      const result = await synthesize(paraIndex);
       if (!result || session !== sessionRef.current) return;
+
+      // Start prefetching the next paragraph while this one plays
+      prefetchNext(paraIndex);
 
       // Create audio from base64
       const audio = new Audio(`data:audio/mp3;base64,${result.audio}`);
@@ -177,7 +237,7 @@ export function useTTS({
         stopWordTracking();
       }
     }
-  }, [paragraphs, voice, rate, pitch, volume, startWordTracking, stopWordTracking]);
+  }, [paragraphs, volume, startWordTracking, stopWordTracking, synthesize, prefetchNext]);
 
   // Public actions
   const play = useCallback((fromParagraph?: number) => {
@@ -188,6 +248,7 @@ export function useTTS({
       audioRef.current = null;
     }
     stopWordTracking();
+    prefetchCache.current.clear();
 
     const startAt = fromParagraph ?? currentParaRef.current;
     // Immediately mark as synthesizing so the UI doesn't flash to idle
@@ -220,6 +281,7 @@ export function useTTS({
       audioRef.current = null;
     }
     stopWordTracking();
+    prefetchCache.current.clear();
     setWordBoundaries(null);
     setActiveWordIndex(-1);
     currentParaRef.current = 0;

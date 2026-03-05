@@ -109,9 +109,28 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const rawChapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
   const chapterTitle = enrichEnabled && enrichedNames[currentChapter] ? enrichedNames[currentChapter] : rawChapterTitle;
 
-  // TTS
+  // TTS — use enhanced/formatted text when available, stripped to plain text
+  const isBranchChapterForTTS = activeBranch && currentChapter === activeBranch.chapterIndex;
+  const ttsParagraphs = useMemo(() => {
+    let html: string[];
+    if (isBranchChapterForTTS && activeBranch) {
+      const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
+        ? formattedChapters[activeBranch.chapterIndex]
+        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
+      const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
+      const generated = (activeBranchSegments ?? []).flatMap(s => s.htmlParagraphs);
+      html = [...truncated, ...generated];
+    } else if (formattingEnabled && formattedChapters[currentChapter]) {
+      html = formattedChapters[currentChapter];
+    } else {
+      return paragraphs; // already plain text
+    }
+    // Strip HTML tags to get plain text for TTS
+    return html.map(h => h.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim());
+  }, [isBranchChapterForTTS, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapters, paragraphs]);
+
   const tts = useTTS({
-    paragraphs,
+    paragraphs: ttsParagraphs,
     voice: settings.ttsVoice,
     rate: settings.ttsRate,
     pitch: settings.ttsPitch,
