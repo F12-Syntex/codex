@@ -301,7 +301,7 @@ function createWindow() {
       throw new Error(`OpenRouter TTS ${resp.status}: ${errText}`);
     }
 
-    const json = await resp.json();
+    const json = await resp.json() as { choices?: { message?: { audio?: { data?: string } } }[] };
     const audioData = json?.choices?.[0]?.message?.audio?.data;
     if (!audioData) throw new Error("No audio data in response");
 
