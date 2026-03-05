@@ -1473,6 +1473,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                     window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
                   }}
                   onClose={() => setShowBuddy(false)}
+                  onWikiUpdated={refreshWikiState}
                 />
               )}
               <button

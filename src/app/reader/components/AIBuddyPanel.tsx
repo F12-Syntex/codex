@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Send, Loader2, MessageCircle, Trash2, Sparkles, User } from "lucide-react";
+import { X, Send, Loader2, MessageCircle, Trash2, Sparkles, User, Check, XCircle, AlertTriangle, Plus, Pencil, Trash, GitMerge, Link, Eye } from "lucide-react";
 import type { ThemeClasses } from "../lib/types";
-import type { BuddyMessage } from "@/lib/ai-buddy";
-import { sendBuddyMessage, buildBuddyWikiContext } from "@/lib/ai-buddy";
+import type { BuddyMessage, WikiAction } from "@/lib/ai-buddy";
+import { sendBuddyMessage, buildBuddyWikiContext, executeWikiAction, describeWikiAction } from "@/lib/ai-buddy";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
 /* ── Buddy-specific CSS ───────────────────────────────────── */
@@ -123,7 +123,6 @@ const BUDDY_STYLES = `
 }
 .buddy-divider { height: 1px; background: oklch(1 0 0 / 6%); margin: 0.5rem 0; }
 .buddy-highlight {
-  background: var(--accent-brand, oklch(0.60 0.20 264));
   background: oklch(0.60 0.20 264 / 12%);
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
@@ -145,7 +144,6 @@ const BUDDY_STYLES = `
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: var(--accent-brand, oklch(0.60 0.20 264));
   background: oklch(0.60 0.20 264 / 10%);
   color: var(--accent-brand, oklch(0.60 0.20 264));
   padding: 0.05rem 0.35rem;
@@ -177,6 +175,7 @@ interface AIBuddyPanelProps {
   wikiEntryCount: number;
   onEntityClick: (entityId: string) => void;
   onClose: () => void;
+  onWikiUpdated?: () => void;
 }
 
 /* ── Quick Actions ─────────────────────────────────────── */
@@ -188,6 +187,96 @@ const QUICK_ACTIONS = [
   { label: "Arcs", prompt: "What are the active story arcs and where do they stand?" },
 ];
 
+/* ── Action icon helper ────────────────────────────────── */
+
+function ActionIcon({ action }: { action: WikiAction["action"] }) {
+  const cls = "h-3 w-3 shrink-0";
+  switch (action) {
+    case "create_entry": return <Plus className={cls} />;
+    case "update_entry": return <Pencil className={cls} />;
+    case "delete_entry": return <Trash className={cls} />;
+    case "add_aliases": return <Plus className={cls} />;
+    case "add_relationship": return <Link className={cls} />;
+    case "add_appearance": return <Eye className={cls} />;
+    case "merge_entities": return <GitMerge className={cls} />;
+  }
+}
+
+/* ── Wiki Action Card ──────────────────────────────────── */
+
+function WikiActionCard({
+  actions,
+  onApprove,
+  onReject,
+  resolved,
+}: {
+  actions: WikiAction[];
+  onApprove: () => void;
+  onReject: () => void;
+  resolved: boolean;
+}) {
+  const descriptions = actions.map(describeWikiAction);
+
+  const colorMap = {
+    green: { border: "border-emerald-500/20", bg: "bg-emerald-500/[0.04]", dot: "bg-emerald-400" },
+    yellow: { border: "border-amber-500/20", bg: "bg-amber-500/[0.04]", dot: "bg-amber-400" },
+    red: { border: "border-red-500/20", bg: "bg-red-500/[0.04]", dot: "bg-red-400" },
+  };
+
+  return (
+    <div className="mt-3 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+      {/* Header */}
+      <div className="mb-2.5 flex items-center gap-2">
+        <AlertTriangle className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.5} />
+        <span className="text-xs font-medium text-amber-400/90">
+          Wiki {actions.length === 1 ? "Change" : "Changes"} Proposed
+        </span>
+        {resolved && (
+          <span className="ml-auto text-[10px] text-white/25">Resolved</span>
+        )}
+      </div>
+
+      {/* Action list */}
+      <div className="space-y-1.5">
+        {descriptions.map((desc, i) => {
+          const c = colorMap[desc.color];
+          return (
+            <div key={i} className={`flex items-start gap-2 rounded-lg ${c.border} ${c.bg} border px-2.5 py-2`}>
+              <div className="mt-0.5 text-white/40">
+                <ActionIcon action={actions[i].action} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-white/80">{desc.label}</div>
+                <div className="mt-0.5 text-[11px] leading-relaxed text-white/40">{desc.detail}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Approve / Reject buttons */}
+      {!resolved && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={onApprove}
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/25"
+          >
+            <Check className="h-3 w-3" strokeWidth={2} />
+            Apply {actions.length === 1 ? "Change" : `All (${actions.length})`}
+          </button>
+          <button
+            onClick={onReject}
+            className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.08] hover:text-white/60"
+          >
+            <XCircle className="h-3 w-3" strokeWidth={2} />
+            Reject
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── AI Buddy Panel ────────────────────────────────────── */
 
 export function AIBuddyPanel({
@@ -198,11 +287,13 @@ export function AIBuddyPanel({
   wikiEntryCount,
   onEntityClick,
   onClose,
+  onWikiUpdated,
 }: AIBuddyPanelProps) {
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [wikiContext, setWikiContext] = useState("");
+  const [applyingActions, setApplyingActions] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -240,6 +331,51 @@ export function AIBuddyPanel({
     return () => container.removeEventListener("click", handleClick);
   }, [onEntityClick]);
 
+  /* Refresh wiki context after changes */
+  const refreshWikiContext = useCallback(async () => {
+    const ctx = await buildBuddyWikiContext(filePath, currentChapter);
+    setWikiContext(ctx);
+    onWikiUpdated?.();
+  }, [filePath, currentChapter, onWikiUpdated]);
+
+  /* Approve wiki actions for a message */
+  const approveActions = useCallback(async (msgId: string) => {
+    const msg = messages.find((m) => m.id === msgId);
+    if (!msg?.pendingActions?.length) return;
+
+    setApplyingActions(msgId);
+    try {
+      for (const action of msg.pendingActions) {
+        await executeWikiAction(filePath, action);
+      }
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId ? { ...m, actionsResolved: true } : m,
+        ),
+      );
+      await refreshWikiContext();
+    } catch (err) {
+      // Add error message
+      setMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `<p class="buddy-text" style="color: oklch(0.65 0.18 25);">Failed to apply wiki changes: ${err instanceof Error ? err.message : "Unknown error"}</p>`,
+        timestamp: Date.now(),
+      }]);
+    } finally {
+      setApplyingActions(null);
+    }
+  }, [messages, filePath, refreshWikiContext]);
+
+  /* Reject wiki actions for a message */
+  const rejectActions = useCallback((msgId: string) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msgId ? { ...m, actionsResolved: true } : m,
+      ),
+    );
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
 
@@ -255,14 +391,16 @@ export function AIBuddyPanel({
     setIsLoading(true);
 
     try {
-      const response = await sendBuddyMessage(
+      const [htmlContent, actions] = await sendBuddyMessage(
         bookTitle, currentChapter, wikiContext, messages, text.trim(),
       );
       setMessages((prev) => [...prev, {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: response,
+        content: htmlContent,
         timestamp: Date.now(),
+        pendingActions: actions.length > 0 ? actions : undefined,
+        actionsResolved: actions.length === 0 ? undefined : false,
       }]);
     } catch (err) {
       setMessages((prev) => [...prev, {
@@ -379,11 +517,31 @@ export function AIBuddyPanel({
                 {msg.role === "user" ? (
                   <p className="pl-7 text-xs leading-[1.7] text-white/70">{msg.content}</p>
                 ) : (
-                  <div
-                    className="buddy-content pl-7"
-                    data-reading-theme="dark"
-                    dangerouslySetInnerHTML={{ __html: msg.content }}
-                  />
+                  <div className="pl-7">
+                    <div
+                      className="buddy-content"
+                      data-reading-theme="dark"
+                      dangerouslySetInnerHTML={{ __html: msg.content }}
+                    />
+
+                    {/* Wiki action confirmation card */}
+                    {msg.pendingActions && msg.pendingActions.length > 0 && (
+                      <WikiActionCard
+                        actions={msg.pendingActions}
+                        onApprove={() => approveActions(msg.id)}
+                        onReject={() => rejectActions(msg.id)}
+                        resolved={msg.actionsResolved ?? false}
+                      />
+                    )}
+
+                    {/* Applying spinner */}
+                    {applyingActions === msg.id && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin text-emerald-400" strokeWidth={2} />
+                        <span className="text-[11px] text-emerald-400/70">Applying changes...</span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
