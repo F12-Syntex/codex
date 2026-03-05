@@ -19,11 +19,68 @@ import {
   Trash2,
   PanelRightClose,
   PanelRightOpen,
+  ChevronsUpDown,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type InstallerView = "search" | "detail";
 type SourceOption = { id: string; name: string; url: string };
+
+// ── Custom source dropdown ──────────────────────────────
+
+function SourceDropdown({
+  sources,
+  value,
+  onChange,
+}: {
+  sources: SourceOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = sources.find((s) => s.id === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] py-1.5 pl-2.5 pr-2 text-xs text-white/40 outline-none hover:bg-white/[0.07] transition-colors cursor-pointer"
+      >
+        <Globe className="h-3 w-3 text-white/15" />
+        <span>{selected?.name ?? "Source"}</span>
+        <ChevronsUpDown className="h-3 w-3 text-white/15" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/30 backdrop-blur-xl">
+          {sources.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => { onChange(s.id); setOpen(false); }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+                s.id === value
+                  ? "bg-white/[0.08] text-white/60"
+                  : "text-white/35 hover:bg-white/[0.05] hover:text-white/50"
+              }`}
+            >
+              {s.id === value && <Check className="h-3 w-3 shrink-0" />}
+              <span className={s.id === value ? "" : "pl-5"}>{s.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Proxied image component ─────────────────────────────
 
@@ -403,18 +460,11 @@ export function InstallerPage() {
       {view === "search" ? (
         <>
           {sources.length > 0 && (
-            <div className="relative shrink-0">
-              <Globe className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-white/15 pointer-events-none" />
-              <select
-                value={sourceId}
-                onChange={(e) => { setSourceId(e.target.value); setResults([]); }}
-                className="appearance-none rounded-lg bg-white/[0.05] py-1.5 pl-7 pr-6 text-xs text-white/40 outline-none hover:bg-white/[0.07] transition-colors cursor-pointer"
-              >
-                {sources.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
+            <SourceDropdown
+              sources={sources}
+              value={sourceId}
+              onChange={(id) => { setSourceId(id); setResults([]); }}
+            />
           )}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/20" />

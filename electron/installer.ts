@@ -203,10 +203,112 @@ const novelfullSource: NovelSource = {
   },
 };
 
+// ── Source: NovelHall ─────────────────────────────────────
+
+const NOVELHALL_BASE = "https://www.novelhall.com";
+
+const novelhallSource: NovelSource = {
+  id: "novelhall",
+  name: "NovelHall",
+  url: NOVELHALL_BASE,
+
+  async search(keyword, page = 1) {
+    const url = `${NOVELHALL_BASE}/index.php?s=so&module=book&keyword=${encodeURIComponent(keyword)}&page=${page}`;
+    const html = await fetchHtml(url);
+    const $ = cheerio.load(html);
+
+    const results: NovelSearchResult[] = [];
+    $(".section3 table tbody tr").each((_i, el) => {
+      // Columns: 1=genre (.type), 2=title, 3=latest chapter, 4=writer, 5=time
+      const titleEl = $(el).find("td:nth-child(2) a").first();
+      const title = titleEl.text().trim();
+      const href = titleEl.attr("href") || "";
+      const author = $(el).find("td a.writer").text().trim();
+
+      if (title && href && !href.includes("/genre/")) {
+        results.push({
+          title,
+          url: resolveUrl(NOVELHALL_BASE, href),
+          slug: href.replace(/^\//, "").replace(/\/$/, ""),
+          thumbnail: "",
+          author,
+        });
+      }
+    });
+
+    let totalPages = 1;
+    $(".page-nav a[data-ci-pagination-page]").each((_i, el) => {
+      const p = parseInt($(el).attr("data-ci-pagination-page") || "0", 10);
+      if (p > totalPages) totalPages = p;
+    });
+
+    return { results, page, totalPages };
+  },
+
+  async getInfo(novelUrl) {
+    const html = await fetchHtml(novelUrl);
+    const $ = cheerio.load(html);
+
+    const title = $(".book-info h1").text().trim();
+    const thumbnail = $(".book-img img").attr("src") || $(".img-thumbnail").attr("src") || "";
+
+    // Author is in a span.blue containing "Author：" or "Author:"
+    let author = "";
+    $(".booktag span.blue, .total span.blue").each((_i, el) => {
+      const text = $(el).text();
+      if (text.includes("Author")) {
+        author = text.replace(/Author[：:]\s*/, "").trim();
+      }
+    });
+
+    const genres: string[] = [];
+    $(".booktag a.red, .total a.red").each((_i, el) => { genres.push($(el).text().trim()); });
+
+    let status = "";
+    $(".booktag span.blue, .total span.blue").each((_i, el) => {
+      const text = $(el).text();
+      if (text.includes("Status")) {
+        status = text.replace(/Status[：:]\s*/, "").trim();
+      }
+    });
+
+    // Description: the full text is in .js-close-wrap, short in .js-open-wrap
+    const description = $(".js-close-wrap").first().clone().children("span").remove().end().text().trim()
+      || $(".js-open-wrap").first().text().trim()
+      || $(".intro").text().trim();
+
+    // Chapters from the full catalog (#morelist)
+    const chapters: { title: string; url: string }[] = [];
+    $("#morelist ul li a").each((_i, el) => {
+      const chTitle = $(el).text().trim();
+      const chHref = $(el).attr("href") || "";
+      if (chTitle && chHref) {
+        chapters.push({ title: chTitle, url: resolveUrl(NOVELHALL_BASE, chHref) });
+      }
+    });
+
+    return {
+      title, author, genres, status, rating: "N/A", description,
+      thumbnail: thumbnail.startsWith("http") ? thumbnail : resolveUrl(NOVELHALL_BASE, thumbnail),
+      totalChapters: chapters.length,
+      chapters,
+    };
+  },
+
+  async getChapterContent(chapterUrl, signal) {
+    const html = await fetchHtml(chapterUrl, signal);
+    const $ = cheerio.load(html);
+    const contentEl = $("#htmlContent");
+    contentEl.find("script, .ads, .adsbygoogle, ins, iframe, [id*='ads'], [class*='ads']").remove();
+    return contentEl.html()?.trim() || "<p>Content unavailable</p>";
+  },
+};
+
 // ── Source Registry ──────────────────────────────────────
 
 const SOURCES: Record<string, NovelSource> = {
   novelfull: novelfullSource,
+  novelhall: novelhallSource,
 };
 
 export function getAvailableSources(): { id: string; name: string; url: string }[] {
