@@ -192,7 +192,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
       <WindowHeader icon={<BookOpen className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
 
-      <div className="flex flex-1 overflow-hidden" style={{ fontSize: `${zoom}%` }}>
+      <div className="flex flex-1 overflow-hidden" style={{ zoom: zoom / 100 }}>
         {/* Sidebar */}
         <div className="flex w-[260px] flex-col border-r border-white/[0.06] bg-[var(--bg-surface)]">
           {/* View mode toggle */}

@@ -168,7 +168,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
       {/* Inject AI formatting CSS so examples render correctly */}
       <style>{AI_FORMATTING_STYLES}</style>
 
-      <div className="flex-1 overflow-y-auto" style={{ fontSize: `${zoom}%` }}>
+      <div className="flex-1 overflow-y-auto" style={{ zoom: zoom / 100 }}>
         <div className="mx-auto max-w-[1000px] px-8 py-6">
           {/* Summary bar */}
           <div className="mb-6 flex items-center gap-3">

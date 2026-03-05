@@ -352,7 +352,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
 
       <style dangerouslySetInnerHTML={{ __html: AI_FORMATTING_STYLES + BUDDY_STYLES }} />
 
-      <div className="flex flex-1 flex-col overflow-hidden" style={{ fontSize: `${zoom}%` }}>
+      <div className="flex flex-1 flex-col overflow-hidden" style={{ zoom: zoom / 100 }}>
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
