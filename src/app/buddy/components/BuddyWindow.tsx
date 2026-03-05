@@ -234,7 +234,6 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
   const [bookChapters, setBookChapters] = useState<Array<{ paragraphs: string[] }> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   // Load book content once on mount so readChapter can be sync
   useEffect(() => {
@@ -257,7 +256,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    const el = contentRef.current;
+    const el = scrollRef.current;
     if (!el) return;
     const handler = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest<HTMLElement>("[data-entity]");
@@ -375,7 +374,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
               </div>
             </div>
           ) : (
-            <div ref={contentRef} className="mx-auto max-w-[700px] px-6 py-4">
+            <div className="mx-auto max-w-[700px] px-6 py-4">
               {messages.map((msg, idx) => (
                 <div key={msg.id} className={idx > 0 ? "mt-5" : ""}>
                   {msg.role === "user" ? (

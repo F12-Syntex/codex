@@ -243,14 +243,13 @@ export function AIBuddyPanel({
   const [executingPlanStep, setExecutingPlanStep] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { buildBuddyWikiContext(filePath, currentChapter).then(setWikiContext); }, [filePath, currentChapter]);
   useEffect(() => { scrollRef.current && (scrollRef.current.scrollTop = scrollRef.current.scrollHeight); }, [messages, isLoading, executingPlanStep]);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    const el = contentRef.current;
+    const el = scrollRef.current;
     if (!el) return;
     const handler = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest<HTMLElement>("[data-entity]");
@@ -382,7 +381,7 @@ export function AIBuddyPanel({
             </div>
           </div>
         ) : (
-          <div ref={contentRef} className="px-5 py-3">
+          <div className="px-5 py-3">
             {messages.map((msg, idx) => (
               <div key={msg.id} className={idx > 0 ? "mt-5" : ""}>
                 {msg.role === "user" ? (
