@@ -131,7 +131,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const tts = useTTS({
     paragraphs: ttsParagraphs,
-    provider: settings.ttsProvider ?? "edge",
     voice: settings.ttsVoice,
     rate: settings.ttsRate,
     pitch: settings.ttsPitch,
@@ -1245,7 +1244,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           <TTSPanel
             theme={theme}
             state={tts.state}
-            provider={settings.ttsProvider ?? "edge"}
             voices={tts.voices}
             selectedVoice={settings.ttsVoice}
             rate={settings.ttsRate}
@@ -1268,7 +1266,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             onStop={() => tts.actions.stop()}
             onSkipPrev={() => tts.actions.skipPrev()}
             onSkipNext={() => tts.actions.skipNext()}
-            onProviderChange={(p) => updateSetting("ttsProvider", p)}
             onVoiceChange={(v) => updateSetting("ttsVoice", v)}
             onRateChange={(r) => updateSetting("ttsRate", r)}
             onVolumeChange={(v) => updateSetting("ttsVolume", v)}

@@ -151,9 +151,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ttsGetVoices: () => ipcRenderer.invoke("tts:get-voices"),
   ttsSynthesize: (text: string, voice: string, rate: string, pitch?: string, volume?: string) =>
     ipcRenderer.invoke("tts:synthesize", text, voice, rate, pitch, volume),
-  ttsSynthesizeOpenRouter: (text: string, voice: string, rate: number) =>
-    ipcRenderer.invoke("tts:synthesize-openrouter", text, voice, rate),
-
   // Shell
   openExternal: (url: string) =>
     ipcRenderer.invoke("shell:open-external", url),

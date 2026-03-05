@@ -32,7 +32,7 @@ export interface WordBoundary {
 
 export type ReadingTheme = "dark" | "light" | "sepia";
 export type TTSHighlightMode = "word" | "paragraph" | "both" | "none";
-export type TTSProvider = "edge" | "openrouter";
+export type TTSProvider = "edge";
 
 export interface ReaderSettings {
   readingTheme: ReadingTheme;

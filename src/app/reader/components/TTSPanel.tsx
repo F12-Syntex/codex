@@ -3,13 +3,11 @@
 import { useState, useRef } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward } from "lucide-react";
-import type { EdgeVoice, ThemeClasses, TTSProvider, TTSState, TTSHighlightMode } from "../lib/types";
-import { OPENROUTER_TTS_VOICES } from "../hooks/useTTS";
+import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
 
 interface TTSPanelProps {
   theme: ThemeClasses;
   state: TTSState;
-  provider: TTSProvider;
   voices: EdgeVoice[];
   selectedVoice: string;
   rate: number;
@@ -27,7 +25,6 @@ interface TTSPanelProps {
   onStop: () => void;
   onSkipPrev: () => void;
   onSkipNext: () => void;
-  onProviderChange: (provider: TTSProvider) => void;
   onVoiceChange: (voice: string) => void;
   onRateChange: (rate: number) => void;
   onVolumeChange: (volume: number) => void;
@@ -40,7 +37,6 @@ interface TTSPanelProps {
 export function TTSPanel({
   theme,
   state,
-  provider,
   voices,
   selectedVoice,
   rate,
@@ -58,7 +54,6 @@ export function TTSPanel({
   onStop,
   onSkipPrev,
   onSkipNext,
-  onProviderChange,
   onVoiceChange,
   onRateChange,
   onVolumeChange,
@@ -73,12 +68,8 @@ export function TTSPanel({
   // Click outside to close
   useClickOutside(panelRef, onClose, "[data-reader-header]");
 
-  const isEdge = provider === "edge";
-  const voice = isEdge ? voices.find((v) => v.shortName === selectedVoice) : null;
-  const orVoice = !isEdge ? OPENROUTER_TTS_VOICES.find((v) => v.id === selectedVoice) : null;
-  const voiceLabel = isEdge
-    ? (voice ? voice.shortName.split("-").pop()?.replace("Neural", "") ?? voice.shortName : "Select voice")
-    : (orVoice?.label ?? "Select voice");
+  const voice = voices.find((v) => v.shortName === selectedVoice);
+  const voiceLabel = voice ? voice.shortName.split("-").pop()?.replace("Neural", "") ?? voice.shortName : "Select voice";
 
   const isActive = state.status !== "idle";
   const isPlaying = state.status === "playing";
@@ -179,31 +170,6 @@ export function TTSPanel({
           );
         })()}
 
-        {/* Provider toggle */}
-        <div className="space-y-1.5">
-          <span className={`text-xs ${theme.muted}`}>Provider</span>
-          <div className={`flex rounded-lg ${theme.subtle} p-0.5`}>
-            {(["edge", "openrouter"] as const).map((p) => {
-              const label = p === "edge" ? "Edge (Free)" : "OpenRouter";
-              const active = provider === p;
-              return (
-                <button
-                  key={p}
-                  onClick={() => {
-                    onProviderChange(p);
-                    // Set a sensible default voice for the new provider
-                    if (p === "edge") onVoiceChange("en-US-ChristopherNeural");
-                    else onVoiceChange("nova");
-                  }}
-                  className={`flex-1 rounded-lg px-1 py-1 text-xs transition-colors ${active ? theme.btnActive : theme.btn}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Voice selector */}
         <div className="relative">
           <button
@@ -219,36 +185,22 @@ export function TTSPanel({
 
           {showVoicePicker && (
             <div className={`absolute top-full left-0 z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}>
-              {isEdge ? (
-                <>
-                  {voices.map((v) => {
-                    const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
-                    return (
-                      <button
-                        key={v.shortName}
-                        onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); }}
-                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{label}</span>
-                        <span className={`shrink-0 text-xs ${theme.muted}`}>{v.gender}</span>
-                        <span className={`shrink-0 text-xs ${theme.muted}`}>{v.locale}</span>
-                      </button>
-                    );
-                  })}
-                  {voices.length === 0 && (
-                    <p className={`px-2 py-3 text-center text-xs ${theme.muted}`}>Loading voices...</p>
-                  )}
-                </>
-              ) : (
-                OPENROUTER_TTS_VOICES.map((v) => (
+              {voices.map((v) => {
+                const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
+                return (
                   <button
-                    key={v.id}
-                    onClick={() => { onVoiceChange(v.id); setShowVoicePicker(false); }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.id === selectedVoice ? theme.btnActive : theme.btn}`}
+                    key={v.shortName}
+                    onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); }}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
                   >
-                    <span className="min-w-0 flex-1 truncate">{v.label}</span>
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    <span className={`shrink-0 text-xs ${theme.muted}`}>{v.gender}</span>
+                    <span className={`shrink-0 text-xs ${theme.muted}`}>{v.locale}</span>
                   </button>
-                ))
+                );
+              })}
+              {voices.length === 0 && (
+                <p className={`px-2 py-3 text-center text-xs ${theme.muted}`}>Loading voices...</p>
               )}
             </div>
           )}
