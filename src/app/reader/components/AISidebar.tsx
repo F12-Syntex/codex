@@ -39,6 +39,8 @@ interface AISidebarProps {
   onWikiProcessAll: () => void;
   onCancelWikiProcessAll: () => void;
   onClearWiki: () => void;
+  buddyEnabled: boolean;
+  onBuddyToggle: () => void;
   simulateEnabled: boolean;
   onSimulateToggle: () => void;
   onClose: () => void;
@@ -76,6 +78,8 @@ export function AISidebar({
   onWikiProcessAll,
   onCancelWikiProcessAll,
   onClearWiki,
+  buddyEnabled,
+  onBuddyToggle,
   simulateEnabled,
   onSimulateToggle,
   onClose,
@@ -448,14 +452,21 @@ export function AISidebar({
         </div>
 
         <div className="space-y-0.5 px-1.5">
-          {/* AI Buddy — coming soon */}
-          <SettingRow
-            icon={<MessageCircle className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
-            label="AI Buddy"
-            description="Chat about the book, ask questions, discuss characters"
-            theme={theme}
-            comingSoon
-          />
+          {/* AI Buddy */}
+          <div className={`rounded-lg px-3 py-2.5 transition-colors ${buddyEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <MessageCircle className={`h-3.5 w-3.5 ${buddyEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-medium ${theme.text}`}>AI Buddy</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
+                  Chat about the book — requires wiki
+                </div>
+              </div>
+              <Toggle value={buddyEnabled} onChange={onBuddyToggle} isDisabled={disabled || !wikiEnabled} />
+            </div>
+          </div>
 
           {/* Immersive Formatting */}
           <div className={`rounded-lg px-3 py-2.5 transition-colors ${formattingEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>

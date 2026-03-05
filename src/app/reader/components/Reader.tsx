@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, MessageCircle } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
@@ -24,6 +24,7 @@ import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
+import { AIBuddyPanel } from "./AIBuddyPanel";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -76,6 +77,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
   const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
   const [wikiEntryCount, setWikiEntryCount] = useState(0);
+
+  // AI Buddy state
+  const [buddyEnabled, setBuddyEnabled] = useState(false);
+  const [showBuddy, setShowBuddy] = useState(false);
 
   // Simulate state (branching narrative)
   const [simulateEnabled, setSimulateEnabled] = useState(false);
@@ -414,6 +419,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         try { setWikiEnabled(JSON.parse(raw)); } catch { /* ignore */ }
       }
     });
+    window.electronAPI?.getSetting(`buddyEnabled:${filePath}`).then((raw) => {
+      if (raw != null) {
+        try { setBuddyEnabled(JSON.parse(raw)); } catch { /* ignore */ }
+      }
+    });
     window.electronAPI?.getSetting(`simulateEnabled:${filePath}`).then((raw) => {
       if (raw != null) {
         try { setSimulateEnabled(JSON.parse(raw)); } catch { /* ignore */ }
@@ -641,7 +651,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!next) {
       wikiAbortRef.current = true;
       setWikiProcessingChapter(null);
-      // Simulate requires wiki — auto-disable
+      // Buddy + Simulate require wiki — auto-disable
+      if (buddyEnabled) {
+        setBuddyEnabled(false);
+        setShowBuddy(false);
+        window.electronAPI?.setSetting(`buddyEnabled:${filePath}`, JSON.stringify(false));
+      }
       if (simulateEnabled) {
         setSimulateEnabled(false);
         setActiveBranch(null);
@@ -657,7 +672,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
     setWikiEnabled(next);
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(next));
-  }, [wikiEnabled, filePath, formattingEnabled, simulateEnabled]);
+  }, [wikiEnabled, filePath, formattingEnabled, buddyEnabled, simulateEnabled]);
+
+  const toggleBuddyEnabled = useCallback(() => {
+    const next = !buddyEnabled;
+    setBuddyEnabled(next);
+    if (!next) setShowBuddy(false);
+    window.electronAPI?.setSetting(`buddyEnabled:${filePath}`, JSON.stringify(next));
+  }, [buddyEnabled, filePath]);
 
   const toggleSimulateEnabled = useCallback(() => {
     const next = !simulateEnabled;
@@ -1355,6 +1377,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onWikiProcessAll={processAllWikiChapters}
               onCancelWikiProcessAll={cancelWikiProcessAll}
               onClearWiki={clearWiki}
+              buddyEnabled={buddyEnabled}
+              onBuddyToggle={toggleBuddyEnabled}
               simulateEnabled={simulateEnabled}
               onSimulateToggle={toggleSimulateEnabled}
               onClose={() => setShowAI(false)}
@@ -1433,6 +1457,34 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             }}
           />
         </div>
+
+        {/* AI Buddy floating button + panel */}
+        {buddyEnabled && wikiEnabled && (
+          <div className="absolute bottom-4 right-4 z-40">
+            {showBuddy && (
+              <AIBuddyPanel
+                theme={theme}
+                filePath={filePath}
+                bookTitle={title}
+                currentChapter={currentChapter}
+                wikiEntryCount={wikiEntryCount}
+                onEntityClick={(entityId) => {
+                  window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
+                }}
+                onClose={() => setShowBuddy(false)}
+              />
+            )}
+            {!showBuddy && (
+              <button
+                onClick={() => setShowBuddy(true)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)]"
+                style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
+              >
+                <MessageCircle className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Footer — always below content, never overlapped by sidebar */}
         <ReaderFooter
