@@ -240,7 +240,7 @@ function HomePage({
   const recentEntries = [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);
 
   return (
-    <div className="mx-auto max-w-[900px] px-6 py-6">
+    <div className="mx-auto w-full max-w-[900px] px-4 py-6 sm:px-6">
       {/* Hero */}
       <div className="mb-8">
         <h1 className="text-sm font-bold tracking-tight text-white/90">{bookTitle}</h1>
@@ -288,7 +288,7 @@ function HomePage({
                   <span style={{ color: meta.color }}>{meta.icon}</span>
                   <span className="text-xs font-medium uppercase tracking-wider text-white/30">{meta.plural}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {items.map((e) => (
                     <EntryCard key={e.id} entry={e} onClick={() => onEntryClick(e.id)} />
                   ))}
@@ -306,7 +306,7 @@ function HomePage({
           {mainCharacters.length > 0 && (
             <section className="mb-8">
               <SectionHeader icon={<User className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Main Characters" color="rgb(147, 197, 253)" />
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {mainCharacters.map((e) => (
                   <button key={e.id} onClick={() => onEntryClick(e.id)} className="group rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-3 text-left transition-all hover:border-white/[0.12] hover:bg-white/[0.04]">
                     <div className="flex items-center gap-2">
@@ -329,7 +329,7 @@ function HomePage({
           {recentEntries.length > 0 && (
             <section className="mb-8">
               <SectionHeader icon={<Clock className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Recently Introduced" color="rgb(196, 181, 253)" />
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {recentEntries.map((e) => (
                   <EntryCard key={e.id} entry={e} onClick={() => onEntryClick(e.id)} showChapter />
                 ))}
@@ -450,7 +450,7 @@ function EntryPage({
   }
 
   return (
-    <div className="mx-auto max-w-[900px] px-6 py-6">
+    <div className="mx-auto w-full max-w-[900px] px-4 py-6 sm:px-6">
       {/* Back button */}
       {canGoBack && (
         <button onClick={onBack} className="mb-4 flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
@@ -500,7 +500,7 @@ function EntryPage({
       <div className="h-px bg-white/[0.06]" />
 
       {/* Two-column layout: main content + sidebar info */}
-      <div className="mt-6 flex gap-6">
+      <div className="mt-6 flex flex-col gap-6 lg:flex-row">
         {/* Main column */}
         <div className="min-w-0 flex-1 space-y-6">
           {/* Overview */}
@@ -561,8 +561,8 @@ function EntryPage({
         </div>
 
         {/* Sidebar infobox */}
-        <div className="w-[220px] shrink-0">
-          <div className="sticky top-6 rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] overflow-hidden">
+        <div className="w-full shrink-0 lg:w-[220px]">
+          <div className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] overflow-hidden lg:sticky lg:top-6">
             {/* Infobox header */}
             <div className="px-3 py-2" style={{ background: meta.bg }}>
               <span className="text-xs font-medium" style={{ color: meta.color }}>{meta.label} Info</span>
