@@ -6,9 +6,15 @@ export interface BookChapter {
   htmlParagraphs: string[];
 }
 
+export interface TocEntry {
+  label: string;
+  chapterIndex: number;
+}
+
 export interface BookContent {
   chapters: BookChapter[];
   isImageBook: boolean;
+  toc: TocEntry[];
   fontFamily?: string;
   fontSizePx?: number;
   css?: string;

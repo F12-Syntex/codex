@@ -2,20 +2,20 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Search, X, ChevronRight } from "lucide-react";
-import type { BookChapter, ThemeClasses } from "../lib/types";
+import type { TocEntry, ThemeClasses } from "../lib/types";
 
 interface BookTableOfContentsProps {
-  chapters: BookChapter[];
+  toc: TocEntry[];
   currentChapter: number;
   theme: ThemeClasses;
+  enrichedNames?: Record<number, string>;
+  enrichEnabled?: boolean;
   onSelectChapter: (index: number) => void;
 }
 
 /** Patterns that indicate a chapter is a table of contents page */
 const TOC_PATTERNS = [
-  /^table\s+of\s+contents$/i,
-  /^contents$/i,
-  /^toc$/i,
+  /^(table\s+of\s+contents|contents|toc)$/i,
 ];
 
 /** Check if a chapter title looks like a TOC page */
@@ -25,33 +25,32 @@ export function isTOCChapter(title: string): boolean {
 }
 
 export function BookTableOfContents({
-  chapters,
+  toc,
   currentChapter,
   theme,
+  enrichedNames = {},
+  enrichEnabled = false,
   onSelectChapter,
 }: BookTableOfContentsProps) {
   const [search, setSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const chapter = chapters[currentChapter];
 
-  // Build TOC entries from the chapter paragraphs
+  // Use enriched names when available
   const entries = useMemo(() => {
-    if (!chapter) return [];
-    return chapter.paragraphs
-      .map((text) => text.trim())
-      .filter((text) => text.length > 0)
-      .map((text) => {
-        const matchIndex = findMatchingChapter(text, chapters);
-        return { text, matchIndex };
-      });
-  }, [chapter, chapters]);
+    return toc.map((entry) => ({
+      ...entry,
+      displayLabel: enrichEnabled && enrichedNames[entry.chapterIndex]
+        ? enrichedNames[entry.chapterIndex]
+        : entry.label,
+    }));
+  }, [toc, enrichedNames, enrichEnabled]);
 
   // Filter by search
   const filtered = useMemo(() => {
     if (!search.trim()) return entries;
     const q = search.toLowerCase();
-    return entries.filter((e) => e.text.toLowerCase().includes(q));
+    return entries.filter((e) => e.displayLabel.toLowerCase().includes(q));
   }, [entries, search]);
 
   // Focus search on Ctrl+F
@@ -65,8 +64,6 @@ export function BookTableOfContents({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-
-  const matchedCount = entries.filter((e) => e.matchIndex !== -1).length;
 
   return (
     <div className="flex h-full flex-col">
@@ -94,7 +91,7 @@ export function BookTableOfContents({
           </h2>
 
           <p className={`mt-1.5 text-center text-xs ${theme.muted}`}>
-            {entries.length} entries · {matchedCount} linked
+            {entries.length} chapters
           </p>
 
           {/* Search bar */}
@@ -139,57 +136,46 @@ export function BookTableOfContents({
             </div>
           ) : (
             <div className="space-y-[2px]">
-              {filtered.map((entry, i) => {
-                const isLinked = entry.matchIndex !== -1;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => isLinked && onSelectChapter(entry.matchIndex)}
-                    disabled={!isLinked}
-                    className="group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-150"
-                    style={{
-                      animationDelay: `${i * 20}ms`,
-                    }}
-                  >
-                    {/* Accent left bar on hover */}
-                    {isLinked && (
-                      <div
-                        className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                        style={{ backgroundColor: "var(--accent-brand)" }}
-                      />
-                    )}
+              {filtered.map((entry, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSelectChapter(entry.chapterIndex)}
+                  className="group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-150"
+                >
+                  {/* Accent left bar on hover */}
+                  <div
+                    className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                    style={{ backgroundColor: "var(--accent-brand)" }}
+                  />
 
-                    {/* Hover background */}
-                    {isLinked && (
-                      <div className={`absolute inset-0 rounded-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 ${theme.subtle}`} />
-                    )}
+                  {/* Hover background */}
+                  <div className={`absolute inset-0 rounded-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 ${theme.subtle}`} />
 
-                    {/* Number */}
-                    <span className={`relative z-[1] w-6 shrink-0 text-right tabular-nums text-xs transition-colors ${
-                      isLinked ? `${theme.muted} group-hover:opacity-80` : `${theme.muted} opacity-30`
-                    }`}>
-                      {i + 1}
-                    </span>
+                  {/* Number */}
+                  <span className={`relative z-[1] w-6 shrink-0 text-right tabular-nums text-xs transition-colors ${theme.muted} group-hover:opacity-80`}>
+                    {i + 1}
+                  </span>
 
-                    {/* Title with dotted leader */}
-                    <span className={`relative z-[1] min-w-0 flex-1 text-sm transition-colors ${
-                      isLinked
-                        ? `${theme.text} opacity-80 group-hover:opacity-100`
-                        : `${theme.muted} opacity-40`
-                    }`}>
-                      {entry.text}
-                    </span>
+                  {/* Title */}
+                  <span className={`relative z-[1] min-w-0 flex-1 text-sm transition-colors ${theme.text} opacity-80 group-hover:opacity-100`}>
+                    {entry.displayLabel}
+                  </span>
 
-                    {/* Arrow indicator for linked entries */}
-                    {isLinked && (
-                      <ChevronRight
-                        className={`relative z-[1] h-3.5 w-3.5 shrink-0 translate-x-0 opacity-0 transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-60 ${theme.muted}`}
-                        strokeWidth={1.5}
-                      />
-                    )}
-                  </button>
-                );
-              })}
+                  {/* Current chapter indicator */}
+                  {entry.chapterIndex === currentChapter && (
+                    <span
+                      className="relative z-[1] h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: "var(--accent-brand)" }}
+                    />
+                  )}
+
+                  {/* Arrow indicator */}
+                  <ChevronRight
+                    className={`relative z-[1] h-3.5 w-3.5 shrink-0 translate-x-0 opacity-0 transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-60 ${theme.muted}`}
+                    strokeWidth={1.5}
+                  />
+                </button>
+              ))}
             </div>
           )}
 
@@ -199,50 +185,4 @@ export function BookTableOfContents({
       </div>
     </div>
   );
-}
-
-/**
- * Try to match a TOC entry text to one of the book's chapters.
- */
-function findMatchingChapter(entryText: string, chapters: BookChapter[]): number {
-  const normalized = normalize(entryText);
-  if (!normalized) return -1;
-
-  // Exact title match (normalized)
-  for (let i = 0; i < chapters.length; i++) {
-    if (normalize(chapters[i].title) === normalized) return i;
-  }
-
-  // Entry text contained in chapter title or vice versa
-  for (let i = 0; i < chapters.length; i++) {
-    const chTitle = normalize(chapters[i].title);
-    if (!chTitle) continue;
-    if (chTitle.includes(normalized) || normalized.includes(chTitle)) return i;
-  }
-
-  // Strip common prefixes like "Chapter 1:", "Part I:", roman numerals, etc.
-  const strippedEntry = stripPrefix(normalized);
-  if (strippedEntry) {
-    for (let i = 0; i < chapters.length; i++) {
-      const strippedTitle = stripPrefix(normalize(chapters[i].title));
-      if (strippedTitle && strippedTitle === strippedEntry) return i;
-    }
-  }
-
-  return -1;
-}
-
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function stripPrefix(s: string): string {
-  return s
-    .replace(/^(chapter|part|section|book|volume)\s+(\d+|[ivxlcdm]+)\s*/i, "")
-    .replace(/^\d+\s*/, "")
-    .trim();
 }

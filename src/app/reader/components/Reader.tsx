@@ -236,6 +236,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         setBookContent({
           chapters: [{ title: "Error", paragraphs: ["Failed to load book content."], htmlParagraphs: ["<p>Failed to load book content.</p>"] }],
           isImageBook: false,
+          toc: [],
         });
         setIsLoading(false);
       });
@@ -1392,9 +1393,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           ) : isTOCChapter(chapterTitle) ? (
             <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
               <BookTableOfContents
-                chapters={chapters}
+                toc={bookContent?.toc ?? []}
                 currentChapter={currentChapter}
                 theme={theme}
+                enrichedNames={enrichedNames}
+                enrichEnabled={enrichEnabled}
                 onSelectChapter={handleChapterChange}
               />
             </div>

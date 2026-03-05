@@ -9,10 +9,18 @@ export interface BookChapter {
   htmlParagraphs: string[];
 }
 
+export interface TocEntry {
+  label: string;
+  /** Index into the chapters array (0-based, excludes the TOC chapter itself) */
+  chapterIndex: number;
+}
+
 export interface BookContent {
   chapters: BookChapter[];
   /** For CBZ: chapters contain base64 image URIs instead of text */
   isImageBook: boolean;
+  /** Custom table of contents built from NCX/NAV skeleton or inferred from chapters */
+  toc: TocEntry[];
   /** Native font family from the book's CSS (if found) */
   fontFamily?: string;
   /** Native font size from the book's CSS in px (if found) */
@@ -470,14 +478,14 @@ function parseEpubChapters(filePath: string): BookContent {
   const containerEntry = zip.getEntry("META-INF/container.xml");
   if (!containerEntry) {
     console.error(`[book-parser] Missing META-INF/container.xml`);
-    return { chapters: [{ title: "Error", paragraphs: ["Could not read EPUB: missing container.xml"], htmlParagraphs: ["<p>Could not read EPUB: missing container.xml</p>"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["Could not read EPUB: missing container.xml"], htmlParagraphs: ["<p>Could not read EPUB: missing container.xml</p>"] }], isImageBook: false, toc: [] };
   }
 
   const containerXml = containerEntry.getData().toString("utf-8");
   const rootfileMatch = containerXml.match(/full-path=["']([^"']+)["']/);
   if (!rootfileMatch) {
     console.error(`[book-parser] No rootfile full-path in container.xml`);
-    return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"], htmlParagraphs: ["<p>Could not find OPF file in EPUB</p>"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"], htmlParagraphs: ["<p>Could not find OPF file in EPUB</p>"] }], isImageBook: false, toc: [] };
   }
 
   const opfPath = rootfileMatch[1];
@@ -486,7 +494,7 @@ function parseEpubChapters(filePath: string): BookContent {
   const opfEntry = getZipEntry(zip, opfPath);
   if (!opfEntry) {
     console.error(`[book-parser] OPF entry not found in ZIP: "${opfPath}"`);
-    return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"], htmlParagraphs: ["<p>Could not read OPF file</p>"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"], htmlParagraphs: ["<p>Could not read OPF file</p>"] }], isImageBook: false, toc: [] };
   }
 
   const opfXml = opfEntry.getData().toString("utf-8");
@@ -519,7 +527,7 @@ function parseEpubChapters(filePath: string): BookContent {
 
   if (spineIds.length === 0) {
     console.error(`[book-parser] No spine items found`);
-    return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"], htmlParagraphs: ["<p>No chapters found in EPUB spine</p>"] }], isImageBook: false };
+    return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"], htmlParagraphs: ["<p>No chapters found in EPUB spine</p>"] }], isImageBook: false, toc: [] };
   }
 
   // 4. Parse NCX / NAV for chapter names (the "skeleton")
@@ -569,13 +577,66 @@ function parseEpubChapters(filePath: string): BookContent {
   }
 
   if (chapters.length === 0) {
-    return { chapters: [{ title: "Empty", paragraphs: ["This EPUB has no readable text content."], htmlParagraphs: ["<p>This EPUB has no readable text content.</p>"] }], isImageBook: false };
+    return { chapters: [{ title: "Empty", paragraphs: ["This EPUB has no readable text content."], htmlParagraphs: ["<p>This EPUB has no readable text content.</p>"] }], isImageBook: false, toc: [] };
   }
+
+  // Build TOC: try skeleton first, then fall back to chapter titles
+  const toc: TocEntry[] = buildToc(chapters, ncxTitles, navTitles);
+
+  // Insert a synthetic TOC chapter at position 0
+  const tocChapter: BookChapter = {
+    title: "Table of Contents",
+    paragraphs: toc.map((e) => e.label),
+    htmlParagraphs: toc.map((e) => `<p>${e.label}</p>`),
+  };
+  chapters.unshift(tocChapter);
+
+  // Adjust TOC indices to account for the inserted TOC chapter
+  for (const entry of toc) entry.chapterIndex += 1;
 
   // Extract font info and CSS from stylesheets
   const { fontFamily, fontSizePx, css } = extractFontInfo(zip, opfXml, opfDir);
 
-  return { chapters, isImageBook: false, fontFamily, fontSizePx, css };
+  return { chapters, isImageBook: false, toc, fontFamily, fontSizePx, css };
+}
+
+/** Build TOC entries from NCX/NAV skeleton, falling back to chapter titles */
+function buildToc(chapters: BookChapter[], ncxTitles: Map<string, string>, navTitles: Map<string, string>): TocEntry[] {
+  // If we have skeleton data, use it to match against chapters
+  const skeleton = ncxTitles.size > 0 ? ncxTitles : navTitles;
+
+  if (skeleton.size > 0) {
+    // Build ordered list from skeleton values (preserving nav order)
+    const skeletonLabels = Array.from(skeleton.values());
+    const toc: TocEntry[] = [];
+    const used = new Set<number>();
+
+    for (const label of skeletonLabels) {
+      // Match skeleton label to chapter title
+      const normalizedLabel = label.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+      let matchIndex = -1;
+
+      for (let i = 0; i < chapters.length; i++) {
+        if (used.has(i)) continue;
+        const normalizedTitle = chapters[i].title.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+        if (normalizedTitle === normalizedLabel || normalizedTitle.includes(normalizedLabel) || normalizedLabel.includes(normalizedTitle)) {
+          matchIndex = i;
+          break;
+        }
+      }
+
+      if (matchIndex !== -1) {
+        used.add(matchIndex);
+        toc.push({ label, chapterIndex: matchIndex });
+      }
+    }
+
+    // If skeleton matched at least half the chapters, use it
+    if (toc.length >= chapters.length * 0.5) return toc;
+  }
+
+  // Fallback: use chapter titles directly
+  return chapters.map((ch, i) => ({ label: ch.title, chapterIndex: i }));
 }
 
 // ── CBZ Parser ───────────────────────────────────────
@@ -587,7 +648,7 @@ function parseCbzPages(filePath: string): BookContent {
     .sort((a, b) => a.entryName.localeCompare(b.entryName));
 
   if (entries.length === 0) {
-    return { chapters: [{ title: "Empty", paragraphs: ["No images found in CBZ archive."], htmlParagraphs: ["<p>No images found in CBZ archive.</p>"] }], isImageBook: false };
+    return { chapters: [{ title: "Empty", paragraphs: ["No images found in CBZ archive."], htmlParagraphs: ["<p>No images found in CBZ archive.</p>"] }], isImageBook: false, toc: [] };
   }
 
   // Group all pages into a single "chapter" for simplicity, or one chapter per ~20 pages
@@ -607,7 +668,8 @@ function parseCbzPages(filePath: string): BookContent {
     });
   }
 
-  return { chapters, isImageBook: true };
+  const toc: TocEntry[] = chapters.map((ch, i) => ({ label: ch.title, chapterIndex: i }));
+  return { chapters, isImageBook: true, toc };
 }
 
 // ── Public API ───────────────────────────────────────
@@ -635,6 +697,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
             htmlParagraphs: ["<p>PDF reading is not yet supported. Please use an external PDF reader.</p>"],
           }],
           isImageBook: false,
+          toc: [],
         };
         break;
       default:
@@ -646,6 +709,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
             htmlParagraphs: [`<p>The format "${format}" is not yet supported for reading.</p>`],
           }],
           isImageBook: false,
+          toc: [],
         };
         break;
     }
@@ -664,6 +728,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
         htmlParagraphs: [`<p>Failed to parse book: ${err instanceof Error ? err.message : String(err)}</p>`],
       }],
       isImageBook: false,
+      toc: [],
     };
   }
 }

@@ -52,9 +52,15 @@ interface BookChapter {
   htmlParagraphs: string[];
 }
 
+interface TocEntry {
+  label: string;
+  chapterIndex: number;
+}
+
 interface BookContent {
   chapters: BookChapter[];
   isImageBook: boolean;
+  toc: TocEntry[];
   fontFamily?: string;
   fontSizePx?: number;
   css?: string;
