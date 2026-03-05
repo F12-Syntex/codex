@@ -22,15 +22,16 @@ Read the content, understand the genre and tone, and apply visual enhancements f
 # RULES
 1. Return {index: html} for modified paragraphs ONLY. Skip unchanged ones.
 2. Use ONLY classes from the reference. No inline styles. No Unicode emoji.
-3. Fix grammar/punctuation. Preserve tone, dialect, style.
-4. Narration/dialogue: keep original text — don't rewrite or add content.
-5. Structured data (stats, skills, tables): MAY restructure for clarity. Keep all info.
-6. Most paragraphs stay as plain text — SKIP THEM.
-7. Keep enhancements compact and inline. Don't dominate the page.
-8. Consecutive structured paragraphs: merge into first index, set consumed indices to "".
-9. Stat block labels: 1-2 words max, EVERY label gets an icon. Use icons to replace words.
-10. Dialogue tags: use the CHARACTER'S ACTUAL NAME, never generic roles like "HERO"/"VILLAIN".
-11. System messages: keep text SHORT and punchy.
+3. Fix grammar, punctuation, spelling, and line spacing issues. Preserve tone, dialect, and style.
+4. Light prose cleanup: fix obvious translation artifacts, awkward phrasing, missing words, and broken sentences. Keep changes minimal — the reader should not notice edits. NEVER alter character voice, intentional slang, or stylistic choices.
+5. Narration/dialogue: do NOT add new content or rewrite meaning. Only fix clear errors.
+6. Structured data (stats, skills, tables): MAY restructure for clarity. Keep all info.
+7. Most paragraphs stay as plain text — SKIP THEM (unless they have grammar/spelling issues).
+8. Keep enhancements compact and inline. Don't dominate the page.
+9. Consecutive structured paragraphs: merge into first index, set consumed indices to "".
+10. Stat block labels: 1-2 words max, EVERY label gets an icon. Use icons to replace words.
+11. Dialogue tags: use the CHARACTER'S ACTUAL NAME, never generic roles like "HERO"/"VILLAIN".
+12. System messages: keep text SHORT and punchy.
 
 # OUTPUT
 Return ONLY valid JSON: {"0":"<div>...</div>","3":"<p>text</p>","4":""}. No markdown fences, no explanation.`;
