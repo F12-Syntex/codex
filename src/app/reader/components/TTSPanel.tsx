@@ -192,7 +192,7 @@ export function TTSPanel({
                   onClick={() => {
                     onProviderChange(p);
                     // Set a sensible default voice for the new provider
-                    if (p === "edge") onVoiceChange("en-US-AriaNeural");
+                    if (p === "edge") onVoiceChange("en-US-ChristopherNeural");
                     else onVoiceChange("nova");
                   }}
                   className={`flex-1 rounded-lg px-1 py-1 text-xs transition-colors ${active ? theme.btnActive : theme.btn}`}
@@ -218,7 +218,7 @@ export function TTSPanel({
           </button>
 
           {showVoicePicker && (
-            <div className={`absolute bottom-full left-0 z-50 mb-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}>
+            <div className={`absolute top-full left-0 z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}>
               {isEdge ? (
                 <>
                   {voices.map((v) => {

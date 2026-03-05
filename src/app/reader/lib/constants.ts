@@ -36,7 +36,7 @@ export const FONT_FACE_CSS = CUSTOM_FONTS.map(font => `
 export const DEFAULT_SETTINGS: ReaderSettings = {
   readingTheme: "dark",
   ttsProvider: "edge",
-  ttsVoice: "en-US-AriaNeural",
+  ttsVoice: "en-US-ChristopherNeural",
   ttsRate: 1.0,
   ttsPitch: 0,
   ttsVolume: 100,

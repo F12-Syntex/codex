@@ -213,7 +213,8 @@ export function useTTS({
       prefetchNext(paraIndex);
 
       // Create audio from base64
-      const audio = new Audio(`data:audio/mp3;base64,${result.audio}`);
+      const mime = providerRef.current === "openrouter" ? "audio/wav" : "audio/mp3";
+      const audio = new Audio(`data:${mime};base64,${result.audio}`);
       audioRef.current = audio;
 
       setWordBoundaries(result.wordBoundaries);

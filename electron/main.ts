@@ -286,12 +286,13 @@ function createWindow() {
         "X-Title": "Codex",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini-tts",
+        model: "openai/gpt-audio-mini",
         messages: [
+          { role: "system", content: "You are a text-to-speech assistant. Read the user's text aloud exactly as written. Do not add commentary or change the text." },
           { role: "user", content: text },
         ],
         modalities: ["text", "audio"],
-        audio: { voice: voiceName, format: "mp3" },
+        audio: { voice: voiceName, format: "wav" },
         stream: true,
       }),
     });
