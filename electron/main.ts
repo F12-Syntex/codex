@@ -288,10 +288,12 @@ function createWindow() {
       body: JSON.stringify({
         model: "openai/gpt-audio-mini",
         messages: [
-          { role: "user", content: `Read the following text aloud exactly as written. Do not respond, comment, summarize, or add anything. Only speak the exact words below:\n\n${text}` },
+          { role: "system", content: "You are a narrator. Your ONLY job is to read text verbatim. NEVER add introductions, commentary, opinions, or filler like 'Sure!' or 'Here it is'. Output ONLY the exact text given — nothing before, nothing after." },
+          { role: "user", content: text },
         ],
         modalities: ["text", "audio"],
         audio: { voice: voiceName, format: "pcm16" },
+        temperature: 0.3,
         stream: true,
       }),
     });
