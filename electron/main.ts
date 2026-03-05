@@ -273,7 +273,7 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle("tts:synthesize-openrouter", async (_event, text: string, voiceName: string, rate: number) => {
+  ipcMain.handle("tts:synthesize-openrouter", async (_event, text: string, voiceName: string, _rate: number) => {
     const apiKey = getSetting("openrouterApiKey");
     if (!apiKey) throw new Error("OpenRouter API key not set");
 
@@ -293,7 +293,6 @@ function createWindow() {
         ],
         modalities: ["text", "audio"],
         audio: { voice: voiceName, format: "wav" },
-        stream: true,
       }),
     });
 
@@ -302,42 +301,12 @@ function createWindow() {
       throw new Error(`OpenRouter TTS ${resp.status}: ${errText}`);
     }
 
-    // Stream SSE and collect base64 audio chunks
-    const body = resp.body;
-    if (!body) throw new Error("No response body");
+    const json = await resp.json();
+    const audioData = json?.choices?.[0]?.message?.audio?.data;
+    if (!audioData) throw new Error("No audio data in response");
 
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    const audioChunks: string[] = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete SSE lines
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
-        try {
-          const json = JSON.parse(line.slice(6));
-          const audioData = json?.choices?.[0]?.delta?.audio?.data;
-          if (audioData) audioChunks.push(audioData);
-        } catch { /* skip malformed chunks */ }
-      }
-    }
-
-    if (audioChunks.length === 0) throw new Error("No audio data received");
-
-    // Combine all base64 chunks into one buffer, then re-encode as single base64
-    const combined = Buffer.concat(audioChunks.map(c => Buffer.from(c, "base64")));
-
-    // Apply rate by re-encoding isn't feasible client-side, so we return raw audio
     // Rate adjustment is handled by HTMLAudioElement.playbackRate on the renderer
-    return { audio: combined.toString("base64"), wordBoundaries: [] };
+    return { audio: audioData, wordBoundaries: [] };
   });
 
   // ── Library: import files via dialog ──────────────
