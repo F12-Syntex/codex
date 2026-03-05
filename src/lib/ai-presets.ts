@@ -27,7 +27,6 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     description: "Fast responses, lower cost",
     icon: "Zap",
     defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
-    maxTokens: 16384,
   },
   {
     id: "creative",
@@ -36,7 +35,6 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     icon: "Feather",
     defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
     temperature: 0.85,
-    maxTokens: 8000,
   },
   {
     id: "format",
@@ -45,7 +43,6 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     icon: "Paintbrush",
     defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
     temperature: 0.3,
-    maxTokens: 16384,
   },
   {
     id: "format-regen",
@@ -54,7 +51,6 @@ export const DEFAULT_PRESETS: AIPreset[] = [
     icon: "RefreshCw",
     defaultModel: "google/gemini-2.5-flash-lite-preview-09-2025",
     temperature: 0.9,
-    maxTokens: 16384,
   },
 ];
 
