@@ -8,7 +8,8 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a progres
 - Tag every detail with the chapter it comes from
 - For existing entities: only add NEW details not already in the wiki
 - For relationships: only add relationships established or revealed in this chapter
-- Use the entity's most common name as the primary name, put variants in aliases
+- Use the entity's most common/full name as the primary name, put ALL variants in aliases (first name, last name, nicknames, shortened forms, etc.)
+- IMPORTANT: Characters are often referred to by partial names (e.g., "Soyoung" for "Kim Soyoung", "Kael" for "Kael Ironforge"). Always check the entity index aliases before creating a new entity — if a name matches an existing entity's alias or is a subset of their name, update that entity instead of creating a new one
 - Keep shortDescription to 1 sentence (for tooltips)
 - Keep detail content concise but specific
 - Assign significance: 1=minor/mentioned once, 2=recurring, 3=major/important, 4=protagonist/core
@@ -185,10 +186,10 @@ Extract all entities, update existing ones, track story arcs, and provide a chap
  */
 export function buildTieredContext(data: {
   recentSummaries: { chapter_index: number; summary: string; mood: string }[];
-  recentEntities: { id: string; name: string; type: string; short_description: string; significance: number; status: string }[];
+  recentEntities: { id: string; name: string; type: string; short_description: string; significance: number; status: string; aliases?: string[] }[];
   recentRelationships: Map<string, { target_name: string; relation: string }[]>;
   activeArcs: { id: string; name: string; arc_type: string; status: string; description: string; latestBeat?: string }[];
-  entityIndex: { id: string; name: string; type: string; short_description?: string }[];
+  entityIndex: { id: string; name: string; type: string; short_description?: string; aliases?: string[] }[];
 }): TieredContext {
   // Tier 1: Recent chapter summaries
   const recentSummaries = data.recentSummaries
@@ -198,7 +199,8 @@ export function buildTieredContext(data: {
   // Tier 2: Active entity roster with key relationships (significant + recent)
   const activeEntityRoster = data.recentEntities
     .map((e) => {
-      let line = `- [${e.type}] ${e.name} (id: ${e.id}, significance: ${e.significance}, status: ${e.status}): ${e.short_description}`;
+      const aliases = e.aliases && e.aliases.length > 0 ? `, aka ${e.aliases.join("/")}` : "";
+      let line = `- [${e.type}] ${e.name} (id: ${e.id}${aliases}, significance: ${e.significance}, status: ${e.status}): ${e.short_description}`;
       const rels = data.recentRelationships.get(e.id);
       if (rels && rels.length > 0) {
         line += ` | Relations: ${rels.map((r) => `${r.relation}→${r.target_name}`).join(", ")}`;
@@ -222,7 +224,8 @@ export function buildTieredContext(data: {
     .filter((e) => !rosterIds.has(e.id)) // skip entities already in roster
     .map((e) => {
       const desc = e.short_description ? `: ${e.short_description}` : "";
-      return `${e.id}: ${e.name} [${e.type}]${desc}`;
+      const aliases = e.aliases && e.aliases.length > 0 ? ` (aka ${e.aliases.join(", ")})` : "";
+      return `${e.id}: ${e.name}${aliases} [${e.type}]${desc}`;
     })
     .join("\n");
 

@@ -237,6 +237,13 @@ async function buildContextFromDB(
     }
   }
 
+  // Fetch aliases for roster entities
+  const rosterAliases = new Map<string, string[]>();
+  for (const e of rosterEntries) {
+    const aliases = await api.wikiGetAliases(filePath, e.id);
+    if (aliases.length > 0) rosterAliases.set(e.id, aliases);
+  }
+
   // Get relationships for roster entities
   const recentRelationships = new Map<string, { target_name: string; relation: string }[]>();
   const nameMap = new Map(allEntries.map((e) => [e.id, e.name]));
@@ -287,6 +294,7 @@ async function buildContextFromDB(
       short_description: e.short_description,
       significance: e.significance,
       status: e.status,
+      aliases: rosterAliases.get(e.id),
     })),
     recentRelationships,
     activeArcs,
@@ -295,6 +303,7 @@ async function buildContextFromDB(
       name: e.name,
       type: e.type,
       short_description: (allEntries.find((a) => a.id === e.id)?.short_description) ?? "",
+      aliases: e.aliases,
     })),
   });
 }
@@ -322,12 +331,38 @@ async function writeResponseToDB(
   // Build lookup of existing entries by name/alias for dedup
   const existingEntries = await api.wikiGetEntries(filePath);
   const nameToId = new Map<string, string>();
+  // Also store full names for partial matching
+  const existingNames: { name: string; id: string }[] = [];
   for (const e of existingEntries) {
     nameToId.set(e.name.toLowerCase(), e.id);
+    existingNames.push({ name: e.name.toLowerCase(), id: e.id });
     const aliases = await api.wikiGetAliases(filePath, e.id);
     for (const alias of aliases) {
       nameToId.set(alias.toLowerCase(), e.id);
+      existingNames.push({ name: alias.toLowerCase(), id: e.id });
     }
+  }
+
+  // Partial name matching: "Soyoung" matches "Kim Soyoung", etc.
+  function findPartialMatch(name: string): string | undefined {
+    const lower = name.toLowerCase();
+    // Exact match first
+    const exact = nameToId.get(lower);
+    if (exact) return exact;
+    // Check if the new name is a part of an existing name (or vice versa)
+    const parts = lower.split(/\s+/);
+    for (const existing of existingNames) {
+      const existingParts = existing.name.split(/\s+/);
+      // New name is a single word that matches any part of an existing multi-word name
+      if (parts.length === 1 && existingParts.length > 1 && existingParts.includes(lower)) {
+        return existing.id;
+      }
+      // Existing name is a single word that matches any part of the new multi-word name
+      if (existingParts.length === 1 && parts.length > 1 && parts.includes(existing.name)) {
+        return existing.id;
+      }
+    }
+    return undefined;
   }
 
   // New entries — with dedup against existing entries by name/alias
@@ -336,7 +371,7 @@ async function writeResponseToDB(
     const type = validateType(entry.type);
 
     // Check if an entry with this name already exists under a different ID
-    const existingId = nameToId.get(entry.name.toLowerCase());
+    const existingId = findPartialMatch(entry.name);
     if (existingId && existingId !== entry.id) {
       // Redirect: treat as update to existing entry instead of creating duplicate
       console.info(`Wiki dedup: "${entry.name}" already exists as ${existingId}, merging into existing entry`);
@@ -358,8 +393,13 @@ async function writeResponseToDB(
           status: entry.status ?? existing.status,
         });
 
-        if (entry.aliases && entry.aliases.length > 0) {
-          await api.wikiAddAliases(filePath, existingId, entry.aliases);
+        // Add the new name as an alias if it differs from the existing name
+        const aliasesToAdd = [...(entry.aliases ?? [])];
+        if (entry.name.toLowerCase() !== existing.name.toLowerCase()) {
+          aliasesToAdd.push(entry.name);
+        }
+        if (aliasesToAdd.length > 0) {
+          await api.wikiAddAliases(filePath, existingId, aliasesToAdd);
         }
         if (entry.details && entry.details.length > 0) {
           await api.wikiAddDetails(filePath, existingId, entry.details);
