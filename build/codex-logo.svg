@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8c97a"/>
+      <stop offset="50%" stop-color="#f5e0a0"/>
+      <stop offset="100%" stop-color="#c9a84c"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2a2a50"/>
+      <stop offset="100%" stop-color="#1e1e3c"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e1e3c"/>
+      <stop offset="100%" stop-color="#2a2a50"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="nodeglow">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Left page -->
+  <path d="M22 28 L22 122 Q22 130 30 130 L78 124 L78 24 Q55 18 22 28Z" fill="url(#pageL)" stroke="#3a3a60" stroke-width="1.2"/>
+  <line x1="34" y1="50" x2="72" y2="47" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="34" y1="63" x2="72" y2="60" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="34" y1="76" x2="72" y2="73" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="34" y1="89" x2="72" y2="86" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="34" y1="102" x2="72" y2="99" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="34" y1="115" x2="60" y2="113" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+
+  <!-- Right page -->
+  <path d="M138 28 L138 122 Q138 130 130 130 L82 124 L82 24 Q105 18 138 28Z" fill="url(#pageR)" stroke="#3a3a60" stroke-width="1.2"/>
+  <line x1="88" y1="47" x2="126" y2="50" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="88" y1="60" x2="126" y2="63" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="88" y1="73" x2="126" y2="76" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="88" y1="86" x2="126" y2="89" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="88" y1="99" x2="126" y2="102" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+  <line x1="100" y1="113" x2="126" y2="115" stroke="#e8c97a" stroke-width="1" opacity="0.25"/>
+
+  <!-- Book bottom -->
+  <path d="M22 122 Q22 134 30 134 L80 128 L130 134 Q138 134 138 122 L82 128 Z" fill="#181830" stroke="#3a3a60" stroke-width="1"/>
+
+  <!-- Spine -->
+  <rect x="78" y="22" width="4" height="108" rx="2" fill="url(#gold)" filter="url(#glow)"/>
+
+  <!-- Top node -->
+  <circle cx="80" cy="44" r="5" fill="#1e1e3c" stroke="#e8c97a" stroke-width="1.8" filter="url(#glow)"/>
+
+  <!-- Center node -->
+  <circle cx="80" cy="80" r="7" fill="url(#gold)" filter="url(#nodeglow)"/>
+  <circle cx="80" cy="80" r="3.5" fill="#1e1e3c" opacity="0.6"/>
+
+  <!-- Bottom node -->
+  <circle cx="80" cy="116" r="5" fill="#1e1e3c" stroke="#e8c97a" stroke-width="1.8" filter="url(#glow)"/>
+
+  <!-- Circuit arms -->
+  <line x1="80" y1="80" x2="52" y2="62" stroke="#e8c97a" stroke-width="1.2" opacity="0.6" filter="url(#glow)"/>
+  <line x1="80" y1="80" x2="52" y2="98" stroke="#e8c97a" stroke-width="1.2" opacity="0.6" filter="url(#glow)"/>
+  <line x1="80" y1="80" x2="108" y2="62" stroke="#e8c97a" stroke-width="1.2" opacity="0.6" filter="url(#glow)"/>
+  <line x1="80" y1="80" x2="108" y2="98" stroke="#e8c97a" stroke-width="1.2" opacity="0.6" filter="url(#glow)"/>
+
+  <circle cx="52" cy="62" r="3.5" fill="#e8c97a" opacity="0.7" filter="url(#glow)"/>
+  <circle cx="52" cy="98" r="3.5" fill="#e8c97a" opacity="0.7" filter="url(#glow)"/>
+  <circle cx="108" cy="62" r="3.5" fill="#e8c97a" opacity="0.7" filter="url(#glow)"/>
+  <circle cx="108" cy="98" r="3.5" fill="#e8c97a" opacity="0.7" filter="url(#glow)"/>
+</svg>
