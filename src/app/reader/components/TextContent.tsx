@@ -387,7 +387,7 @@ export function TextContent({
               setCommentInput("");
             }}
             style={{
-              position: "absolute", right: "-4px", top: "0",
+              position: "absolute", right: "4px", top: "0",
               display: "inline-flex", alignItems: "center", gap: "2px",
               cursor: "pointer", opacity: 0.7, transition: "opacity 0.15s ease",
               zIndex: 5,
@@ -395,18 +395,24 @@ export function TextContent({
           >
             {paraComments!.some((c) => c.author === "ai") && (
               <span style={{
-                width: "16px", height: "16px", borderRadius: "50%",
-                background: "var(--accent-brand)", display: "flex", alignItems: "center",
-                justifyContent: "center", fontSize: "8px", color: "white", fontWeight: 700,
-              }}>AI</span>
+                width: "18px", height: "18px", borderRadius: "50%",
+                background: "linear-gradient(135deg, var(--accent-brand), #a78bfa)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1.5px solid rgba(255,255,255,0.1)",
+              }}>
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11 6.5 7.5 3 6l3.5-1.5L8 1z" fill="white" opacity="0.9"/><circle cx="4" cy="12" r="1.5" fill="white" opacity="0.5"/><circle cx="12" cy="13" r="1" fill="white" opacity="0.4"/></svg>
+              </span>
             )}
             {paraComments!.some((c) => c.author === "user") && (
               <span style={{
-                width: "16px", height: "16px", borderRadius: "50%",
-                background: "rgb(110, 231, 183)", display: "flex", alignItems: "center",
-                justifyContent: "center", fontSize: "8px", color: "black", fontWeight: 700,
-                marginLeft: paraComments!.some((c) => c.author === "ai") ? "-4px" : "0",
-              }}>U</span>
+                width: "18px", height: "18px", borderRadius: "50%",
+                background: "linear-gradient(135deg, rgb(52, 211, 153), rgb(110, 231, 183))",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1.5px solid rgba(255,255,255,0.1)",
+                marginLeft: paraComments!.some((c) => c.author === "ai") ? "-5px" : "0",
+              }}>
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.8 2 4 3.8 4 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 9c-3 0-6 1.5-6 3v1h12v-1c0-1.5-3-3-6-3z" fill="black" opacity="0.7"/></svg>
+              </span>
             )}
           </span>
         )}
@@ -421,7 +427,7 @@ export function TextContent({
               setCommentInput("");
             }}
             style={{
-              position: "absolute", right: "-4px", top: "0",
+              position: "absolute", right: "4px", top: "0",
               display: "inline-flex", alignItems: "center",
               cursor: "pointer", opacity: 0, transition: "opacity 0.15s ease",
               zIndex: 5,
@@ -1234,11 +1240,19 @@ export function TextContent({
             {comments.map((c, ci) => (
               <div key={ci} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                 <span style={{
-                  width: "20px", height: "20px", borderRadius: "50%", flexShrink: 0,
-                  background: c.author === "ai" ? "var(--accent-brand)" : "rgb(110, 231, 183)",
+                  width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0,
+                  background: c.author === "ai"
+                    ? "linear-gradient(135deg, var(--accent-brand), #a78bfa)"
+                    : "linear-gradient(135deg, rgb(52, 211, 153), rgb(110, 231, 183))",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "8px", color: c.author === "ai" ? "white" : "black", fontWeight: 700,
-                }}>{c.author === "ai" ? "AI" : "U"}</span>
+                  border: "1.5px solid rgba(255,255,255,0.1)",
+                }}>
+                  {c.author === "ai" ? (
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11 6.5 7.5 3 6l3.5-1.5L8 1z" fill="white" opacity="0.9"/><circle cx="4" cy="12" r="1.5" fill="white" opacity="0.5"/><circle cx="12" cy="13" r="1" fill="white" opacity="0.4"/></svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.8 2 4 3.8 4 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 9c-3 0-6 1.5-6 3v1h12v-1c0-1.5-3-3-6-3z" fill="black" opacity="0.7"/></svg>
+                  )}
+                </span>
                 <span style={{
                   fontSize: "12px", lineHeight: "1.5",
                   color: "rgba(255,255,255,0.65)", flex: 1,

@@ -19,6 +19,13 @@ interface SynthResult {
   wordBoundaries: WordBoundary[];
 }
 
+/** Returns true if the text has no speakable content (empty, whitespace, or punctuation-only) */
+function isSpeakable(text: string | undefined): boolean {
+  if (!text) return false;
+  // Strip all whitespace and common punctuation — if nothing remains, it's not speakable
+  return text.replace(/[\s\p{P}\p{S}]/gu, "").length > 0;
+}
+
 export function useTTS({
   paragraphs,
   voice,
@@ -143,7 +150,7 @@ export function useTTS({
     }
 
     const text = paragraphsRef.current[paraIndex];
-    if (!text || text.trim().length === 0) return Promise.resolve(null);
+    if (!isSpeakable(text)) return Promise.resolve(null);
 
     return callTTSAPI(text);
   }, [callTTSAPI]);
@@ -151,11 +158,11 @@ export function useTTS({
   // Kick off prefetch for the next non-empty paragraph
   const prefetchNext = useCallback((afterIndex: number) => {
     const paras = paragraphsRef.current;
-    const next = paras.findIndex((p, i) => i > afterIndex && p.trim().length > 0);
+    const next = paras.findIndex((p, i) => i > afterIndex && isSpeakable(p));
     if (next === -1 || prefetchCache.current.has(next)) return;
 
     const text = paras[next];
-    if (!text || text.trim().length === 0) return;
+    if (!isSpeakable(text)) return;
 
     const promise = callTTSAPI(text);
     prefetchCache.current.set(next, promise);
@@ -164,11 +171,11 @@ export function useTTS({
   // Synthesize and play a single paragraph
   const synthesizeAndPlay = useCallback(async (paraIndex: number, session: number) => {
     const text = paragraphs[paraIndex];
-    if (!text || text.trim().length === 0) {
+    if (!isSpeakable(text)) {
       // Skip empty paragraphs
       if (paraIndex < paragraphs.length - 1) {
         // Move to next non-empty paragraph
-        const next = paragraphs.findIndex((p, i) => i > paraIndex && p.trim().length > 0);
+        const next = paragraphs.findIndex((p, i) => i > paraIndex && isSpeakable(p));
         if (next !== -1 && session === sessionRef.current) {
           setState(s => ({ ...s, currentParagraph: next }));
           onParagraphChangeRef.current(next);
@@ -218,7 +225,7 @@ export function useTTS({
       if (session !== sessionRef.current) return;
 
       // Advance to next paragraph
-      const nextNonEmpty = paragraphs.findIndex((p, i) => i > paraIndex && p.trim().length > 0);
+      const nextNonEmpty = paragraphs.findIndex((p, i) => i > paraIndex && isSpeakable(p));
       if (nextNonEmpty !== -1) {
         await synthesizeAndPlay(nextNonEmpty, session);
       } else {
@@ -290,7 +297,7 @@ export function useTTS({
   const skipNext = useCallback(() => {
     // Use ref for immediate reads — React state may be stale during rapid skips
     const cur = currentParaRef.current;
-    const next = paragraphs.findIndex((p, i) => i > cur && p.trim().length > 0);
+    const next = paragraphs.findIndex((p, i) => i > cur && isSpeakable(p));
     if (next !== -1) {
       play(next);
     }
