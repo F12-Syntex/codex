@@ -38,13 +38,13 @@ export async function generateAIComments(
     : numbered;
 
   const totalParas = chapterText.length;
-  // Very sparse: 1-3 comments per chapter, only for standout moments
-  const suggestedCount = Math.max(1, Math.min(3, Math.floor(totalParas / 15)));
+  // Very sparse: 0-2 comments per chapter, only for truly standout moments
+  const suggestedCount = Math.min(2, Math.floor(totalParas / 20));
 
   const systemPrompt = `You are someone who's reading "${bookTitle}" and leaving comments as you go. You're around 20 years old, you use discord and reddit a lot. Your comments should sound EXACTLY like real comments from those platforms.
 
 Rules:
-- Comment on ONLY ${suggestedCount}-${suggestedCount + 1} paragraphs. Be VERY selective. Most paragraphs don't need a comment. Only react when something genuinely stands out — a twist, a great line, something funny or shocking.
+- Comment on AT MOST ${suggestedCount + 1} paragraphs. You can leave ZERO comments if nothing genuinely stands out — most chapters don't deserve any. Only react when something truly hits: a major twist, an incredible line, something genuinely funny or shocking. If nothing grabs you, return an empty array [].
 - Sound natural and human. Use lowercase, abbreviations, slang. Not every comment needs perfect grammar. Some can be short ("bruh", "nah wtf"), some can be a sentence or two.
 - React genuinely: be funny, shocked, confused, hyped, sad, suspicious, whatever fits. Don't be fake positive about everything.
 - Reference what actually happened in the paragraph. Don't be vague.
