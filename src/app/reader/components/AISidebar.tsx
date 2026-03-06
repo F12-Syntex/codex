@@ -43,6 +43,11 @@ interface AISidebarProps {
   onBuddyToggle: () => void;
   simulateEnabled: boolean;
   onSimulateToggle: () => void;
+  commentsEnabled: boolean;
+  commentingChapter: number | null;
+  chapterCommentCount: number;
+  onCommentsToggle: () => void;
+  onClearComments: () => void;
   onClose: () => void;
 }
 
@@ -82,6 +87,11 @@ export function AISidebar({
   onBuddyToggle,
   simulateEnabled,
   onSimulateToggle,
+  commentsEnabled,
+  commentingChapter,
+  chapterCommentCount,
+  onCommentsToggle,
+  onClearComments,
   onClose,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -524,6 +534,43 @@ export function AISidebar({
                 </div>
               </div>
               <Toggle value={simulateEnabled} onChange={onSimulateToggle} isDisabled={disabled || !wikiEnabled} />
+            </div>
+          </div>
+
+          {/* AI Comments */}
+          <div className={`rounded-lg px-3 py-2.5 transition-colors ${commentsEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <MessageCircle className={`h-3.5 w-3.5 ${commentsEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-medium ${theme.text}`}>Inline Comments</div>
+                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
+                  AI reacts to chapters like a real reader — you can add your own too
+                </div>
+                {commentsEnabled && !disabled && (
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap overflow-hidden">
+                    {commentingChapter !== null ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+                        <span className={`text-xs truncate ${theme.muted}`}>{chapterName(commentingChapter)}</span>
+                      </div>
+                    ) : chapterCommentCount > 0 ? (
+                      <>
+                        <span className={`text-xs ${theme.muted}`}>{chapterCommentCount} chapters commented</span>
+                        <button
+                          onClick={onClearComments}
+                          className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors shrink-0 ${theme.btn}`}
+                        >
+                          <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+                          Clear
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+              <Toggle value={commentsEnabled} onChange={onCommentsToggle} isDisabled={disabled} />
             </div>
           </div>
         </div>

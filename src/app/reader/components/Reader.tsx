@@ -24,6 +24,7 @@ import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
+import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { AIBuddyPanel } from "./AIBuddyPanel";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
@@ -98,6 +99,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [simulateGenerating, setSimulateGenerating] = useState(false);
   const [showBranchList, setShowBranchList] = useState(false);
   const [savedBranches, setSavedBranches] = useState<SimBranchRow[]>([]);
+
+  // AI Comments state
+  const [commentsEnabled, setCommentsEnabled] = useState(false);
+  const [chapterComments, setChapterComments] = useState<Record<number, InlineComment[]>>({});
+  const [commentingChapter, setCommentingChapter] = useState<number | null>(null);
+  const commentAbortRef = useRef(false);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -430,6 +437,22 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         try { setSimulateEnabled(JSON.parse(raw)); } catch { /* ignore */ }
       }
     });
+    window.electronAPI?.getSetting(`commentsEnabled:${filePath}`).then((raw) => {
+      if (raw != null) {
+        try { setCommentsEnabled(JSON.parse(raw)); } catch { /* ignore */ }
+      }
+    });
+    window.electronAPI?.getSetting(`chapterComments:${filePath}`).then((raw) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as Record<string, InlineComment[]>;
+        const comments: Record<number, InlineComment[]> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (Array.isArray(v)) comments[Number(k)] = v;
+        }
+        if (Object.keys(comments).length > 0) setChapterComments(comments);
+      } catch { /* ignore */ }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookContent, filePath]);
 
@@ -583,6 +606,79 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
 
+  // ── AI Comments ─────────────────────────────────────
+
+  const generateCommentsForChapter = useCallback(async (chapterIndex: number) => {
+    if (!chapters[chapterIndex] || chapterComments[chapterIndex]) return;
+    if (isChapterTooLarge(chapters[chapterIndex])) return;
+
+    setCommentingChapter(chapterIndex);
+    commentAbortRef.current = false;
+
+    try {
+      const ch = chapters[chapterIndex];
+      const result = await generateAIComments(
+        ch.paragraphs,
+        title,
+        ch.title,
+        chapterIndex,
+        () => commentAbortRef.current,
+      );
+
+      if (commentAbortRef.current) return;
+
+      setChapterComments((prev) => {
+        const existing = prev[chapterIndex] ?? [];
+        // Keep user comments, replace AI comments
+        const userComments = existing.filter((c) => c.author === "user");
+        const updated = { ...prev, [chapterIndex]: [...userComments, ...result] };
+        window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error(`Failed to generate comments for chapter ${chapterIndex}:`, err);
+    } finally {
+      setCommentingChapter(null);
+    }
+  }, [chapters, title, filePath, chapterComments]);
+
+  const toggleCommentsEnabled = useCallback(() => {
+    const next = !commentsEnabled;
+    setCommentsEnabled(next);
+    window.electronAPI?.setSetting(`commentsEnabled:${filePath}`, JSON.stringify(next));
+    if (next && !chapterComments[currentChapter] && chapters[currentChapter] && !isChapterTooLarge(chapters[currentChapter])) {
+      generateCommentsForChapter(currentChapter);
+    }
+  }, [commentsEnabled, filePath, currentChapter, chapters, chapterComments, generateCommentsForChapter]);
+
+  const addUserComment = useCallback((paraIndex: number, text: string) => {
+    const comment: InlineComment = { paraIndex, text, author: "user" };
+    setChapterComments((prev) => {
+      const existing = prev[currentChapter] ?? [];
+      const updated = { ...prev, [currentChapter]: [...existing, comment] };
+      window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
+      return updated;
+    });
+  }, [currentChapter, filePath]);
+
+  const deleteUserComment = useCallback((paraIndex: number, author: "ai" | "user", text: string) => {
+    setChapterComments((prev) => {
+      const existing = prev[currentChapter] ?? [];
+      const idx = existing.findIndex((c) => c.paraIndex === paraIndex && c.author === author && c.text === text);
+      if (idx === -1) return prev;
+      const updated = { ...prev, [currentChapter]: existing.filter((_, i) => i !== idx) };
+      window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
+      return updated;
+    });
+  }, [currentChapter, filePath]);
+
+  const clearComments = useCallback(() => {
+    commentAbortRef.current = true;
+    setChapterComments({});
+    setCommentingChapter(null);
+    window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify({}));
+  }, [filePath]);
+
   // ── Queued auto-processing (format + wiki) ─────────────
   // When the user navigates quickly through chapters, queue the current chapter
   // and only process one at a time. New navigations replace the queue target.
@@ -618,7 +714,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (wikiEnabled && !wikiProcessedChapters.has(chapterIdx)) {
       await processWikiChapter(chapterIdx);
     }
-  }, [chapters, enrichEnabled, enrichedNames, enrichChapter, formattingEnabled, formattedChapters, formatChapter, wikiEnabled, wikiProcessedChapters, processWikiChapter]);
+
+    // AI Comments if enabled
+    if (commentsEnabled && !chapterComments[chapterIdx]) {
+      await generateCommentsForChapter(chapterIdx);
+    }
+  }, [chapters, enrichEnabled, enrichedNames, enrichChapter, formattingEnabled, formattedChapters, formatChapter, wikiEnabled, wikiProcessedChapters, processWikiChapter, commentsEnabled, chapterComments, generateCommentsForChapter]);
 
   // Queue loop: processes the latest target, checks if it changed during processing
   const runAutoProcessQueue = useCallback(async () => {
@@ -640,12 +741,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   // Trigger auto-processing when chapter changes
   useEffect(() => {
     if (!bookContent || !filePath) return;
-    if (!enrichEnabled && !formattingEnabled && !wikiEnabled) return;
+    if (!enrichEnabled && !formattingEnabled && !wikiEnabled && !commentsEnabled) return;
 
     autoProcessTargetRef.current = currentChapter;
     runAutoProcessQueue();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, bookContent, enrichEnabled, formattingEnabled, wikiEnabled]);
+  }, [currentChapter, bookContent, enrichEnabled, formattingEnabled, wikiEnabled, commentsEnabled]);
 
   const toggleWikiEnabled = useCallback(() => {
     const next = !wikiEnabled;
@@ -1382,6 +1483,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onBuddyToggle={toggleBuddyEnabled}
               simulateEnabled={simulateEnabled}
               onSimulateToggle={toggleSimulateEnabled}
+              commentsEnabled={commentsEnabled}
+              commentingChapter={commentingChapter}
+              chapterCommentCount={Object.keys(chapterComments).length}
+              onCommentsToggle={toggleCommentsEnabled}
+              onClearComments={clearComments}
               onClose={() => setShowAI(false)}
             />
           )}
@@ -1440,6 +1546,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onSimulateSubmit={handleSimulateSubmit}
               branchEntityName={activeBranch?.entityName}
               simulateChoices={isBranchChapter ? simulateChoices : []}
+              commentsEnabled={commentsEnabled}
+              inlineComments={chapterComments[currentChapter] ?? []}
+              onAddComment={addUserComment}
+              onDeleteComment={deleteUserComment}
             />
           )}
 

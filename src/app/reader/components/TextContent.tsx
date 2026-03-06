@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink } from "lucide-react";
+import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink, MessageCircle, Plus, X, Send } from "lucide-react";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import type { SimChoice } from "@/lib/ai-simulate";
+import type { InlineComment } from "@/lib/ai-comments";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 import { EntityContextMenu } from "./EntityContextMenu";
 
@@ -49,6 +50,10 @@ interface TextContentProps {
   onSimulateSubmit?: (text: string) => void;
   branchEntityName?: string;
   simulateChoices?: SimChoice[];
+  commentsEnabled?: boolean;
+  inlineComments?: InlineComment[];
+  onAddComment?: (paraIndex: number, text: string) => void;
+  onDeleteComment?: (paraIndex: number, author: "ai" | "user", text: string) => void;
 }
 
 /*
@@ -120,12 +125,33 @@ export function TextContent({
   onSimulateSubmit,
   branchEntityName,
   simulateChoices = [],
+  commentsEnabled = false,
+  inlineComments = [],
+  onAddComment,
+  onDeleteComment,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const simInputRef = useRef<HTMLInputElement>(null);
   const [simInputValue, setSimInputValue] = useState("");
+
+  // Comment state
+  const [expandedCommentPara, setExpandedCommentPara] = useState<number | null>(null);
+  const [commentInput, setCommentInput] = useState("");
+  const [addingCommentPara, setAddingCommentPara] = useState<number | null>(null);
+
+  // Build comment lookup by paragraph index
+  const commentsByPara = useMemo(() => {
+    const map = new Map<number, InlineComment[]>();
+    if (!commentsEnabled) return map;
+    for (const c of inlineComments) {
+      const arr = map.get(c.paraIndex) ?? [];
+      arr.push(c);
+      map.set(c.paraIndex, arr);
+    }
+    return map;
+  }, [inlineComments, commentsEnabled]);
 
   // Auto-focus simulate input when it becomes visible
   useEffect(() => {
@@ -332,18 +358,197 @@ export function TextContent({
         : originalIdx <= ttsHighWaterMark
     );
 
+    const paraComments = commentsByPara.get(originalIdx);
+    const hasComments = commentsEnabled && paraComments && paraComments.length > 0;
+    const isExpanded = expandedCommentPara === originalIdx;
+    const isAddingHere = addingCommentPara === originalIdx;
+
     return (
-      <div
-        key={i}
-        data-para-idx={originalIdx}
-        style={{
-          marginBottom: `${paraSpacing}px`,
-          textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
-          opacity: isRead ? 0.45 : undefined,
-          transition: "opacity 0.4s ease",
-        }}
-        dangerouslySetInnerHTML={{ __html: renderedHtml }}
-      />
+      <div key={i} data-para-idx={originalIdx} style={{ marginBottom: `${paraSpacing}px`, position: "relative" }}>
+        <div
+          style={{
+            textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
+            opacity: isRead ? 0.45 : undefined,
+            transition: "opacity 0.4s ease",
+          }}
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+        {/* Comment indicator */}
+        {commentsEnabled && (
+          <span
+            className="comment-indicator"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "3px",
+              marginLeft: "6px",
+              cursor: "pointer",
+              verticalAlign: "middle",
+              opacity: hasComments ? 0.8 : 0,
+              transition: "opacity 0.15s ease",
+              position: "relative",
+              top: "-2px",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (hasComments) {
+                setExpandedCommentPara(isExpanded ? null : originalIdx);
+                setAddingCommentPara(null);
+              } else {
+                setAddingCommentPara(isAddingHere ? null : originalIdx);
+                setExpandedCommentPara(null);
+                setCommentInput("");
+              }
+            }}
+            onMouseEnter={(e) => { if (!hasComments) (e.currentTarget as HTMLElement).style.opacity = "0.5"; }}
+            onMouseLeave={(e) => { if (!hasComments) (e.currentTarget as HTMLElement).style.opacity = "0"; }}
+          >
+            {hasComments ? (
+              <>
+                {/* AI avatar */}
+                {paraComments.some((c) => c.author === "ai") && (
+                  <span style={{
+                    width: "18px", height: "18px", borderRadius: "50%",
+                    background: "var(--accent-brand)", display: "flex", alignItems: "center",
+                    justifyContent: "center", fontSize: "10px", color: "white", fontWeight: 600,
+                    border: "1.5px solid var(--bg-surface)",
+                  }}>AI</span>
+                )}
+                {/* User avatar */}
+                {paraComments.some((c) => c.author === "user") && (
+                  <span style={{
+                    width: "18px", height: "18px", borderRadius: "50%",
+                    background: "rgb(110, 231, 183)", display: "flex", alignItems: "center",
+                    justifyContent: "center", fontSize: "10px", color: "black", fontWeight: 600,
+                    border: "1.5px solid var(--bg-surface)", marginLeft: "-6px",
+                  }}>U</span>
+                )}
+                <span style={{ fontSize: "10px", color: "var(--text-muted, rgba(255,255,255,0.3))", marginLeft: "2px" }}>
+                  {paraComments.length}
+                </span>
+              </>
+            ) : (
+              <Plus style={{ width: "12px", height: "12px", color: "var(--text-muted, rgba(255,255,255,0.3))" }} strokeWidth={2} />
+            )}
+          </span>
+        )}
+        {/* Expanded comments */}
+        {commentsEnabled && isExpanded && paraComments && (
+          <div style={{
+            marginTop: "8px", marginBottom: "4px", borderLeft: "2px solid var(--accent-brand)",
+            paddingLeft: "12px", display: "flex", flexDirection: "column", gap: "6px",
+            breakInside: "avoid",
+          }}>
+            {paraComments.map((c, ci) => (
+              <div key={ci} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                <span style={{
+                  width: "20px", height: "20px", borderRadius: "50%", flexShrink: 0, marginTop: "1px",
+                  background: c.author === "ai" ? "var(--accent-brand)" : "rgb(110, 231, 183)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "9px", color: c.author === "ai" ? "white" : "black", fontWeight: 600,
+                }}>{c.author === "ai" ? "AI" : "U"}</span>
+                <span style={{
+                  fontSize: `${Math.max(fontSize - 2, 11)}px`, lineHeight: "1.5",
+                  color: "var(--text-muted, rgba(255,255,255,0.5))", flex: 1,
+                }}>{c.text}</span>
+                {c.author === "user" && onDeleteComment && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteComment(originalIdx, c.author, c.text); }}
+                    style={{
+                      flexShrink: 0, width: "16px", height: "16px", borderRadius: "4px",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      color: "var(--text-muted, rgba(255,255,255,0.3))", marginTop: "2px",
+                    }}
+                  ><X style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
+                )}
+              </div>
+            ))}
+            {/* Add comment input inline */}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+              <input
+                type="text"
+                placeholder="Add your thoughts..."
+                value={isAddingHere || isExpanded ? commentInput : ""}
+                onChange={(e) => setCommentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && commentInput.trim() && onAddComment) {
+                    onAddComment(originalIdx, commentInput.trim());
+                    setCommentInput("");
+                  }
+                  if (e.key === "Escape") { setExpandedCommentPara(null); setCommentInput(""); }
+                }}
+                style={{
+                  flex: 1, background: "var(--bg-surface)", border: "1px solid var(--glass-border, rgba(255,255,255,0.06))",
+                  borderRadius: "6px", padding: "4px 8px", fontSize: "11px", outline: "none",
+                  color: "inherit",
+                }}
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (commentInput.trim() && onAddComment) {
+                    onAddComment(originalIdx, commentInput.trim());
+                    setCommentInput("");
+                  }
+                }}
+                style={{
+                  flexShrink: 0, width: "22px", height: "22px", borderRadius: "6px",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: commentInput.trim() ? "var(--accent-brand)" : "var(--bg-surface)",
+                  border: "none", cursor: commentInput.trim() ? "pointer" : "default",
+                  color: commentInput.trim() ? "white" : "var(--text-muted, rgba(255,255,255,0.3))",
+                }}
+              ><Send style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
+            </div>
+          </div>
+        )}
+        {/* Standalone add comment (no existing comments) */}
+        {commentsEnabled && isAddingHere && !hasComments && (
+          <div style={{
+            marginTop: "8px", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px",
+            breakInside: "avoid",
+          }}>
+            <input
+              type="text"
+              placeholder="Add your thoughts..."
+              value={commentInput}
+              autoFocus
+              onChange={(e) => setCommentInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && commentInput.trim() && onAddComment) {
+                  onAddComment(originalIdx, commentInput.trim());
+                  setCommentInput("");
+                  setAddingCommentPara(null);
+                }
+                if (e.key === "Escape") { setAddingCommentPara(null); setCommentInput(""); }
+              }}
+              style={{
+                flex: 1, background: "var(--bg-surface)", border: "1px solid var(--glass-border, rgba(255,255,255,0.06))",
+                borderRadius: "6px", padding: "4px 8px", fontSize: "11px", outline: "none",
+                color: "inherit",
+              }}
+            />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (commentInput.trim() && onAddComment) {
+                  onAddComment(originalIdx, commentInput.trim());
+                  setCommentInput("");
+                  setAddingCommentPara(null);
+                }
+              }}
+              style={{
+                flexShrink: 0, width: "22px", height: "22px", borderRadius: "6px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: commentInput.trim() ? "var(--accent-brand)" : "var(--bg-surface)",
+                border: "none", cursor: commentInput.trim() ? "pointer" : "default",
+                color: commentInput.trim() ? "white" : "var(--text-muted, rgba(255,255,255,0.3))",
+              }}
+            ><Send style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
+          </div>
+        )}
+      </div>
     );
   });
 
