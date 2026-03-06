@@ -189,7 +189,12 @@ function createWindow() {
       format: bookInfo.format,
       filePath: bookInfo.filePath,
     });
-    createAppWindow("reader", params);
+    const readerWin = createAppWindow("reader", params);
+    // Persist last-open reader so it can be restored on next launch
+    setSetting("lastReader", JSON.stringify(bookInfo));
+    readerWin.on("closed", () => {
+      setSetting("lastReader", "");
+    });
   });
 
   // ── Style Dictionary: open in new window ─────────
@@ -571,6 +576,29 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Restore reader window if one was open when the app last closed
+  try {
+    const last = getSetting("lastReader");
+    if (last) {
+      const bookInfo = JSON.parse(last) as { id: number; title: string; author: string; filePath: string; cover: string; format: string };
+      if (bookInfo.filePath && fs.existsSync(bookInfo.filePath)) {
+        const params = new URLSearchParams({
+          title: bookInfo.title,
+          author: bookInfo.author,
+          format: bookInfo.format,
+          filePath: bookInfo.filePath,
+        });
+        const readerWin = createAppWindow("reader", params);
+        readerWin.on("closed", () => {
+          setSetting("lastReader", "");
+        });
+      } else {
+        // File no longer exists, clear stale setting
+        setSetting("lastReader", "");
+      }
+    }
+  } catch { /* ignore invalid JSON or missing file */ }
 });
 
 app.on("window-all-closed", () => {
