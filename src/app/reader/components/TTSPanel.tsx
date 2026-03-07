@@ -228,7 +228,7 @@ export function TTSPanel({
         </div>
 
         {/* Speed & Volume */}
-        <SliderRow label="Speed" value={rate} min={0.5} max={2} step={0.25} format={(v) => `${v.toFixed(2).replace(/0$/, "")}x`} onChange={onRateChange} theme={theme} />
+        <SliderRow label="Speed" value={rate} min={0.5} max={3} step={0.25} format={(v) => `${v.toFixed(2).replace(/0$/, "")}x`} onChange={onRateChange} theme={theme} />
         <SliderRow label="Vol" value={volume} min={0} max={100} step={5} format={(v) => `${v}%`} onChange={onVolumeChange} theme={theme} />
 
         {/* Auto-advance toggle */}
