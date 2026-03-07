@@ -86,8 +86,15 @@ Where "p" is the paragraph number from the [N] markers and "c" is your comment.`
 
   // Parse JSON response
   try {
-    // Extract JSON array from response (handle markdown code blocks)
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    // Strip markdown code fences if present
+    let cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
+    // Strip surrounding quotes if the AI wrapped the JSON in a string
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      cleaned = cleaned.slice(1, -1).replace(/\\"/g, '"');
+    }
+
+    // Extract JSON array from response
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
 
     const parsed = JSON.parse(jsonMatch[0]) as Array<{ p: number; c: string }>;
