@@ -2,7 +2,10 @@
  * Converts formatted HTML paragraphs into semantically-chunked phrases
  * and calculates adaptive timing for speed-reading display.
  *
- * No external dependencies — uses only built-in string/regex operations.
+ * Implements the Codex Speed Reader Specification:
+ * - Semantic chunking (1-5 word phrases following binding/breaking rules)
+ * - Adaptive timing (lexical + structural multipliers + pauses)
+ * - Session pacing (warmup ramp + fatigue decay)
  * ─────────────────────────────────────────────────────────────────── */
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -10,6 +13,7 @@
 export type ContentType =
   | "narration"
   | "dialogue"
+  | "rapid-dialogue"
   | "thought"
   | "sfx"
   | "system"
@@ -27,38 +31,77 @@ export interface SpeedReaderChunk {
   contentType: ContentType;
   /** Character name if dialogue */
   speakerName?: string;
-  /** Character color class suffix if dialogue (e.g. "hero", "villain") */
+  /** Character color class suffix if dialogue */
   speakerColor?: string;
   /** Whether this marks a scene transition */
   isSceneBreak: boolean;
   /** Number of words in this chunk */
   wordCount: number;
+  /** Chunk ends with sentence-terminating punctuation (.!?) */
+  endsWithSentence: boolean;
+  /** Chunk ends with exclamation (! or ?) */
+  endsWithExclamation: boolean;
+  /** This is the last chunk in its paragraph */
+  isLastInParagraph: boolean;
 }
 
 export interface TimingConfig {
-  /** User's target words-per-minute, e.g. 450 */
+  /** User's target words-per-minute (200–800) */
   targetWpm: number;
-  /** Warmup factor: 0.7 at start, ramps to 1.0 over first ~15 chunks */
-  warmupFactor: number;
+  /** Number of chunks played so far in this session (for warmup) */
+  chunksPlayed: number;
   /** How long the session has been running, in minutes */
   sessionMinutes: number;
 }
 
-// ── Constants ──────────────────────────────────────────────────────
+// ── Word Sets ──────────────────────────────────────────────────────
 
-/** Articles that bind forward to the following noun */
+/** Articles that bind forward to the following noun phrase */
 const ARTICLES = new Set(["a", "an", "the"]);
 
 /** Prepositions that bind forward to their object */
 const PREPOSITIONS = new Set([
   "in", "on", "at", "to", "for", "with", "from", "of", "by", "about",
-  "into", "through", "over", "under", "between", "after", "before", "during",
+  "into", "through", "over", "under", "between", "after", "before",
+  "during", "against", "among", "within", "without", "toward", "towards",
+  "behind", "beyond", "upon", "across", "along", "around", "beside",
+  "beneath", "above", "below", "near",
 ]);
 
-/** Conjunctions that start new chunks */
+/** Conjunctions: break before, then bind forward to next word */
 const CONJUNCTIONS = new Set(["and", "or", "but", "yet", "so", "nor"]);
 
-/** Common function words with reduced reading time (0.7x lexical weight) */
+/** Negation words that bind forward to the verb */
+const NEGATION_WORDS = new Set([
+  "not", "never", "no", "neither",
+  "didn't", "couldn't", "wouldn't", "shouldn't", "can't", "won't",
+  "don't", "doesn't", "wasn't", "weren't", "isn't", "aren't",
+  "hasn't", "haven't", "hadn't", "mustn't",
+]);
+
+/** Possessive pronouns that bind forward to their noun */
+const POSSESSIVE_PRONOUNS = new Set([
+  "his", "her", "my", "your", "our", "their", "its",
+]);
+
+/** Intensifiers that bind forward to the adjective/adverb */
+const INTENSIFIERS = new Set([
+  "very", "so", "too", "really", "quite", "rather", "extremely",
+  "incredibly", "absolutely", "utterly", "completely", "totally",
+  "fairly", "pretty", "highly", "much",
+]);
+
+/** Number words that bind forward to their unit */
+const NUMBER_WORDS = new Set([
+  "one", "two", "three", "four", "five", "six", "seven", "eight",
+  "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+  "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+  "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+  "hundred", "thousand", "million", "billion",
+  "first", "second", "third", "fourth", "fifth",
+]);
+
+/** Common function words: 0.7x lexical multiplier */
 const FUNCTION_WORDS = new Set([
   "the", "a", "an", "is", "was", "were", "are", "be", "been",
   "have", "has", "had", "do", "did", "does", "will", "would",
@@ -71,22 +114,39 @@ const FUNCTION_WORDS = new Set([
   "with", "from",
 ]);
 
-/** Dialogue class prefix for detecting speaker tags */
-const DIALOGUE_CLASS_PREFIX = "ai-fmt-dialogue-";
-
-/** Scene break patterns (text content after stripping HTML) */
-const SCENE_BREAK_RE = /^\s*(\*\s*\*\s*\*|---+|___+|[*]{3,}|[─]{3,})\s*$/;
+/** Common verbs: 0.85x lexical multiplier */
+const COMMON_VERBS = new Set([
+  "said", "went", "came", "took", "got", "made", "looked",
+  "saw", "knew", "thought", "told", "found", "gave", "felt",
+  "left", "called", "asked", "tried", "used", "put", "ran",
+  "kept", "let", "turned", "started", "stood", "heard", "set",
+  "sat", "brought", "began", "seemed", "held", "moved", "walked",
+  "watched", "followed", "pulled", "pushed", "nodded", "smiled",
+  "shook", "opened", "closed", "reached", "spoke", "replied",
+]);
 
 /** Structural timing multipliers per content type */
 const STRUCTURAL_MULTIPLIERS: Record<ContentType, number> = {
-  narration: 1.0,
+  "rapid-dialogue": 0.75,
   dialogue: 0.85,
-  thought: 1.1,
-  sfx: 1.5,
-  system: 0.7,
-  "scene-break": 2.0,
-  exposition: 1.2,
+  narration: 1.0,
+  thought: 0.95,
+  sfx: 0.6,
+  system: 0.65,
+  exposition: 1.3,
+  "scene-break": 1.4,
 };
+
+// ── Pause Constants (milliseconds) ────────────────────────────────
+
+const PAUSE_END_OF_SENTENCE = 150;
+const PAUSE_END_OF_PARAGRAPH = 400;
+const PAUSE_AFTER_SFX = 250;
+const PAUSE_AFTER_EXCLAMATION = 200;
+const PAUSE_SCENE_BREAK = 800;
+const PAUSE_AFTER_SPEAKER_LABEL = 100;
+const PAUSE_AFTER_THOUGHT_BLOCK = 150;
+const PAUSE_AFTER_SYSTEM = 100;
 
 // ── HTML Utilities ─────────────────────────────────────────────────
 
@@ -106,6 +166,9 @@ function countWords(text: string): number {
 
 // ── Content Type Classification ────────────────────────────────────
 
+const DIALOGUE_CLASS_PREFIX = "ai-fmt-dialogue-";
+const SCENE_BREAK_RE = /^\s*(\*\s*\*\s*\*|---+|___+|[*]{3,}|[─]{3,})\s*$/;
+
 interface ClassificationResult {
   contentType: ContentType;
   speakerName?: string;
@@ -114,156 +177,186 @@ interface ClassificationResult {
 
 /**
  * Classify a paragraph's content type from its HTML.
- * Checks AI formatting classes and structural patterns.
+ * Dialogue lines with <= 6 words are classified as rapid-dialogue.
  */
 function classifyParagraph(html: string): ClassificationResult {
   const plainText = stripHtml(html);
 
-  // Scene breaks: just separators like *** or ---
   if (SCENE_BREAK_RE.test(plainText)) {
     return { contentType: "scene-break" };
   }
 
-  // Dialogue: ai-fmt-dialogue-{color} class with speaker name in span text
   const dialogueMatch = html.match(
     /class="[^"]*ai-fmt-dialogue-(\w+)[^"]*"[^>]*>([^<]+)<\/span>/
   );
   if (dialogueMatch) {
+    const wc = countWords(plainText);
     return {
-      contentType: "dialogue",
+      contentType: wc <= 6 ? "rapid-dialogue" : "dialogue",
       speakerName: dialogueMatch[2].trim(),
       speakerColor: dialogueMatch[1],
     };
   }
 
-  // Thought: ai-fmt-thought or ai-fmt-thought-block, or pure <em>/<i> wrapping
-  if (/ai-fmt-thought/.test(html)) {
-    return { contentType: "thought" };
-  }
-  // Pure italics paragraph (entire content is <em> or <i>)
-  if (/^<(em|i)>.*<\/\1>$/i.test(html.trim())) {
+  if (/ai-fmt-thought/.test(html) || /^<(em|i)>.*<\/\1>$/i.test(html.trim())) {
     return { contentType: "thought" };
   }
 
-  // SFX: ai-fmt-sfx
   if (/ai-fmt-sfx/.test(html)) {
     return { contentType: "sfx" };
   }
 
-  // System: ai-fmt-system-message, ai-fmt-stat-block, ai-fmt-status-window
   if (/ai-fmt-system-message|ai-fmt-stat-block|ai-fmt-status-window/.test(html)) {
     return { contentType: "system" };
   }
 
-  // Default: narration
   return { contentType: "narration" };
 }
 
 // ── Semantic Chunking ──────────────────────────────────────────────
 
+interface RawChunk {
+  text: string;
+  endsWithSentence: boolean;
+  endsWithExclamation: boolean;
+}
+
 /**
- * Split plain text into semantic chunks of ~2-5 words.
- *
- * Rules:
- * - Articles bind forward to the next noun phrase
- * - Prepositions bind forward to their object
- * - Conjunctions start new chunks
- * - Commas and semicolons are chunk boundaries
- * - Short quotes (<=5 words) stay together
- * - Punctuation stays attached to its word
+ * Check if a lowercase word should bind forward to the next word,
+ * preventing a chunk break after it.
  */
-function chunkText(text: string): string[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
+function bindsForward(lower: string): boolean {
+  if (ARTICLES.has(lower)) return true;
+  if (PREPOSITIONS.has(lower)) return true;
+  if (CONJUNCTIONS.has(lower)) return true;
+  if (NEGATION_WORDS.has(lower)) return true;
+  if (POSSESSIVE_PRONOUNS.has(lower)) return true;
+  if (INTENSIFIERS.has(lower)) return true;
+  if (lower.endsWith("'s")) return true;
+  if (/^\+?\d+$/.test(lower) || NUMBER_WORDS.has(lower)) return true;
+  return false;
+}
 
-  // First, split on comma/semicolon boundaries (keep punctuation attached)
-  const clauses = trimmed.split(/(?<=[,;])\s+/);
-  const chunks: string[] = [];
+function testSentenceEnd(word: string): boolean {
+  return /[.!?]["'\u201d\u2019)]*$/.test(word);
+}
 
-  for (const clause of clauses) {
-    const words = clause.split(/\s+/).filter(Boolean);
-    if (words.length === 0) continue;
+function testExclamation(word: string): boolean {
+  return /[!?]["'\u201d\u2019)]*$/.test(word);
+}
 
-    // Check if this clause is a short quote (<=5 words, starts/ends with quote marks)
-    const joined = words.join(" ");
-    if (words.length <= 5 && /^["'\u201c]/.test(joined) && /["'\u201d][.!?]*$/.test(joined)) {
-      chunks.push(joined);
+function testClauseEnd(word: string): boolean {
+  return /[,;]$/.test(word) || /\u2014$/.test(word);
+}
+
+function makeRaw(words: string[]): RawChunk {
+  const last = words[words.length - 1] ?? "";
+  return {
+    text: words.join(" "),
+    endsWithSentence: testSentenceEnd(last),
+    endsWithExclamation: testExclamation(last),
+  };
+}
+
+/**
+ * Split plain text into semantic chunks of 1–5 words.
+ *
+ * Binding rules (what stays together):
+ * - Article + noun/adjective, preposition + object, conjunction + next word
+ * - Negation + verb, possessive + noun, intensifier + adjective
+ * - Number + unit, "to" + infinitive
+ *
+ * Breaking rules (where to split), in priority order:
+ * 1. Sentence boundary (.!?)
+ * 2. Clause boundary (,;—)
+ * 3. Between phrases at 3–5 words
+ *
+ * Special: short quotes <= 4 words stay together,
+ * stuttered speech stays as one token, ellipsis trails with word.
+ */
+function chunkText(text: string): RawChunk[] {
+  // Pre-process: ensure spaces after em-dashes for proper splitting
+  let processed = text.replace(/(\S)\u2014(\S)/g, "$1\u2014 $2");
+  processed = processed.replace(/(\S)--(\S)/g, "$1-- $2");
+
+  const words = processed.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  // Short quote (<=4 words, starts and ends with quote marks): single chunk
+  const joined = words.join(" ");
+  if (words.length <= 4 && /^["'\u201c]/.test(joined) && /["'\u201d][.!?]*$/.test(joined)) {
+    return [makeRaw(words)];
+  }
+
+  const chunks: RawChunk[] = [];
+  let current: string[] = [];
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const lower = word.toLowerCase().replace(/[^a-z0-9'+\-]/g, "");
+
+    // Conjunctions break before (start new chunk), if current has >= 2 words
+    if (CONJUNCTIONS.has(lower) && current.length >= 2) {
+      chunks.push(makeRaw(current));
+      current = [];
+    }
+
+    current.push(word);
+
+    // Priority 1: Sentence boundary — always break after
+    if (testSentenceEnd(word)) {
+      chunks.push(makeRaw(current));
+      current = [];
       continue;
     }
 
-    // Group words into 2-5 word chunks using binding rules
-    let current: string[] = [];
+    // Priority 2: Clause boundary — break after
+    if (testClauseEnd(word)) {
+      chunks.push(makeRaw(current));
+      current = [];
+      continue;
+    }
 
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      const lower = word.toLowerCase().replace(/[^a-z']/g, "");
+    // Binding: if word binds forward and we haven't hit the hard max, continue
+    if (bindsForward(lower) && i < words.length - 1 && current.length < 5) {
+      continue;
+    }
 
-      // Conjunctions start a new chunk (unless current is empty)
-      if (CONJUNCTIONS.has(lower) && current.length > 0) {
-        chunks.push(current.join(" "));
-        current = [word];
+    // Size-based breaking at 3+ words
+    if (current.length >= 3) {
+      const remaining = words.length - i - 1;
+      // Avoid leaving a single orphan at the end
+      if (remaining !== 1 || current.length >= 4) {
+        chunks.push(makeRaw(current));
+        current = [];
         continue;
-      }
-
-      current.push(word);
-
-      // Articles and prepositions bind forward — don't end chunk here
-      if ((ARTICLES.has(lower) || PREPOSITIONS.has(lower)) && i < words.length - 1) {
-        continue;
-      }
-
-      // If we've reached 2+ words and the next word isn't bound by an article/prep,
-      // check if we should break
-      if (current.length >= 2) {
-        const nextWord = i + 1 < words.length
-          ? words[i + 1].toLowerCase().replace(/[^a-z']/g, "")
-          : null;
-
-        // Don't break if next word is bound by preceding article/preposition
-        // (already handled above by continuing)
-
-        // Break at 3-5 words unless next word would be left orphaned
-        const remaining = words.length - i - 1;
-        if (current.length >= 3 || (current.length >= 2 && remaining > 1)) {
-          // Break if we hit 5 words (hard max per chunk)
-          if (current.length >= 5) {
-            chunks.push(current.join(" "));
-            current = [];
-            continue;
-          }
-
-          // Break at natural points: after non-binding words when chunk >= 3
-          if (current.length >= 3 && !ARTICLES.has(lower) && !PREPOSITIONS.has(lower)) {
-            // Don't break if next word is a conjunction (it'll start a new chunk anyway)
-            if (!nextWord || !CONJUNCTIONS.has(nextWord)) {
-              // Check if breaking would leave a single orphan word
-              if (remaining !== 1 || current.length < 4) {
-                chunks.push(current.join(" "));
-                current = [];
-                continue;
-              }
-            }
-          }
-        }
       }
     }
 
-    // Flush remaining words
-    if (current.length > 0) {
-      // If there's a previous chunk and current is just 1 word, merge with previous
-      if (current.length === 1 && chunks.length > 0) {
-        const lastChunk = chunks[chunks.length - 1];
-        const lastWords = lastChunk.split(/\s+/).length;
-        if (lastWords < 5) {
-          chunks[chunks.length - 1] = lastChunk + " " + current[0];
-          continue;
-        }
-      }
-      chunks.push(current.join(" "));
+    // Hard max at 5 words
+    if (current.length >= 5) {
+      chunks.push(makeRaw(current));
+      current = [];
     }
   }
 
-  return chunks.filter((c) => c.trim().length > 0);
+  // Flush remaining words
+  if (current.length > 0) {
+    // Merge single orphan with previous chunk if possible
+    if (current.length === 1 && chunks.length > 0) {
+      const last = chunks[chunks.length - 1];
+      if (countWords(last.text) < 5) {
+        last.text += " " + current[0];
+        // Update flags based on new last word
+        last.endsWithSentence = testSentenceEnd(current[0]);
+        last.endsWithExclamation = testExclamation(current[0]);
+        return chunks.filter(c => c.text.trim().length > 0);
+      }
+    }
+    chunks.push(makeRaw(current));
+  }
+
+  return chunks.filter(c => c.text.trim().length > 0);
 }
 
 // ── Main Chunking Function ─────────────────────────────────────────
@@ -272,7 +365,12 @@ function chunkText(text: string): string[] {
  * Convert an array of HTML paragraphs into an array of speed-reader chunks.
  *
  * Each paragraph is classified by content type, then split into semantic
- * chunks of 2-5 words that follow natural phrase boundaries.
+ * chunks of 1–5 words that follow natural phrase boundaries.
+ *
+ * Special rules:
+ * - Scene breaks: single chunk with isSceneBreak=true
+ * - System notifications: entire content as one chunk regardless of length
+ * - SFX: normal chunking but with SFX content type and timing
  */
 export function chunkParagraphs(htmlParagraphs: string[]): SpeedReaderChunk[] {
   const result: SpeedReaderChunk[] = [];
@@ -281,7 +379,7 @@ export function chunkParagraphs(htmlParagraphs: string[]): SpeedReaderChunk[] {
     const html = htmlParagraphs[paraIndex];
     const { contentType, speakerName, speakerColor } = classifyParagraph(html);
 
-    // Scene breaks produce a single chunk
+    // Scene breaks: single chunk
     if (contentType === "scene-break") {
       result.push({
         text: stripHtml(html) || "* * *",
@@ -290,6 +388,9 @@ export function chunkParagraphs(htmlParagraphs: string[]): SpeedReaderChunk[] {
         contentType,
         isSceneBreak: true,
         wordCount: 0,
+        endsWithSentence: false,
+        endsWithExclamation: false,
+        isLastInParagraph: true,
       });
       continue;
     }
@@ -297,21 +398,39 @@ export function chunkParagraphs(htmlParagraphs: string[]): SpeedReaderChunk[] {
     const plainText = stripHtml(html);
     if (!plainText) continue;
 
-    const textChunks = chunkText(plainText);
-    if (textChunks.length === 0) continue;
-
-    for (let i = 0; i < textChunks.length; i++) {
-      const chunkStr = textChunks[i];
-      const wc = countWords(chunkStr);
-
-      const chunk: SpeedReaderChunk = {
-        text: chunkStr,
-        // For HTML, wrap in a span that preserves the paragraph's formatting context
-        html: buildChunkHtml(chunkStr, contentType, speakerColor, i === 0 && !!speakerName),
+    // System notifications: entire content as one chunk
+    if (contentType === "system") {
+      result.push({
+        text: plainText,
+        html: buildChunkHtml(plainText, contentType),
         paraIndex,
         contentType,
         isSceneBreak: false,
-        wordCount: wc,
+        wordCount: countWords(plainText),
+        endsWithSentence: false,
+        endsWithExclamation: false,
+        isLastInParagraph: true,
+      });
+      continue;
+    }
+
+    const rawChunks = chunkText(plainText);
+    if (rawChunks.length === 0) continue;
+
+    for (let i = 0; i < rawChunks.length; i++) {
+      const raw = rawChunks[i];
+      const isLast = i === rawChunks.length - 1;
+
+      const chunk: SpeedReaderChunk = {
+        text: raw.text,
+        html: buildChunkHtml(raw.text, contentType, speakerColor, i === 0 && !!speakerName),
+        paraIndex,
+        contentType,
+        isSceneBreak: false,
+        wordCount: countWords(raw.text),
+        endsWithSentence: raw.endsWithSentence,
+        endsWithExclamation: raw.endsWithExclamation,
+        isLastInParagraph: isLast,
       };
 
       // Attach speaker info to the first chunk of dialogue paragraphs
@@ -329,7 +448,6 @@ export function chunkParagraphs(htmlParagraphs: string[]): SpeedReaderChunk[] {
 
 /**
  * Build minimal HTML for a chunk, preserving content-type styling context.
- * We wrap chunks in spans with appropriate classes so the renderer can style them.
  */
 function buildChunkHtml(
   text: string,
@@ -337,13 +455,13 @@ function buildChunkHtml(
   speakerColor?: string,
   isSpeakerChunk?: boolean,
 ): string {
-  // Escape HTML entities in the text
   const escaped = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
   switch (contentType) {
+    case "rapid-dialogue":
     case "dialogue":
       if (isSpeakerChunk && speakerColor) {
         return `<span class="${DIALOGUE_CLASS_PREFIX}${speakerColor}">${escaped}</span>`;
@@ -372,83 +490,167 @@ function buildChunkHtml(
 /**
  * Calculate how long a chunk should be displayed, in milliseconds.
  *
- * Factors:
- * 1. Base duration from target WPM
- * 2. Lexical multiplier (function words faster, long words slower)
- * 3. Structural multiplier (content type affects pacing)
- * 4. Warmup ramp (slower at session start)
- * 5. Fatigue adjustment (gradually slower after 30 minutes)
+ * Formula:
+ *   chunk_duration = (base_ms × avg_lexical × structural × fatigue) / warmup + pause_ms
+ *
+ * Clamped to [80ms, 2000ms].
  */
 export function calculateChunkDuration(
   chunk: SpeedReaderChunk,
   config: TimingConfig,
 ): number {
-  const { targetWpm, warmupFactor, sessionMinutes } = config;
+  const { targetWpm, chunksPlayed, sessionMinutes } = config;
 
-  // Scene breaks get a fixed long pause
+  // Scene breaks: fixed pause
   if (chunk.contentType === "scene-break") {
-    return 2000;
+    return PAUSE_SCENE_BREAK;
   }
 
-  // Empty chunks shouldn't happen, but guard against division by zero
-  if (chunk.wordCount === 0) return 120;
+  // Empty chunks
+  if (chunk.wordCount === 0) return 80;
 
-  // 1. Base duration: time for this many words at target WPM
+  // 1. Base duration from target WPM
   const baseDuration = (chunk.wordCount / targetWpm) * 60_000;
 
-  // 2. Lexical multiplier: average across words in the chunk
+  // 2. Lexical multiplier (average across words)
   const lexicalMult = calculateLexicalMultiplier(chunk.text);
 
   // 3. Structural multiplier based on content type
   const structuralMult = STRUCTURAL_MULTIPLIERS[chunk.contentType] ?? 1.0;
 
-  // 4. Fatigue: +5% per 30 minutes after the first 30 minutes
-  //    0.0017 per minute beyond 30 = ~5% per 30 min
-  const fatigueMult = 1.0 + Math.max(0, sessionMinutes - 30) * 0.0017;
+  // 4. Warmup: slower at session start, ramps to full speed
+  const warmup = calculateWarmup(chunksPlayed);
 
-  // 5. Warmup: warmupFactor ranges 0.7 (start) to 1.0 (warmed up)
-  //    Dividing by a smaller number = longer duration = slower reading
-  const clampedWarmup = Math.max(0.7, warmupFactor);
+  // 5. Fatigue: gradually slower after 30 minutes
+  const fatigueMult = calculateFatigue(sessionMinutes);
 
-  // Final calculation
-  const raw = (baseDuration * lexicalMult * structuralMult * fatigueMult) / clampedWarmup;
+  // 6. Pause: added after the base calculation
+  const pauseMs = calculatePause(chunk);
 
-  // Clamp to [120ms, 3000ms]
-  return clamp(raw, 120, 3000);
+  // Final
+  const raw = (baseDuration * lexicalMult * structuralMult * fatigueMult) / warmup + pauseMs;
+
+  return clamp(raw, 80, 2000);
 }
 
 /**
- * Calculate the lexical multiplier for a chunk based on word complexity.
+ * Lexical multiplier: averaged across words in the chunk.
  *
- * - Common function words: 0.7x (fast, eyes glide over them)
- * - Long words (>8 chars): 1.2x (need more processing time)
- * - Very long words (>12 chars): 1.3x
- * - Normal words: 1.0x
- *
- * Returns the average multiplier across all words.
+ * - Common function words: 0.7x
+ * - Common verbs: 0.85x
+ * - Standard content words: 1.0x
+ * - Long words (8+ chars): 1.15x
+ * - Proper nouns / places: 1.15x
+ * - Numbers: 1.1x
  */
 function calculateLexicalMultiplier(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return 1.0;
 
-  let totalMult = 0;
+  let total = 0;
 
   for (const word of words) {
-    // Strip punctuation for analysis, keep only letters and apostrophes
     const clean = word.toLowerCase().replace(/[^a-z']/g, "");
 
     if (FUNCTION_WORDS.has(clean)) {
-      totalMult += 0.7;
-    } else if (clean.length > 12) {
-      totalMult += 1.3;
-    } else if (clean.length > 8) {
-      totalMult += 1.2;
+      total += 0.7;
+    } else if (COMMON_VERBS.has(clean)) {
+      total += 0.85;
+    } else if (/^\+?\d/.test(word)) {
+      total += 1.1;
+    } else if (clean.length >= 8) {
+      total += 1.15;
+    } else if (/^[A-Z]/.test(word) && !FUNCTION_WORDS.has(clean)) {
+      // Proper nouns / places (capitalized, not a function word)
+      total += 1.15;
     } else {
-      totalMult += 1.0;
+      total += 1.0;
     }
   }
 
-  return totalMult / words.length;
+  return total / words.length;
+}
+
+/**
+ * Session warmup: gradual ramp from 70% to 100%.
+ *
+ * - Chunks 1–5: 70% speed (divide duration by 0.7 = 1.43x longer)
+ * - Chunks 6–15: 85% speed
+ * - Chunks 16+: 100% speed
+ */
+function calculateWarmup(chunksPlayed: number): number {
+  if (chunksPlayed < 5) return 0.7;
+  if (chunksPlayed < 15) return 0.85;
+  return 1.0;
+}
+
+/**
+ * Fatigue decay: step function that gradually increases display time.
+ *
+ * Returns a multiplier >= 1.0 (higher = longer display = slower reading).
+ *
+ * - 0–30 min: 100% speed (1.0x duration)
+ * - 30–60 min: 97% speed (~1.03x duration)
+ * - 60–90 min: 93% speed (~1.08x duration)
+ * - 90–120 min: 88% speed (~1.14x duration)
+ * - 120+ min: 85% speed (~1.18x duration) — floor
+ */
+function calculateFatigue(sessionMinutes: number): number {
+  if (sessionMinutes <= 30) return 1.0;
+  if (sessionMinutes <= 60) return 1.0 / 0.97;
+  if (sessionMinutes <= 90) return 1.0 / 0.93;
+  if (sessionMinutes <= 120) return 1.0 / 0.88;
+  return 1.0 / 0.85;
+}
+
+/**
+ * Calculate pause duration (ms) to add after this chunk.
+ *
+ * Pauses stack when multiple conditions apply.
+ */
+function calculatePause(chunk: SpeedReaderChunk): number {
+  let pause = 0;
+
+  // SFX: post-SFX dramatic beat
+  if (chunk.contentType === "sfx") {
+    pause += PAUSE_AFTER_SFX;
+  }
+
+  // System notifications
+  if (chunk.contentType === "system") {
+    pause += PAUSE_AFTER_SYSTEM;
+  }
+
+  // Exclamation in dialogue: emotional moment
+  if (chunk.endsWithExclamation &&
+      (chunk.contentType === "dialogue" || chunk.contentType === "rapid-dialogue")) {
+    pause += PAUSE_AFTER_EXCLAMATION;
+  }
+
+  // End of sentence (period, or non-dialogue exclamation)
+  if (chunk.endsWithSentence) {
+    if (!chunk.endsWithExclamation ||
+        (chunk.contentType !== "dialogue" && chunk.contentType !== "rapid-dialogue")) {
+      pause += PAUSE_END_OF_SENTENCE;
+    }
+  }
+
+  // Speaker label: register who is speaking
+  if (chunk.speakerName) {
+    pause += PAUSE_AFTER_SPEAKER_LABEL;
+  }
+
+  // End of paragraph
+  if (chunk.isLastInParagraph) {
+    pause += PAUSE_END_OF_PARAGRAPH;
+
+    // After inner monologue block: transition back to narration
+    if (chunk.contentType === "thought") {
+      pause += PAUSE_AFTER_THOUGHT_BLOCK;
+    }
+  }
+
+  return pause;
 }
 
 /** Clamp a number between min and max */

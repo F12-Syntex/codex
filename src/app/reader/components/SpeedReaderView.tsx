@@ -87,11 +87,10 @@ export function SpeedReaderView({
 
     const currentChunk = chunks[currentIndex];
     const sessionMinutes = (Date.now() - sessionStart) / 60000;
-    const warmup = Math.min(1, 0.7 + (chunksPlayedRef.current / 15) * 0.3);
 
     const duration = calculateChunkDuration(currentChunk, {
       targetWpm,
-      warmupFactor: warmup,
+      chunksPlayed: chunksPlayedRef.current,
       sessionMinutes,
     });
 
@@ -151,7 +150,7 @@ export function SpeedReaderView({
       if (e.key === "ArrowLeft") { e.preventDefault(); handleRewind(); }
       if (e.key === "ArrowRight") { e.preventDefault(); handleSkipForward(); }
       if (e.key === "ArrowUp") { e.preventDefault(); setTargetWpm((w) => Math.min(800, w + 25)); }
-      if (e.key === "ArrowDown") { e.preventDefault(); setTargetWpm((w) => Math.max(100, w - 25)); }
+      if (e.key === "ArrowDown") { e.preventDefault(); setTargetWpm((w) => Math.max(200, w - 25)); }
       if (e.key === "Escape") { onExit(); }
     };
     document.addEventListener("keydown", handler);
@@ -174,8 +173,8 @@ export function SpeedReaderView({
     if (!chunk) return {};
     switch (chunk.contentType) {
       case "thought": return { fontStyle: "italic" };
-      case "sfx": return { fontSize: "32px", fontWeight: 700 };
-      case "system": return { fontFamily: "monospace" };
+      case "sfx": return { fontSize: "42px", fontWeight: 700 };
+      case "system": return { fontFamily: "monospace", fontSize: "28px" };
       case "scene-break": return { opacity: 0.4 };
       default: return {};
     }
@@ -221,8 +220,11 @@ export function SpeedReaderView({
         </button>
       </div>
 
-      {/* Focal area — centered RSVP */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 overflow-hidden">
+      {/* Focal area — RSVP at 40% from top (slightly above centre) */}
+      <div className="relative z-10 flex-1 flex flex-col items-center px-4 overflow-hidden">
+        {/* Top spacer: 40% of focal area */}
+        <div style={{ flex: "2 1 0" }} />
+
         {/* Speaker label */}
         {chunk?.speakerName && (
           <div
@@ -236,7 +238,7 @@ export function SpeedReaderView({
         {/* Active chunk */}
         <div
           key={currentIndex}
-          className={`text-center max-w-3xl px-4 ${chunkColorClass}`}
+          className={`text-center max-w-[60%] px-4 ${chunkColorClass}`}
           style={{ fontSize: "32px", lineHeight: 1.4, ...chunkStyle }}
         >
           {displayText}
@@ -249,6 +251,9 @@ export function SpeedReaderView({
             style={{ width: `${paraProgress * 100}%` }}
           />
         </div>
+
+        {/* Bottom spacer: 60% of focal area */}
+        <div style={{ flex: "3 1 0" }} />
       </div>
 
       {/* Control bar */}
@@ -269,7 +274,7 @@ export function SpeedReaderView({
         {/* Center: WPM */}
         <div className="flex items-center gap-2">
           <Gauge className="h-3.5 w-3.5 text-white/20" />
-          <button onClick={() => setTargetWpm((w) => Math.max(100, w - 25))} className="p-1 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Decrease WPM (Down)">
+          <button onClick={() => setTargetWpm((w) => Math.max(200, w - 25))} className="p-1 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Decrease WPM (Down)">
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
           <span className="text-sm font-medium tabular-nums min-w-[4ch] text-center text-white/60">
