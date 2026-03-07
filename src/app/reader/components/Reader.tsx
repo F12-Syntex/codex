@@ -137,8 +137,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     } else {
       return paragraphs; // already plain text
     }
-    // Strip HTML tags to get plain text for TTS
-    return html.map(h => h.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim());
+    // Strip dialogue speaker tags (e.g. <span class="ai-fmt-dialogue-hero">Name</span>) then strip remaining HTML
+    return html.map(h => {
+      // Remove AI dialogue speaker name tags entirely so TTS doesn't read them
+      let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">[^<]*<\/span>\s*/g, "");
+      // Strip remaining HTML tags and decode entities
+      text = text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+      return text;
+    });
   }, [isBranchChapterForTTS, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapters, paragraphs]);
 
   const tts = useTTS({

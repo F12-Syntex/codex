@@ -162,6 +162,13 @@ function repairJson(raw: string): string | null {
     // Ensure closing brace
     if (!s.endsWith("}")) s += "}";
     try { JSON.parse(s); return s; } catch { /* fall through */ }
+
+    // More aggressive repair: strip everything after last complete key-value pair
+    const lastGoodComma = s.lastIndexOf('",');
+    if (lastGoodComma > 0) {
+      const truncated = s.substring(0, lastGoodComma + 1) + "}";
+      try { JSON.parse(truncated); return truncated; } catch { /* fall through */ }
+    }
   }
 
   // If it's an array, try to close it
@@ -309,7 +316,9 @@ async function formatChunk(
       console.error(`AI formatting chunk failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
     }
   }
-  return null;
+  // Return originals instead of null so a single bad chunk doesn't kill the whole chapter
+  console.warn("AI formatting: all retries exhausted, returning original paragraphs for this chunk");
+  return [...paragraphs];
 }
 
 /**
