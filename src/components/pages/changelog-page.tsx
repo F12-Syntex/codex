@@ -66,11 +66,12 @@ type UpdateState = "idle" | "checking" | "downloading" | "ready" | "error";
 function UpdateBanner({ latestVersion }: { latestVersion: string }) {
   const [state, setState] = useState<UpdateState>("idle");
   const [progress, setProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
-    api.onUpdateStatus((event) => {
+    const cleanup = api.onUpdateStatus((event) => {
       switch (event.status) {
         case "checking":
           setState("checking");
@@ -90,11 +91,15 @@ function UpdateBanner({ latestVersion }: { latestVersion: string }) {
         case "downloaded":
           setState("ready");
           break;
-        case "error":
+        case "error": {
           setState("error");
+          const errData = event.data as { message?: string } | undefined;
+          setErrorMessage(errData?.message ?? "Unknown error");
           break;
+        }
       }
     });
+    return cleanup;
   }, []);
 
   const handleUpdate = () => {
@@ -121,7 +126,7 @@ function UpdateBanner({ latestVersion }: { latestVersion: string }) {
               : state === "checking"
                 ? "Checking for updates..."
                 : state === "error"
-                  ? "Update failed — try again"
+                  ? `Update failed — ${errorMessage ?? "try again"}`
                   : `v${APP_VERSION} → v${latestVersion}`}
         </p>
       </div>

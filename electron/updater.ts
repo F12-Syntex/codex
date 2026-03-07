@@ -35,6 +35,7 @@ export function initUpdater(mainWindow: BrowserWindow) {
   });
 
   autoUpdater.on("error", (error) => {
+    console.error("[updater] Update error:", error.message, error.stack);
     sendStatus("error", { message: error.message });
   });
 

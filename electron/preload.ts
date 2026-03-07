@@ -207,6 +207,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onUpdateStatus: (
     callback: (event: { status: string; data?: unknown }) => void
   ) => {
-    ipcRenderer.on("update:status", (_event, payload) => callback(payload));
+    const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; data?: unknown }) => callback(payload);
+    ipcRenderer.on("update:status", handler);
+    return () => { ipcRenderer.removeListener("update:status", handler); };
   },
 });

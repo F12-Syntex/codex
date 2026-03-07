@@ -359,7 +359,7 @@ interface ElectronAPI {
   // Updates
   checkForUpdates: () => Promise<unknown>;
   installUpdate: () => void;
-  onUpdateStatus: (callback: (event: UpdateEvent) => void) => void;
+  onUpdateStatus: (callback: (event: UpdateEvent) => void) => (() => void);
 }
 
 interface Window {

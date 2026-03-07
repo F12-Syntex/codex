@@ -160,14 +160,44 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
       return;
     }
     setCheckingUpdates(true);
-    setUpdateStatus(null);
+    setUpdateStatus("Checking for updates...");
+
+    // Listen for the real result from electron-updater
+    const cleanup = api.onUpdateStatus?.((event) => {
+      switch (event.status) {
+        case "not-available":
+          setUpdateStatus("You're up to date");
+          setCheckingUpdates(false);
+          cleanup?.();
+          break;
+        case "available": {
+          const data = event.data as { version?: string } | undefined;
+          setUpdateStatus(`Update v${data?.version ?? "?"} available — downloading...`);
+          break;
+        }
+        case "downloaded": {
+          const data = event.data as { version?: string } | undefined;
+          setUpdateStatus(`v${data?.version ?? "?"} downloaded — restart to install`);
+          setCheckingUpdates(false);
+          cleanup?.();
+          break;
+        }
+        case "error": {
+          const data = event.data as { message?: string } | undefined;
+          setUpdateStatus(`Update failed: ${data?.message ?? "unknown error"}`);
+          setCheckingUpdates(false);
+          cleanup?.();
+          break;
+        }
+      }
+    });
+
     try {
       await api.checkForUpdates();
-      setUpdateStatus("You're up to date");
     } catch {
       setUpdateStatus("Couldn't check for updates");
-    } finally {
       setCheckingUpdates(false);
+      cleanup?.();
     }
   };
 
