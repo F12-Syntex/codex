@@ -11,55 +11,69 @@ import {
   ChevronDown,
   Gauge,
 } from "lucide-react";
-import type { ThemeClasses, ReadingTheme } from "../lib/types";
+import type { ThemeClasses } from "../lib/types";
 import type { SpeedReaderChunk } from "@/lib/speed-reader-engine";
 import { calculateChunkDuration } from "@/lib/speed-reader-engine";
 
 interface SpeedReaderViewProps {
   theme: ThemeClasses;
-  readingTheme: ReadingTheme;
   chunks: SpeedReaderChunk[];
   chapterTitle: string;
   onExit: () => void;
   onChapterEnd: () => void;
   onParagraphChange?: (paraIndex: number) => void;
-  /** Reports the highest paragraph index the user has seen */
   onReadProgress?: (paraIndex: number) => void;
+  /** Reports current chunk for TextContent background highlighting */
+  onChunkChange?: (paraIndex: number, chunkText: string, charOffset: number) => void;
 }
 
 export function SpeedReaderView({
   theme,
-  readingTheme,
   chunks,
   chapterTitle,
   onExit,
   onChapterEnd,
   onParagraphChange,
   onReadProgress,
+  onChunkChange,
 }: SpeedReaderViewProps) {
-  // Playback state
   const [playing, setPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [targetWpm, setTargetWpm] = useState(400);
   const [effectiveWpm, setEffectiveWpm] = useState(400);
   const [sessionStart] = useState(() => Date.now());
 
-  // Refs
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const chunksPlayedRef = useRef(0);
   const readHighWaterRef = useRef(-1);
 
   const chunk = chunks[currentIndex] ?? null;
+  const currentParaIndex = chunk?.paraIndex ?? 0;
 
-  // -- Progress through chapter --
   const progressPercent = chunks.length > 0
     ? Math.round((currentIndex / chunks.length) * 100)
     : 0;
 
-  // -- Paragraph context --
-  const currentParaIndex = chunk?.paraIndex ?? 0;
+  // Compute character offset of current chunk within its paragraph
+  const chunkCharOffset = useMemo(() => {
+    if (!chunk) return 0;
+    let offset = 0;
+    for (let i = 0; i < currentIndex; i++) {
+      if (chunks[i].paraIndex === chunk.paraIndex) {
+        offset += chunks[i].text.length + 1;
+      }
+    }
+    return offset;
+  }, [chunk, chunks, currentIndex]);
 
-  // Report read progress when paragraph changes
+  // Report current chunk to parent for background highlighting
+  useEffect(() => {
+    if (chunk) {
+      onChunkChange?.(chunk.paraIndex, chunk.text, chunkCharOffset);
+    }
+  }, [chunk, chunkCharOffset, onChunkChange]);
+
+  // Report read progress
   useEffect(() => {
     if (currentParaIndex > readHighWaterRef.current) {
       readHighWaterRef.current = currentParaIndex;
@@ -67,33 +81,12 @@ export function SpeedReaderView({
     }
   }, [currentParaIndex, onReadProgress]);
 
-  const paragraphText = useMemo(() => {
-    if (!chunk) return "";
-    return chunks
-      .filter((c) => c.paraIndex === currentParaIndex)
-      .map((c) => c.text)
-      .join(" ");
-  }, [chunks, currentParaIndex, chunk]);
-
-  // Paragraph-level progress
-  const paraChunks = useMemo(() => {
-    return chunks.filter((c) => c.paraIndex === currentParaIndex);
-  }, [chunks, currentParaIndex]);
-
-  const paraProgress = useMemo(() => {
-    if (paraChunks.length === 0) return 0;
-    const idx = paraChunks.findIndex((c) => chunks.indexOf(c) === currentIndex);
-    return idx >= 0 ? (idx + 1) / paraChunks.length : 0;
-  }, [paraChunks, chunks, currentIndex]);
-
-  // -- Main playback loop --
+  // Main playback loop
   useEffect(() => {
     if (!playing || currentIndex >= chunks.length) return;
 
     const currentChunk = chunks[currentIndex];
     const sessionMinutes = (Date.now() - sessionStart) / 60000;
-
-    // Calculate warmup factor (0.7 -> 1.0 over first 15 chunks)
     const warmup = Math.min(1, 0.7 + (chunksPlayedRef.current / 15) * 0.3);
 
     const duration = calculateChunkDuration(currentChunk, {
@@ -102,7 +95,6 @@ export function SpeedReaderView({
       sessionMinutes,
     });
 
-    // Update effective WPM display
     const actualWpm =
       currentChunk.wordCount > 0
         ? Math.round((currentChunk.wordCount / duration) * 60000)
@@ -127,10 +119,7 @@ export function SpeedReaderView({
     return () => clearTimeout(timerRef.current);
   }, [playing, currentIndex, chunks, targetWpm, sessionStart, onChapterEnd, onParagraphChange]);
 
-  // -- Controls --
-  const handlePlayPause = useCallback(() => {
-    setPlaying((p) => !p);
-  }, []);
+  const handlePlayPause = useCallback(() => setPlaying((p) => !p), []);
 
   const handleRewind = useCallback(() => {
     const currentPara = chunks[currentIndex]?.paraIndex ?? 0;
@@ -155,138 +144,103 @@ export function SpeedReaderView({
     }
   }, [chunks, currentIndex, onParagraphChange]);
 
-  // -- Keyboard shortcuts --
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "Space") {
-        e.preventDefault();
-        handlePlayPause();
-      }
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        handleRewind();
-      }
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        handleSkipForward();
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setTargetWpm((w) => Math.min(800, w + 25));
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setTargetWpm((w) => Math.max(100, w - 25));
-      }
-      if (e.key === "Escape") {
-        onExit();
-      }
+      if (e.key === " " || e.key === "Space") { e.preventDefault(); handlePlayPause(); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); handleRewind(); }
+      if (e.key === "ArrowRight") { e.preventDefault(); handleSkipForward(); }
+      if (e.key === "ArrowUp") { e.preventDefault(); setTargetWpm((w) => Math.min(800, w + 25)); }
+      if (e.key === "ArrowDown") { e.preventDefault(); setTargetWpm((w) => Math.max(100, w - 25)); }
+      if (e.key === "Escape") { onExit(); }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [handlePlayPause, handleRewind, handleSkipForward, onExit]);
 
-  // -- Content type styling --
-  const chunkStyle = useMemo((): React.CSSProperties => {
-    const base: React.CSSProperties = {
-      fontSize: "28px",
-      lineHeight: 1.4,
-    };
-    if (!chunk) return base;
-
-    switch (chunk.contentType) {
-      case "thought":
-        return { ...base, fontStyle: "italic" };
-      case "sfx":
-        return { ...base, fontSize: "32px", fontWeight: 700 };
-      case "system":
-        return { ...base, fontFamily: "monospace" };
-      case "scene-break":
-        return { ...base, opacity: 0.4 };
-      default:
-        return base;
-    }
-  }, [chunk]);
-
-  const chunkColorClass = useMemo(() => {
-    if (!chunk) return theme.text;
-    switch (chunk.contentType) {
-      case "sfx":
-        return "text-red-400";
-      case "system":
-        return "text-[var(--accent-brand)]";
-      default:
-        return theme.text;
-    }
-  }, [chunk, theme.text]);
-
-  // -- Display: use HTML to preserve formatting + wiki entity colors --
-  const displayHtml = useMemo(() => {
-    if (!chunk) return "";
-    if (chunk.contentType === "scene-break") return "\u00B7 \u00B7 \u00B7";
-    return chunk.html;
-  }, [chunk]);
-
-  // -- Filled progress blocks --
   const progressBlocks = useMemo(() => {
     const total = 8;
     const filled = Math.round((progressPercent / 100) * total);
     return { filled, total };
   }, [progressPercent]);
 
+  const displayText = useMemo(() => {
+    if (!chunk) return "";
+    if (chunk.contentType === "scene-break") return "\u00B7 \u00B7 \u00B7";
+    return chunk.text;
+  }, [chunk]);
+
+  const chunkStyle = useMemo((): React.CSSProperties => {
+    if (!chunk) return {};
+    switch (chunk.contentType) {
+      case "thought": return { fontStyle: "italic" };
+      case "sfx": return { fontSize: "32px", fontWeight: 700 };
+      case "system": return { fontFamily: "monospace" };
+      case "scene-break": return { opacity: 0.4 };
+      default: return {};
+    }
+  }, [chunk]);
+
+  const chunkColorClass = useMemo(() => {
+    if (!chunk) return "text-white";
+    switch (chunk.contentType) {
+      case "sfx": return "text-red-400";
+      case "system": return "text-[var(--accent-brand)]";
+      default: return "text-white";
+    }
+  }, [chunk]);
+
+  // Paragraph-level progress
+  const paraChunks = useMemo(() => {
+    return chunks.filter((c) => c.paraIndex === currentParaIndex);
+  }, [chunks, currentParaIndex]);
+
+  const paraProgress = useMemo(() => {
+    if (paraChunks.length === 0) return 0;
+    const idx = paraChunks.findIndex((c) => chunks.indexOf(c) === currentIndex);
+    return idx >= 0 ? (idx + 1) / paraChunks.length : 0;
+  }, [paraChunks, chunks, currentIndex]);
+
   return (
-    <div
-      className="flex flex-col h-full w-full select-none"
-      style={{ position: "relative", background: theme.bgRaw }}
-    >
-      {/* Scene Header */}
-      <div className="flex items-center justify-between px-4 py-2 shrink-0">
-        <span className={`text-xs ${theme.muted}`}>{chapterTitle}</span>
+    <div className="absolute inset-0 z-20 flex flex-col select-none">
+      {/* Dark scrim over the background page */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: "rgba(0, 0, 0, 0.80)" }}
+      />
+
+      {/* Header */}
+      <div className="relative z-10 flex items-center justify-between px-4 py-2 shrink-0">
+        <span className="text-xs text-white/40">{chapterTitle}</span>
         <button
           onClick={onExit}
-          className={`${theme.btn} p-1.5 rounded-lg transition-colors`}
+          className="p-1.5 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors"
           title="Exit speed reader (Esc)"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Focal Area */}
-      <div className="flex-1 flex flex-col items-center justify-center relative px-4 overflow-hidden">
-        {/* Context strip - full paragraph at low opacity */}
-        {paragraphText && chunk?.contentType !== "scene-break" && (
-          <p
-            className={`absolute text-center max-w-2xl px-8 ${theme.text}`}
-            style={{
-              opacity: 0.12,
-              fontSize: "16px",
-              lineHeight: 1.6,
-              pointerEvents: "none",
-            }}
-          >
-            {paragraphText}
-          </p>
-        )}
-
+      {/* Focal area — centered RSVP */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 overflow-hidden">
         {/* Speaker label */}
         {chunk?.speakerName && (
           <div
             className="text-xs font-medium mb-2"
-            style={{
-              color: chunk.speakerColor || "var(--accent-brand)",
-            }}
+            style={{ color: chunk.speakerColor || "var(--accent-brand)" }}
           >
             {chunk.speakerName}
           </div>
         )}
 
-        {/* Active chunk — rendered as HTML to preserve formatting + wiki entity colors */}
+        {/* Active chunk */}
         <div
           key={currentIndex}
           className={`text-center max-w-3xl px-4 ${chunkColorClass}`}
-          style={chunkStyle}
-          dangerouslySetInnerHTML={{ __html: displayHtml }}
-        />
+          style={{ fontSize: "32px", lineHeight: 1.4, ...chunkStyle }}
+        >
+          {displayText}
+        </div>
 
         {/* Paragraph progress bar */}
         <div className="mt-6 w-48 h-0.5 rounded-full overflow-hidden bg-white/10">
@@ -297,58 +251,32 @@ export function SpeedReaderView({
         </div>
       </div>
 
-      {/* Control Bar */}
-      <div
-        className="flex items-center justify-between px-4 py-3 shrink-0 border-t border-white/[0.06]"
-      >
-        {/* Left: playback controls */}
+      {/* Control bar */}
+      <div className="relative z-10 flex items-center justify-between px-4 py-3 shrink-0">
+        {/* Left: playback */}
         <div className="flex items-center gap-1">
-          <button
-            onClick={handleRewind}
-            className={`${theme.btn} p-2 rounded-lg transition-colors`}
-            title="Previous paragraph (Left)"
-          >
+          <button onClick={handleRewind} className="p-2 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Previous paragraph (Left)">
             <SkipBack className="h-4 w-4" />
           </button>
-          <button
-            onClick={handlePlayPause}
-            className={`${theme.btnActive} p-2 rounded-lg transition-colors`}
-            title={playing ? "Pause (Space)" : "Play (Space)"}
-          >
-            {playing ? (
-              <Pause className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
+          <button onClick={handlePlayPause} className="p-2 rounded-lg bg-white/[0.08] text-white/60 hover:bg-white/[0.12] transition-colors" title={playing ? "Pause (Space)" : "Play (Space)"}>
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
-          <button
-            onClick={handleSkipForward}
-            className={`${theme.btn} p-2 rounded-lg transition-colors`}
-            title="Next paragraph (Right)"
-          >
+          <button onClick={handleSkipForward} className="p-2 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Next paragraph (Right)">
             <SkipForward className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Center: WPM controls */}
+        {/* Center: WPM */}
         <div className="flex items-center gap-2">
-          <Gauge className={`h-3.5 w-3.5 ${theme.muted}`} />
-          <button
-            onClick={() => setTargetWpm((w) => Math.max(100, w - 25))}
-            className={`${theme.btn} p-1 rounded-lg transition-colors`}
-            title="Decrease WPM (Down)"
-          >
+          <Gauge className="h-3.5 w-3.5 text-white/20" />
+          <button onClick={() => setTargetWpm((w) => Math.max(100, w - 25))} className="p-1 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Decrease WPM (Down)">
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
-          <span className={`text-sm font-medium tabular-nums min-w-[4ch] text-center ${theme.text}`}>
+          <span className="text-sm font-medium tabular-nums min-w-[4ch] text-center text-white/60">
             {effectiveWpm}
           </span>
-          <span className={`text-xs ${theme.muted}`}>WPM</span>
-          <button
-            onClick={() => setTargetWpm((w) => Math.min(800, w + 25))}
-            className={`${theme.btn} p-1 rounded-lg transition-colors`}
-            title="Increase WPM (Up)"
-          >
+          <span className="text-xs text-white/30">WPM</span>
+          <button onClick={() => setTargetWpm((w) => Math.min(800, w + 25))} className="p-1 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Increase WPM (Up)">
             <ChevronUp className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -360,14 +288,12 @@ export function SpeedReaderView({
               <div
                 key={i}
                 className={`w-1.5 h-3 rounded-sm ${
-                  i < progressBlocks.filled
-                    ? "bg-[var(--accent-brand)]"
-                    : "bg-white/10"
+                  i < progressBlocks.filled ? "bg-[var(--accent-brand)]" : "bg-white/10"
                 }`}
               />
             ))}
           </div>
-          <span className={`text-xs tabular-nums ${theme.muted}`}>
+          <span className="text-xs tabular-nums text-white/30">
             {progressPercent}%
           </span>
         </div>

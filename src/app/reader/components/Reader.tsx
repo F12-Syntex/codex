@@ -120,6 +120,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   // Speed Reader state
   const [speedReaderActive, setSpeedReaderActive] = useState(false);
+  const [srChunkParaIndex, setSrChunkParaIndex] = useState(-1);
+  const [srChunkText, setSrChunkText] = useState("");
+  const [srChunkOffset, setSrChunkOffset] = useState(0);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -1425,7 +1428,16 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const toggleAI = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(false); setShowAI(v => !v); }, []);
 
   const handleSpeedReaderToggle = useCallback(() => {
-    setSpeedReaderActive(prev => !prev);
+    setSpeedReaderActive(prev => {
+      if (prev) { setSrChunkParaIndex(-1); setSrChunkText(""); setSrChunkOffset(0); }
+      return !prev;
+    });
+  }, []);
+
+  const handleSpeedReaderChunkChange = useCallback((paraIndex: number, chunkText: string, charOffset: number) => {
+    setSrChunkParaIndex(paraIndex);
+    setSrChunkText(chunkText);
+    setSrChunkOffset(charOffset);
   }, []);
 
   const handleSpeedReaderChapterEnd = useCallback(() => {
@@ -1695,17 +1707,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             <div className="flex h-full items-center justify-center">
               <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
             </div>
-          ) : speedReaderActive && !isTOCChapter(chapterTitle) ? (
-            <SpeedReaderView
-              theme={theme}
-              readingTheme={settings.readingTheme}
-              chunks={speedReaderChunks}
-              chapterTitle={chapterTitle}
-              onExit={() => setSpeedReaderActive(false)}
-              onChapterEnd={handleSpeedReaderChapterEnd}
-              onParagraphChange={(paraIdx) => setFirstVisiblePara(paraIdx)}
-              onReadProgress={handleSpeedReaderReadProgress}
-            />
           ) : isTOCChapter(chapterTitle) ? (
             <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
               <BookTableOfContents
@@ -1761,6 +1762,24 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onAddComment={addUserComment}
               onDeleteComment={deleteUserComment}
               onExplain={handleExplain}
+              speedReaderActive={speedReaderActive}
+              speedReaderParaIndex={srChunkParaIndex}
+              speedReaderChunkText={srChunkText}
+              speedReaderChunkOffset={srChunkOffset}
+            />
+          )}
+
+          {/* Speed reader overlay (control bar + RSVP display) */}
+          {speedReaderActive && !isTOCChapter(chapterTitle) && (
+            <SpeedReaderView
+              theme={theme}
+              chunks={speedReaderChunks}
+              chapterTitle={chapterTitle}
+              onExit={() => { setSpeedReaderActive(false); setSrChunkParaIndex(-1); setSrChunkText(""); setSrChunkOffset(0); }}
+              onChapterEnd={handleSpeedReaderChapterEnd}
+              onParagraphChange={(paraIdx) => setFirstVisiblePara(paraIdx)}
+              onReadProgress={handleSpeedReaderReadProgress}
+              onChunkChange={handleSpeedReaderChunkChange}
             />
           )}
 
@@ -1834,8 +1853,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           </div>
         )}
 
-        {/* Footer — always below content, never overlapped by sidebar */}
-        <ReaderFooter
+        {/* Footer — hidden during speed reader mode */}
+        {!speedReaderActive && <ReaderFooter
           currentPage={currentPage} totalPages={totalPages}
           chapterIndex={currentChapter} chapterCount={chapters.length}
           chapterTitle={chapterTitle} theme={theme} immersiveMode={settings.immersiveMode}
@@ -1853,7 +1872,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onLoadBranch={handleLoadBranch}
           onDeleteBranch={handleDeleteBranch}
           activeBranchId={activeBranch?.id}
-        />
+        />}
       </div>
     </div>
   );

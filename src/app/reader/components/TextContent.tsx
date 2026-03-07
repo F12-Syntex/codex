@@ -55,6 +55,11 @@ interface TextContentProps {
   onAddComment?: (paraIndex: number, text: string) => void;
   onDeleteComment?: (paraIndex: number, author: "ai" | "user", text: string) => void;
   onExplain?: (selectedText: string, paraIndex: number) => void;
+  // Speed reader overlay
+  speedReaderActive?: boolean;
+  speedReaderParaIndex?: number;
+  speedReaderChunkText?: string;
+  speedReaderChunkOffset?: number;
 }
 
 /*
@@ -131,6 +136,10 @@ export function TextContent({
   onAddComment,
   onDeleteComment,
   onExplain,
+  speedReaderActive = false,
+  speedReaderParaIndex = -1,
+  speedReaderChunkText,
+  speedReaderChunkOffset = 0,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
@@ -872,6 +881,136 @@ export function TextContent({
     }
   }, [showWordBold, ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, findWordInParagraph, fontSize, lineHeight]);
 
+  // ── Speed Reader: auto-navigate + highlight ──
+
+  // Auto-navigate to page containing the speed reader paragraph
+  useEffect(() => {
+    if (!speedReaderActive || speedReaderParaIndex < 0) return;
+    const slider = sliderRef.current;
+    if (!slider || stride <= 0) return;
+
+    const paraEl = slider.querySelector(`[data-para-idx="${speedReaderParaIndex}"]`) as HTMLElement | null;
+    if (!paraEl) return;
+
+    const paraLeft = paraEl.offsetLeft;
+    const targetPage = Math.floor(paraLeft / stride);
+    if (targetPage !== currentPage && targetPage >= 0 && targetPage < totalPages) {
+      onPageRequest?.(targetPage);
+    }
+  }, [speedReaderActive, speedReaderParaIndex, stride, currentPage, totalPages, onPageRequest]);
+
+  // Speed reader paragraph highlight rects
+  const [srParaRects, setSrParaRects] = useState<DOMRect[]>([]);
+
+  useEffect(() => {
+    if (!speedReaderActive || speedReaderParaIndex < 0) {
+      setSrParaRects([]);
+      return;
+    }
+
+    const slider = sliderRef.current;
+    const clipper = slider?.parentElement;
+    if (!slider || !clipper) { setSrParaRects([]); return; }
+
+    const paraEl = slider.querySelector(`[data-para-idx="${speedReaderParaIndex}"]`);
+    if (!paraEl) { setSrParaRects([]); return; }
+
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(paraEl);
+      const clipperRect = clipper.getBoundingClientRect();
+      const rects = Array.from(range.getClientRects()).map(r => new DOMRect(
+        r.x - clipperRect.x,
+        r.y - clipperRect.y,
+        r.width,
+        r.height,
+      ));
+      setSrParaRects(rects);
+    } catch {
+      setSrParaRects([]);
+    }
+  }, [speedReaderActive, speedReaderParaIndex, currentPage]);
+
+  // Speed reader chunk underline: find the chunk text within the paragraph and underline it
+  const [srChunkRects, setSrChunkRects] = useState<DOMRect[]>([]);
+
+  useEffect(() => {
+    if (!speedReaderActive || speedReaderParaIndex < 0 || !speedReaderChunkText) {
+      setSrChunkRects([]);
+      return;
+    }
+
+    const slider = sliderRef.current;
+    const clipper = slider?.parentElement;
+    if (!slider || !clipper) { setSrChunkRects([]); return; }
+
+    const paraEl = slider.querySelector(`[data-para-idx="${speedReaderParaIndex}"]`);
+    if (!paraEl) { setSrChunkRects([]); return; }
+
+    // Walk text nodes to find the chunk text
+    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
+    const fullText: { node: Text; start: number }[] = [];
+    let accumulated = "";
+
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode as Text;
+      const text = textNode.textContent ?? "";
+      fullText.push({ node: textNode, start: accumulated.length });
+      accumulated += text;
+    }
+
+    // Find the chunk text in the accumulated plain text, starting from the character offset
+    const searchText = speedReaderChunkText.toLowerCase();
+    const lowerAcc = accumulated.toLowerCase();
+    const matchIdx = lowerAcc.indexOf(searchText, Math.max(0, speedReaderChunkOffset - 5));
+    if (matchIdx === -1) { setSrChunkRects([]); return; }
+
+    const matchEnd = matchIdx + speedReaderChunkText.length;
+
+    // Find the text nodes and offsets for the match range
+    let startNode: Text | null = null;
+    let startOffset = 0;
+    let endNode: Text | null = null;
+    let endOffset = 0;
+
+    for (let i = 0; i < fullText.length; i++) {
+      const { node, start } = fullText[i];
+      const nodeEnd = start + (node.textContent?.length ?? 0);
+
+      if (!startNode && matchIdx >= start && matchIdx < nodeEnd) {
+        startNode = node;
+        startOffset = matchIdx - start;
+      }
+      if (matchEnd > start && matchEnd <= nodeEnd) {
+        endNode = node;
+        endOffset = matchEnd - start;
+        break;
+      }
+    }
+
+    if (!startNode || !endNode) { setSrChunkRects([]); return; }
+
+    try {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+      const clipperRect = clipper.getBoundingClientRect();
+      const computedLH = parseFloat(getComputedStyle(paraEl).lineHeight) || (fontSize * lineHeight);
+      const rects = Array.from(range.getClientRects()).map(r => {
+        const heightDiff = computedLH - r.height;
+        return new DOMRect(
+          r.x - clipperRect.x,
+          r.y - clipperRect.y - heightDiff / 2,
+          r.width,
+          computedLH,
+        );
+      });
+      setSrChunkRects(rects);
+    } catch {
+      setSrChunkRects([]);
+    }
+  }, [speedReaderActive, speedReaderParaIndex, speedReaderChunkText, speedReaderChunkOffset, currentPage, fontSize, lineHeight]);
+
   // ── Render ──────────────────────────────────────────
 
   const translateX = currentPage * stride;
@@ -1174,6 +1313,45 @@ export function TextContent({
               backgroundColor: ttsCol.fg === "white" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.35)",
               pointerEvents: "none",
               transition: "left 0.05s ease, top 0.05s ease, width 0.05s ease",
+              zIndex: 1,
+            }}
+          />
+        ))}
+
+        {/* Speed reader paragraph highlight overlay */}
+        {speedReaderActive && srParaRects.map((r, i) => (
+          <div
+            key={`sr-para-${i}`}
+            style={{
+              position: "absolute",
+              left: `${r.x}px`,
+              top: `${r.y}px`,
+              width: `${r.width}px`,
+              height: `${r.height}px`,
+              borderRadius: "6px",
+              backgroundColor: ttsParaCol,
+              pointerEvents: "none",
+              transition: "top 0.15s ease, height 0.15s ease",
+              zIndex: 0,
+            }}
+          />
+        ))}
+
+        {/* Speed reader chunk underline overlay */}
+        {speedReaderActive && srChunkRects.map((r, i) => (
+          <div
+            key={`sr-chunk-${i}`}
+            style={{
+              position: "absolute",
+              left: `${r.x - 2}px`,
+              top: `${r.y + r.height - 3}px`,
+              width: `${r.width + 4}px`,
+              height: "2.5px",
+              borderRadius: "1.5px",
+              backgroundColor: "var(--accent-brand)",
+              opacity: 0.7,
+              pointerEvents: "none",
+              transition: "left 0.1s ease, top 0.1s ease, width 0.1s ease",
               zIndex: 1,
             }}
           />
