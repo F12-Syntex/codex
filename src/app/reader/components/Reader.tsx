@@ -1184,7 +1184,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     saveProgressRef.current = setTimeout(() => {
       window.electronAPI?.setSetting(
         progressKey,
-        JSON.stringify({ chapter: currentChapter, page: currentPage }),
+        JSON.stringify({ chapter: currentChapter, page: currentPage, totalChapters: chapters.length }),
       );
     }, 500);
     return () => { if (saveProgressRef.current) clearTimeout(saveProgressRef.current); };

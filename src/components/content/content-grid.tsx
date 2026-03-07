@@ -33,6 +33,7 @@ interface ContentGridProps {
   onClearSelection: () => void;
   onBatchDelete: (ids: Set<number>) => void;
   onBatchMove: (ids: Set<number>, targetView: NavView) => void;
+  readingProgress?: Record<string, { chapter: number; totalChapters: number }>;
 }
 
 const bookMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
@@ -201,7 +202,7 @@ function GroupCard({
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {} }: ContentGridProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const hasSelection = selectedIds.size > 0;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -262,6 +263,20 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                     <p className="truncate text-sm font-medium">{item.title}</p>
                     <p className="truncate text-xs text-muted-foreground">{item.author}</p>
                   </div>
+                  {(() => {
+                    const p = readingProgress[item.filePath];
+                    if (p && p.totalChapters > 0) {
+                      const pct = Math.min(((p.chapter + 1) / p.totalChapters) * 100, 100);
+                      return (
+                        <div className="flex w-16 shrink-0 items-center gap-1.5">
+                          <div className="h-[3px] flex-1 rounded-full bg-white/[0.06]">
+                            <div className="h-full rounded-full bg-[var(--accent-brand)] transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   {showFormatBadge && (
                     <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-xs font-semibold uppercase tracking-wide text-white/35">
                       {item.format}
@@ -319,13 +334,29 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                       <p className="text-sm font-semibold leading-tight">{item.title}</p>
                       <p className="mt-1 text-xs text-white/40">{item.author}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {showFormatBadge && (
-                        <span className="rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-xs font-semibold uppercase tracking-wide text-white/35">
-                          {item.format}
-                        </span>
-                      )}
-                      <span className="text-xs text-white/15">Added recently</span>
+                    <div className="flex flex-col gap-1.5">
+                      {(() => {
+                        const p = readingProgress[item.filePath];
+                        if (p && p.totalChapters > 0) {
+                          const pct = Math.min(((p.chapter + 1) / p.totalChapters) * 100, 100);
+                          return (
+                            <div className="flex items-center gap-2">
+                              <div className="h-[3px] w-24 rounded-full bg-white/[0.06]">
+                                <div className="h-full rounded-full bg-[var(--accent-brand)] transition-all" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="text-xs tabular-nums text-white/20">{Math.round(pct)}%</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      <div className="flex items-center gap-2">
+                        {showFormatBadge && (
+                          <span className="rounded-lg bg-white/[0.06] px-1.5 py-[3px] text-xs font-semibold uppercase tracking-wide text-white/35">
+                            {item.format}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -355,6 +386,12 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
   }
 
   /* ── Grid view ──────────────────────────────── */
+  const getProgress = (filePath: string): number | undefined => {
+    const p = readingProgress[filePath];
+    if (!p || p.totalChapters <= 0) return undefined;
+    return (p.chapter + 1) / p.totalChapters;
+  };
+
   const gridContent = (
     <ScrollArea className="min-h-0 flex-1">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
@@ -370,6 +407,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                 coverStyle={coverStyle}
                 showFormatBadge={showFormatBadge}
                 selected={selectedIds.has(item.id)}
+                progress={getProgress(item.filePath)}
               />
             </div>
           </ItemContextMenu>

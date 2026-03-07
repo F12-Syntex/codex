@@ -14,6 +14,7 @@ interface BookCardProps {
   coverStyle: CoverStyle;
   showFormatBadge: boolean;
   selected?: boolean;
+  progress?: number; // 0-1
 }
 
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
@@ -53,7 +54,7 @@ function extractDominantColor(img: HTMLImageElement): string {
   return `rgb(${Math.round(r / count)},${Math.round(g / count)},${Math.round(b / count)})`;
 }
 
-export function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected }: BookCardProps) {
+export function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress }: BookCardProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const [glowColor, setGlowColor] = useState<string>(gradient);
   const extracted = useRef(false);
@@ -107,6 +108,16 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
                 <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
               </div>
             </>
+          )}
+
+          {/* Reading progress bar */}
+          {progress != null && progress > 0 && (
+            <div className="absolute inset-x-0 bottom-0 h-[3px] bg-black/40">
+              <div
+                className="h-full bg-[var(--accent-brand)] transition-all duration-500"
+                style={{ width: `${Math.min(progress * 100, 100)}%` }}
+              />
+            </div>
           )}
         </div>
       </div>

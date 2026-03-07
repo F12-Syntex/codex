@@ -60,6 +60,7 @@ export default function Home() {
   const [comicData, setComicData] = useState<LibraryData>({});
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isDev, setIsDev] = useState(false);
+  const [readingProgress, setReadingProgress] = useState<Record<string, { chapter: number; totalChapters: number }>>({});
   const lastSelectedIdRef = useRef<number | null>(null);
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,6 +101,20 @@ export default function Home() {
           setTheme((prev) => ({ ...prev, ...saved }));
         } catch { /* ignore invalid JSON */ }
       }
+
+      // Extract reading progress for all books
+      const progress: Record<string, { chapter: number; totalChapters: number }> = {};
+      for (const [key, value] of Object.entries(settings)) {
+        if (!key.startsWith("readProgress:")) continue;
+        const filePath = key.slice("readProgress:".length);
+        try {
+          const p = JSON.parse(value);
+          if (typeof p.chapter === "number" && typeof p.totalChapters === "number" && p.totalChapters > 0) {
+            progress[filePath] = { chapter: p.chapter, totalChapters: p.totalChapters };
+          }
+        } catch { /* ignore */ }
+      }
+      setReadingProgress(progress);
     });
   }, []);
 
@@ -523,6 +538,7 @@ export default function Home() {
                       onClearSelection={() => setSelectedIds(new Set())}
                       onBatchDelete={handleBatchDelete}
                       onBatchMove={handleBatchMove}
+                      readingProgress={readingProgress}
                     />
                   </>
                 )}
