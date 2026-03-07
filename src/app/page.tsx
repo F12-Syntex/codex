@@ -21,6 +21,7 @@ import {
 import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
 import { groupByView, libraryItemToMockItem, type LibraryData, type MockItem } from "@/lib/mock-data";
 import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
+import { BookDetailsModal } from "@/components/content/book-details-modal";
 
 const viewLabelMap: Record<NavView, string> = {
   bookshelf: "Bookshelf",
@@ -61,6 +62,7 @@ export default function Home() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isDev, setIsDev] = useState(false);
   const [readingProgress, setReadingProgress] = useState<Record<string, { chapter: number; totalChapters: number }>>({});
+  const [detailsItem, setDetailsItem] = useState<MockItem | null>(null);
   const lastSelectedIdRef = useRef<number | null>(null);
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -245,6 +247,42 @@ export default function Home() {
       }));
     }, 0);
   }, [activeSection]);
+
+  /** Save details from book details modal */
+  const handleSaveDetails = useCallback((id: number, fields: { title?: string; author?: string; cover?: string }, meta?: { description?: string; genres?: string[] }) => {
+    // Update DB
+    if (fields.title || fields.author || fields.cover) {
+      window.electronAPI?.updateItemMeta(id, fields);
+    }
+    if (meta) {
+      const item = [...Object.values(bookData), ...Object.values(comicData)]
+        .flat()
+        .find((i) => i?.id === id);
+      if (item) {
+        window.electronAPI?.setSetting(`bookMeta:${item.filePath}`, JSON.stringify(meta));
+      }
+    }
+
+    // Update local state
+    const updateData = (prev: LibraryData): LibraryData => {
+      const next = { ...prev };
+      for (const [view, items] of Object.entries(next)) {
+        if (!items) continue;
+        const idx = items.findIndex((i) => i.id === id);
+        if (idx !== -1) {
+          const updated = { ...items[idx] };
+          if (fields.title) updated.title = fields.title;
+          if (fields.author) updated.author = fields.author;
+          if (fields.cover) updated.cover = fields.cover;
+          next[view as NavView] = [...items.slice(0, idx), updated, ...items.slice(idx + 1)];
+          return next;
+        }
+      }
+      return prev;
+    };
+    setBookData(updateData);
+    setComicData(updateData);
+  }, [bookData, comicData]);
 
   /** Open a book in the reader window */
   const handleOpenItem = useCallback((item: MockItem) => {
@@ -531,6 +569,7 @@ export default function Home() {
                       onDeleteItem={handleDeleteItem}
                       onTransferItem={handleTransferItem}
                       onOpenItem={handleOpenItem}
+                      onViewDetails={setDetailsItem}
                       activeView={activeView}
                       section={activeSection}
                       selectedIds={selectedIds}
@@ -552,6 +591,13 @@ export default function Home() {
           </ResizablePanel>
         </ResizablePanelGroup>
         <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} bookData={bookData} comicData={comicData} />
+        {detailsItem && (
+          <BookDetailsModal
+            item={detailsItem}
+            onClose={() => setDetailsItem(null)}
+            onSave={handleSaveDetails}
+          />
+        )}
       </div>
     </TooltipProvider>
   );

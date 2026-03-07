@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft, X, Check, FolderOpen } from "lucide-react";
+import { BookOpen, Clock, BookOpenCheck, CheckCircle, Trash2, ArrowRightLeft, X, Check, FolderOpen, Info } from "lucide-react";
 import { BookCard } from "./book-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -26,6 +26,7 @@ interface ContentGridProps {
   onDeleteItem: (id: number) => void;
   onTransferItem: (id: number, targetSection: Section) => void;
   onOpenItem?: (item: MockItem) => void;
+  onViewDetails?: (item: MockItem) => void;
   activeView: NavView;
   section: Section;
   selectedIds: Set<number>;
@@ -59,6 +60,7 @@ function ItemContextMenu({
   onMove,
   onDelete,
   onTransfer,
+  onViewDetails,
   children,
 }: {
   itemId: number;
@@ -68,6 +70,7 @@ function ItemContextMenu({
   onMove: (id: number, view: NavView) => void;
   onDelete: (id: number) => void;
   onTransfer: (id: number, targetSection: Section) => void;
+  onViewDetails?: () => void;
   children: React.ReactNode;
 }) {
   const allTargets = section === "books" ? bookMoveTargets : comicMoveTargets;
@@ -79,6 +82,15 @@ function ItemContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="min-w-[180px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]">
+        {onViewDetails && (
+          <ContextMenuItem
+            onClick={onViewDetails}
+            className="gap-2 text-sm text-white/60"
+          >
+            <Info className="h-3.5 w-3.5" strokeWidth={1.5} />
+            View Details
+          </ContextMenuItem>
+        )}
         <ContextMenuItem
           onClick={() => window.electronAPI?.showItemInFolder(filePath)}
           className="gap-2 text-sm text-white/60"
@@ -202,7 +214,7 @@ function GroupCard({
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {} }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {} }: ContentGridProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const hasSelection = selectedIds.size > 0;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -248,7 +260,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           {items.map((item) => {
             const isSelected = selectedIds.has(item.id);
             return (
-              <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
+              <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                 <div
                   onClick={(e) => handleItemClick(e, item)}
                   onDoubleClick={() => handleItemDoubleClick(item)}
@@ -299,7 +311,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           {items.map((item) => {
             const isSelected = selectedIds.has(item.id);
             return (
-              <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
+              <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                 <div
                   onClick={(e) => handleItemClick(e, item)}
                   onDoubleClick={() => handleItemDoubleClick(item)}
@@ -378,6 +390,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         showFormatBadge={showFormatBadge}
         ctxProps={ctxProps}
         onOpenItem={onOpenItem}
+        onViewDetails={onViewDetails}
         selectedIds={selectedIds}
         onItemClick={handleItemClick}
         onItemDoubleClick={handleItemDoubleClick}
@@ -396,7 +409,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
     <ScrollArea className="min-h-0 flex-1">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
         {items.map((item) => (
-          <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
+          <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
             <div
               onClick={(e) => handleItemClick(e, item)}
               onDoubleClick={() => handleItemDoubleClick(item)}
@@ -505,6 +518,7 @@ function GroupView({
   showFormatBadge,
   ctxProps,
   onOpenItem,
+  onViewDetails,
   selectedIds,
   onItemClick,
   onItemDoubleClick,
@@ -521,6 +535,7 @@ function GroupView({
     onTransfer: (id: number, targetSection: Section) => void;
   };
   onOpenItem?: (item: MockItem) => void;
+  onViewDetails?: (item: MockItem) => void;
   selectedIds: Set<number>;
   onItemClick: (e: React.MouseEvent, item: MockItem) => void;
   onItemDoubleClick: (item: MockItem) => void;
@@ -562,7 +577,7 @@ function GroupView({
             </div>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
               {groupItems.map((item) => (
-                <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps}>
+                <ItemContextMenu key={item.id} itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                   <div
                     onClick={(e) => onItemClick(e, item)}
                     onDoubleClick={() => onItemDoubleClick(item)}
@@ -589,7 +604,7 @@ function GroupView({
       <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5 p-5">
         {groups.map(([author, groupItems]) =>
           groupItems.length === 1 ? (
-            <ItemContextMenu key={author} itemId={groupItems[0].id} filePath={groupItems[0].filePath} {...ctxProps}>
+            <ItemContextMenu key={author} itemId={groupItems[0].id} filePath={groupItems[0].filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(groupItems[0]) : undefined}>
               <div
                 onClick={(e) => onItemClick(e, groupItems[0])}
                 onDoubleClick={() => onItemDoubleClick(groupItems[0])}

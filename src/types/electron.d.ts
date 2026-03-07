@@ -263,6 +263,7 @@ interface ElectronAPI {
   deleteItem: (id: number) => Promise<void>;
   moveItem: (id: number, view: string) => Promise<void>;
   transferItem: (id: number, section: string, view: string) => Promise<void>;
+  updateItemMeta: (id: number, fields: { title?: string; author?: string; cover?: string }) => Promise<void>;
 
   // Reader
   openReader: (bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => Promise<void>;

@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("library:move-item", id, view),
   transferItem: (id: number, section: string, view: string) =>
     ipcRenderer.invoke("library:transfer-item", id, section, view),
+  updateItemMeta: (id: number, fields: { title?: string; author?: string; cover?: string }) =>
+    ipcRenderer.invoke("library:update-item-meta", id, fields),
 
   // Settings
   getSetting: (key: string) =>

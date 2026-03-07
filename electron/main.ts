@@ -4,7 +4,7 @@ import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
 import {
-  initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem,
+  initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, updateItemMeta,
   getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark,
   getExcludedPaths, recordPageView, getReadingActivity, getReadingStats,
   // Wiki
@@ -388,6 +388,10 @@ function createWindow() {
 
   ipcMain.handle("library:transfer-item", (_event, id: number, targetSection: string, targetView: string) => {
     transferItem(id, targetSection, targetView);
+  });
+
+  ipcMain.handle("library:update-item-meta", (_event, id: number, fields: { title?: string; author?: string; cover?: string }) => {
+    updateItemMeta(id, fields);
   });
 
   // ── Settings ──────────────────────────────────────

@@ -313,6 +313,17 @@ export function transferItem(id: number, targetSection: string, targetView: stri
   db.prepare("UPDATE items SET section = ?, view = ? WHERE id = ?").run(targetSection, targetView, id);
 }
 
+export function updateItemMeta(id: number, fields: { title?: string; author?: string; cover?: string }): void {
+  const parts: string[] = [];
+  const values: unknown[] = [];
+  if (fields.title !== undefined) { parts.push("title = ?"); values.push(fields.title); }
+  if (fields.author !== undefined) { parts.push("author = ?"); values.push(fields.author); }
+  if (fields.cover !== undefined) { parts.push("cover = ?"); values.push(fields.cover); }
+  if (parts.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE items SET ${parts.join(", ")} WHERE id = ?`).run(...values);
+}
+
 // ── Settings ───────────────────────────────────────
 
 export function getSetting(key: string): string | null {
