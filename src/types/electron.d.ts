@@ -168,6 +168,17 @@ interface WikiEntityIndexItem {
   aliases: string[];
 }
 
+interface WikiMergeLogRow {
+  id: number;
+  file_path: string;
+  source_id: string;
+  target_id: string;
+  source_name: string;
+  target_name: string;
+  source_snapshot: string;
+  merged_at: string;
+}
+
 // Simulate DB types
 interface SimBranchRow {
   id: string;
@@ -309,6 +320,10 @@ interface ElectronAPI {
 
   wikiClear: (filePath: string) => Promise<void>;
   wikiMigrateJson: (filePath: string) => Promise<boolean>;
+
+  wikiMergeEntries: (filePath: string, sourceId: string, targetId: string) => Promise<void>;
+  wikiUnmergeEntries: (filePath: string, mergeLogId: number) => Promise<void>;
+  wikiGetMergeLog: (filePath: string) => Promise<WikiMergeLogRow[]>;
 
   // Simulate
   simUpsertBranch: (branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => Promise<void>;

@@ -20,6 +20,7 @@ import {
   getWikiMeta, upsertWikiMeta,
   getEntityIndex, getRecentEntities,
   clearWiki, migrateJsonWiki,
+  mergeWikiEntries, unmergeWikiEntries, getWikiMergeLog,
   // Simulate
   upsertBranch, getBranches, getBranchSegments, addSegment, deleteBranch,
 } from "./database";
@@ -461,6 +462,10 @@ function createWindow() {
 
   ipcMain.handle("wiki:clear", (_event, filePath: string) => { clearWiki(filePath); });
   ipcMain.handle("wiki:migrate-json", (_event, filePath: string) => migrateJsonWiki(filePath));
+
+  ipcMain.handle("wiki:merge-entries", (_event, filePath: string, sourceId: string, targetId: string) => { mergeWikiEntries(filePath, sourceId, targetId); });
+  ipcMain.handle("wiki:unmerge-entries", (_event, filePath: string, mergeLogId: number) => { unmergeWikiEntries(filePath, mergeLogId); });
+  ipcMain.handle("wiki:get-merge-log", (_event, filePath: string) => getWikiMergeLog(filePath));
 
   // ── Simulate ────────────────────────────────────────
 

@@ -5,6 +5,7 @@ import {
   Loader2, Search, ArrowLeft,
   User, Swords, MapPin, Flame, Lightbulb,
   BookOpen, GitBranch, Clock, ChevronRight, Hash,
+  Merge, Undo2, X,
 } from "lucide-react";
 import { WindowHeader } from "@/components/window-header";
 import type { WikiEntry, WikiEntryType, WikiArc } from "@/lib/ai-wiki";
@@ -56,6 +57,13 @@ const RELATION_GROUPS: { label: string; match: RegExp }[] = [
 
 /* ── Main Viewer ── */
 
+interface MergeLogItem {
+  id: number;
+  source_name: string;
+  target_name: string;
+  merged_at: string;
+}
+
 export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerProps) {
   const [entries, setEntries] = useState<EntryListItem[]>([]);
   const [arcs, setArcs] = useState<WikiArc[]>([]);
@@ -68,17 +76,19 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [filterType, setFilterType] = useState<WikiEntryType | "all">("all");
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
+  const [mergeLog, setMergeLog] = useState<MergeLogItem[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const refreshData = useCallback(async () => {
     const api = window.electronAPI;
     if (!api || !filePath) return;
 
-    const [entryRows, processed, arcRows, summaryRows] = await Promise.all([
+    const [entryRows, processed, arcRows, summaryRows, mergeLogRows] = await Promise.all([
       api.wikiGetEntries(filePath),
       api.wikiGetProcessed(filePath),
       api.wikiGetAllArcs(filePath),
       api.wikiGetAllChapterSummaries(filePath),
+      api.wikiGetMergeLog(filePath),
     ]);
 
     setEntries(entryRows.map((e) => ({
@@ -94,6 +104,9 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     setChapterSummaries(summaryRows.map((s) => ({
       chapter_index: s.chapter_index, summary: s.summary,
       key_events: s.key_events, mood: s.mood,
+    })));
+    setMergeLog(mergeLogRows.map((m) => ({
+      id: m.id, source_name: m.source_name, target_name: m.target_name, merged_at: m.merged_at,
     })));
     setIsLoading(false);
   }, [filePath]);
@@ -126,6 +139,22 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
       setSelectedEntry(null);
     }
   }, [history]);
+
+  const handleMerge = useCallback(async (sourceId: string, targetId: string) => {
+    const api = window.electronAPI;
+    if (!api || !filePath) return;
+    await api.wikiMergeEntries(filePath, sourceId, targetId);
+    await refreshData();
+    // Navigate to the target entry after merge
+    setSelectedEntryId(targetId);
+  }, [filePath, refreshData]);
+
+  const handleUnmerge = useCallback(async (mergeLogId: number) => {
+    const api = window.electronAPI;
+    if (!api || !filePath) return;
+    await api.wikiUnmergeEntries(filePath, mergeLogId);
+    await refreshData();
+  }, [filePath, refreshData]);
 
   const resolvedNames = useMemo(() => {
     const map = new Map<string, { name: string; type: WikiEntryType }>();
@@ -186,9 +215,11 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
           {selectedEntry ? (
             <EntryPage
               entry={selectedEntry}
+              allEntries={entries}
               resolvedNames={resolvedNames}
               onNavigate={navigateTo}
               onBack={goBack}
+              onMerge={handleMerge}
               canGoBack
             />
           ) : (
@@ -200,11 +231,13 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               arcs={arcs}
               chapterSummaries={chapterSummaries}
               processedCount={processedCount}
+              mergeLog={mergeLog}
               searchQuery={searchQuery}
               filterType={filterType}
               onSearchChange={setSearchQuery}
               onFilterChange={setFilterType}
               onEntryClick={navigateTo}
+              onUnmerge={handleUnmerge}
             />
           )}
         </div>
@@ -221,7 +254,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
 function HomePage({
   bookTitle, entries, filteredEntries, groupedFiltered, arcs, chapterSummaries,
-  processedCount, searchQuery, filterType, onSearchChange, onFilterChange, onEntryClick,
+  processedCount, mergeLog, searchQuery, filterType, onSearchChange, onFilterChange, onEntryClick, onUnmerge,
 }: {
   bookTitle: string;
   entries: EntryListItem[];
@@ -230,11 +263,13 @@ function HomePage({
   arcs: WikiArc[];
   chapterSummaries: ChapterSummary[];
   processedCount: number;
+  mergeLog: MergeLogItem[];
   searchQuery: string;
   filterType: WikiEntryType | "all";
   onSearchChange: (q: string) => void;
   onFilterChange: (t: WikiEntryType | "all") => void;
   onEntryClick: (id: string) => void;
+  onUnmerge: (mergeLogId: number) => void;
 }) {
   const mainCharacters = entries.filter((e) => e.type === "character" && e.significance >= 3).slice(0, 6);
   const recentEntries = [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);
@@ -404,6 +439,34 @@ function HomePage({
         </>
       )}
 
+      {/* Merge log */}
+      {mergeLog.length > 0 && !searchQuery && filterType === "all" && (
+        <section className="mb-8">
+          <SectionHeader icon={<Merge className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Merged Entries" color="rgb(196, 181, 253)" />
+          <div className="mt-3 space-y-1.5">
+            {mergeLog.map((m) => (
+              <div key={m.id} className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-white/50">
+                    <span className="text-white/70">{m.source_name}</span>
+                    {" merged into "}
+                    <span className="text-white/70">{m.target_name}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => onUnmerge(m.id)}
+                  className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/60"
+                  title="Undo merge"
+                >
+                  <Undo2 className="h-3 w-3" strokeWidth={1.5} />
+                  Undo
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="h-16" />
     </div>
   );
@@ -414,14 +477,37 @@ function HomePage({
    ══════════════════════════════════════════════════════════ */
 
 function EntryPage({
-  entry, resolvedNames, onNavigate, onBack, canGoBack,
+  entry, allEntries, resolvedNames, onNavigate, onBack, onMerge, canGoBack,
 }: {
   entry: WikiEntry;
+  allEntries: EntryListItem[];
   resolvedNames: Map<string, { name: string; type: WikiEntryType }>;
   onNavigate: (id: string) => void;
   onBack: () => void;
+  onMerge: (sourceId: string, targetId: string) => void;
   canGoBack: boolean;
 }) {
+  const [showMergePicker, setShowMergePicker] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
+  const mergeRef = useRef<HTMLDivElement>(null);
+
+  // Close merge picker on click outside
+  useEffect(() => {
+    if (!showMergePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (mergeRef.current && !mergeRef.current.contains(e.target as Node)) setShowMergePicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showMergePicker]);
+
+  const mergeTargets = useMemo(() => {
+    const q = mergeSearch.toLowerCase().trim();
+    return allEntries
+      .filter((e) => e.id !== entry.id && e.type === entry.type)
+      .filter((e) => !q || e.name.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [allEntries, entry.id, entry.type, mergeSearch]);
   const meta = TYPE_META[entry.type];
 
   // Group details by category
@@ -451,13 +537,56 @@ function EntryPage({
 
   return (
     <div className="mx-auto w-full max-w-[900px] px-4 py-6 sm:px-6">
-      {/* Back button */}
-      {canGoBack && (
-        <button onClick={onBack} className="mb-4 flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
-          <ArrowLeft className="h-3 w-3" strokeWidth={1.5} />
-          Back
-        </button>
-      )}
+      {/* Back + merge buttons */}
+      <div className="mb-4 flex items-center gap-2">
+        {canGoBack && (
+          <button onClick={onBack} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
+            <ArrowLeft className="h-3 w-3" strokeWidth={1.5} />
+            Back
+          </button>
+        )}
+        <div className="relative ml-auto" ref={mergeRef}>
+          <button
+            onClick={() => { setShowMergePicker(!showMergePicker); setMergeSearch(""); }}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50"
+          >
+            <Merge className="h-3 w-3" strokeWidth={1.5} />
+            Merge into...
+          </button>
+          {showMergePicker && (
+            <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] p-2 shadow-lg shadow-black/40 backdrop-blur-xl">
+              <div className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-2 py-1.5">
+                <Search className="h-3 w-3 shrink-0 text-white/25" strokeWidth={1.5} />
+                <input
+                  type="text"
+                  autoFocus
+                  value={mergeSearch}
+                  onChange={(e) => setMergeSearch(e.target.value)}
+                  placeholder={`Search ${TYPE_META[entry.type].plural.toLowerCase()}...`}
+                  className="flex-1 bg-transparent text-xs text-white/70 placeholder:text-white/25 outline-none"
+                />
+                <button onClick={() => setShowMergePicker(false)} className="text-white/20 hover:text-white/40">
+                  <X className="h-3 w-3" strokeWidth={2} />
+                </button>
+              </div>
+              <div className="mt-1.5 max-h-48 overflow-y-auto">
+                {mergeTargets.length === 0 ? (
+                  <p className="py-3 text-center text-xs text-white/25">No matching entries</p>
+                ) : mergeTargets.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => { onMerge(entry.id, t.id); setShowMergePicker(false); }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-white/[0.06]"
+                  >
+                    <span style={{ color: TYPE_META[t.type].color }}>{TYPE_META[t.type].icon}</span>
+                    <span className="truncate text-white/60">{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Article header */}
       <div className="mb-6 flex gap-4">

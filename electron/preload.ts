@@ -131,6 +131,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   wikiMigrateJson: (filePath: string) =>
     ipcRenderer.invoke("wiki:migrate-json", filePath),
 
+  wikiMergeEntries: (filePath: string, sourceId: string, targetId: string) =>
+    ipcRenderer.invoke("wiki:merge-entries", filePath, sourceId, targetId),
+  wikiUnmergeEntries: (filePath: string, mergeLogId: number) =>
+    ipcRenderer.invoke("wiki:unmerge-entries", filePath, mergeLogId),
+  wikiGetMergeLog: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-merge-log", filePath),
+
   // Simulate
   simUpsertBranch: (branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) =>
     ipcRenderer.invoke("sim:upsert-branch", branch),

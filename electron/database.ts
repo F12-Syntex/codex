@@ -192,6 +192,18 @@ export function initDatabase(): void {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS wiki_merge_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      source_name TEXT NOT NULL,
+      target_name TEXT NOT NULL,
+      source_snapshot TEXT NOT NULL,
+      merged_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_merge_log ON wiki_merge_log(file_path);
+
     -- ── Simulate Tables ─────────────────────────────────
 
     CREATE TABLE IF NOT EXISTS sim_branches (
@@ -550,6 +562,141 @@ export function deleteWikiEntry(filePath: string, entryId: string): void {
   db.prepare("DELETE FROM wiki_entries WHERE file_path = ? AND id = ?").run(filePath, entryId);
 }
 
+// ── Wiki Entry Merge ──
+
+export interface WikiMergeLogRow {
+  id: number;
+  file_path: string;
+  source_id: string;
+  target_id: string;
+  source_name: string;
+  target_name: string;
+  source_snapshot: string;
+  merged_at: string;
+}
+
+/** Merge sourceId into targetId — moves all data, logs for undo */
+export function mergeWikiEntries(filePath: string, sourceId: string, targetId: string): void {
+  const merge = db.transaction(() => {
+    const source = db.prepare("SELECT * FROM wiki_entries WHERE file_path = ? AND id = ?").get(filePath, sourceId) as WikiEntryRow | undefined;
+    const target = db.prepare("SELECT * FROM wiki_entries WHERE file_path = ? AND id = ?").get(filePath, targetId) as WikiEntryRow | undefined;
+    if (!source || !target) return;
+
+    // Snapshot source for undo
+    const aliases = (db.prepare("SELECT alias FROM wiki_aliases WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { alias: string }[]).map(r => r.alias);
+    const details = db.prepare("SELECT * FROM wiki_details WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId);
+    const relationships = db.prepare("SELECT * FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?)").all(filePath, sourceId, sourceId);
+    const appearances = (db.prepare("SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { chapter_index: number }[]).map(r => r.chapter_index);
+
+    const snapshot = JSON.stringify({ entry: source, aliases, details, relationships, appearances });
+
+    db.prepare(
+      "INSERT INTO wiki_merge_log (file_path, source_id, target_id, source_name, target_name, source_snapshot) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(filePath, sourceId, targetId, source.name, target.name, snapshot);
+
+    // Append source description to target
+    if (source.description) {
+      const newDesc = target.description ? `${target.description}\n\n${source.description}` : source.description;
+      db.prepare("UPDATE wiki_entries SET description = ? WHERE file_path = ? AND id = ?").run(newDesc, filePath, targetId);
+    }
+
+    // Bump significance
+    if (source.significance > target.significance) {
+      db.prepare("UPDATE wiki_entries SET significance = ? WHERE file_path = ? AND id = ?").run(source.significance, filePath, targetId);
+    }
+
+    // Use earliest first_appearance
+    if (source.first_appearance < target.first_appearance) {
+      db.prepare("UPDATE wiki_entries SET first_appearance = ? WHERE file_path = ? AND id = ?").run(source.first_appearance, filePath, targetId);
+    }
+
+    // Add source name + aliases as aliases of target
+    db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, source.name);
+    for (const alias of aliases) {
+      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, alias);
+    }
+
+    // Move details
+    db.prepare("UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ?").run(targetId, filePath, sourceId);
+
+    // Move appearances (ignore duplicates)
+    for (const ch of appearances) {
+      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, targetId, ch);
+    }
+
+    // Move relationships — repoint source_id/target_id references
+    db.prepare("UPDATE wiki_relationships SET source_id = ? WHERE file_path = ? AND source_id = ?").run(targetId, filePath, sourceId);
+    db.prepare("UPDATE wiki_relationships SET target_id = ? WHERE file_path = ? AND target_id = ?").run(targetId, filePath, sourceId);
+
+    // Move arc entity references
+    const arcEntities = db.prepare("SELECT arc_id, role FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { arc_id: string; role: string }[];
+    for (const ae of arcEntities) {
+      db.prepare("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)").run(filePath, ae.arc_id, targetId, ae.role);
+    }
+
+    // Delete source entry (cascades aliases, remaining references)
+    db.prepare("DELETE FROM wiki_entries WHERE file_path = ? AND id = ?").run(filePath, sourceId);
+  });
+  merge();
+}
+
+/** Undo a merge — restore the source entry from snapshot */
+export function unmergeWikiEntries(filePath: string, mergeLogId: number): void {
+  const unmerge = db.transaction(() => {
+    const log = db.prepare("SELECT * FROM wiki_merge_log WHERE id = ? AND file_path = ?").get(mergeLogId, filePath) as WikiMergeLogRow | undefined;
+    if (!log) return;
+
+    const snapshot = JSON.parse(log.source_snapshot) as {
+      entry: WikiEntryRow;
+      aliases: string[];
+      details: { chapter_index: number; category: string; content: string; entry_id: string }[];
+      relationships: { source_id: string; target_id: string; relation: string; since_chapter: number; until_chapter: number | null; description: string }[];
+      appearances: number[];
+    };
+
+    // Re-create the source entry
+    const e = snapshot.entry;
+    db.prepare(
+      "INSERT OR IGNORE INTO wiki_entries (id, file_path, name, type, short_description, description, color, first_appearance, significance, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(e.id, filePath, e.name, e.type, e.short_description, e.description, e.color, e.first_appearance, e.significance, e.status);
+
+    // Re-add aliases
+    for (const alias of snapshot.aliases) {
+      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, e.id, alias);
+    }
+
+    // Re-add details (they were moved, so move them back)
+    for (const d of snapshot.details) {
+      // Move back details that were reassigned to target
+      db.prepare(
+        "UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ? AND chapter_index = ? AND category = ? AND content = ?"
+      ).run(e.id, filePath, log.target_id, d.chapter_index, d.category, d.content);
+    }
+
+    // Re-add appearances
+    for (const ch of snapshot.appearances) {
+      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, e.id, ch);
+    }
+
+    // Remove source name from target aliases
+    db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, e.name);
+    for (const alias of snapshot.aliases) {
+      db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, alias);
+    }
+
+    // Delete the merge log entry
+    db.prepare("DELETE FROM wiki_merge_log WHERE id = ?").run(mergeLogId);
+  });
+  unmerge();
+}
+
+/** Get all merge log entries for a book */
+export function getWikiMergeLog(filePath: string): WikiMergeLogRow[] {
+  return db.prepare(
+    "SELECT * FROM wiki_merge_log WHERE file_path = ? ORDER BY merged_at DESC"
+  ).all(filePath) as WikiMergeLogRow[];
+}
+
 // ── Wiki Aliases ──
 
 export function addWikiAliases(filePath: string, entryId: string, aliases: string[]): void {
@@ -579,7 +726,8 @@ export function addWikiDetails(filePath: string, entryId: string, details: { cha
   );
   const insertAll = db.transaction(() => {
     for (const d of details) {
-      stmt.run(filePath, entryId, d.chapterIndex, d.category, d.content);
+      if (!d.content) continue;
+      stmt.run(filePath, entryId, d.chapterIndex, d.category || "info", d.content);
     }
   });
   insertAll();
