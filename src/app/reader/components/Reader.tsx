@@ -26,7 +26,7 @@ import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { AIBuddyPanel } from "./AIBuddyPanel";
-import { ExplainPanel } from "./ExplainPanel";
+import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -85,7 +85,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [showBuddy, setShowBuddy] = useState(false);
 
   // AI Explain state
-  const [explainState, setExplainState] = useState<{ text: string; explanation: string; loading: boolean } | null>(null);
+  const [explainState, setExplainState] = useState<{
+    text: string;
+    messages: ExplainMessage[];
+    loading: boolean;
+    systemPrompt: string;
+  } | null>(null);
 
   // Simulate state (branching narrative)
   const [simulateEnabled, setSimulateEnabled] = useState(false);
@@ -846,63 +851,108 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     const apiKey = await api.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
-    setExplainState({ text: selectedText, explanation: "", loading: true });
+    // Build wiki context
+    const allEntries = await api.wikiGetEntries(filePath);
+    let wikiContext = "";
+    if (allEntries.length > 0) {
+      const entityLines = allEntries
+        .filter((e) => e.significance >= 2)
+        .slice(0, 30)
+        .map((e) => `- [${e.type}] ${e.name}: ${e.short_description}`);
+      if (entityLines.length > 0) {
+        wikiContext = `\n\nKnown entities from this book:\n${entityLines.join("\n")}`;
+      }
+    }
+
+    const summaries = await api.wikiGetChapterSummaries(filePath, 0, currentChapter);
+    let summaryContext = "";
+    if (summaries.length > 0) {
+      const summaryLines = summaries.slice(-5).map(
+        (s) => `- Ch. ${s.chapter_index}: ${s.summary}`
+      );
+      summaryContext = `\n\nRecent chapter summaries:\n${summaryLines.join("\n")}`;
+    }
+
+    const chapterText = chapters[currentChapter]?.htmlParagraphs
+      ?.map((h) => h.replace(/<[^>]+>/g, ""))
+      .join("\n")
+      .slice(0, 8000) ?? "";
+
+    const systemPrompt = `You are a literary assistant helping a reader understand a passage from a book titled "${title}". Explain clearly and concisely, referencing characters, events, or context from the story when relevant. Keep explanations to 2-4 sentences unless the user asks for more detail. Do not spoil future events — only reference what has happened up to this point.${wikiContext}${summaryContext}\n\nChapter ${currentChapter + 1} context:\n${chapterText}`;
+
+    const userMsg: ExplainMessage = { role: "user", content: `Please explain this passage:\n"${selectedText}"` };
+
+    setExplainState({ text: selectedText, messages: [userMsg], loading: true, systemPrompt });
 
     try {
-      // Build wiki context: entity descriptions for the current chapter
-      const allEntries = await api.wikiGetEntries(filePath);
-      let wikiContext = "";
-      if (allEntries.length > 0) {
-        const entityLines = allEntries
-          .filter((e) => e.significance >= 2)
-          .slice(0, 30)
-          .map((e) => `- [${e.type}] ${e.name}: ${e.short_description}`);
-        if (entityLines.length > 0) {
-          wikiContext = `\n\nKnown entities from this book:\n${entityLines.join("\n")}`;
-        }
-      }
-
-      // Get chapter summaries for context
-      const summaries = await api.wikiGetChapterSummaries(filePath, 0, currentChapter);
-      let summaryContext = "";
-      if (summaries.length > 0) {
-        const summaryLines = summaries.slice(-5).map(
-          (s) => `- Ch. ${s.chapter_index}: ${s.summary}`
-        );
-        summaryContext = `\n\nRecent chapter summaries:\n${summaryLines.join("\n")}`;
-      }
-
-      // Current chapter text (truncated)
-      const chapterText = chapters[currentChapter]?.htmlParagraphs
-        ?.map((h) => h.replace(/<[^>]+>/g, ""))
-        .join("\n")
-        .slice(0, 8000) ?? "";
-
       const overrides = parseOverrides(await api.getSetting(PRESET_OVERRIDES_KEY) ?? null);
 
       const response = await chatWithPreset(
         apiKey,
         "quick",
         [
-          {
-            role: "system",
-            content: `You are a literary assistant helping a reader understand a passage from a book. Explain the selected text clearly and concisely, referencing characters, events, or context from the story when relevant. Keep your explanation to 2-4 sentences. Do not spoil future events — only reference what has happened up to this point.${wikiContext}${summaryContext}`,
-          },
-          {
-            role: "user",
-            content: `Book: "${title}"\nChapter ${currentChapter + 1} context:\n${chapterText}\n\n---\n\nPlease explain this passage:\n"${selectedText}"`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMsg.content },
         ],
         overrides,
       );
 
-      const explanation = response.choices?.[0]?.message?.content?.trim() ?? "Unable to generate explanation.";
-      setExplainState((prev) => prev ? { ...prev, explanation, loading: false } : null);
+      const reply = response.choices?.[0]?.message?.content?.trim() ?? "Unable to generate explanation.";
+      setExplainState((prev) => prev ? {
+        ...prev,
+        messages: [...prev.messages, { role: "assistant", content: reply }],
+        loading: false,
+      } : null);
     } catch (err) {
       console.error("[explain] Error:", err);
-      setExplainState((prev) => prev ? { ...prev, explanation: "Failed to generate explanation. Please check your API key and try again.", loading: false } : null);
+      setExplainState((prev) => prev ? {
+        ...prev,
+        messages: [...prev.messages, { role: "assistant", content: "Failed to generate explanation. Please check your API key and try again." }],
+        loading: false,
+      } : null);
     }
   }, [filePath, currentChapter, chapters, title]);
+
+  const handleExplainFollowUp = useCallback(async (question: string) => {
+    if (!explainState || !filePath) return;
+
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const apiKey = await api.getSetting("openrouterApiKey");
+    if (!apiKey) return;
+
+    const userMsg: ExplainMessage = { role: "user", content: question };
+    const updatedMessages = [...explainState.messages, userMsg];
+
+    setExplainState((prev) => prev ? { ...prev, messages: updatedMessages, loading: true } : null);
+
+    try {
+      const overrides = parseOverrides(await api.getSetting(PRESET_OVERRIDES_KEY) ?? null);
+
+      // Build full conversation for the API
+      const apiMessages = [
+        { role: "system" as const, content: explainState.systemPrompt },
+        ...updatedMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      ];
+
+      const response = await chatWithPreset(apiKey, "quick", apiMessages, overrides);
+
+      const reply = response.choices?.[0]?.message?.content?.trim() ?? "Unable to respond.";
+      setExplainState((prev) => prev ? {
+        ...prev,
+        messages: [...prev.messages, { role: "assistant", content: reply }],
+        loading: false,
+      } : null);
+    } catch (err) {
+      console.error("[explain follow-up] Error:", err);
+      setExplainState((prev) => prev ? {
+        ...prev,
+        messages: [...prev.messages, { role: "assistant", content: "Failed to respond. Please try again." }],
+        loading: false,
+      } : null);
+    }
+  }, [explainState, filePath]);
 
   // ── Simulate handlers ──────────────────────────────
 
@@ -1682,8 +1732,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           <ExplainPanel
             theme={theme}
             selectedText={explainState.text}
-            explanation={explainState.explanation}
+            messages={explainState.messages}
             loading={explainState.loading}
+            onAsk={handleExplainFollowUp}
             onClose={() => setExplainState(null)}
           />
         )}
