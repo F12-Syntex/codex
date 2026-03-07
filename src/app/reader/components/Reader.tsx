@@ -27,6 +27,9 @@ import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/li
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { AIBuddyPanel } from "./AIBuddyPanel";
 import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
+import { SpeedReaderView } from "./SpeedReaderView";
+import { chunkParagraphs } from "@/lib/speed-reader-engine";
+import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -114,6 +117,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [chapterComments, setChapterComments] = useState<Record<number, InlineComment[]>>({});
   const [commentingChapter, setCommentingChapter] = useState<number | null>(null);
   const commentAbortRef = useRef(false);
+
+  // Speed Reader state
+  const [speedReaderActive, setSpeedReaderActive] = useState(false);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
@@ -1277,6 +1283,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       : chapter?.htmlParagraphs ?? [];
   }, [isBranchChapter, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapter, chapters]);
 
+  // Speed reader chunks from effective HTML (with wiki entity injection)
+  const speedReaderChunks = useMemo(() => {
+    if (!speedReaderActive) return [];
+    // Inject wiki entities into HTML before chunking so entity names are tagged
+    let html = effectiveHtml;
+    if (wikiEnabled && effectiveWikiEntityIndex.length > 0) {
+      const regex = buildEntityRegex(effectiveWikiEntityIndex);
+      if (regex) {
+        html = html.map(h => injectWikiEntities(h, effectiveWikiEntityIndex, regex));
+      }
+    }
+    return chunkParagraphs(html);
+  }, [speedReaderActive, effectiveHtml, wikiEnabled, effectiveWikiEntityIndex]);
+
   // Restore saved reading position after book loads
   const progressKey = `readProgress:${filePath}`;
   useEffect(() => {
@@ -1404,6 +1424,28 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const toggleTextSettings = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowAI(false); setShowTextSettings(v => !v); }, []);
   const toggleAI = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(false); setShowAI(v => !v); }, []);
 
+  const handleSpeedReaderToggle = useCallback(() => {
+    setSpeedReaderActive(prev => !prev);
+  }, []);
+
+  const handleSpeedReaderChapterEnd = useCallback(() => {
+    markChapterRead(currentChapter);
+    if (currentChapter < chapters.length - 1) {
+      handleChapterChange(currentChapter + 1);
+    }
+  }, [currentChapter, chapters.length, markChapterRead, handleChapterChange]);
+
+  // Track speed reader paragraph progress as read marks
+  const handleSpeedReaderReadProgress = useCallback((paraIndex: number) => {
+    setPersistedReadMarks(prev => {
+      const existing = prev[currentChapter] ?? -1;
+      if (paraIndex <= existing) return prev;
+      const next = { ...prev, [currentChapter]: paraIndex };
+      window.electronAPI?.setSetting(`ttsReadMarks:${filePath}`, JSON.stringify(next));
+      return next;
+    });
+  }, [currentChapter, filePath]);
+
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
     else { document.exitFullscreen?.(); setIsFullscreen(false); }
@@ -1515,6 +1557,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onBookmarkToggle={bookmarkState.toggleBookmark}
           onFullscreenToggle={toggleFullscreen}
           onAIToggle={toggleAI}
+          speedReaderActive={speedReaderActive}
+          onSpeedReaderToggle={handleSpeedReaderToggle}
         />
 
         {/* TTS Panel */}
@@ -1651,6 +1695,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             <div className="flex h-full items-center justify-center">
               <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
             </div>
+          ) : speedReaderActive && !isTOCChapter(chapterTitle) ? (
+            <SpeedReaderView
+              theme={theme}
+              readingTheme={settings.readingTheme}
+              chunks={speedReaderChunks}
+              chapterTitle={chapterTitle}
+              onExit={() => setSpeedReaderActive(false)}
+              onChapterEnd={handleSpeedReaderChapterEnd}
+              onParagraphChange={(paraIdx) => setFirstVisiblePara(paraIdx)}
+              onReadProgress={handleSpeedReaderReadProgress}
+            />
           ) : isTOCChapter(chapterTitle) ? (
             <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
               <BookTableOfContents

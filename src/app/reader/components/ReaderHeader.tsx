@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Square, X, Copy, Maximize, Minimize, List, ALargeSmall, Bookmark, BookmarkCheck, AudioLines, Sparkles } from "lucide-react";
+import { Minus, Square, X, Copy, Maximize, Minimize, List, ALargeSmall, Bookmark, BookmarkCheck, AudioLines, Sparkles, Zap } from "lucide-react";
 import type { ReadingTheme, ThemeClasses } from "../lib/types";
 
 interface ReaderHeaderProps {
@@ -18,6 +18,7 @@ interface ReaderHeaderProps {
   showTTS: boolean;
   showTextSettings: boolean;
   showAI: boolean;
+  speedReaderActive: boolean;
   onThemeChange: (theme: ReadingTheme) => void;
   onTOCToggle: () => void;
   onTTSToggle: () => void;
@@ -25,6 +26,7 @@ interface ReaderHeaderProps {
   onBookmarkToggle: () => void;
   onFullscreenToggle: () => void;
   onAIToggle: () => void;
+  onSpeedReaderToggle: () => void;
 }
 
 export function ReaderHeader({
@@ -42,6 +44,7 @@ export function ReaderHeader({
   showTTS,
   showTextSettings,
   showAI,
+  speedReaderActive,
   onThemeChange,
   onTOCToggle,
   onTTSToggle,
@@ -49,6 +52,7 @@ export function ReaderHeader({
   onBookmarkToggle,
   onFullscreenToggle,
   onAIToggle,
+  onSpeedReaderToggle,
 }: ReaderHeaderProps) {
   return (
     <div className="flex h-11 min-w-0 items-center" data-reader-header>
@@ -119,6 +123,20 @@ export function ReaderHeader({
             ) : (
               <Bookmark className="h-3.5 w-3.5" strokeWidth={1.5} />
             )}
+          </button>
+        )}
+
+        {/* Speed Reader button */}
+        {!isImageBook && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onSpeedReaderToggle}
+            title="Speed Reader"
+            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+              speedReaderActive ? "bg-[var(--accent-brand)] text-white" : theme.btn
+            }`}
+          >
+            <Zap className="h-3.5 w-3.5" strokeWidth={1.5} />
           </button>
         )}
 
