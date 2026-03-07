@@ -298,6 +298,10 @@ export function InstallerPage() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Chapter range state
+  const [rangeFrom, setRangeFrom] = useState<string>("");
+  const [rangeTo, setRangeTo] = useState<string>("");
+
   // Download queue state
   const [downloads, setDownloads] = useState<InstallerDownloadRow[]>([]);
   const [liveProgress, setLiveProgress] = useState<Map<number, InstallerDownloadProgress>>(new Map());
@@ -389,6 +393,8 @@ export function InstallerPage() {
     setLoadingInfo(true);
     setError(null);
     setView("detail");
+    setRangeFrom("");
+    setRangeTo("");
     try {
       const info = await window.electronAPI.installerNovelInfo(sourceId, result.url);
       setNovelInfo(info);
@@ -402,13 +408,28 @@ export function InstallerPage() {
   const handleQueueDownload = useCallback(async () => {
     if (!novelInfo || !window.electronAPI?.installerQueueDownload) return;
     try {
-      await window.electronAPI.installerQueueDownload(sourceId, novelInfo);
+      const from = rangeFrom ? Math.max(1, parseInt(rangeFrom, 10)) : 1;
+      const to = rangeTo ? Math.min(novelInfo.chapters.length, parseInt(rangeTo, 10)) : novelInfo.chapters.length;
+
+      if (isNaN(from) || isNaN(to) || from > to) {
+        setError("Invalid chapter range");
+        return;
+      }
+
+      const slicedChapters = novelInfo.chapters.slice(from - 1, to);
+      const downloadInfo: InstallerNovelInfo = {
+        ...novelInfo,
+        chapters: slicedChapters,
+        totalChapters: slicedChapters.length,
+      };
+
+      await window.electronAPI.installerQueueDownload(sourceId, downloadInfo);
       await refreshDownloads();
       setQueueOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to queue download");
     }
-  }, [novelInfo, sourceId, refreshDownloads]);
+  }, [novelInfo, sourceId, refreshDownloads, rangeFrom, rangeTo]);
 
   const handleCancel = useCallback(async (id: number) => {
     await window.electronAPI?.installerCancelDownload(id);
@@ -644,6 +665,31 @@ export function InstallerPage() {
                     </p>
                   )}
 
+                  {/* Chapter range */}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-white/20 shrink-0">Chapters</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={novelInfo.totalChapters}
+                      placeholder="1"
+                      value={rangeFrom}
+                      onChange={(e) => setRangeFrom(e.target.value)}
+                      className="w-16 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-white/60 placeholder:text-white/15 outline-none focus:bg-white/[0.07] transition-colors tabular-nums"
+                    />
+                    <span className="text-xs text-white/15">—</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={novelInfo.totalChapters}
+                      placeholder={String(novelInfo.totalChapters)}
+                      value={rangeTo}
+                      onChange={(e) => setRangeTo(e.target.value)}
+                      className="w-16 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-white/60 placeholder:text-white/15 outline-none focus:bg-white/[0.07] transition-colors tabular-nums"
+                    />
+                    <span className="text-xs text-white/15">of {novelInfo.totalChapters}</span>
+                  </div>
+
                   <button
                     onClick={handleQueueDownload}
                     disabled={!!isNovelQueued}
@@ -657,7 +703,12 @@ export function InstallerPage() {
                     ) : (
                       <>
                         <Download className="h-3.5 w-3.5" />
-                        Download ({novelInfo.totalChapters} ch)
+                        Download ({(() => {
+                          const from = rangeFrom ? Math.max(1, parseInt(rangeFrom, 10)) : 1;
+                          const to = rangeTo ? Math.min(novelInfo.totalChapters, parseInt(rangeTo, 10)) : novelInfo.totalChapters;
+                          const count = (!isNaN(from) && !isNaN(to) && to >= from) ? to - from + 1 : novelInfo.totalChapters;
+                          return count;
+                        })()} ch)
                       </>
                     )}
                   </button>
