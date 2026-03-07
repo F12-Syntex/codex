@@ -26,6 +26,7 @@ import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { AIBuddyPanel } from "./AIBuddyPanel";
+import { ExplainPanel } from "./ExplainPanel";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
@@ -82,6 +83,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   // AI Buddy state
   const [buddyEnabled, setBuddyEnabled] = useState(false);
   const [showBuddy, setShowBuddy] = useState(false);
+
+  // AI Explain state
+  const [explainState, setExplainState] = useState<{ text: string; explanation: string; loading: boolean } | null>(null);
 
   // Simulate state (branching narrative)
   const [simulateEnabled, setSimulateEnabled] = useState(false);
@@ -830,6 +834,75 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       setSavedBranches(branches);
     });
   }, [simulateEnabled, filePath]);
+
+  // ── AI Explain handler ────────────────────────────
+
+  const handleExplain = useCallback(async (selectedText: string, _paraIndex: number) => {
+    if (!filePath) return;
+
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const apiKey = await api.getSetting("openrouterApiKey");
+    if (!apiKey) return;
+
+    setExplainState({ text: selectedText, explanation: "", loading: true });
+
+    try {
+      // Build wiki context: entity descriptions for the current chapter
+      const allEntries = await api.wikiGetEntries(filePath);
+      let wikiContext = "";
+      if (allEntries.length > 0) {
+        const entityLines = allEntries
+          .filter((e) => e.significance >= 2)
+          .slice(0, 30)
+          .map((e) => `- [${e.type}] ${e.name}: ${e.short_description}`);
+        if (entityLines.length > 0) {
+          wikiContext = `\n\nKnown entities from this book:\n${entityLines.join("\n")}`;
+        }
+      }
+
+      // Get chapter summaries for context
+      const summaries = await api.wikiGetChapterSummaries(filePath, 0, currentChapter);
+      let summaryContext = "";
+      if (summaries.length > 0) {
+        const summaryLines = summaries.slice(-5).map(
+          (s) => `- Ch. ${s.chapter_index}: ${s.summary}`
+        );
+        summaryContext = `\n\nRecent chapter summaries:\n${summaryLines.join("\n")}`;
+      }
+
+      // Current chapter text (truncated)
+      const chapterText = chapters[currentChapter]?.htmlParagraphs
+        ?.map((h) => h.replace(/<[^>]+>/g, ""))
+        .join("\n")
+        .slice(0, 8000) ?? "";
+
+      const overrides = parseOverrides(await api.getSetting(PRESET_OVERRIDES_KEY) ?? null);
+
+      const response = await chatWithPreset(
+        apiKey,
+        "quick",
+        [
+          {
+            role: "system",
+            content: `You are a literary assistant helping a reader understand a passage from a book. Explain the selected text clearly and concisely, referencing characters, events, or context from the story when relevant. Keep your explanation to 2-4 sentences. Do not spoil future events — only reference what has happened up to this point.${wikiContext}${summaryContext}`,
+          },
+          {
+            role: "user",
+            content: `Book: "${title}"\nChapter ${currentChapter + 1} context:\n${chapterText}\n\n---\n\nPlease explain this passage:\n"${selectedText}"`,
+          },
+        ],
+        overrides,
+      );
+
+      const explanation = response.choices?.[0]?.message?.content?.trim() ?? "Unable to generate explanation.";
+      setExplainState((prev) => prev ? { ...prev, explanation, loading: false } : null);
+    } catch (err) {
+      console.error("[explain] Error:", err);
+      setExplainState((prev) => prev ? { ...prev, explanation: "Failed to generate explanation. Please check your API key and try again.", loading: false } : null);
+    }
+  }, [filePath, currentChapter, chapters, title]);
 
   // ── Simulate handlers ──────────────────────────────
 
@@ -1582,6 +1655,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               inlineComments={chapterComments[currentChapter] ?? []}
               onAddComment={addUserComment}
               onDeleteComment={deleteUserComment}
+              onExplain={handleExplain}
             />
           )}
 
@@ -1602,6 +1676,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             }}
           />
         </div>
+
+        {/* AI Explain panel */}
+        {explainState && (
+          <ExplainPanel
+            theme={theme}
+            selectedText={explainState.text}
+            explanation={explainState.explanation}
+            loading={explainState.loading}
+            onClose={() => setExplainState(null)}
+          />
+        )}
 
         {/* AI Buddy backdrop — click to close */}
         {showBuddy && buddyEnabled && wikiEnabled && (

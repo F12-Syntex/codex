@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Copy, BookOpen, Play, Check } from "lucide-react";
+import { Copy, BookOpen, Play, Check, Sparkles } from "lucide-react";
 import type { ThemeClasses } from "../lib/types";
 
 interface SelectionToolbarProps {
   theme: ThemeClasses;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onPlayFromParagraph?: (paraIndex: number) => void;
+  onExplain?: (selectedText: string, paraIndex: number) => void;
 }
 
 interface ToolbarState {
@@ -17,7 +18,7 @@ interface ToolbarState {
   paraIndex: number;
 }
 
-export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph }: SelectionToolbarProps) {
+export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onExplain }: SelectionToolbarProps) {
   const [state, setState] = useState<ToolbarState | null>(null);
   const [copied, setCopied] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -135,8 +136,14 @@ export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph }: S
     window.getSelection()?.removeAllRanges();
   };
 
+  const handleExplain = () => {
+    onExplain?.(state.text, state.paraIndex);
+    dismiss();
+    window.getSelection()?.removeAllRanges();
+  };
+
   // Compute toolbar position, clamped to container bounds
-  const toolbarWidth = 148;
+  const toolbarWidth = 192;
   const containerWidth = containerRef.current?.clientWidth ?? 800;
   const clampedX = Math.max(toolbarWidth / 2 + 4, Math.min(state.x, containerWidth - toolbarWidth / 2 - 4));
 
@@ -172,6 +179,14 @@ export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph }: S
             icon={<Play className="h-3.5 w-3.5" strokeWidth={1.5} />}
             label="Read"
             onClick={handlePlay}
+            theme={theme}
+          />
+        )}
+        {onExplain && (
+          <ToolbarButton
+            icon={<Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />}
+            label="Explain"
+            onClick={handleExplain}
             theme={theme}
           />
         )}

@@ -54,6 +54,7 @@ interface TextContentProps {
   inlineComments?: InlineComment[];
   onAddComment?: (paraIndex: number, text: string) => void;
   onDeleteComment?: (paraIndex: number, author: "ai" | "user", text: string) => void;
+  onExplain?: (selectedText: string, paraIndex: number) => void;
 }
 
 /*
@@ -129,6 +130,7 @@ export function TextContent({
   inlineComments = [],
   onAddComment,
   onDeleteComment,
+  onExplain,
 }: TextContentProps) {
   const outerRef = useRef<HTMLDivElement>(null);
   const clipperRef = useRef<HTMLDivElement>(null);
@@ -1182,6 +1184,7 @@ export function TextContent({
           theme={theme}
           containerRef={clipperRef}
           onPlayFromParagraph={onPlayFromParagraph}
+          onExplain={onExplain}
         />
 
       </div>
