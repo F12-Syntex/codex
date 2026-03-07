@@ -22,6 +22,7 @@ interface TOCSidebarProps {
   onFormatChapter?: (index: number) => void;
   wikiEnabled?: boolean;
   wikiProcessedChapters?: Set<number>;
+  readChapters?: Set<number>;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
   onDeleteBookmark: (id: number) => void;
@@ -43,6 +44,7 @@ export function TOCSidebar({
   onFormatChapter,
   wikiEnabled = false,
   wikiProcessedChapters = new Set(),
+  readChapters = new Set(),
   onSelectChapter,
   onJumpToBookmark,
   onDeleteBookmark,
@@ -181,6 +183,7 @@ export function TOCSidebar({
               const isFormatted = !!formattedChapters[i];
               const isWikiProcessed = wikiProcessedChapters.has(i);
               const hasIndicators = (enrichEnabled && isEnriched) || (formattingEnabled && isFormatted) || (wikiEnabled && isWikiProcessed);
+              const isRead = readChapters.has(i);
 
               return (
                 <div
@@ -188,7 +191,7 @@ export function TOCSidebar({
                   {...(i === currentChapter ? { "data-active-chapter": true } : {})}
                   className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                     i === currentChapter ? theme.btnActive : theme.btn
-                  }`}
+                  } ${isRead && i !== currentChapter ? "opacity-40" : ""}`}
                 >
                   <span className={`w-5 shrink-0 text-right tabular-nums text-xs ${theme.muted}`}>
                     {i + 1}

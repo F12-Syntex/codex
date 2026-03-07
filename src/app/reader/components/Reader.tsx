@@ -110,6 +110,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
   const [autoPlayChapter, setAutoPlayChapter] = useState<number | null>(null);
   const [persistedReadMarks, setPersistedReadMarks] = useState<Record<number, number>>({});
+  const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
 
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
@@ -156,6 +157,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     autoAdvance: settings.ttsAutoAdvance,
     onParagraphChange: () => {},
     onChapterEnd: () => {
+      markChapterRead(currentChapter);
       if (currentChapter < chapters.length - 1) {
         const next = currentChapter + 1;
         handleChapterChange(next);
@@ -180,6 +182,28 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPlayChapter, currentChapter]);
+
+  // Persisted read chapters — load
+  const readChaptersKey = `readChapters:${filePath}`;
+  useEffect(() => {
+    if (!filePath) return;
+    window.electronAPI?.getSetting(readChaptersKey).then(raw => {
+      if (!raw) return;
+      try { setReadChapters(new Set(JSON.parse(raw))); } catch { /* ignore */ }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath]);
+
+  const markChapterRead = useCallback((chapterIdx: number) => {
+    setReadChapters(prev => {
+      if (prev.has(chapterIdx)) return prev;
+      const next = new Set(prev);
+      next.add(chapterIdx);
+      window.electronAPI?.setSetting(readChaptersKey, JSON.stringify([...next]));
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath]);
 
   // Persisted read marks — load
   const readMarksKey = `ttsReadMarks:${filePath}`;
@@ -1236,10 +1260,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       setCurrentPage(currentPage + 1);
     } else if (!activeBranch || currentChapter < (activeBranch?.chapterIndex ?? Infinity)) {
       if (currentChapter < chapters.length - 1) {
+        markChapterRead(currentChapter);
         handleChapterChange(currentChapter + 1);
       }
     }
-  }, [currentPage, totalPages, currentChapter, chapters.length, handleChapterChange, activeBranch]);
+  }, [currentPage, totalPages, currentChapter, chapters.length, handleChapterChange, activeBranch, markChapterRead]);
 
   const goPrevPage = useCallback(() => {
     if (currentPage > 0) {
@@ -1445,6 +1470,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onFormatChapter={formatChapter}
               wikiEnabled={wikiEnabled}
               wikiProcessedChapters={wikiProcessedChapters}
+              readChapters={readChapters}
               onSelectChapter={handleChapterChange}
               onJumpToBookmark={() => {}}
               onDeleteBookmark={bookmarkState.removeBookmark}
