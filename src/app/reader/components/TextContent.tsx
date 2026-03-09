@@ -710,7 +710,18 @@ export function TextContent({
 
   // Find the target word's text node and position
   const findWordInParagraph = useCallback((paraEl: Element, wordIndex: number) => {
-    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT);
+    // Skip text nodes inside dialogue speaker spans — TTS strips these before synthesis,
+    // so their words are not counted in the word boundary offsets returned by Edge TTS.
+    const ttsFilter: NodeFilter = {
+      acceptNode(node: Node) {
+        const parent = node.parentElement;
+        if (parent && /\bai-fmt-dialogue-\w+\b/.test(parent.className)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    };
+    const walker = document.createTreeWalker(paraEl, NodeFilter.SHOW_TEXT, ttsFilter);
     let wordCount = 0;
     while (walker.nextNode()) {
       const textNode = walker.currentNode as Text;
