@@ -376,13 +376,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(next));
   }, [enrichEnabled, filePath]);
 
-  const enrichAll = useCallback(async () => {
+  const enrichAll = useCallback(async (upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
+    const limit = upToChapter ?? chapters.length - 1;
     const toEnrich = chapters
       .map((ch, i) => ({ ch, i }))
-      .filter(({ ch, i }) => needsEnrichment(ch.title) && !enrichedNames[i]);
+      .filter(({ ch, i }) => i <= limit && needsEnrichment(ch.title) && !enrichedNames[i]);
 
     if (toEnrich.length === 0) return;
 
@@ -534,13 +535,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, [chapters, title, filePath, styleDictionary]);
 
-  const formatAllChapters = useCallback(async () => {
+  const formatAllChapters = useCallback(async (upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
+    const limit = upToChapter ?? chapters.length - 1;
     const toFormat = chapters
       .map((_, i) => i)
-      .filter((i) => !formattedChapters[i]);
+      .filter((i) => i <= limit && !formattedChapters[i]);
 
     if (toFormat.length === 0) return;
 
@@ -813,16 +815,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         setActiveBranchSegments([]);
         window.electronAPI?.setSetting(`simulateEnabled:${filePath}`, JSON.stringify(false));
       }
-    } else {
-      // Wiki requires formatting — auto-enable if off
-      if (!formattingEnabled) {
-        setFormattingEnabled(true);
-        window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(true));
-      }
     }
     setWikiEnabled(next);
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(next));
-  }, [wikiEnabled, filePath, formattingEnabled, buddyEnabled, simulateEnabled]);
+  }, [wikiEnabled, filePath, buddyEnabled, simulateEnabled]);
 
   const toggleBuddyEnabled = useCallback(() => {
     const next = !buddyEnabled;
@@ -1022,7 +1018,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       const nameMap = new Map(allEntries.map(e => [e.id, e.name]));
 
       // Get preceding paragraphs for current chapter context
-      const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
+      const base = wikiEnabled && formattedChapters[activeBranch.chapterIndex]
         ? formattedChapters[activeBranch.chapterIndex]
         : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
       const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
@@ -1199,7 +1195,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(false));
   }, [filePath]);
 
-  const processAllWikiChapters = useCallback(async () => {
+  const processAllWikiChapters = useCallback(async (upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
@@ -1209,7 +1205,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     let currentFormatted = { ...formattedChapters };
     let currentDict = styleDictionary;
 
-    for (let i = 0; i < chapters.length; i++) {
+    const limit = upToChapter ?? chapters.length - 1;
+    for (let i = 0; i <= limit; i++) {
       if (wikiAbortRef.current) break;
       if (wikiProcessedChapters.has(i)) continue;
 
@@ -1670,7 +1667,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onCancelEnrichAll={cancelEnrichAll}
               onClearEnrichedNames={clearEnrichedNames}
               formattingEnabled={formattingEnabled}
-              formattedChapters={formattedChapters}
+              formattedChapterCount={Object.keys(formattedChapters).length}
               formattingChapter={formattingChapter}
               formatAllProgress={formatAllProgress}
               onFormattingToggle={toggleFormattingEnabled}

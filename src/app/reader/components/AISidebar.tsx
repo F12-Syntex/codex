@@ -2,11 +2,16 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import { ProgressBar } from "@/components/ui/progress-bar";
-import { X, Sparkles, Type, MessageCircle, Paintbrush, BookOpen, KeyRound, Loader2, Trash2, Zap, Clapperboard, ExternalLink, BarChart3, BookMarked, Square } from "lucide-react";
+import {
+  X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
+  Loader2, Trash2, Clapperboard, ExternalLink, BarChart3,
+  BookMarked, Square, Play,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
+
 interface AISidebarProps {
   theme: ThemeClasses;
   chapters: BookChapter[];
@@ -15,15 +20,15 @@ interface AISidebarProps {
   enrichingChapter: number | null;
   enrichAllProgress: { current: number; total: number } | null;
   onEnrichToggle: () => void;
-  onEnrichAll: () => void;
+  onEnrichAll: (upToChapter?: number) => void;
   onCancelEnrichAll: () => void;
   onClearEnrichedNames: () => void;
   formattingEnabled: boolean;
-  formattedChapters: Record<number, string[]>;
+  formattedChapterCount: number;
   formattingChapter: number | null;
   formatAllProgress: { current: number; total: number } | null;
   onFormattingToggle: () => void;
-  onFormatAll: () => void;
+  onFormatAll: (upToChapter?: number) => void;
   onCancelFormatAll: () => void;
   onClearFormatting: () => void;
   styleDictionary: StyleDictionary | null;
@@ -36,7 +41,7 @@ interface AISidebarProps {
   totalChapters: number;
   currentChapter: number;
   onWikiToggle: () => void;
-  onWikiProcessAll: () => void;
+  onWikiProcessAll: (upToChapter?: number) => void;
   onCancelWikiProcessAll: () => void;
   onClearWiki: () => void;
   buddyEnabled: boolean;
@@ -51,6 +56,8 @@ interface AISidebarProps {
   onClose: () => void;
 }
 
+type Scope = "current" | "all";
+
 export function AISidebar({
   theme,
   chapters,
@@ -63,7 +70,7 @@ export function AISidebar({
   onCancelEnrichAll,
   onClearEnrichedNames,
   formattingEnabled,
-  formattedChapters,
+  formattedChapterCount,
   formattingChapter,
   formatAllProgress,
   onFormattingToggle,
@@ -96,27 +103,7 @@ export function AISidebar({
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
-
-  const alreadyEnriched = Object.keys(enrichedNames).length;
-  const chaptersToEnrichCount = chapters.filter((ch, i) =>
-    needsEnrichment(ch.title) && !enrichedNames[i]
-  ).length;
-  const isRunningAll = enrichAllProgress !== null && enrichingChapter !== null;
-
-  const alreadyFormatted = Object.keys(formattedChapters).length;
-  const chaptersToFormatCount = chapters.length - alreadyFormatted;
-  const isFormattingAll = formatAllProgress !== null && formattingChapter !== null;
-
-  const wikiChaptersToProcess = totalChapters - wikiProcessedCount;
-
-  // Helper: get chapter display name
-  const chapterName = (idx: number) => {
-    const ch = chapters[idx];
-    if (!ch) return `Chapter ${idx + 1}`;
-    const enriched = enrichedNames[idx];
-    if (enriched) return enriched;
-    return ch.title || `Chapter ${idx + 1}`;
-  };
+  const [scope, setScope] = useState<Scope>("current");
 
   useEffect(() => {
     window.electronAPI?.getSetting("openrouterApiKey").then((key) => {
@@ -128,484 +115,418 @@ export function AISidebar({
 
   const disabled = hasApiKey === false;
   const loading = hasApiKey === null;
+  const chapterLimit = scope === "current" ? currentChapter : undefined;
 
-  const openStyleDictionary = () => {
-    window.electronAPI?.openStyleDictionary({ filePath, title: bookTitle });
-  };
+  /* ── Counts ─────────────────────────────────────────────── */
 
-  const openWikiViewer = () => {
-    window.electronAPI?.openWiki({ filePath, title: bookTitle });
-  };
+  const alreadyEnriched = Object.keys(enrichedNames).length;
+  const enrichToDo = chapters.filter((ch, i) => needsEnrichment(ch.title) && !enrichedNames[i]).length;
 
-  const Toggle = ({ value, onChange, isDisabled }: { value: boolean; onChange: () => void; isDisabled?: boolean }) => (
-    <button
-      onClick={isDisabled ? undefined : onChange}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-        isDisabled
-          ? "cursor-not-allowed opacity-30 " + theme.subtle
-          : value
-            ? "bg-[var(--accent-brand)]"
-            : theme.subtle
-      }`}
-    >
-      <span
-        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${value && !isDisabled ? "translate-x-4" : ""}`}
-      />
-    </button>
-  );
+  const wikiToDo = totalChapters - wikiProcessedCount;
 
-  // ── Progress Indicators ──────────────────────────────
+  /* ── Running state ───────────────────────────────────────── */
 
-  const enrichSubContent = () => {
-    if (!enrichEnabled || disabled) return null;
+  const isEnrichRunning = enrichAllProgress !== null || enrichingChapter !== null;
+  const isFormatRunning = formatAllProgress !== null || formattingChapter !== null;
+  const isWikiRunning = wikiProcessingChapter !== null;
 
-    if (isRunningAll) {
-      return (
-        <div className="mt-2 space-y-1.5 overflow-hidden">
-          <ProgressBar value={enrichAllProgress.total > 0 ? Math.round(((enrichAllProgress.current + 1) / enrichAllProgress.total) * 100) : 0} />
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-xs truncate ${theme.muted}`}>{chapterName(enrichingChapter!)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-xs tabular-nums ${theme.muted}`}>
-                {enrichAllProgress.current + 1}/{enrichAllProgress.total}
-              </span>
-              <button
-                onClick={onCancelEnrichAll}
-                className={`flex h-5 w-5 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-                title="Stop"
-              >
-                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
+  /* ── Status strings ──────────────────────────────────────── */
 
-    if (enrichingChapter !== null) {
-      return (
-        <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
-          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          <span className={`text-xs truncate ${theme.muted}`}>{chapterName(enrichingChapter)}</span>
-        </div>
-      );
-    }
+  const wikiStatusText =
+    wikiProcessedCount >= totalChapters && totalChapters > 0 ? "done"
+    : wikiProcessedCount > 0 ? `${wikiProcessedCount} / ${totalChapters}`
+    : undefined;
 
-    return (
-      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-        {chaptersToEnrichCount > 0 && (
-          <button
-            onClick={onEnrichAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--accent-brand)] transition-colors"
-            style={{ background: "var(--accent-brand-dim)" }}
-          >
-            <Zap className="h-3 w-3" strokeWidth={1.5} />
-            Enrich All ({chaptersToEnrichCount})
-          </button>
-        )}
-        {alreadyEnriched > 0 && (
-          <button
-            onClick={onClearEnrichedNames}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors ${theme.btn}`}
-          >
-            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-            Clear
-          </button>
-        )}
-        {chaptersToEnrichCount === 0 && alreadyEnriched > 0 && (
-          <span className={`text-xs ${theme.muted}`}>{alreadyEnriched} chapters renamed</span>
-        )}
-      </div>
-    );
-  };
+  const enrichStatusText =
+    enrichToDo === 0 && alreadyEnriched > 0 ? "done"
+    : alreadyEnriched > 0 ? `${alreadyEnriched} renamed`
+    : undefined;
 
-  const formattingSubContent = () => {
-    if (!formattingEnabled || disabled) return null;
+  const enrichRunCount = enrichAllProgress
+    ? `${enrichAllProgress.current + 1} / ${enrichAllProgress.total}`
+    : enrichingChapter !== null ? "…" : undefined;
 
-    if (isFormattingAll) {
-      return (
-        <div className="mt-2 space-y-1.5 overflow-hidden">
-          <ProgressBar value={formatAllProgress.total > 0 ? Math.round(((formatAllProgress.current + 1) / formatAllProgress.total) * 100) : 0} />
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-xs truncate ${theme.muted}`}>{chapterName(formattingChapter!)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-xs tabular-nums ${theme.muted}`}>
-                {formatAllProgress.current + 1}/{formatAllProgress.total}
-              </span>
-              <button
-                onClick={onCancelFormatAll}
-                className={`flex h-5 w-5 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-                title="Stop"
-              >
-                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
+  const formatRunCount = formatAllProgress
+    ? `${formatAllProgress.current + 1} / ${formatAllProgress.total}`
+    : formattingChapter !== null ? "…" : undefined;
 
-    if (formattingChapter !== null) {
-      return (
-        <div className="mt-1.5 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          <span className={`text-xs truncate ${theme.muted}`}>{chapterName(formattingChapter)}</span>
-        </div>
-      );
-    }
+  const formatToDo = chapters.length - formattedChapterCount;
 
-    return (
-      <div className="mt-2 flex items-center gap-1.5 flex-wrap overflow-hidden">
-        {chaptersToFormatCount > 0 && (
-          <button
-            onClick={onFormatAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--accent-brand)] transition-colors shrink-0"
-            style={{ background: "var(--accent-brand-dim)" }}
-          >
-            <Zap className="h-3 w-3" strokeWidth={1.5} />
-            Format All ({chaptersToFormatCount})
-          </button>
-        )}
-        {alreadyFormatted > 0 && (
-          <button
-            onClick={onClearFormatting}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors shrink-0 ${theme.btn}`}
-          >
-            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-            Clear
-          </button>
-        )}
-        {chaptersToFormatCount === 0 && alreadyFormatted > 0 && (
-          <span className={`text-xs ${theme.muted}`}>{alreadyFormatted} chapters formatted</span>
-        )}
-      </div>
-    );
-  };
+  const wikiRunCount = isWikiRunning
+    ? `${wikiProcessedCount} / ${totalChapters}`
+    : undefined;
 
-  const wikiSubContent = () => {
-    if (!wikiEnabled || disabled) return null;
+  /* ── External links ──────────────────────────────────────── */
 
-    // Processing indicator (formatting + wiki combined)
-    if (formattingChapter !== null || wikiProcessingChapter !== null) {
-      const activeChapter = wikiProcessingChapter ?? formattingChapter ?? 0;
-      const phase = formattingChapter !== null ? "Formatting" : "Analyzing";
-      return (
-        <div className="mt-2 space-y-1.5 overflow-hidden">
-          <ProgressBar value={totalChapters > 0 ? Math.round((wikiProcessedCount / totalChapters) * 100) : 0} />
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-              <span className={`text-xs truncate ${theme.muted}`}>{phase}: {chapterName(activeChapter)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`text-xs tabular-nums ${theme.muted}`}>
-                {wikiProcessedCount}/{totalChapters}
-              </span>
-              <button
-                onClick={onCancelWikiProcessAll}
-                className={`flex h-5 w-5 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-                title="Stop"
-              >
-                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="mt-2 flex items-center gap-1.5 flex-wrap overflow-hidden">
-        {wikiChaptersToProcess > 0 && (
-          <button
-            onClick={onWikiProcessAll}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--accent-brand)] transition-colors shrink-0"
-            style={{ background: "var(--accent-brand-dim)" }}
-          >
-            <Zap className="h-3 w-3" strokeWidth={1.5} />
-            Analyze All ({wikiChaptersToProcess})
-          </button>
-        )}
-        {wikiEntryCount > 0 && (
-          <button
-            onClick={onClearWiki}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors shrink-0 ${theme.btn}`}
-          >
-            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-            Clear
-          </button>
-        )}
-        {wikiEntryCount > 0 && (
-          <span className={`text-xs truncate ${theme.muted}`}>
-            {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} · {wikiProcessedCount} ch.
-          </span>
-        )}
-      </div>
-    );
-  };
+  const openStyleDict = () => window.electronAPI?.openStyleDictionary({ filePath, title: bookTitle });
+  const openWiki = () => window.electronAPI?.openWiki({ filePath, title: bookTitle });
 
   return (
     <div
       ref={sidebarRef}
-      className={`absolute right-0 top-0 z-20 flex h-full w-[340px] flex-col ${theme.panel} border-l ${theme.border} shadow-lg shadow-black/30`}
-      style={{ animation: "slideInRight 0.2s ease" }}
+      className={cn(
+        "absolute right-0 top-0 z-20 flex h-full w-[300px] flex-col border-l shadow-lg shadow-black/30",
+        theme.panel,
+        theme.border,
+      )}
+      style={{ animation: "slideInRight 0.18s ease" }}
     >
-      {/* Header */}
-      <div className={`flex items-center justify-between border-b px-3 py-2 ${theme.border}`}>
+      {/* ── Header ── */}
+      <div className={cn("flex shrink-0 items-center justify-between border-b px-3 py-2.5", theme.border)}>
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
             <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
           </div>
-          <span className={`text-sm font-medium ${theme.text}`}>AI Tools</span>
+          <span className={cn("text-sm font-medium", theme.text)}>AI Tools</span>
         </div>
         <button
           onClick={onClose}
-          className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+          className={cn("flex h-6 w-6 items-center justify-center rounded-lg transition-colors", theme.btn)}
         >
           <X className="h-3.5 w-3.5" strokeWidth={1.5} />
         </button>
       </div>
 
-      {/* API key warning */}
+      {/* ── API key warning ── */}
       {!loading && disabled && (
-        <div className={`flex items-start gap-2.5 border-b px-3 py-2.5 ${theme.border}`} style={{ background: "var(--bg-inset)" }}>
-          <KeyRound className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
-          <p className={`text-xs leading-relaxed ${theme.muted}`}>
-            API key required. Go to <span className={`font-medium ${theme.text}`}>Settings &rarr; AI &rarr; OpenRouter API Key</span> to configure.
+        <div
+          className={cn("flex shrink-0 items-start gap-2.5 border-b px-3 py-2.5", theme.border)}
+          style={{ background: "var(--bg-inset)" }}
+        >
+          <KeyRound className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", theme.muted)} strokeWidth={1.5} />
+          <p className={cn("text-xs leading-relaxed", theme.muted)}>
+            Add an <span className={cn("font-medium", theme.text)}>OpenRouter API key</span> in Settings → AI to use these features.
           </p>
         </div>
       )}
 
-      {/* Settings */}
-      <div className={`flex-1 overflow-y-auto ${disabled ? "opacity-50 pointer-events-none select-none" : ""}`}>
-
-        {/* ── Intelligence section ── */}
-        <div className="px-3 pb-1 pt-3">
-          <span className={`text-xs font-medium uppercase tracking-wider ${theme.muted}`}>Intelligence</span>
+      {/* ── Scope bar ── */}
+      <div className={cn("flex shrink-0 items-center gap-2 border-b px-3 py-2", theme.border)}>
+        <span className={cn("text-xs", theme.muted)} style={{ opacity: 0.6 }}>Analyse</span>
+        <div className="flex flex-1 rounded-lg overflow-hidden" style={{ background: "var(--bg-inset)" }}>
+          <button
+            onClick={() => setScope("current")}
+            className={cn(
+              "flex-1 py-1 text-xs font-medium transition-colors",
+              scope === "current"
+                ? "bg-[var(--accent-brand)] text-white"
+                : cn(theme.muted, "hover:text-white/60"),
+            )}
+          >
+            Ch. {currentChapter + 1}
+          </button>
+          <button
+            onClick={() => setScope("all")}
+            className={cn(
+              "flex-1 py-1 text-xs font-medium transition-colors",
+              scope === "all"
+                ? "bg-[var(--accent-brand)] text-white"
+                : cn(theme.muted, "hover:text-white/60"),
+            )}
+          >
+            All
+          </button>
         </div>
+      </div>
 
-        <div className="space-y-0.5 px-1.5">
-          {/* AI Wiki — the main feature, auto-enables formatting */}
-          <div className={`rounded-lg px-3 py-2.5 transition-colors ${wikiEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5">
-                <BookMarked className={`h-3.5 w-3.5 ${wikiEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium ${theme.text}`}>AI Wiki</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  Progressive encyclopedia — click highlighted names for details
-                </div>
-                {wikiSubContent()}
-              </div>
-              <Toggle value={wikiEnabled} onChange={onWikiToggle} isDisabled={disabled} />
-            </div>
-          </div>
+      {/* ── Content ── */}
+      <div className={cn("flex-1 overflow-y-auto py-1", disabled ? "pointer-events-none select-none opacity-40" : "")}>
 
-          {/* Open Wiki Viewer */}
-          {wikiEnabled && wikiEntryCount > 0 && (
-            <button
-              onClick={openWikiViewer}
-              className="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-[var(--accent-brand)]/5"
-            >
-              <div className="mt-0.5">
-                <BookOpen className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1 text-left">
-                <div className={`text-sm font-medium ${theme.text}`}>Open Wiki</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  {wikiEntryCount} {wikiEntryCount === 1 ? "entry" : "entries"} — full viewer
-                </div>
-              </div>
-              <ExternalLink className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
-            </button>
-          )}
+        <GroupLabel label="Intelligence" theme={theme} />
 
-          {/* Enrich Chapters */}
-          <div className={`rounded-lg px-3 py-2.5 transition-colors ${enrichEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5">
-                <Type className={`h-3.5 w-3.5 ${enrichEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium ${theme.text}`}>Enrich Chapters</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  AI-rename generic chapter titles
-                </div>
-                {enrichSubContent()}
-              </div>
-              <Toggle value={enrichEnabled} onChange={onEnrichToggle} isDisabled={disabled} />
-            </div>
-          </div>
+        {/* AI Wiki */}
+        <Row
+          Icon={BookMarked}
+          label="AI Wiki"
+          active={wikiEnabled}
+          onToggle={onWikiToggle}
+          status={wikiStatusText}
+          running={isWikiRunning}
+          runCount={wikiRunCount}
+          canRun={wikiEnabled && wikiToDo > 0}
+          onRun={() => onWikiProcessAll(chapterLimit)}
+          onCancel={onCancelWikiProcessAll}
+          canClear={wikiEntryCount > 0 && !isWikiRunning}
+          onClear={onClearWiki}
+          linkIcon={wikiEnabled && wikiEntryCount > 0 ? ExternalLink : undefined}
+          onLink={wikiEnabled && wikiEntryCount > 0 ? openWiki : undefined}
+          theme={theme}
+        />
 
-          {/* Smart Summary — coming soon */}
-          <SettingRow
-            icon={<BookOpen className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
-            label="Smart Summary"
-            description="Recap previous chapters when you resume"
-            theme={theme}
-            comingSoon
-          />
-        </div>
+        {/* Formatting — independent feature */}
+        <Row
+          Icon={Paintbrush}
+          label="Formatting"
+          active={formattingEnabled}
+          onToggle={onFormattingToggle}
+          status={
+            formattedChapterCount >= chapters.length && chapters.length > 0 ? "done"
+            : formattedChapterCount > 0 ? `${formattedChapterCount} / ${chapters.length}`
+            : undefined
+          }
+          running={isFormatRunning}
+          runCount={formatRunCount}
+          canRun={formattingEnabled && formatToDo > 0}
+          onRun={() => onFormatAll(chapterLimit)}
+          onCancel={onCancelFormatAll}
+          canClear={formattedChapterCount > 0 && !isFormatRunning}
+          onClear={onClearFormatting}
+          linkIcon={formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 ? BarChart3 : undefined}
+          onLink={formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 ? openStyleDict : undefined}
+          theme={theme}
+        />
 
-        <div className={`mx-3 my-2 h-px ${theme.subtle}`} />
+        {/* Chapter Titles */}
+        <Row
+          Icon={Type}
+          label="Chapter Titles"
+          active={enrichEnabled}
+          onToggle={onEnrichToggle}
+          status={enrichStatusText}
+          running={isEnrichRunning}
+          runCount={enrichRunCount}
+          canRun={enrichEnabled && enrichToDo > 0}
+          onRun={() => onEnrichAll(chapterLimit)}
+          onCancel={onCancelEnrichAll}
+          canClear={alreadyEnriched > 0 && !isEnrichRunning}
+          onClear={onClearEnrichedNames}
+          theme={theme}
+        />
 
-        {/* ── Experience section ── */}
-        <div className="px-3 pb-1">
-          <span className={`text-xs font-medium uppercase tracking-wider ${theme.muted}`}>Experience</span>
-        </div>
+        <div className={cn("mx-3 my-1.5 h-px", theme.subtle)} />
 
-        <div className="space-y-0.5 px-1.5">
-          {/* AI Buddy */}
-          <div className={`rounded-lg px-3 py-2.5 transition-colors ${buddyEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5">
-                <MessageCircle className={`h-3.5 w-3.5 ${buddyEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium ${theme.text}`}>AI Buddy</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  Chat about the book — requires wiki
-                </div>
-              </div>
-              <Toggle value={buddyEnabled} onChange={onBuddyToggle} isDisabled={disabled || !wikiEnabled} />
-            </div>
-          </div>
+        <GroupLabel label="Experience" theme={theme} />
 
-          {/* Immersive Formatting */}
-          <div className={`rounded-lg px-3 py-2.5 transition-colors ${formattingEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5">
-                <Paintbrush className={`h-3.5 w-3.5 ${formattingEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <div className={`text-sm font-medium ${theme.text}`}>Immersive Formatting</div>
-                  {wikiEnabled && formattingEnabled && (
-                    <span className="rounded-lg px-1.5 py-0.5 text-xs text-[var(--accent-brand)]" style={{ background: "var(--accent-brand-dim)" }}>
-                      Auto
-                    </span>
-                  )}
-                </div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  AI-enhanced typography, stat blocks, and dialogue
-                </div>
-                {formattingSubContent()}
-              </div>
-              <Toggle value={formattingEnabled} onChange={onFormattingToggle} isDisabled={disabled || wikiEnabled} />
-            </div>
-          </div>
+        {/* AI Buddy */}
+        <Row
+          Icon={MessageCircle}
+          label="AI Buddy"
+          active={buddyEnabled && wikiEnabled}
+          onToggle={onBuddyToggle}
+          toggleDisabled={!wikiEnabled}
+          lockNote={!wikiEnabled ? "needs Wiki" : undefined}
+          theme={theme}
+        />
 
-          {/* Style Dictionary */}
-          {formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 && (
-            <button
-              onClick={openStyleDictionary}
-              className="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-[var(--accent-brand)]/5"
-            >
-              <div className="mt-0.5">
-                <BarChart3 className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1 text-left">
-                <div className={`text-sm font-medium ${theme.text}`}>Style Dictionary</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  {styleDictionary.rules.length} learned {styleDictionary.rules.length === 1 ? "rule" : "rules"} — view and regenerate
-                </div>
-              </div>
-              <ExternalLink className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
-            </button>
-          )}
+        {/* Simulate */}
+        <Row
+          Icon={Clapperboard}
+          label="Simulate"
+          active={simulateEnabled && wikiEnabled}
+          onToggle={onSimulateToggle}
+          toggleDisabled={!wikiEnabled}
+          lockNote={!wikiEnabled ? "needs Wiki" : undefined}
+          theme={theme}
+        />
 
-          {/* Immersive Simulate */}
-          <div className={`rounded-lg px-3 py-2.5 transition-colors ${simulateEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5">
-                <Clapperboard className={`h-3.5 w-3.5 ${simulateEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium ${theme.text}`}>Immersive Simulate</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  Right-click wiki entities to chat in-character
-                </div>
-              </div>
-              <Toggle value={simulateEnabled} onChange={onSimulateToggle} isDisabled={disabled || !wikiEnabled} />
-            </div>
-          </div>
-
-          {/* AI Comments */}
-          <div className={`rounded-lg px-3 py-2.5 transition-colors ${commentsEnabled && !disabled ? "bg-[var(--accent-brand)]/5" : ""}`}>
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5">
-                <MessageCircle className={`h-3.5 w-3.5 ${commentsEnabled && !disabled ? "text-[var(--accent-brand)]" : theme.muted}`} strokeWidth={1.5} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium ${theme.text}`}>Inline Comments</div>
-                <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>
-                  AI reacts to chapters like a real reader — you can add your own too
-                </div>
-                {commentsEnabled && !disabled && (
-                  <div className="mt-2 flex items-center gap-1.5 flex-wrap overflow-hidden">
-                    {commentingChapter !== null ? (
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-                        <span className={`text-xs truncate ${theme.muted}`}>{chapterName(commentingChapter)}</span>
-                      </div>
-                    ) : chapterCommentCount > 0 ? (
-                      <>
-                        <span className={`text-xs ${theme.muted}`}>{chapterCommentCount} chapters commented</span>
-                        <button
-                          onClick={onClearComments}
-                          className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors shrink-0 ${theme.btn}`}
-                        >
-                          <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-                          Clear
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-              <Toggle value={commentsEnabled} onChange={onCommentsToggle} isDisabled={disabled} />
-            </div>
-          </div>
-        </div>
+        {/* Comments */}
+        <Row
+          Icon={MessageCircle}
+          label="Comments"
+          active={commentsEnabled}
+          onToggle={onCommentsToggle}
+          status={chapterCommentCount > 0 ? `${chapterCommentCount} ch.` : undefined}
+          running={commentingChapter !== null}
+          canClear={chapterCommentCount > 0 && commentingChapter === null}
+          onClear={onClearComments}
+          theme={theme}
+        />
       </div>
     </div>
   );
 }
 
-/* ── Setting Row ──────────────────────────────────── */
+/* ── Sub-components ───────────────────────────────────────── */
 
-function SettingRow({
-  icon,
-  label,
-  description,
-  theme,
-  comingSoon,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  description: string;
-  theme: ThemeClasses;
-  comingSoon?: boolean;
-}) {
+function GroupLabel({ label, theme }: { label: string; theme: ThemeClasses }) {
   return (
-    <div className={`flex items-start gap-3 rounded-lg px-3 py-2.5 ${comingSoon ? "opacity-40 select-none" : ""}`}>
-      <div className="mt-0.5">{icon}</div>
+    <div className="px-3 pb-0.5 pt-2">
+      <span className={cn("text-xs font-medium uppercase tracking-wider", theme.muted)} style={{ opacity: 0.45 }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+interface RowProps {
+  Icon: React.ElementType;
+  label: string;
+  subLabel?: string;
+  active: boolean;
+  onToggle: () => void;
+  toggleDisabled?: boolean;
+  lockNote?: string;
+  status?: string;
+  running?: boolean;
+  runCount?: string;
+  canRun?: boolean;
+  onRun?: () => void;
+  onCancel?: () => void;
+  canClear?: boolean;
+  onClear?: () => void;
+  linkIcon?: React.ElementType;
+  onLink?: () => void;
+  theme: ThemeClasses;
+}
+
+function Row({
+  Icon,
+  label,
+  subLabel,
+  active,
+  onToggle,
+  toggleDisabled,
+  lockNote,
+  status,
+  running,
+  runCount,
+  canRun,
+  onRun,
+  onCancel,
+  canClear,
+  onClear,
+  linkIcon: LinkIcon,
+  onLink,
+  theme,
+}: RowProps) {
+  return (
+    <div className={cn("flex items-center gap-2 px-3 py-[7px] transition-colors", active ? "bg-[var(--accent-brand)]/[0.04]" : "")}>
+      {/* Toggle */}
+      <button
+        onClick={toggleDisabled ? undefined : onToggle}
+        className={cn(
+          "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+          toggleDisabled
+            ? cn("cursor-not-allowed opacity-25", theme.subtle)
+            : active
+              ? "bg-[var(--accent-brand)]"
+              : theme.subtle,
+        )}
+      >
+        <span
+          className={cn(
+            "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
+            active && !toggleDisabled ? "translate-x-4" : "",
+          )}
+        />
+      </button>
+
+      {/* Icon + label */}
+      <Icon
+        className={cn("h-3.5 w-3.5 shrink-0", active ? "text-[var(--accent-brand)]" : theme.muted)}
+        strokeWidth={1.5}
+        style={{ opacity: active ? 1 : 0.5 }}
+      />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-medium ${theme.text}`}>{label}</span>
-          {comingSoon && (
-            <span className={`rounded-lg px-1.5 py-0.5 text-xs ${theme.subtle} ${theme.muted}`}>Soon</span>
+        <span className={cn("block text-sm leading-tight", active ? theme.text : theme.muted)} style={{ opacity: active ? 1 : 0.5 }}>
+          {label}
+        </span>
+        {subLabel && (
+          <span className={cn("block text-xs leading-tight", theme.muted)} style={{ opacity: 0.35 }}>
+            {subLabel}
+          </span>
+        )}
+        {lockNote && (
+          <span className={cn("block text-xs leading-tight", theme.muted)} style={{ opacity: 0.35 }}>
+            {lockNote}
+          </span>
+        )}
+      </div>
+
+      {/* Status / running count */}
+      {running ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+          {runCount && (
+            <span className={cn("text-xs tabular-nums", theme.muted)} style={{ opacity: 0.6 }}>
+              {runCount}
+            </span>
           )}
         </div>
-        <div className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>{description}</div>
-      </div>
+      ) : status ? (
+        <span
+          className={cn("shrink-0 text-xs tabular-nums", status === "done" ? "text-[var(--accent-brand)]" : theme.muted)}
+          style={{ opacity: status === "done" ? 0.7 : 0.45 }}
+        >
+          {status}
+        </span>
+      ) : null}
+
+      {/* Action button: stop / run / clear */}
+      {running && onCancel ? (
+        <ActionBtn onClick={onCancel} theme={theme}>
+          <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
+        </ActionBtn>
+      ) : canRun && onRun ? (
+        <button
+          onClick={onRun}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors"
+          style={{ background: "var(--accent-brand-dim)", color: "var(--accent-brand)" }}
+        >
+          <Play className="h-2.5 w-2.5" strokeWidth={0} fill="currentColor" />
+        </button>
+      ) : canClear && onClear ? (
+        <ActionBtn onClick={onClear} theme={theme}>
+          <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+        </ActionBtn>
+      ) : (
+        <div className="h-6 w-6 shrink-0" />
+      )}
+
+      {/* Optional link button */}
+      {LinkIcon && onLink ? (
+        <ActionBtn onClick={onLink} theme={theme}>
+          <LinkIcon className="h-3 w-3" strokeWidth={1.5} />
+        </ActionBtn>
+      ) : (
+        <div className="h-6 w-6 shrink-0" />
+      )}
     </div>
+  );
+}
+
+function LinkRow({
+  Icon,
+  label,
+  onClick,
+  theme,
+}: {
+  Icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+  theme: ThemeClasses;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn("flex w-full items-center gap-2 px-3 py-[7px] transition-colors hover:bg-white/[0.03]")}
+    >
+      <div className="w-9 shrink-0" />
+      <Icon className={cn("h-3.5 w-3.5 shrink-0 text-[var(--accent-brand)]")} strokeWidth={1.5} style={{ opacity: 0.6 }} />
+      <span className={cn("min-w-0 flex-1 truncate text-left text-xs", theme.muted)} style={{ opacity: 0.5 }}>
+        {label}
+      </span>
+      <ExternalLink className={cn("h-3 w-3 shrink-0", theme.muted)} strokeWidth={1.5} style={{ opacity: 0.3 }} />
+      <div className="h-6 w-6 shrink-0" />
+    </button>
+  );
+}
+
+function ActionBtn({
+  onClick,
+  theme,
+  children,
+}: {
+  onClick: () => void;
+  theme: ThemeClasses;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors", theme.btn)}
+    >
+      {children}
+    </button>
   );
 }
