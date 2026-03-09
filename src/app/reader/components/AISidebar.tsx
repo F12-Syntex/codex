@@ -168,7 +168,7 @@ export function AISidebar({
 
   const wikiRunCount = isWikiRunning
     ? wikiAllProgress
-      ? `batch ${wikiAllProgress.current + 1} / ${wikiAllProgress.total} · ${wikiProcessedCount} ch done`
+      ? `${wikiAllProgress.current} / ${wikiAllProgress.total} ch`
       : `ch. ${(wikiProcessingChapter ?? 0) + 1}`
     : undefined;
 
