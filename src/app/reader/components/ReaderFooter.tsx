@@ -223,35 +223,37 @@ export function ReaderFooter({
         branchMode={branchMode}
       />
 
-      <div className="flex h-full items-center gap-2 px-3">
-        {/* ── Left nav button ───────────── */}
-        {branchMode ? (
-          <button
-            onClick={onExitBranch}
-            className={cn(
-              "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors shrink-0",
-              theme.btn,
-            )}
-          >
-            <X className="h-3 w-3" strokeWidth={2} />
-            Exit
-          </button>
-        ) : (
-          <button
-            onClick={onPrev}
-            disabled={!canGoPrev}
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-              theme.btn,
-              "disabled:opacity-20",
-            )}
-          >
-            <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} />
-          </button>
-        )}
+      <div className="flex h-full items-center px-3">
+        {/* ── Left nav (fixed width) ────── */}
+        <div className="flex w-8 shrink-0 items-center">
+          {branchMode ? (
+            <button
+              onClick={onExitBranch}
+              className={cn(
+                "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors",
+                theme.btn,
+              )}
+            >
+              <X className="h-3 w-3" strokeWidth={2} />
+              Exit
+            </button>
+          ) : (
+            <button
+              onClick={onPrev}
+              disabled={!canGoPrev}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                theme.btn,
+                "disabled:opacity-20",
+              )}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+          )}
+        </div>
 
-        {/* ── Center info ───────────────── */}
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
+        {/* ── Center info (flex-1, stable) ─ */}
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-2.5">
           {branchMode ? (
             <>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -260,10 +262,7 @@ export function ReaderFooter({
                   style={{ color: "var(--accent-brand)" }}
                   strokeWidth={2}
                 />
-                <span
-                  className="text-xs font-medium"
-                  style={{ color: "var(--accent-brand)" }}
-                >
+                <span className="text-xs font-medium" style={{ color: "var(--accent-brand)" }}>
                   Branch
                 </span>
               </div>
@@ -274,24 +273,16 @@ export function ReaderFooter({
             </>
           ) : (
             <>
-              {/* TTS animation */}
-              {ttsActive && (
-                <>
-                  <TtsPill status={ttsStatus} />
-                  <Dot />
-                </>
-              )}
-
               {/* Chapter title */}
-              <div className="flex min-w-0 items-center gap-1.5 shrink-1">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <BookOpen
                   className={cn("h-3 w-3 shrink-0", theme.muted)}
                   strokeWidth={1.5}
-                  style={{ opacity: 0.4 }}
+                  style={{ opacity: 0.35 }}
                 />
                 <span
                   className={cn("min-w-0 truncate text-xs", theme.muted)}
-                  style={{ opacity: 0.7 }}
+                  style={{ opacity: 0.65 }}
                   title={chapterTitle}
                 >
                   {chapterTitle}
@@ -301,43 +292,40 @@ export function ReaderFooter({
               <Dot />
 
               {/* Page counter */}
-              <span
-                className={cn("shrink-0 text-xs tabular-nums", theme.muted)}
-                style={{ opacity: 0.5 }}
-              >
+              <span className={cn("shrink-0 text-xs tabular-nums", theme.muted)} style={{ opacity: 0.5 }}>
                 {currentPage + 1}
-                <span style={{ opacity: 0.4 }}> / {totalPages}</span>
+                <span style={{ opacity: 0.45 }}> / {totalPages}</span>
               </span>
 
               <Dot />
 
               {/* Chapter counter */}
-              <span
-                className={cn("shrink-0 text-xs tabular-nums", theme.muted)}
-                style={{ opacity: 0.4 }}
-              >
+              <span className={cn("shrink-0 text-xs tabular-nums", theme.muted)} style={{ opacity: 0.38 }}>
                 Ch {chapterIndex + 1}
-                <span style={{ opacity: 0.6 }}> / {chapterCount}</span>
+                <span style={{ opacity: 0.7 }}> / {chapterCount}</span>
               </span>
-
-              {/* ETA — only when TTS active */}
-              {eta && (
-                <>
-                  <Dot />
-                  <span
-                    className="shrink-0 text-xs tabular-nums font-medium"
-                    style={{ color: "var(--accent-brand)", opacity: 0.8 }}
-                  >
-                    {eta}
-                  </span>
-                </>
-              )}
             </>
           )}
         </div>
 
-        {/* ── Right side ────────────────── */}
-        <div className="flex shrink-0 items-center gap-1">
+        {/* ── Right zone (fixed width, TTS + nav) ── */}
+        <div className="flex w-[120px] shrink-0 items-center justify-end gap-2">
+          {/* TTS indicator — always rendered, fades in/out */}
+          <div
+            className="flex items-center gap-2 transition-opacity duration-300"
+            style={{ opacity: ttsActive ? 1 : 0, pointerEvents: "none" }}
+          >
+            <TtsPill status={ttsStatus} />
+            {/* ETA — fixed-width slot to prevent layout shift */}
+            <span
+              className="w-14 text-right text-xs tabular-nums font-medium"
+              style={{ color: "var(--accent-brand)", opacity: 0.85 }}
+            >
+              {eta}
+            </span>
+          </div>
+
+          {/* Branch list button */}
           {savedBranches.length > 0 && (
             <button
               onClick={onToggleBranchList}
@@ -352,12 +340,13 @@ export function ReaderFooter({
             </button>
           )}
 
+          {/* → nav button */}
           {!branchMode && (
             <button
               onClick={onNext}
               disabled={!canGoNext}
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
                 theme.btn,
                 "disabled:opacity-20",
               )}
