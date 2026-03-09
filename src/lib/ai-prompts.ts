@@ -66,6 +66,16 @@ export function shouldSkipRename(title: string): boolean {
 }
 
 /**
+ * Check whether a chapter is a structural/meta page (cover, TOC, copyright, etc.)
+ * that should never be sent to AI for wiki analysis.
+ */
+export function isStructuralChapter(title: string): boolean {
+  const trimmed = title.trim();
+  if (!trimmed) return false;
+  return SKIP_PATTERNS.some((p) => p.test(trimmed));
+}
+
+/**
  * Build a prompt for renaming a single chapter.
  */
 export function buildChapterRenamePrompt(

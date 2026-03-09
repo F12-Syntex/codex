@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { X, Search, List, Bookmark, Sparkles, Paintbrush, BookMarked, Loader2 } from "lucide-react";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
-import { needsEnrichment } from "@/lib/ai-prompts";
 
 type Tab = "chapters" | "bookmarks";
 
@@ -173,7 +172,7 @@ export function TOCSidebar({
             <p className={`py-8 text-center text-xs ${theme.muted}`}>No chapters found</p>
           ) : (
             filteredChapters.map(({ ch, i, displayTitle }) => {
-              const canEnrich = enrichEnabled && needsEnrichment(ch.title);
+              const canEnrich = enrichEnabled;
               const isEnriching = enrichingChapter === i;
 
               const canFormat = formattingEnabled && !formattedChapters[i];

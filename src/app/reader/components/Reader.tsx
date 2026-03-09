@@ -15,7 +15,7 @@ import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
 import { AISidebar } from "./AISidebar";
-import { needsEnrichment, buildChapterRenamePrompt, formatRenamedTitle } from "@/lib/ai-prompts";
+import { needsEnrichment, isStructuralChapter, buildChapterRenamePrompt, formatRenamedTitle } from "@/lib/ai-prompts";
 import { chatWithPreset } from "@/lib/openrouter";
 import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
 import { formatChapterContent } from "@/lib/ai-formatting";
@@ -639,6 +639,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!chapters[chapterIndex]) return;
     if (wikiProcessedChapters.has(chapterIndex)) return;
 
+    // Skip structural chapters (cover, TOC, copyright, etc.) — mark processed silently
+    if (isStructuralChapter(chapters[chapterIndex].title)) {
+      await window.electronAPI?.wikiMarkProcessed(filePath, chapterIndex);
+      await refreshWikiState();
+      return;
+    }
+
     setWikiProcessingChapter(chapterIndex);
     wikiAbortRef.current = false;
 
@@ -1235,7 +1242,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       const processed = new Set(await api.wikiGetProcessed(filePath));
       const queue: number[] = [];
       for (let i = 0; i <= limit; i++) {
-        if (!processed.has(i) && chapters[i]) queue.push(i);
+        if (!processed.has(i) && chapters[i]) {
+          // Skip structural chapters (cover, TOC, etc.) — mark them processed so they don't re-appear
+          if (isStructuralChapter(chapters[i].title)) {
+            await api.wikiMarkProcessed(filePath, i);
+          } else {
+            queue.push(i);
+          }
+        }
       }
       return queue;
     };
