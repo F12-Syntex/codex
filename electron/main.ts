@@ -25,7 +25,7 @@ import {
   upsertBranch, getBranches, getBranchSegments, addSegment, deleteBranch,
 } from "./database";
 import { extractMetadata } from "./metadata";
-import { parseBookContent } from "./book-parser";
+import { parseBookContent, parsePdfContent } from "./book-parser";
 import { EdgeTTS } from "@andresaya/edge-tts";
 import { searchNovels, getNovelInfo, getDownloadManager, fetchImageAsDataUrl, getAvailableSources, type NovelInfo } from "./installer";
 import { getDownloads, removeDownload, clearCompletedDownloads, getDownload } from "./database";
@@ -231,10 +231,10 @@ function createWindow() {
   });
 
   // ── Reader: get book content ──────────────────────
-  ipcMain.handle("reader:get-content", (_event, filePath: string, format: string) => {
+  ipcMain.handle("reader:get-content", async (_event, filePath: string, format: string) => {
     try {
-      const result = parseBookContent(filePath, format);
-      return result;
+      if (format.toUpperCase() === "PDF") return await parsePdfContent(filePath);
+      return parseBookContent(filePath, format);
     } catch (err) {
       console.error(`[main] reader:get-content — EXCEPTION:`, err);
       throw err;

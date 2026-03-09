@@ -1,5 +1,7 @@
 import AdmZip from "adm-zip";
 import path from "path";
+import fs from "fs";
+import pdfParse from "pdf-parse";
 
 export interface BookChapter {
   title: string;
@@ -672,6 +674,58 @@ function parseCbzPages(filePath: string): BookContent {
   return { chapters, isImageBook: true, toc };
 }
 
+// ── PDF parser ───────────────────────────────────────
+
+interface PdfPageData {
+  getTextContent: () => Promise<{ items: { str: string; transform: number[] }[] }>;
+}
+
+export async function parsePdfContent(filePath: string): Promise<BookContent> {
+  const buffer = fs.readFileSync(filePath);
+  const pageTexts: string[] = [];
+
+  await pdfParse(buffer, {
+    pagerender(pageData: PdfPageData) {
+      return pageData.getTextContent().then((content) => {
+        let text = "";
+        let lastY: number | null = null;
+        for (const item of content.items) {
+          const y = item.transform[5];
+          if (lastY !== null && Math.abs(y - lastY) > 2) text += "\n";
+          text += item.str;
+          lastY = y;
+        }
+        pageTexts.push(text.trim());
+        return text;
+      });
+    },
+  });
+
+  const chapters: BookChapter[] = pageTexts.map((pageText, i) => {
+    const rawBlocks = pageText.split(/\n{2,}/);
+    const paragraphs = rawBlocks
+      .map((block) => block.replace(/\n/g, " ").replace(/\s{2,}/g, " ").trim())
+      .filter((p) => p.length > 0);
+
+    return {
+      title: `Page ${i + 1}`,
+      paragraphs: paragraphs.length > 0 ? paragraphs : [""],
+      htmlParagraphs: paragraphs.length > 0 ? paragraphs.map((p) => `<p>${p}</p>`) : ["<p></p>"],
+    };
+  });
+
+  if (chapters.length === 0) {
+    chapters.push({
+      title: "Page 1",
+      paragraphs: ["This PDF contains no extractable text (it may be a scanned image PDF)."],
+      htmlParagraphs: ["<p>This PDF contains no extractable text (it may be a scanned image PDF).</p>"],
+    });
+  }
+
+  const toc: TocEntry[] = chapters.map((ch, i) => ({ label: ch.title, chapterIndex: i }));
+  return { chapters, isImageBook: false, toc };
+}
+
 // ── Public API ───────────────────────────────────────
 
 export function parseBookContent(filePath: string, format: string): BookContent {
@@ -690,16 +744,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
         result = parseCbzPages(filePath);
         break;
       case "PDF":
-        result = {
-          chapters: [{
-            title: "PDF Viewer",
-            paragraphs: ["PDF reading is not yet supported. Please use an external PDF reader."],
-            htmlParagraphs: ["<p>PDF reading is not yet supported. Please use an external PDF reader.</p>"],
-          }],
-          isImageBook: false,
-          toc: [],
-        };
-        break;
+        throw new Error("Use parsePdfContent() for PDF files (async).");
       default:
         console.error(`[book-parser] Unsupported format: "${format}"`);
         result = {
