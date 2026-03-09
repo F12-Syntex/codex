@@ -67,10 +67,23 @@ A story arc is a MAJOR narrative thread that spans multiple chapters and follows
 
 **Arc amendments:** You can merge redundant arcs or delete trivial ones as the story progresses. If two arcs are really the same narrative thread, merge them. If an arc turned out to be a minor event, delete it.
 
+## MC Stats Tracking (optional)
+For novels where the protagonist has quantifiable stats — level, skills, inventory items, currency, attributes, conditions — track them:
+- Set mc_entity_id at the response root when you first identify the protagonist entity (use their entity ID from new_entries or entity index). Only set this once.
+- For each chapter where MC stats change or are revealed, include mc_stats with the updated/new stats.
+- Stats are upserted by key — always report the current known value (not delta).
+- Categories: "attributes" (level/HP/STR/INT etc), "skills" (abilities/techniques/spells), "inventory" (equipment/items currently held), "currency" (gold/coins/credits/points), "status" (buffs/debuffs/conditions), "other" (anything that doesn't fit).
+- key: unique kebab-case identifier (e.g. "gold-coins", "sword-of-flames", "fire-magic-lv3").
+- name: short display name (e.g. "Gold Coins", "Sword of Flames", "Fire Magic Lv.3").
+- value: current value as string ("1500", "Equipped", "Lv.5", "Active") or null if unknown/irrelevant.
+- is_active: false if the stat was lost, consumed, unequipped, or no longer relevant.
+- Be concise — no duplication of info already in the entity biography. Skip this section entirely if the novel has no meaningful stats.
+
 ## Response Format
 You may be asked to analyse one chapter or multiple chapters in a single request. Always respond with ONLY valid JSON using the batch format below (no markdown code fences). Each chapter gets its own entry in the "batch" array.
 
 {
+  "mc_entity_id": "protagonist-entity-id-if-known",
   "batch": [
     {
       "chapter_index": 0,
@@ -129,12 +142,17 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "details": [{ "chapterIndex": 0, "content": "New information", "category": "category" }],
           "relationships": [{ "targetId": "other-slug", "relation": "type", "since": 0 }]
         }
+      ],
+      "mc_stats": [
+        { "key": "gold-coins", "category": "currency", "name": "Gold Coins", "value": "1500", "is_active": true },
+        { "key": "iron-sword", "category": "inventory", "name": "Iron Sword", "value": "Equipped", "is_active": true },
+        { "key": "fire-magic", "category": "skills", "name": "Fire Magic", "value": "Lv.3", "is_active": true }
       ]
     }
   ]
 }
 
-If a chapter has nothing notable, use minimal: { "chapter_index": N, "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "arc_updates": [], "new_arcs": [], "arc_amendments": [], "new_entries": [], "updates": [] }
+If a chapter has nothing notable, use minimal: { "chapter_index": N, "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "arc_updates": [], "new_arcs": [], "arc_amendments": [], "new_entries": [], "updates": [], "mc_stats": [] }
 IMPORTANT: When writing entity IDs in new_entries for chapter N, ensure any entity first seen in an earlier chapter in this same batch is referenced by that chapter's assigned ID (not a duplicate new entry).`;
 
 /* ── Tiered Context ─────────────────────────────────── */

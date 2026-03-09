@@ -229,6 +229,17 @@ interface InstallerDownloadProgress {
   status: string;
 }
 
+interface MCStatRow {
+  id: number;
+  file_path: string;
+  stat_key: string;
+  category: string;
+  display_name: string;
+  value: string | null;
+  is_active: number;
+  last_chapter: number;
+}
+
 interface InstallerDownloadRow {
   id: number;
   source_id: string;
@@ -326,6 +337,11 @@ interface ElectronAPI {
   wikiMergeEntries: (filePath: string, sourceId: string, targetId: string) => Promise<void>;
   wikiUnmergeEntries: (filePath: string, mergeLogId: number) => Promise<void>;
   wikiGetMergeLog: (filePath: string) => Promise<WikiMergeLogRow[]>;
+
+  wikiUpsertMCStat: (filePath: string, stat: { key: string; category: string; name: string; value: string | null; isActive: boolean; chapter: number }) => Promise<void>;
+  wikiGetMCStats: (filePath: string) => Promise<MCStatRow[]>;
+  wikiSetMCEntityId: (filePath: string, entityId: string) => Promise<void>;
+  wikiGetMCEntityId: (filePath: string) => Promise<string | null>;
 
   // Simulate
   simUpsertBranch: (branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => Promise<void>;

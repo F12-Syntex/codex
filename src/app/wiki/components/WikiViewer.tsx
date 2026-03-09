@@ -5,7 +5,7 @@ import {
   Loader2, Search, ArrowLeft,
   User, Swords, MapPin, Flame, Lightbulb,
   BookOpen, GitBranch, Clock, ChevronRight, Hash,
-  Merge, Undo2, X,
+  Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity,
 } from "lucide-react";
 import { WindowHeader } from "@/components/window-header";
 import type { WikiEntry, WikiEntryType, WikiArc } from "@/lib/ai-wiki";
@@ -64,6 +64,16 @@ interface MergeLogItem {
   merged_at: string;
 }
 
+interface MCStat {
+  id: number;
+  stat_key: string;
+  category: string;
+  display_name: string;
+  value: string | null;
+  is_active: boolean;
+  last_chapter: number;
+}
+
 export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerProps) {
   const [entries, setEntries] = useState<EntryListItem[]>([]);
   const [arcs, setArcs] = useState<WikiArc[]>([]);
@@ -77,18 +87,24 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
   const [mergeLog, setMergeLog] = useState<MergeLogItem[]>([]);
+  const [activeView, setActiveView] = useState<"encyclopedia" | "stats">("encyclopedia");
+  const [mcStats, setMcStats] = useState<MCStat[]>([]);
+  const [mcEntityId, setMcEntityId] = useState<string | null>(null);
+  const [mcEntry, setMcEntry] = useState<WikiEntry | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const refreshData = useCallback(async () => {
     const api = window.electronAPI;
     if (!api || !filePath) return;
 
-    const [entryRows, processed, arcRows, summaryRows, mergeLogRows] = await Promise.all([
+    const [entryRows, processed, arcRows, summaryRows, mergeLogRows, statRows, mcId] = await Promise.all([
       api.wikiGetEntries(filePath),
       api.wikiGetProcessed(filePath),
       api.wikiGetAllArcs(filePath),
       api.wikiGetAllChapterSummaries(filePath),
       api.wikiGetMergeLog(filePath),
+      api.wikiGetMCStats(filePath),
+      api.wikiGetMCEntityId(filePath),
     ]);
 
     setEntries(entryRows.map((e) => ({
@@ -108,6 +124,12 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     setMergeLog(mergeLogRows.map((m) => ({
       id: m.id, source_name: m.source_name, target_name: m.target_name, merged_at: m.merged_at,
     })));
+    setMcStats(statRows.map((s) => ({
+      id: s.id, stat_key: s.stat_key, category: s.category,
+      display_name: s.display_name, value: s.value,
+      is_active: s.is_active === 1, last_chapter: s.last_chapter,
+    })));
+    setMcEntityId(mcId);
     setIsLoading(false);
   }, [filePath]);
 
@@ -123,6 +145,11 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     fetchWikiEntry(filePath, selectedEntryId).then(setSelectedEntry);
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [filePath, selectedEntryId, processedCount]);
+
+  useEffect(() => {
+    if (!mcEntityId || !filePath) { setMcEntry(null); return; }
+    fetchWikiEntry(filePath, mcEntityId).then(setMcEntry);
+  }, [filePath, mcEntityId, processedCount]);
 
   const navigateTo = useCallback((id: string) => {
     if (selectedEntryId) setHistory((h) => [...h, selectedEntryId!]);
@@ -210,6 +237,20 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
       <WindowHeader icon={<BookOpen className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
 
+      {/* Tab bar */}
+      {!selectedEntry && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.04] px-4" style={{ zoom: zoom / 100 }}>
+          <TabButton active={activeView === "encyclopedia"} onClick={() => setActiveView("encyclopedia")}>
+            <BookOpen className="h-3 w-3" strokeWidth={1.5} />
+            Encyclopedia
+          </TabButton>
+          <TabButton active={activeView === "stats"} onClick={() => setActiveView("stats")}>
+            <BarChart2 className="h-3 w-3" strokeWidth={1.5} />
+            Stats
+          </TabButton>
+        </div>
+      )}
+
       <div className="relative flex-1 overflow-hidden" style={{ zoom: zoom / 100 }}>
         <div ref={scrollRef} className="h-full overflow-y-auto">
           {selectedEntry ? (
@@ -221,6 +262,12 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               onBack={goBack}
               onMerge={handleMerge}
               canGoBack
+            />
+          ) : activeView === "stats" ? (
+            <StatsPage
+              mcEntry={mcEntry}
+              mcStats={mcStats}
+              onNavigateToMC={mcEntityId ? () => navigateTo(mcEntityId) : undefined}
             />
           ) : (
             <HomePage
@@ -244,6 +291,178 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
         <WikiAIChat filePath={filePath} bookTitle={bookTitle} onEntryClick={navigateTo} />
       </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   TAB BUTTON
+   ══════════════════════════════════════════════════════════ */
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs transition-colors ${
+        active
+          ? "border-[var(--accent-brand)] font-medium text-[var(--accent-brand)]"
+          : "border-transparent text-white/35 hover:text-white/55"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   STATS PAGE — MC profile + stats reference
+   ══════════════════════════════════════════════════════════ */
+
+const STAT_CATEGORY_META: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
+  attributes: { icon: <Shield className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Attributes", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
+  skills: { icon: <Zap className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Skills", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
+  inventory: { icon: <Package className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Inventory", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
+  currency: { icon: <Coins className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Currency", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
+  status: { icon: <Activity className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Status Effects", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
+  other: { icon: <BarChart2 className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Other", color: "rgb(255,255,255)", bg: "rgba(255,255,255,0.06)" },
+};
+
+const STAT_CATEGORY_ORDER = ["attributes", "skills", "inventory", "currency", "status", "other"];
+
+function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
+  mcEntry: WikiEntry | null;
+  mcStats: MCStat[];
+  onNavigateToMC?: () => void;
+}) {
+  const activeStats = mcStats.filter((s) => s.is_active);
+  const inactiveStats = mcStats.filter((s) => !s.is_active);
+
+  const groupedActive = useMemo(() => {
+    const groups: Partial<Record<string, MCStat[]>> = {};
+    for (const stat of activeStats) {
+      const cat = stat.category || "other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat]!.push(stat);
+    }
+    return groups;
+  }, [activeStats]);
+
+  if (mcStats.length === 0 && !mcEntry) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <BarChart2 className="mx-auto h-8 w-8 text-white/20" strokeWidth={1.5} />
+          <p className="mt-3 text-sm text-white/40">No stats tracked yet</p>
+          <p className="mt-1 text-xs text-white/25">Stats appear as the AI processes chapters</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-[900px] px-4 py-6 sm:px-6">
+      {/* MC Profile Card */}
+      {mcEntry && (
+        <section className="mb-8">
+          <SectionHeader icon={<User className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Protagonist" color="rgb(147, 197, 253)" />
+          <button
+            onClick={onNavigateToMC}
+            className="mt-3 group w-full rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-4 text-left transition-all hover:border-white/[0.12] hover:bg-white/[0.04]"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ background: TYPE_META.character.bg }}>
+                <User className="h-5 w-5" strokeWidth={1.5} style={{ color: TYPE_META.character.color }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-white/85 group-hover:text-white/95">{mcEntry.name}</span>
+                  {mcEntry.significance >= 3 && <span className="text-xs text-amber-400/60">{"★".repeat(mcEntry.significance)}</span>}
+                  <span className="ml-auto rounded-lg px-1.5 py-0.5 text-xs capitalize" style={{ background: "var(--bg-inset)", color: "rgba(255,255,255,0.35)" }}>
+                    {mcEntry.status}
+                  </span>
+                </div>
+                {mcEntry.aliases.length > 0 && (
+                  <p className="mt-0.5 text-xs text-white/25">aka {mcEntry.aliases.join(", ")}</p>
+                )}
+                <p className="mt-1.5 text-xs leading-relaxed text-white/50">{mcEntry.shortDescription}</p>
+                {mcEntry.description && (
+                  <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-white/35">{mcEntry.description}</p>
+                )}
+              </div>
+              <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-white/15 transition-colors group-hover:text-white/40" strokeWidth={1.5} />
+            </div>
+          </button>
+        </section>
+      )}
+
+      {/* Stat categories */}
+      {STAT_CATEGORY_ORDER.map((cat) => {
+        const items = groupedActive[cat];
+        if (!items || items.length === 0) return null;
+        const meta = STAT_CATEGORY_META[cat] ?? STAT_CATEGORY_META.other;
+        return (
+          <section key={cat} className="mb-6">
+            <SectionHeader icon={meta.icon} label={meta.label} color={meta.color} />
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {items.map((stat) => (
+                <div key={stat.stat_key} className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ background: meta.bg }}>
+                      <span style={{ color: meta.color }}>{meta.icon}</span>
+                    </div>
+                    <span className="truncate text-xs font-medium text-white/70">{stat.display_name}</span>
+                  </div>
+                  {stat.value && (
+                    <p className="mt-1.5 text-sm font-semibold" style={{ color: meta.color }}>{stat.value}</p>
+                  )}
+                  <p className="mt-0.5 text-xs text-white/20">Ch. {stat.last_chapter + 1}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+
+      {/* Also check any categories not in the default order */}
+      {Object.entries(groupedActive)
+        .filter(([cat]) => !STAT_CATEGORY_ORDER.includes(cat))
+        .map(([cat, items]) => {
+          if (!items || items.length === 0) return null;
+          const meta = STAT_CATEGORY_META.other;
+          return (
+            <section key={cat} className="mb-6">
+              <SectionHeader icon={meta.icon} label={cat.charAt(0).toUpperCase() + cat.slice(1)} color={meta.color} />
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {items.map((stat) => (
+                  <div key={stat.stat_key} className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-3">
+                    <span className="truncate text-xs font-medium text-white/70">{stat.display_name}</span>
+                    {stat.value && (
+                      <p className="mt-1.5 text-sm font-semibold text-white/60">{stat.value}</p>
+                    )}
+                    <p className="mt-0.5 text-xs text-white/20">Ch. {stat.last_chapter + 1}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+
+      {/* Lost/consumed items */}
+      {inactiveStats.length > 0 && (
+        <section className="mb-8">
+          <SectionHeader icon={<X className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Lost / Consumed" color="rgba(255,255,255,0.2)" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {inactiveStats.map((stat) => (
+              <div key={stat.stat_key} className="flex items-center gap-1.5 rounded-lg border border-white/[0.04] bg-[var(--bg-surface)] px-2.5 py-1.5">
+                <span className="text-xs text-white/25 line-through">{stat.display_name}</span>
+                {stat.value && <span className="text-xs text-white/15">{stat.value}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="h-16" />
     </div>
   );
 }

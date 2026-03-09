@@ -21,6 +21,7 @@ import {
   getEntityIndex, getRecentEntities,
   clearWiki, migrateJsonWiki,
   mergeWikiEntries, unmergeWikiEntries, getWikiMergeLog,
+  upsertMCStat, getMCStats, setMCEntityId, getMCEntityId,
   // Simulate
   upsertBranch, getBranches, getBranchSegments, addSegment, deleteBranch,
 } from "./database";
@@ -473,6 +474,11 @@ function createWindow() {
   ipcMain.handle("wiki:merge-entries", (_event, filePath: string, sourceId: string, targetId: string) => { mergeWikiEntries(filePath, sourceId, targetId); });
   ipcMain.handle("wiki:unmerge-entries", (_event, filePath: string, mergeLogId: number) => { unmergeWikiEntries(filePath, mergeLogId); });
   ipcMain.handle("wiki:get-merge-log", (_event, filePath: string) => getWikiMergeLog(filePath));
+
+  ipcMain.handle("wiki:upsert-mc-stat", (_event, filePath: string, stat: Parameters<typeof upsertMCStat>[1]) => { upsertMCStat(filePath, stat); });
+  ipcMain.handle("wiki:get-mc-stats", (_event, filePath: string) => getMCStats(filePath));
+  ipcMain.handle("wiki:set-mc-entity-id", (_event, filePath: string, entityId: string) => { setMCEntityId(filePath, entityId); });
+  ipcMain.handle("wiki:get-mc-entity-id", (_event, filePath: string) => getMCEntityId(filePath));
 
   // ── Simulate ────────────────────────────────────────
 

@@ -204,6 +204,19 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_merge_log ON wiki_merge_log(file_path);
 
+    CREATE TABLE IF NOT EXISTS wiki_mc_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL,
+      stat_key TEXT NOT NULL,
+      category TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      value TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      last_chapter INTEGER NOT NULL,
+      UNIQUE(file_path, stat_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mc_stats ON wiki_mc_stats(file_path, category);
+
     -- ── Simulate Tables ─────────────────────────────────
 
     CREATE TABLE IF NOT EXISTS sim_branches (
@@ -248,6 +261,9 @@ export function initDatabase(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_sim_segments ON sim_segments(file_path, branch_id, segment_index);
   `);
+
+  // Schema migrations — safe to run repeatedly
+  try { db.prepare("ALTER TABLE wiki_meta ADD COLUMN mc_entity_id TEXT DEFAULT NULL").run(); } catch { /* already exists */ }
 }
 
 // ── Items ──────────────────────────────────────────
@@ -445,12 +461,11 @@ export function getReadingStats(): {
   return { totalPagesRead, totalSessions: 0, booksRead, activityByBook };
 }
 
-// ── Wiki Tables (used for bulk clear) ─────────────
 const WIKI_TABLES = [
   "wiki_arc_beats", "wiki_arc_entities", "wiki_arcs",
   "wiki_chapter_summaries", "wiki_appearances",
   "wiki_relationships", "wiki_details", "wiki_aliases",
-  "wiki_entries", "wiki_processed", "wiki_meta",
+  "wiki_entries", "wiki_processed", "wiki_mc_stats", "wiki_meta",
 ] as const;
 
 // ── Wiki CRUD ─────────────────────────────────────
@@ -1029,6 +1044,50 @@ export function getRecentEntities(filePath: string, lastNChapters: number, curre
 }
 
 // ── Clear Wiki ──
+
+// ── MC Stats ──
+
+export interface MCStatRow {
+  id: number;
+  file_path: string;
+  stat_key: string;
+  category: string;
+  display_name: string;
+  value: string | null;
+  is_active: number;
+  last_chapter: number;
+}
+
+export function upsertMCStat(
+  filePath: string,
+  stat: { key: string; category: string; name: string; value: string | null; isActive: boolean; chapter: number },
+): void {
+  db.prepare(`
+    INSERT INTO wiki_mc_stats (file_path, stat_key, category, display_name, value, is_active, last_chapter)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(file_path, stat_key) DO UPDATE SET
+      category = excluded.category,
+      display_name = excluded.display_name,
+      value = excluded.value,
+      is_active = excluded.is_active,
+      last_chapter = excluded.last_chapter
+  `).run(filePath, stat.key, stat.category, stat.name, stat.value ?? null, stat.isActive ? 1 : 0, stat.chapter);
+}
+
+export function getMCStats(filePath: string): MCStatRow[] {
+  return db.prepare(
+    "SELECT * FROM wiki_mc_stats WHERE file_path = ? ORDER BY category, display_name"
+  ).all(filePath) as MCStatRow[];
+}
+
+export function setMCEntityId(filePath: string, entityId: string): void {
+  db.prepare("UPDATE wiki_meta SET mc_entity_id = ? WHERE file_path = ?").run(entityId, filePath);
+}
+
+export function getMCEntityId(filePath: string): string | null {
+  const row = db.prepare("SELECT mc_entity_id FROM wiki_meta WHERE file_path = ?").get(filePath) as { mc_entity_id: string | null } | undefined;
+  return row?.mc_entity_id ?? null;
+}
 
 export function clearWiki(filePath: string): void {
   const clearAll = db.transaction(() => {

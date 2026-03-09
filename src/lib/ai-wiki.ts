@@ -127,6 +127,14 @@ interface AIArcAmendment {
   reason?: string;
 }
 
+interface AIMCStat {
+  key: string;
+  category: string;
+  name: string;
+  value: string | null;
+  is_active: boolean;
+}
+
 interface AIWikiChapterData {
   chapter_index: number;
   chapter_summary?: AIChapterSummary;
@@ -135,9 +143,12 @@ interface AIWikiChapterData {
   arc_amendments?: AIArcAmendment[];
   new_entries: AINewEntry[];
   updates: AIUpdate[];
+  mc_stats?: AIMCStat[];
 }
 
 interface AIWikiResponse {
+  // MC protagonist entity ID (set once when identified)
+  mc_entity_id?: string;
   // New batch format
   batch?: AIWikiChapterData[];
   // Legacy single-chapter fields (for backwards compat)
@@ -224,6 +235,11 @@ export async function generateWikiForChapter(
 
   if (isAborted()) return;
 
+  // Set MC entity ID if identified
+  if (parsed.mc_entity_id) {
+    await api.wikiSetMCEntityId(filePath, parsed.mc_entity_id);
+  }
+
   // Write results to DB
   const chapterDataList = getChapterDataFromResponse(parsed, chapterIndex);
   for (const chapterData of chapterDataList) {
@@ -273,6 +289,11 @@ export async function generateWikiForChapterBatch(
   if (!parsed) return [];
 
   if (isAborted()) return [];
+
+  // Set MC entity ID if identified
+  if (parsed.mc_entity_id) {
+    await api.wikiSetMCEntityId(filePath, parsed.mc_entity_id);
+  }
 
   const chapterDataList = getChapterDataFromResponse(parsed, firstIndex);
   const processed: number[] = [];
@@ -667,6 +688,21 @@ async function writeResponseToDB(
       } else if (amendment.action === "delete" && amendment.arc_id) {
         await api.wikiDeleteArc(filePath, amendment.arc_id);
       }
+    }
+  }
+
+  // MC stats
+  if (response.mc_stats && response.mc_stats.length > 0) {
+    for (const stat of response.mc_stats) {
+      if (!stat.key || !stat.category || !stat.name) continue;
+      await api.wikiUpsertMCStat(filePath, {
+        key: stat.key,
+        category: stat.category,
+        name: stat.name,
+        value: stat.value ?? null,
+        isActive: stat.is_active !== false,
+        chapter: chapterIndex,
+      });
     }
   }
 
