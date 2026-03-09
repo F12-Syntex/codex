@@ -568,6 +568,9 @@ function createWindow() {
   }
 }
 
+// Set app user model ID so Windows taskbar shows the correct icon
+app.setAppUserModelId("com.codex.app");
+
 app.whenReady().then(() => {
   const outDir = path.join(__dirname, "../out");
 
