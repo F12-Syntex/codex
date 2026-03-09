@@ -371,10 +371,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       enrichAbortRef.current = true;
       setEnrichingChapter(null);
       setEnrichAllProgress(null);
+    } else if (needsEnrichment(chapters[currentChapter]?.title) && !enrichedNames[currentChapter]) {
+      enrichChapter(currentChapter);
     }
     setEnrichEnabled(next);
     window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(next));
-  }, [enrichEnabled, filePath]);
+  }, [enrichEnabled, filePath, chapters, currentChapter, enrichedNames, enrichChapter]);
 
   const enrichAll = useCallback(async (upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
@@ -609,10 +611,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       formatAbortRef.current = true;
       setFormattingChapter(null);
       setFormatAllProgress(null);
+    } else if (!formattedChapters[currentChapter]) {
+      formatChapter(currentChapter);
     }
     setFormattingEnabled(next);
     window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(next));
-  }, [formattingEnabled, filePath]);
+  }, [formattingEnabled, filePath, formattedChapters, currentChapter, formatChapter]);
 
   // ── AI Wiki ──────────────────────────────────────────
 
@@ -815,10 +819,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         setActiveBranchSegments([]);
         window.electronAPI?.setSetting(`simulateEnabled:${filePath}`, JSON.stringify(false));
       }
+    } else if (!wikiProcessedChapters.has(currentChapter)) {
+      processWikiChapter(currentChapter);
     }
     setWikiEnabled(next);
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(next));
-  }, [wikiEnabled, filePath, buddyEnabled, simulateEnabled]);
+  }, [wikiEnabled, filePath, buddyEnabled, simulateEnabled, wikiProcessedChapters, currentChapter, processWikiChapter]);
 
   const toggleBuddyEnabled = useCallback(() => {
     const next = !buddyEnabled;
