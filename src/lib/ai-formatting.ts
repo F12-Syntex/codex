@@ -109,6 +109,9 @@ export function parseFormattingResponse(
         changeCount++;
       }
       console.log(`AI formatting: ${changeCount}/${expectedCount} paragraphs modified (sparse)`);
+      // Clear paragraphs whose original content was merged into an earlier paragraph
+      // (AI should set them to "" per rule 9, but often forgets)
+      if (originals) clearMergedDuplicates(result, originals);
       return result;
     }
 
@@ -206,6 +209,34 @@ function repairTruncated(s: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * After parsing a sparse AI response, the AI is supposed to set merged/consumed
+ * paragraphs to "" (rule 9) but often forgets. This detects those cases:
+ * if an original paragraph's plain text appears inside an earlier formatted paragraph,
+ * its slot is a duplicate and should be cleared.
+ */
+function clearMergedDuplicates(result: string[], originals: string[]): void {
+  const strip = (html: string) =>
+    html.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
+
+  const resultText = result.map(strip);
+
+  for (let j = 1; j < result.length; j++) {
+    if (result[j] === "") continue; // already cleared
+    if (result[j] !== originals[j]) continue; // AI explicitly changed this paragraph — leave it
+
+    const origJ = strip(originals[j]);
+    if (origJ.length < 30) continue; // too short to match reliably
+
+    for (let i = 0; i < j; i++) {
+      if (resultText[i].includes(origJ)) {
+        result[j] = "";
+        break;
+      }
+    }
+  }
 }
 
 function stripUnrecognizedClasses(html: string): string {
