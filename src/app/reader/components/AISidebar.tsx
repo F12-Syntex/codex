@@ -452,7 +452,7 @@ function Row({
         </span>
       ) : null}
 
-      {/* Action button: stop / run / clear */}
+      {/* Run / Stop button */}
       {running && onCancel ? (
         <ActionBtn onClick={onCancel} theme={theme}>
           <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
@@ -465,7 +465,12 @@ function Row({
         >
           <Play className="h-2.5 w-2.5" strokeWidth={0} fill="currentColor" />
         </button>
-      ) : canClear && onClear ? (
+      ) : (
+        <div className="h-6 w-6 shrink-0" />
+      )}
+
+      {/* Clear button — always shown when data exists and not running */}
+      {canClear && onClear && !running ? (
         <ActionBtn onClick={onClear} theme={theme}>
           <Trash2 className="h-3 w-3" strokeWidth={1.5} />
         </ActionBtn>
