@@ -453,26 +453,27 @@ function Row({
             {lockNote}
           </span>
         )}
+        {/* Status shown inline under label — avoids overflow with long counts like "62 / 1434" */}
+        {!running && status && (
+          <span
+            className={cn("block text-xs tabular-nums leading-tight", status === "done" ? "text-[var(--accent-brand)]" : theme.muted)}
+            style={{ opacity: status === "done" ? 0.7 : 0.4 }}
+          >
+            {status}
+          </span>
+        )}
+        {/* Running count shown inline under label */}
+        {running && (
+          <div className="flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
+            {runCount && (
+              <span className={cn("text-xs tabular-nums", theme.muted)} style={{ opacity: 0.6 }}>
+                {runCount}
+              </span>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Status / running count */}
-      {running ? (
-        <div className="flex shrink-0 items-center gap-1">
-          <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-brand)]" strokeWidth={2} />
-          {runCount && (
-            <span className={cn("text-xs tabular-nums", theme.muted)} style={{ opacity: 0.6 }}>
-              {runCount}
-            </span>
-          )}
-        </div>
-      ) : status ? (
-        <span
-          className={cn("shrink-0 text-xs tabular-nums", status === "done" ? "text-[var(--accent-brand)]" : theme.muted)}
-          style={{ opacity: status === "done" ? 0.7 : 0.45 }}
-        >
-          {status}
-        </span>
-      ) : null}
 
       {/* Run / Retry / Stop button */}
       {running && onCancel ? (
