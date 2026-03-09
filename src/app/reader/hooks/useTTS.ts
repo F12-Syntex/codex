@@ -134,8 +134,11 @@ export function useTTS({
   }, []);
 
   // Call Edge TTS API
+  // Edge TTS SSML rate tops out at +100% (2x). For faster speeds we cap the
+  // TTS rate here and apply the remainder via audio.playbackRate at play time.
   const callTTSAPI = useCallback((text: string): Promise<SynthResult | null> => {
-    const rateStr = `${rateRef.current >= 0 ? "+" : ""}${Math.round((rateRef.current - 1) * 100)}%`;
+    const ttsRate = Math.min(rateRef.current, 2);
+    const rateStr = `${ttsRate >= 0 ? "+" : ""}${Math.round((ttsRate - 1) * 100)}%`;
     const pitchStr = `${pitchRef.current >= 0 ? "+" : ""}${pitchRef.current}Hz`;
     const volStr = `${volumeRef.current}%`;
     return window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr) ?? Promise.resolve(null);
@@ -206,6 +209,8 @@ export function useTTS({
       setActiveWordIndex(-1);
 
       audio.volume = volume / 100;
+      // Apply any speed above 2x via playbackRate (Edge TTS caps at 2x)
+      audio.playbackRate = rateRef.current / Math.min(rateRef.current, 2);
 
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => resolve();

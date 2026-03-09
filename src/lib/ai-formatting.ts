@@ -87,12 +87,13 @@ export function parseFormattingResponse(
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // AI response may be truncated — try to salvage by closing open strings/braces
-      const repaired = repairJson(cleaned);
+      // AI response may have preamble text or be truncated — try to extract/repair
+      const repaired = extractAndRepairJson(cleaned);
       if (repaired) {
         parsed = JSON.parse(repaired);
       } else {
-        throw new Error("Unrecoverable JSON");
+        console.warn("AI formatting: unrecoverable JSON, falling back to originals");
+        return originals ? [...originals] : null;
       }
     }
 
@@ -146,37 +147,62 @@ export function parseFormattingResponse(
  * This gives the AI full creative freedom within the ai-fmt namespace.
  */
 /**
- * Attempt to repair truncated JSON from AI responses.
- * Handles common cases: unclosed strings, missing closing braces/brackets.
+ * Try to extract a JSON object/array from an AI response that may include
+ * preamble text, trailing text, or be truncated. Falls back to repair strategies.
  */
-function repairJson(raw: string): string | null {
-  let s = raw.trim();
+function extractAndRepairJson(raw: string): string | null {
+  const s = raw.trim();
 
-  // If it's an object, try to close it
+  // Find the first { or [ and try to parse from there
+  const objStart = s.indexOf("{");
+  const arrStart = s.indexOf("[");
+  const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
+
+  if (start === -1) return null;
+
+  const extracted = s.slice(start);
+
+  // Try the extracted slice as-is first
+  try { JSON.parse(extracted); return extracted; } catch { /* fall through */ }
+
+  // Try trimming trailing garbage after the last } or ]
+  const lastBrace = extracted.lastIndexOf("}");
+  const lastBracket = extracted.lastIndexOf("]");
+  const end = Math.max(lastBrace, lastBracket);
+  if (end > 0) {
+    const trimmed = extracted.slice(0, end + 1);
+    try { JSON.parse(trimmed); return trimmed; } catch { /* fall through */ }
+  }
+
+  return repairTruncated(extracted);
+}
+
+/**
+ * Attempt to repair truncated JSON (unclosed strings/braces).
+ */
+function repairTruncated(s: string): string | null {
   if (s.startsWith("{")) {
-    // Remove trailing comma or incomplete key-value
-    s = s.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, "");
-    // Close any unclosed string value
-    const quoteCount = (s.match(/(?<!\\)"/g) || []).length;
-    if (quoteCount % 2 !== 0) s += '"';
-    // Ensure closing brace
-    if (!s.endsWith("}")) s += "}";
-    try { JSON.parse(s); return s; } catch { /* fall through */ }
+    // Remove trailing incomplete key-value
+    let r = s.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, "");
+    const quoteCount = (r.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) r += '"';
+    if (!r.endsWith("}")) r += "}";
+    try { JSON.parse(r); return r; } catch { /* fall through */ }
 
-    // More aggressive repair: strip everything after last complete key-value pair
-    const lastGoodComma = s.lastIndexOf('",');
+    // Strip back to last complete key-value pair
+    const lastGoodComma = r.lastIndexOf('",');
     if (lastGoodComma > 0) {
-      const truncated = s.substring(0, lastGoodComma + 1) + "}";
+      const truncated = r.substring(0, lastGoodComma + 1) + "}";
       try { JSON.parse(truncated); return truncated; } catch { /* fall through */ }
     }
   }
 
-  // If it's an array, try to close it
   if (s.startsWith("[")) {
-    const quoteCount = (s.match(/(?<!\\)"/g) || []).length;
-    if (quoteCount % 2 !== 0) s += '"';
-    if (!s.endsWith("]")) s += "]";
-    try { JSON.parse(s); return s; } catch { /* fall through */ }
+    let r = s;
+    const quoteCount = (r.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) r += '"';
+    if (!r.endsWith("]")) r += "]";
+    try { JSON.parse(r); return r; } catch { /* fall through */ }
   }
 
   return null;
