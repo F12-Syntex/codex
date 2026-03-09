@@ -647,8 +647,12 @@ async function writeResponseToDB(
 
       if (newArc.entities) {
         for (const ent of newArc.entities) {
-          if (ent.entry_id) {
-            await api.wikiAddArcEntity(filePath, newArc.id, ent.entry_id, ent.role || "");
+          if (!ent.entry_id) continue;
+          // Resolve through dedup map — entity may have been merged into a different ID
+          const resolvedEntId = nameToId.get(ent.entry_id.toLowerCase()) ?? ent.entry_id;
+          const entExists = await api.wikiGetEntry(filePath, resolvedEntId);
+          if (entExists) {
+            await api.wikiAddArcEntity(filePath, newArc.id, resolvedEntId, ent.role || "");
           }
         }
       }

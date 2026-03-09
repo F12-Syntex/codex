@@ -38,6 +38,7 @@ interface AISidebarProps {
   wikiEntryCount: number;
   wikiProcessedCount: number;
   wikiProcessingChapter: number | null;
+  wikiAllProgress: { current: number; total: number } | null;
   totalChapters: number;
   currentChapter: number;
   currentChapterWikiDone: boolean;
@@ -90,6 +91,7 @@ export function AISidebar({
   wikiEntryCount,
   wikiProcessedCount,
   wikiProcessingChapter,
+  wikiAllProgress,
   totalChapters,
   currentChapter,
   currentChapterWikiDone,
@@ -165,7 +167,9 @@ export function AISidebar({
   const formatToDo = chapters.length - formattedChapterCount;
 
   const wikiRunCount = isWikiRunning
-    ? `${wikiProcessedCount} / ${totalChapters}`
+    ? wikiAllProgress
+      ? `batch ${wikiAllProgress.current + 1} / ${wikiAllProgress.total} · ${wikiProcessedCount} ch done`
+      : `ch. ${(wikiProcessingChapter ?? 0) + 1}`
     : undefined;
 
   /* ── External links ──────────────────────────────────────── */

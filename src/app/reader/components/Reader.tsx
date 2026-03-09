@@ -79,6 +79,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   // AI Wiki state (DB-backed — lightweight)
   const [wikiEnabled, setWikiEnabled] = useState(false);
   const [wikiProcessingChapter, setWikiProcessingChapter] = useState<number | null>(null);
+  const [wikiAllProgress, setWikiAllProgress] = useState<{ current: number; total: number } | null>(null);
   const wikiAbortRef = useRef(false);
   const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
   const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
@@ -1262,14 +1263,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
     if (currentBatch.length > 0) batches.push(currentBatch);
 
-    for (const batch of batches) {
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
       if (wikiAbortRef.current) break;
+      const batch = batches[batchIdx];
       setWikiProcessingChapter(batch[0].index);
+      setWikiAllProgress({ current: batchIdx, total: batches.length });
 
       try {
         await generateWikiForChapterBatch(batch, title, filePath, () => wikiAbortRef.current);
         if (wikiAbortRef.current) break;
         await refreshWikiState();
+        setWikiAllProgress({ current: batchIdx + 1, total: batches.length });
       } catch (err) {
         console.error(`Failed to process wiki batch starting at chapter ${batch[0].index}:`, err);
       }
@@ -1277,12 +1281,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
     await refreshWikiState();
     setWikiProcessingChapter(null);
+    setWikiAllProgress(null);
   }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
 
   const cancelWikiProcessAll = useCallback(() => {
     wikiAbortRef.current = true;
     formatAbortRef.current = true;
     setWikiProcessingChapter(null);
+    setWikiAllProgress(null);
     setFormattingChapter(null);
   }, []);
 
@@ -1710,6 +1716,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               wikiEntryCount={wikiEntryCount}
               wikiProcessedCount={wikiProcessedChapters.size}
               wikiProcessingChapter={wikiProcessingChapter}
+              wikiAllProgress={wikiAllProgress}
               totalChapters={chapters.length}
               currentChapter={currentChapter}
               onWikiToggle={toggleWikiEnabled}
