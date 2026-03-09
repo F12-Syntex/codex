@@ -133,7 +133,9 @@ function createAppWindow(
     minHeight: size?.minHeight ?? 400,
     frame: false,
     titleBarStyle: "hidden",
-    icon: path.join(__dirname, "../build/icon.png"),
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, "icon.ico")
+      : path.join(__dirname, "../build/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
