@@ -135,7 +135,7 @@ function createAppWindow(
     titleBarStyle: "hidden",
     icon: app.isPackaged
       ? path.join(process.resourcesPath, "icon.ico")
-      : path.join(__dirname, "../build/icon.png"),
+      : path.join(__dirname, "../build/icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

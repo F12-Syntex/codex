@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16162a"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8c97a"/>
+      <stop offset="50%" stop-color="#f5e0a0"/>
+      <stop offset="100%" stop-color="#c9a84c"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2a2a50"/>
+      <stop offset="100%" stop-color="#1e1e3c"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e1e3c"/>
+      <stop offset="100%" stop-color="#2a2a50"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="256" height="256" rx="48" ry="48" fill="url(#bg)"/>
+
+  <!-- Left page -->
+  <path d="M42 52 L42 190 Q42 202 54 202 L124 194 L124 44 Q96 36 42 52Z" fill="url(#pageL)" stroke="#3a3a60" stroke-width="2"/>
+
+  <!-- Right page -->
+  <path d="M214 52 L214 190 Q214 202 202 202 L132 194 L132 44 Q160 36 214 52Z" fill="url(#pageR)" stroke="#3a3a60" stroke-width="2"/>
+
+  <!-- Book bottom -->
+  <path d="M42 190 Q42 206 54 206 L128 198 L202 206 Q214 206 214 190 L132 198 Z" fill="#12122a" stroke="#3a3a60" stroke-width="1.5"/>
+
+  <!-- Spine -->
+  <rect x="124" y="40" width="8" height="164" rx="4" fill="url(#gold)"/>
+
+  <!-- Center node (main) -->
+  <circle cx="128" cy="124" r="12" fill="url(#gold)"/>
+  <circle cx="128" cy="124" r="6" fill="#1a1a2e"/>
+
+  <!-- Top node -->
+  <circle cx="128" cy="72" r="8" fill="#1a1a2e" stroke="#e8c97a" stroke-width="3"/>
+
+  <!-- Bottom node -->
+  <circle cx="128" cy="176" r="8" fill="#1a1a2e" stroke="#e8c97a" stroke-width="3"/>
+
+  <!-- Circuit arms -->
+  <line x1="128" y1="124" x2="84" y2="98" stroke="#e8c97a" stroke-width="2.5" opacity="0.7"/>
+  <line x1="128" y1="124" x2="84" y2="150" stroke="#e8c97a" stroke-width="2.5" opacity="0.7"/>
+  <line x1="128" y1="124" x2="172" y2="98" stroke="#e8c97a" stroke-width="2.5" opacity="0.7"/>
+  <line x1="128" y1="124" x2="172" y2="150" stroke="#e8c97a" stroke-width="2.5" opacity="0.7"/>
+
+  <!-- Arm endpoints -->
+  <circle cx="84" cy="98" r="6" fill="#e8c97a" opacity="0.8"/>
+  <circle cx="84" cy="150" r="6" fill="#e8c97a" opacity="0.8"/>
+  <circle cx="172" cy="98" r="6" fill="#e8c97a" opacity="0.8"/>
+  <circle cx="172" cy="150" r="6" fill="#e8c97a" opacity="0.8"/>
+
+  <!-- Text lines on left page -->
+  <line x1="58" y1="78" x2="112" y2="74" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+  <line x1="58" y1="96" x2="112" y2="92" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+  <line x1="58" y1="156" x2="112" y2="152" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+  <line x1="58" y1="174" x2="96" y2="171" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+
+  <!-- Text lines on right page -->
+  <line x1="144" y1="74" x2="198" y2="78" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+  <line x1="144" y1="92" x2="198" y2="96" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+  <line x1="144" y1="152" x2="198" y2="156" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+  <line x1="160" y1="171" x2="198" y2="174" stroke="#e8c97a" stroke-width="2" opacity="0.2"/>
+</svg>
