@@ -967,6 +967,12 @@ export function markChapterProcessed(filePath: string, chapterIndex: number): vo
   ).run(filePath, chapterIndex);
 }
 
+export function unmarkChapterProcessed(filePath: string, chapterIndex: number): void {
+  db.prepare(
+    "DELETE FROM wiki_processed WHERE file_path = ? AND chapter_index = ?"
+  ).run(filePath, chapterIndex);
+}
+
 export function getProcessedChapters(filePath: string): number[] {
   const rows = db.prepare(
     "SELECT chapter_index FROM wiki_processed WHERE file_path = ? ORDER BY chapter_index ASC"

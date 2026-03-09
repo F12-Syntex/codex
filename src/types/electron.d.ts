@@ -311,6 +311,7 @@ interface ElectronAPI {
   wikiMergeArcs: (filePath: string, sourceArcIds: string[], targetArcId: string) => Promise<void>;
 
   wikiMarkProcessed: (filePath: string, chapterIndex: number) => Promise<void>;
+  wikiUnmarkProcessed: (filePath: string, chapterIndex: number) => Promise<void>;
   wikiGetProcessed: (filePath: string) => Promise<number[]>;
 
   wikiGetMeta: (filePath: string) => Promise<{ file_path: string; book_title: string; updated_at: string } | null>;

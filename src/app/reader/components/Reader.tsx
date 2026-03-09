@@ -22,7 +22,7 @@ import { formatChapterContent } from "@/lib/ai-formatting";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
-import { generateWikiForChapter, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
+import { generateWikiForChapter, generateWikiForChapterBatch, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { AIBuddyPanel } from "./AIBuddyPanel";
@@ -660,6 +660,24 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
 
+  const retryWikiChapter = useCallback(async (chapterIndex: number) => {
+    if (!chapters[chapterIndex]) return;
+    await window.electronAPI?.wikiUnmarkProcessed(filePath, chapterIndex);
+    setWikiProcessedChapters((prev) => { const s = new Set(prev); s.delete(chapterIndex); return s; });
+    setWikiProcessingChapter(chapterIndex);
+    wikiAbortRef.current = false;
+    try {
+      const chapterText = chapters[chapterIndex].paragraphs.join("\n");
+      await generateWikiForChapter(chapterIndex, chapterText, title, filePath, () => wikiAbortRef.current, true);
+      if (wikiAbortRef.current) return;
+      await refreshWikiState();
+    } catch (err) {
+      console.error(`Failed to retry wiki for chapter ${chapterIndex}:`, err);
+    } finally {
+      if (!wikiAbortRef.current) setWikiProcessingChapter(null);
+    }
+  }, [chapters, filePath, title, refreshWikiState]);
+
   // ── AI Comments ─────────────────────────────────────
 
   const generateCommentsForChapter = useCallback(async (chapterIndex: number) => {
@@ -1206,58 +1224,56 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!apiKey) return;
 
     wikiAbortRef.current = false;
-    formatAbortRef.current = false;
-
-    let currentFormatted = { ...formattedChapters };
-    let currentDict = styleDictionary;
 
     const limit = upToChapter ?? chapters.length - 1;
-    for (let i = 0; i <= limit; i++) {
-      if (wikiAbortRef.current) break;
-      if (wikiProcessedChapters.has(i)) continue;
 
-      setWikiProcessingChapter(i);
+    // Build ordered list of unprocessed chapters
+    const queue: number[] = [];
+    for (let i = 0; i <= limit; i++) {
+      if (!wikiProcessedChapters.has(i) && chapters[i]) queue.push(i);
+    }
+
+    if (queue.length === 0) return;
+
+    // Pack chapters into batches by text budget (~120K chars per call)
+    const BUDGET = 120_000;
+    const batches: { index: number; text: string }[][] = [];
+    let currentBatch: { index: number; text: string }[] = [];
+    let currentSize = 0;
+
+    for (const i of queue) {
+      if (wikiAbortRef.current) break;
+      const text = chapters[i].paragraphs.join("\n");
+      const chunkSize = Math.min(text.length, 40_000);
+
+      if (currentBatch.length > 0 && currentSize + chunkSize > BUDGET) {
+        // This chapter doesn't fit — flush current batch and start new one
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentSize = 0;
+      }
+
+      currentBatch.push({ index: i, text });
+      currentSize += chunkSize;
+    }
+    if (currentBatch.length > 0) batches.push(currentBatch);
+
+    for (const batch of batches) {
+      if (wikiAbortRef.current) break;
+      setWikiProcessingChapter(batch[0].index);
 
       try {
-        // Format first if needed
-        if (!currentFormatted[i] && chapters[i]) {
-          setFormattingChapter(i);
-          const result = await formatChapterContent(
-            apiKey, chapters[i], title,
-            () => wikiAbortRef.current,
-            currentDict,
-            filePath,
-          );
-          if (wikiAbortRef.current) break;
-          if (result) {
-            currentFormatted = { ...currentFormatted, [i]: result.paragraphs };
-            currentDict = result.dictionary;
-            setFormattedChapters({ ...currentFormatted });
-            setStyleDictionary(currentDict);
-          }
-          setFormattingChapter(null);
-        }
-
-        // Then process wiki
-        const chapterText = chapters[i].paragraphs.join("\n");
-        await generateWikiForChapter(
-          i, chapterText, title, filePath,
-          () => wikiAbortRef.current,
-        );
+        await generateWikiForChapterBatch(batch, title, filePath, () => wikiAbortRef.current);
         if (wikiAbortRef.current) break;
-
-        // Refresh state periodically
         await refreshWikiState();
       } catch (err) {
-        console.error(`Failed to process wiki for chapter ${i}:`, err);
+        console.error(`Failed to process wiki batch starting at chapter ${batch[0].index}:`, err);
       }
     }
 
-    await window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(currentFormatted));
     await refreshWikiState();
     setWikiProcessingChapter(null);
-    setFormattingChapter(null);
-  }, [chapters, title, filePath, wikiProcessedChapters, formattedChapters, styleDictionary, refreshWikiState]);
+  }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
 
   const cancelWikiProcessAll = useCallback(() => {
     wikiAbortRef.current = true;
@@ -1683,6 +1699,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               styleDictionary={styleDictionary}
               filePath={filePath}
               bookTitle={title}
+              currentChapterWikiDone={wikiProcessedChapters.has(currentChapter)}
+              currentChapterFormatDone={!!formattedChapters[currentChapter]}
+              currentChapterEnrichDone={!!enrichedNames[currentChapter]}
               wikiEnabled={wikiEnabled}
               wikiEntryCount={wikiEntryCount}
               wikiProcessedCount={wikiProcessedChapters.size}
@@ -1691,6 +1710,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               currentChapter={currentChapter}
               onWikiToggle={toggleWikiEnabled}
               onWikiProcessAll={processAllWikiChapters}
+              onWikiRetry={() => retryWikiChapter(currentChapter)}
+              onFormatRetry={() => formatChapter(currentChapter)}
+              onEnrichRetry={() => enrichChapter(currentChapter)}
               onCancelWikiProcessAll={cancelWikiProcessAll}
               onClearWiki={clearWiki}
               buddyEnabled={buddyEnabled}

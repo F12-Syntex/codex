@@ -5,7 +5,10 @@ import { loadOverrides } from "./ai-presets";
 import {
   WIKI_SYSTEM_PROMPT,
   buildWikiUserPrompt,
+  buildWikiBatchUserPrompt,
   buildTieredContext,
+  BATCH_TEXT_BUDGET,
+  CHAPTER_TEXT_BUDGET,
 } from "./ai-wiki-prompt";
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -123,13 +126,26 @@ interface AIArcAmendment {
   reason?: string;
 }
 
-interface AIWikiResponse {
+interface AIWikiChapterData {
+  chapter_index: number;
   chapter_summary?: AIChapterSummary;
   arc_updates?: AIArcUpdate[];
   new_arcs?: AINewArc[];
   arc_amendments?: AIArcAmendment[];
   new_entries: AINewEntry[];
   updates: AIUpdate[];
+}
+
+interface AIWikiResponse {
+  // New batch format
+  batch?: AIWikiChapterData[];
+  // Legacy single-chapter fields (for backwards compat)
+  chapter_summary?: AIChapterSummary;
+  arc_updates?: AIArcUpdate[];
+  new_arcs?: AINewArc[];
+  arc_amendments?: AIArcAmendment[];
+  new_entries?: AINewEntry[];
+  updates?: AIUpdate[];
 }
 
 /* ── Color mapping ──────────────────────────────────────── */
@@ -156,6 +172,7 @@ export async function generateWikiForChapter(
   bookTitle: string,
   filePath: string,
   isAborted: () => boolean,
+  force = false,
 ): Promise<void> {
   const api = window.electronAPI;
   if (!api) return;
@@ -170,9 +187,11 @@ export async function generateWikiForChapter(
     return;
   }
 
-  // Check if already processed
-  const processed = await api.wikiGetProcessed(filePath);
-  if (processed.includes(chapterIndex)) return;
+  // Check if already processed (skipped when force=true for retry)
+  if (!force) {
+    const processed = await api.wikiGetProcessed(filePath);
+    if (processed.includes(chapterIndex)) return;
+  }
 
   // Ensure meta exists
   await api.wikiUpsertMeta(filePath, bookTitle);
@@ -205,7 +224,65 @@ export async function generateWikiForChapter(
   if (isAborted()) return;
 
   // Write results to DB
-  await writeResponseToDB(filePath, chapterIndex, parsed);
+  const chapterDataList = getChapterDataFromResponse(parsed, chapterIndex);
+  for (const chapterData of chapterDataList) {
+    if (isAborted()) return;
+    await writeResponseToDB(filePath, chapterData.chapter_index, chapterData);
+  }
+}
+
+/** Process multiple chapters in a single AI call for efficiency */
+export async function generateWikiForChapterBatch(
+  chapters: { index: number; text: string }[],
+  bookTitle: string,
+  filePath: string,
+  isAborted: () => boolean,
+): Promise<number[]> {
+  if (chapters.length === 0) return [];
+
+  const api = window.electronAPI;
+  if (!api) return [];
+
+  const apiKey = await api.getSetting("openrouterApiKey");
+  if (!apiKey) throw new Error("No API key configured");
+
+  await api.wikiUpsertMeta(filePath, bookTitle);
+
+  const firstIndex = chapters[0].index;
+  const context = await buildContextFromDB(filePath, firstIndex);
+  const userPrompt = buildWikiBatchUserPrompt(chapters, bookTitle, context);
+
+  const overrides = await loadOverrides();
+  const response = await chatWithPreset(
+    apiKey,
+    "quick",
+    [
+      { role: "system", content: WIKI_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+    overrides,
+  );
+
+  if (isAborted()) return [];
+
+  const content = response.choices?.[0]?.message?.content?.trim();
+  if (!content) return [];
+
+  const parsed = parseWikiResponse(content);
+  if (!parsed) return [];
+
+  if (isAborted()) return [];
+
+  const chapterDataList = getChapterDataFromResponse(parsed, firstIndex);
+  const processed: number[] = [];
+
+  for (const chapterData of chapterDataList) {
+    if (isAborted()) break;
+    await writeResponseToDB(filePath, chapterData.chapter_index, chapterData);
+    processed.push(chapterData.chapter_index);
+  }
+
+  return processed;
 }
 
 /* ── Build tiered context from DB ───────────────────────── */
@@ -313,7 +390,7 @@ async function buildContextFromDB(
 async function writeResponseToDB(
   filePath: string,
   chapterIndex: number,
-  response: AIWikiResponse,
+  response: AIWikiChapterData,
 ): Promise<void> {
   const api = window.electronAPI!;
 
@@ -624,21 +701,48 @@ function tryParseJSON(s: string): AIWikiResponse | null {
   }
 }
 
+function validateChapterData(d: AIWikiChapterData): AIWikiChapterData {
+  if (!Array.isArray(d.new_entries)) d.new_entries = [];
+  if (!Array.isArray(d.updates)) d.updates = [];
+  if (!Array.isArray(d.arc_updates)) d.arc_updates = [];
+  if (!Array.isArray(d.new_arcs)) d.new_arcs = [];
+  if (!Array.isArray(d.arc_amendments)) d.arc_amendments = [];
+  d.new_entries = d.new_entries.filter((e) => e && typeof e.id === "string" && typeof e.name === "string");
+  d.updates = d.updates.filter((u) => u && typeof u.id === "string");
+  return d;
+}
+
 function validateWikiResponse(parsed: AIWikiResponse): AIWikiResponse {
+  if (parsed.batch) {
+    parsed.batch = parsed.batch
+      .filter((d) => d && typeof d.chapter_index === "number")
+      .map(validateChapterData);
+    return parsed;
+  }
+  // Normalize legacy single-chapter to batch format
   if (!Array.isArray(parsed.new_entries)) parsed.new_entries = [];
   if (!Array.isArray(parsed.updates)) parsed.updates = [];
   if (!Array.isArray(parsed.arc_updates)) parsed.arc_updates = [];
   if (!Array.isArray(parsed.new_arcs)) parsed.new_arcs = [];
   if (!Array.isArray(parsed.arc_amendments)) parsed.arc_amendments = [];
-
-  parsed.new_entries = parsed.new_entries.filter(
-    (e) => e && typeof e.id === "string" && typeof e.name === "string",
-  );
-  parsed.updates = parsed.updates.filter(
-    (u) => u && typeof u.id === "string",
-  );
-
+  parsed.new_entries = (parsed.new_entries ?? []).filter((e) => e && typeof e.id === "string" && typeof e.name === "string");
+  parsed.updates = (parsed.updates ?? []).filter((u) => u && typeof u.id === "string");
   return parsed;
+}
+
+/** Extract chapter data array from response (handles both batch and legacy formats) */
+function getChapterDataFromResponse(response: AIWikiResponse, fallbackChapterIndex: number): AIWikiChapterData[] {
+  if (response.batch && response.batch.length > 0) return response.batch;
+  // Legacy: wrap single-chapter data
+  return [{
+    chapter_index: fallbackChapterIndex,
+    chapter_summary: response.chapter_summary,
+    arc_updates: response.arc_updates ?? [],
+    new_arcs: response.new_arcs ?? [],
+    arc_amendments: response.arc_amendments ?? [],
+    new_entries: response.new_entries ?? [],
+    updates: response.updates ?? [],
+  }];
 }
 
 function repairTruncatedJSON(s: string): string | null {

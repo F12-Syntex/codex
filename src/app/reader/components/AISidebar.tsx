@@ -5,7 +5,7 @@ import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
   Loader2, Trash2, Clapperboard, ExternalLink, BarChart3,
-  BookMarked, Square, Play,
+  BookMarked, Square, Play, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookChapter, ThemeClasses } from "../lib/types";
@@ -40,8 +40,14 @@ interface AISidebarProps {
   wikiProcessingChapter: number | null;
   totalChapters: number;
   currentChapter: number;
+  currentChapterWikiDone: boolean;
+  currentChapterFormatDone: boolean;
+  currentChapterEnrichDone: boolean;
   onWikiToggle: () => void;
   onWikiProcessAll: (upToChapter?: number) => void;
+  onWikiRetry: () => void;
+  onFormatRetry: () => void;
+  onEnrichRetry: () => void;
   onCancelWikiProcessAll: () => void;
   onClearWiki: () => void;
   buddyEnabled: boolean;
@@ -86,8 +92,14 @@ export function AISidebar({
   wikiProcessingChapter,
   totalChapters,
   currentChapter,
+  currentChapterWikiDone,
+  currentChapterFormatDone,
+  currentChapterEnrichDone,
   onWikiToggle,
   onWikiProcessAll,
+  onWikiRetry,
+  onFormatRetry,
+  onEnrichRetry,
   onCancelWikiProcessAll,
   onClearWiki,
   buddyEnabled,
@@ -243,8 +255,10 @@ export function AISidebar({
           status={wikiStatusText}
           running={isWikiRunning}
           runCount={wikiRunCount}
-          canRun={wikiEnabled && wikiToDo > 0}
+          canRun={wikiEnabled && !isWikiRunning && (scope === "current" ? !currentChapterWikiDone : wikiToDo > 0)}
           onRun={() => onWikiProcessAll(chapterLimit)}
+          canRetry={wikiEnabled && !isWikiRunning && scope === "current" && currentChapterWikiDone}
+          onRetry={onWikiRetry}
           onCancel={onCancelWikiProcessAll}
           canClear={wikiEntryCount > 0 && !isWikiRunning}
           onClear={onClearWiki}
@@ -266,8 +280,10 @@ export function AISidebar({
           }
           running={isFormatRunning}
           runCount={formatRunCount}
-          canRun={formattingEnabled && formatToDo > 0}
+          canRun={formattingEnabled && !isFormatRunning && (scope === "current" ? !currentChapterFormatDone : formatToDo > 0)}
           onRun={() => onFormatAll(chapterLimit)}
+          canRetry={formattingEnabled && !isFormatRunning && scope === "current" && currentChapterFormatDone}
+          onRetry={onFormatRetry}
           onCancel={onCancelFormatAll}
           canClear={formattedChapterCount > 0 && !isFormatRunning}
           onClear={onClearFormatting}
@@ -285,8 +301,10 @@ export function AISidebar({
           status={enrichStatusText}
           running={isEnrichRunning}
           runCount={enrichRunCount}
-          canRun={enrichEnabled && enrichToDo > 0}
+          canRun={enrichEnabled && !isEnrichRunning && (scope === "current" ? !currentChapterEnrichDone : enrichToDo > 0)}
           onRun={() => onEnrichAll(chapterLimit)}
+          canRetry={enrichEnabled && !isEnrichRunning && scope === "current" && currentChapterEnrichDone}
+          onRetry={onEnrichRetry}
           onCancel={onCancelEnrichAll}
           canClear={alreadyEnriched > 0 && !isEnrichRunning}
           onClear={onClearEnrichedNames}
@@ -361,6 +379,8 @@ interface RowProps {
   runCount?: string;
   canRun?: boolean;
   onRun?: () => void;
+  canRetry?: boolean;
+  onRetry?: () => void;
   onCancel?: () => void;
   canClear?: boolean;
   onClear?: () => void;
@@ -382,6 +402,8 @@ function Row({
   runCount,
   canRun,
   onRun,
+  canRetry,
+  onRetry,
   onCancel,
   canClear,
   onClear,
@@ -452,7 +474,7 @@ function Row({
         </span>
       ) : null}
 
-      {/* Run / Stop button */}
+      {/* Run / Retry / Stop button */}
       {running && onCancel ? (
         <ActionBtn onClick={onCancel} theme={theme}>
           <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
@@ -464,6 +486,14 @@ function Row({
           style={{ background: "var(--accent-brand-dim)", color: "var(--accent-brand)" }}
         >
           <Play className="h-2.5 w-2.5" strokeWidth={0} fill="currentColor" />
+        </button>
+      ) : canRetry && onRetry ? (
+        <button
+          onClick={onRetry}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors"
+          style={{ background: "var(--accent-brand-dim)", color: "var(--accent-brand)" }}
+        >
+          <RefreshCw className="h-3 w-3" strokeWidth={2} />
         </button>
       ) : (
         <div className="h-6 w-6 shrink-0" />

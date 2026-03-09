@@ -16,7 +16,7 @@ import {
   upsertChapterSummary, getChapterSummaries, getAllChapterSummaries,
   upsertArc, getActiveArcs, getAllArcs, addArcBeat, getArcBeats,
   addArcEntity, getArcEntities, deleteArc, mergeArcs,
-  markChapterProcessed, getProcessedChapters,
+  markChapterProcessed, unmarkChapterProcessed, getProcessedChapters,
   getWikiMeta, upsertWikiMeta,
   getEntityIndex, getRecentEntities,
   clearWiki, migrateJsonWiki,
@@ -458,6 +458,7 @@ function createWindow() {
   ipcMain.handle("wiki:merge-arcs", (_event, filePath: string, sourceArcIds: string[], targetArcId: string) => { mergeArcs(filePath, sourceArcIds, targetArcId); });
 
   ipcMain.handle("wiki:mark-processed", (_event, filePath: string, chapterIndex: number) => { markChapterProcessed(filePath, chapterIndex); });
+  ipcMain.handle("wiki:unmark-processed", (_event, filePath: string, chapterIndex: number) => { unmarkChapterProcessed(filePath, chapterIndex); });
   ipcMain.handle("wiki:get-processed", (_event, filePath: string) => getProcessedChapters(filePath));
 
   ipcMain.handle("wiki:get-meta", (_event, filePath: string) => getWikiMeta(filePath));

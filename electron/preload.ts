@@ -115,6 +115,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   wikiMarkProcessed: (filePath: string, chapterIndex: number) =>
     ipcRenderer.invoke("wiki:mark-processed", filePath, chapterIndex),
+  wikiUnmarkProcessed: (filePath: string, chapterIndex: number) =>
+    ipcRenderer.invoke("wiki:unmark-processed", filePath, chapterIndex),
   wikiGetProcessed: (filePath: string) =>
     ipcRenderer.invoke("wiki:get-processed", filePath),
 
