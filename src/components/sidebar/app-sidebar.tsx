@@ -10,9 +10,11 @@ import {
   Gift,
   Download,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LibraryData } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 
 export type Section = "books" | "comic";
 
@@ -136,6 +138,32 @@ function SectionTab({
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 
+function useUpdateAvailable() {
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("https://api.github.com/repos/F12-Syntex/codex/releases/latest", {
+      headers: { Accept: "application/vnd.github+json" },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        const tag: string = data?.tag_name ?? "";
+        const version = tag.replace(/^v/, "");
+        if (version) setLatestVersion(version);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!latestVersion) return false;
+  const pa = APP_VERSION.split(".").map(Number);
+  const pb = latestVersion.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return latestVersion;
+    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return false;
+  }
+  return false;
+}
+
 export function AppSidebar({
   activeSection,
   onSectionChange,
@@ -145,6 +173,7 @@ export function AppSidebar({
   isDev,
 }: AppSidebarProps) {
   const navItems = sectionNavItems[activeSection];
+  const updateVersion = useUpdateAvailable();
 
   const totalItems = Object.values(data).reduce(
     (sum, arr) => sum + (arr?.length ?? 0),
@@ -194,6 +223,18 @@ export function AppSidebar({
             compact
             onClick={() => onViewChange("installer")}
           />
+        )}
+        {updateVersion && (
+          <button
+            onClick={() => onViewChange("changelog")}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/10"
+          >
+            <Download className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+            <span className="flex-1 text-left text-sm">Update available</span>
+            <span className="rounded-full bg-[var(--accent-brand)] px-1.5 py-0.5 text-[10px] font-medium text-white/90 tabular-nums">
+              v{updateVersion}
+            </span>
+          </button>
         )}
         {bottomNavItems.map((item) => (
           <NavButton
