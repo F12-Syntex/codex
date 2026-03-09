@@ -1863,6 +1863,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           canGoNext={!activeBranch && (currentPage < totalPages - 1 || currentChapter < chapters.length - 1)}
           onPrev={goPrevPage}
           onNext={goNextPage}
+          ttsStatus={tts.state.status}
+          ttsRate={settings.ttsRate}
+          wordsRemaining={ttsProgress.wordsRemaining}
           branchMode={!!activeBranch}
           branchEntityName={activeBranch?.entityName}
           onExitBranch={handleExitBranch}
