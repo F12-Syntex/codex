@@ -146,10 +146,15 @@ export interface TieredContext {
   entityIndex: string;
 }
 
-/** Per-chapter text budget before truncation */
-export const CHAPTER_TEXT_BUDGET = 40_000;
-/** Total chapter text budget per batch call */
-export const BATCH_TEXT_BUDGET = 120_000;
+/** Per-chapter text budget before truncation — 80K chars (~20K tokens) gives the AI
+ *  substantially more context per chapter for better entity/relationship extraction. */
+export const CHAPTER_TEXT_BUDGET = 80_000;
+/** Total chapter text budget per batch call — 1.5M chars fits ~18 max-size chapters,
+ *  well within Gemini 2.5 Flash's 1M token context window. */
+export const BATCH_TEXT_BUDGET = 1_500_000;
+/** Hard cap on chapters per batch — limits JSON response size to stay within the
+ *  ~64K output token limit (~3K tokens per chapter × 20 = 60K tokens). */
+export const MAX_CHAPTERS_PER_BATCH = 20;
 
 function buildContextHeader(bookTitle: string, context: TieredContext): string {
   let header = `Book: "${bookTitle}"\n\n`;

@@ -23,6 +23,7 @@ import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, generateWikiForChapterBatch, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
+import { BATCH_TEXT_BUDGET, CHAPTER_TEXT_BUDGET, MAX_CHAPTERS_PER_BATCH } from "@/lib/ai-wiki-prompt";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { AIBuddyPanel } from "./AIBuddyPanel";
@@ -1235,8 +1236,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
     if (queue.length === 0) return;
 
-    // Pack chapters into batches by text budget (~120K chars per call)
-    const BUDGET = 120_000;
+    // Pack chapters into batches filling the model's context window.
+    // Chapters that don't fit are emitted to the next batch automatically.
     const batches: { index: number; text: string }[][] = [];
     let currentBatch: { index: number; text: string }[] = [];
     let currentSize = 0;
@@ -1244,10 +1245,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     for (const i of queue) {
       if (wikiAbortRef.current) break;
       const text = chapters[i].paragraphs.join("\n");
-      const chunkSize = Math.min(text.length, 40_000);
+      const chunkSize = Math.min(text.length, CHAPTER_TEXT_BUDGET);
 
-      if (currentBatch.length > 0 && currentSize + chunkSize > BUDGET) {
-        // This chapter doesn't fit — flush current batch and start new one
+      const batchFull = currentBatch.length >= MAX_CHAPTERS_PER_BATCH;
+      const budgetExceeded = currentBatch.length > 0 && currentSize + chunkSize > BATCH_TEXT_BUDGET;
+
+      if (batchFull || budgetExceeded) {
+        // Chapter doesn't fit — flush current batch and start a new one with this chapter
         batches.push(currentBatch);
         currentBatch = [];
         currentSize = 0;

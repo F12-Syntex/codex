@@ -9,6 +9,7 @@ import {
   buildTieredContext,
   BATCH_TEXT_BUDGET,
   CHAPTER_TEXT_BUDGET,
+  MAX_CHAPTERS_PER_BATCH,
 } from "./ai-wiki-prompt";
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -253,6 +254,7 @@ export async function generateWikiForChapterBatch(
   const userPrompt = buildWikiBatchUserPrompt(chapters, bookTitle, context);
 
   const overrides = await loadOverrides();
+  // Request max output tokens — large batches produce large JSON responses
   const response = await chatWithPreset(
     apiKey,
     "quick",
@@ -261,6 +263,7 @@ export async function generateWikiForChapterBatch(
       { role: "user", content: userPrompt },
     ],
     overrides,
+    { max_tokens: 65536 },
   );
 
   if (isAborted()) return [];
