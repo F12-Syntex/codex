@@ -172,7 +172,7 @@ export const CHAPTER_TEXT_BUDGET = 160_000;
 export const BATCH_TEXT_BUDGET = 3_500_000;
 /** Hard cap on chapters per batch — limits JSON response size to stay within the
  *  ~64K output token limit (~3K tokens per chapter × 20 = 60K tokens). */
-export const MAX_CHAPTERS_PER_BATCH = 20;
+export const MAX_CHAPTERS_PER_BATCH = 40;
 
 function buildContextHeader(bookTitle: string, context: TieredContext): string {
   let header = `Book: "${bookTitle}"\n\n`;
