@@ -311,6 +311,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               onFilterChange={setFilterType}
               onEntryClick={navigateTo}
               onUnmerge={handleUnmerge}
+              chapterLabels={chapterLabels}
             />
           )}
         </div>
@@ -504,7 +505,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
 
 function HomePage({
   bookTitle, entries, filteredEntries, groupedFiltered, arcs, chapterSummaries,
-  processedCount, mergeLog, searchQuery, filterType, onSearchChange, onFilterChange, onEntryClick, onUnmerge,
+  processedCount, mergeLog, searchQuery, filterType, onSearchChange, onFilterChange, onEntryClick, onUnmerge, chapterLabels,
 }: {
   bookTitle: string;
   entries: EntryListItem[];
@@ -520,6 +521,7 @@ function HomePage({
   onFilterChange: (t: WikiEntryType | "all") => void;
   onEntryClick: (id: string) => void;
   onUnmerge: (mergeLogId: number) => void;
+  chapterLabels: Record<number, number>;
 }) {
   const mainCharacters = entries.filter((e) => e.type === "character" && e.significance >= 3).slice(0, 6);
   const recentEntries = [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);

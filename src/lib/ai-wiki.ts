@@ -851,19 +851,18 @@ function getChapterDataFromResponse(response: AIWikiResponse, fallbackChapterInd
 function repairTruncatedJSON(s: string): string | null {
   let repaired = s;
 
-  // Remove trailing incomplete key-value pairs (truncated mid-string)
-  // e.g. ..."summary": "Some text that got cut off
-  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*"[^"]*$/, "");
+  // Remove trailing incomplete key-value pairs (truncated mid-string value)
+  // Use [\s\S]* so the pattern spans newlines in long string values
+  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*"(?:[^"\\]|\\.)*$/s, "");
   // Truncated mid-key
-  repaired = repaired.replace(/,\s*"[^"]*$/, "");
-  // Truncated after colon
-  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, "");
+  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*$/s, "");
+  // Truncated after colon (value not yet started)
+  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*$/s, "");
   // Trailing comma
   repaired = repaired.replace(/,\s*$/, "");
 
-  // Count braces/brackets to close them
-  let braces = 0;
-  let brackets = 0;
+  // Use a stack to track nesting order so we can close in correct LIFO sequence
+  const stack: string[] = [];
   let inString = false;
   let escaped = false;
 
@@ -872,40 +871,19 @@ function repairTruncatedJSON(s: string): string | null {
     if (ch === "\\") { escaped = true; continue; }
     if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
-    if (ch === "{") braces++;
-    else if (ch === "}") braces--;
-    else if (ch === "[") brackets++;
-    else if (ch === "]") brackets--;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
   }
 
-  // Close unclosed string
-  if (inString) {
-    // Find the last quote and truncate the partial string value cleanly
-    const lastQuote = repaired.lastIndexOf('"');
-    if (lastQuote > 0) {
-      // Check if this is a value string (after a colon) — close it
-      repaired += '"';
-    }
-  }
+  // Close any unclosed string first
+  if (inString) repaired += '"';
 
-  // Re-count after potential string closure
-  braces = 0; brackets = 0; inString = false; escaped = false;
-  for (const ch of repaired) {
-    if (escaped) { escaped = false; continue; }
-    if (ch === "\\") { escaped = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") braces++;
-    else if (ch === "}") braces--;
-    else if (ch === "[") brackets++;
-    else if (ch === "]") brackets--;
-  }
-
-  // Remove trailing comma before closing brackets/braces
+  // Remove trailing comma that might be before the closers
   repaired = repaired.replace(/,\s*$/, "");
 
-  while (brackets > 0) { repaired += "]"; brackets--; }
-  while (braces > 0) { repaired += "}"; braces--; }
+  // Close containers in correct LIFO order
+  while (stack.length > 0) repaired += stack.pop()!;
 
   return repaired;
 }
