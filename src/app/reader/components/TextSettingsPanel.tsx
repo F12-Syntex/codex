@@ -80,6 +80,7 @@ export function TextSettingsPanel({
     <div
       ref={panelRef}
       className={`absolute right-24 top-full z-50 mt-2 w-[280px] rounded-lg border ${theme.border} ${theme.panel} shadow-lg shadow-black/30`}
+      style={{ maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}
     >
       <div className="space-y-3 p-4">
         {/* Font family selector */}
@@ -98,7 +99,8 @@ export function TextSettingsPanel({
 
           {showFontPicker && (
             <div
-              className={`absolute left-0 top-full z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}
+              className={`absolute left-0 top-full z-50 mt-1 w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}
+              style={{ maxHeight: "min(200px, 35vh)" }}
             >
               {allFonts.map((font) => (
                 <button

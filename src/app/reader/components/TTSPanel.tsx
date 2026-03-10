@@ -81,6 +81,7 @@ export function TTSPanel({
     <div
       ref={panelRef}
       className={`absolute right-12 top-full z-50 mt-2 w-[280px] rounded-lg border ${theme.border} ${theme.panel} shadow-lg shadow-black/30`}
+      style={{ maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}
     >
       <div className="space-y-3 p-4">
         {/* Play controls */}
@@ -187,7 +188,7 @@ export function TTSPanel({
           </button>
 
           {showVoicePicker && (
-            <div className={`absolute top-full left-0 z-50 mt-1 max-h-[260px] w-full overflow-hidden rounded-lg border shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}>
+            <div className={`absolute top-full left-0 z-50 mt-1 w-full overflow-hidden rounded-lg border shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`} style={{ maxHeight: "min(260px, 40vh)" }}>
               {/* Search input */}
               <div className={`flex items-center gap-1.5 border-b px-2 py-1.5 ${theme.border}`}>
                 <Search className={`h-3 w-3 shrink-0 ${theme.muted}`} strokeWidth={1.5} />

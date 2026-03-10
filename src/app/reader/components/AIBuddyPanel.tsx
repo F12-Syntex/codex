@@ -327,8 +327,11 @@ export function AIBuddyPanel({
 
   return (
     <div
-      className="absolute bottom-full right-0 z-50 mb-3 flex w-[540px] flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
-      style={{ height: "min(640px, calc(100vh - 140px))" }}
+      className="absolute bottom-full right-0 z-50 mb-3 flex flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
+      style={{
+        width: "min(540px, calc(100vw - 1.5rem))",
+        height: "min(640px, calc(100vh - 140px))",
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       <style dangerouslySetInnerHTML={{ __html: AI_FORMATTING_STYLES + BUDDY_STYLES }} />

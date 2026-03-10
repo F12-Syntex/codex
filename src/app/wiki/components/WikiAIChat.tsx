@@ -13,6 +13,8 @@ interface WikiAIChatProps {
   filePath: string;
   bookTitle: string;
   onEntryClick: (id: string) => void;
+  /** Called when open/expanded state changes so parent can adjust scroll padding */
+  onOpenChange?: (isOpen: boolean, isExpanded: boolean) => void;
 }
 
 interface ChatMessage {
@@ -56,9 +58,13 @@ const SUGGESTIONS = [
   "What mysteries are unresolved?",
 ];
 
-export function WikiAIChat({ filePath, bookTitle, onEntryClick }: WikiAIChatProps) {
+export function WikiAIChat({ filePath, bookTitle, onEntryClick, onOpenChange }: WikiAIChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    onOpenChange?.(isOpen, isExpanded);
+  }, [isOpen, isExpanded, onOpenChange]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

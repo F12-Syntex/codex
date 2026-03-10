@@ -92,6 +92,8 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [mcEntityId, setMcEntityId] = useState<string | null>(null);
   const [mcEntry, setMcEntry] = useState<WikiEntry | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
 
   const refreshData = useCallback(async () => {
     const api = window.electronAPI;
@@ -252,7 +254,15 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
       )}
 
       <div className="relative flex-1 overflow-hidden" style={{ zoom: zoom / 100 }}>
-        <div ref={scrollRef} className="h-full overflow-y-auto">
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto"
+          style={{
+            paddingBottom: chatOpen && !chatExpanded
+              ? "clamp(280px, 45%, 420px)"
+              : undefined,
+          }}
+        >
           {selectedEntry ? (
             <EntryPage
               entry={selectedEntry}
@@ -289,7 +299,12 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
           )}
         </div>
 
-        <WikiAIChat filePath={filePath} bookTitle={bookTitle} onEntryClick={navigateTo} />
+        <WikiAIChat
+          filePath={filePath}
+          bookTitle={bookTitle}
+          onEntryClick={navigateTo}
+          onOpenChange={(open, expanded) => { setChatOpen(open); setChatExpanded(expanded); }}
+        />
       </div>
     </div>
   );
@@ -640,7 +655,7 @@ function HomePage({
               return (
                 <section key={type} className="mb-8">
                   <SectionHeader icon={meta.icon} label={`Other ${meta.plural}`} color={meta.color} />
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {others.map((e) => <EntryCard key={e.id} entry={e} onClick={() => onEntryClick(e.id)} />)}
                   </div>
                 </section>
@@ -649,7 +664,7 @@ function HomePage({
             return (
               <section key={type} className="mb-8">
                 <SectionHeader icon={meta.icon} label={meta.plural} color={meta.color} />
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {items.map((e) => <EntryCard key={e.id} entry={e} onClick={() => onEntryClick(e.id)} />)}
                 </div>
               </section>
