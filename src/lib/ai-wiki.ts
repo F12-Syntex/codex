@@ -714,13 +714,34 @@ async function writeResponseToDB(
 
 export function parseWikiResponse(raw: string): AIWikiResponse | null {
   let cleaned = raw;
+
+  // 1. Extract from ```json ... ``` fence if present
   const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) cleaned = fenceMatch[1];
   cleaned = cleaned.trim();
 
+  // 2. Try direct parse
   const direct = tryParseJSON(cleaned);
   if (direct) return validateWikiResponse(direct);
 
+  // 3. Model may have prepended reasoning text — find the first top-level JSON object
+  const objStart = raw.indexOf("{");
+  if (objStart !== -1) {
+    const fromBrace = raw.slice(objStart);
+    const direct2 = tryParseJSON(fromBrace);
+    if (direct2) return validateWikiResponse(direct2);
+
+    const repaired2 = repairTruncatedJSON(fromBrace);
+    if (repaired2) {
+      const parsed2 = tryParseJSON(repaired2);
+      if (parsed2) {
+        console.warn("Wiki response was truncated (preamble stripped), salvaged partial data");
+        return validateWikiResponse(parsed2);
+      }
+    }
+  }
+
+  // 4. Try repairing original cleaned string
   const repaired = repairTruncatedJSON(cleaned);
   if (repaired) {
     const parsed = tryParseJSON(repaired);

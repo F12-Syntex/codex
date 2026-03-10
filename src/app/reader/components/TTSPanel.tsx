@@ -17,7 +17,7 @@ interface TTSPanelProps {
   showReadMark: boolean;
   currentParagraph: number;
   totalParagraphs: number;
-  wordsRemaining: number;
+  estimatedSeconds: number;
   onPlayFromStart: () => void;
   onPlayFromCurrent: () => void;
   onPause: () => void;
@@ -46,7 +46,7 @@ export function TTSPanel({
   showReadMark,
   currentParagraph,
   totalParagraphs,
-  wordsRemaining,
+  estimatedSeconds,
   onPlayFromStart,
   onPlayFromCurrent,
   onPause,
@@ -146,9 +146,11 @@ export function TTSPanel({
         {/* Progress info — shown during active TTS */}
         {isActive && totalParagraphs > 0 && (() => {
           const pct = Math.round(((currentParagraph + 1) / totalParagraphs) * 100);
-          const wpm = 150 * rate;
-          const mins = Math.ceil(wordsRemaining / wpm);
-          const timeStr = mins < 1 ? "<1 min" : mins === 1 ? "1 min" : `${mins} min`;
+          const s = Math.max(0, Math.floor(estimatedSeconds));
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          const sec = s % 60;
+          const timeStr = `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
           return (
             <div className="space-y-1.5">
               {/* Progress bar */}
@@ -163,8 +165,8 @@ export function TTSPanel({
                 <span className={`text-xs tabular-nums ${theme.muted}`}>
                   {currentParagraph + 1}/{totalParagraphs}
                 </span>
-                <span className={`text-xs ${theme.muted}`}>
-                  ~{timeStr} left
+                <span className={`text-xs tabular-nums ${theme.muted}`}>
+                  {timeStr}
                 </span>
               </div>
             </div>

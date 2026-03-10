@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { EdgeVoice, TTSState, WordBoundary } from "../lib/types";
+import type { ParagraphTiming } from "./useTTSMetrics";
 
 interface UseTTSOptions {
   paragraphs: string[];
@@ -12,6 +13,7 @@ interface UseTTSOptions {
   autoAdvance: boolean;
   onParagraphChange: (index: number) => void;
   onChapterEnd: () => void;
+  onParagraphTiming?: (timing: ParagraphTiming) => void;
 }
 
 interface SynthResult {
@@ -20,7 +22,7 @@ interface SynthResult {
 }
 
 /** Returns true if the text has no speakable content (empty, whitespace, or punctuation-only) */
-function isSpeakable(text: string | undefined): boolean {
+export function isSpeakable(text: string | undefined): boolean {
   if (!text) return false;
   // Strip all whitespace and common punctuation — if nothing remains, it's not speakable
   return text.replace(/[\s\p{P}\p{S}]/gu, "").length > 0;
@@ -35,6 +37,7 @@ export function useTTS({
   autoAdvance,
   onParagraphChange,
   onChapterEnd,
+  onParagraphTiming,
 }: UseTTSOptions) {
   const [state, setState] = useState<TTSState>({ status: "idle", currentParagraph: 0 });
   const [voices, setVoices] = useState<EdgeVoice[]>([]);
@@ -57,6 +60,10 @@ export function useTTS({
   onChapterEndRef.current = onChapterEnd;
   const onParagraphChangeRef = useRef(onParagraphChange);
   onParagraphChangeRef.current = onParagraphChange;
+  const onParagraphTimingRef = useRef(onParagraphTiming);
+  onParagraphTimingRef.current = onParagraphTiming;
+  // Timestamp of when the last audio ended, for gap measurement
+  const lastAudioEndRef = useRef<number | null>(null);
 
   // Keep refs for synthesis params so prefetch uses current values
   const voiceRef = useRef(voice);
@@ -195,6 +202,9 @@ export function useTTS({
     onParagraphChangeRef.current(paraIndex);
 
     try {
+      // Measure gap: time from previous audio ending to this audio starting
+      const gapStart = lastAudioEndRef.current ?? Date.now();
+
       const result = await synthesize(paraIndex);
       if (!result || session !== sessionRef.current) return;
 
@@ -212,18 +222,31 @@ export function useTTS({
       // Apply any speed above 2x via playbackRate (Edge TTS caps at 2x)
       audio.playbackRate = rateRef.current / Math.min(rateRef.current, 2);
 
+      let audioStartMs = 0;
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => resolve();
         audio.onerror = () => reject(new Error("Audio playback error"));
 
         audio.play().then(() => {
           if (session !== sessionRef.current) { audio.pause(); return; }
+          audioStartMs = Date.now();
           setState({ status: "playing", currentParagraph: paraIndex });
           startWordTracking(result.wordBoundaries);
         }).catch(reject);
       });
 
-      // Audio ended naturally
+      // Audio ended naturally — record timing for adaptive metrics
+      const audioEndMs = Date.now();
+      lastAudioEndRef.current = audioEndMs;
+      if (audioStartMs > 0 && onParagraphTimingRef.current) {
+        onParagraphTimingRef.current({
+          rate: rateRef.current,
+          wordCount: result.wordBoundaries.filter(b => b.type === "WordBoundary").length || result.wordBoundaries.length,
+          playbackMs: audioEndMs - audioStartMs,
+          gapMs: audioStartMs - gapStart,
+        });
+      }
+
       stopWordTracking();
       setActiveWordIndex(-1);
 
@@ -296,6 +319,7 @@ export function useTTS({
     setWordBoundaries(null);
     setActiveWordIndex(-1);
     currentParaRef.current = 0;
+    lastAudioEndRef.current = null;
     setState({ status: "idle", currentParagraph: 0 });
   }, [stopWordTracking]);
 

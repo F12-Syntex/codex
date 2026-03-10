@@ -6,7 +6,8 @@ import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
 import { useBookmarks } from "../hooks/useBookmarks";
-import { useTTS } from "../hooks/useTTS";
+import { useTTS, isSpeakable } from "../hooks/useTTS";
+import { useTTSMetrics } from "../hooks/useTTSMetrics";
 import { ReaderHeader } from "./ReaderHeader";
 import { ReaderFooter, FOOTER_HEIGHT } from "./ReaderFooter";
 import { TOCSidebar } from "./TOCSidebar";
@@ -168,6 +169,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     });
   }, [isBranchChapterForTTS, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters, currentChapter, chapters, paragraphs]);
 
+  const ttsMetrics = useTTSMetrics();
+
   const tts = useTTS({
     paragraphs: ttsParagraphs,
     voice: settings.ttsVoice,
@@ -176,6 +179,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     volume: settings.ttsVolume,
     autoAdvance: settings.ttsAutoAdvance,
     onParagraphChange: () => {},
+    onParagraphTiming: (timing) => ttsMetrics.record(timing),
     onChapterEnd: () => {
       markChapterRead(currentChapter);
       if (currentChapter < chapters.length - 1) {
@@ -258,13 +262,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const ttsProgress = useMemo(() => {
     const total = paragraphs.length;
     const current = tts.state.currentParagraph;
-    if (tts.state.status === "idle") return { current: 0, total, wordsRemaining: 0 };
+    if (tts.state.status === "idle") return { current: 0, total, wordsRemaining: 0, paragraphsRemaining: 0, estimatedSeconds: 0 };
     let words = 0;
+    let speakableCount = 0;
     for (let i = current; i < paragraphs.length; i++) {
-      words += (paragraphs[i].match(/\S+/g) ?? []).length;
+      if (isSpeakable(paragraphs[i])) {
+        words += (paragraphs[i].match(/\S+/g) ?? []).length;
+        speakableCount++;
+      }
     }
-    return { current, total, wordsRemaining: words };
-  }, [paragraphs, tts.state.currentParagraph, tts.state.status]);
+    const estimatedSeconds = ttsMetrics.estimate(settings.ttsRate, words, speakableCount);
+    return { current, total, wordsRemaining: words, paragraphsRemaining: speakableCount, estimatedSeconds };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paragraphs, tts.state.currentParagraph, tts.state.status, settings.ttsRate]);
 
   const bookmarkState = useBookmarks({
     filePath,
@@ -1655,7 +1665,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             showReadMark={settings.ttsShowReadMark}
             currentParagraph={ttsProgress.current}
             totalParagraphs={ttsProgress.total}
-            wordsRemaining={ttsProgress.wordsRemaining}
+            estimatedSeconds={ttsProgress.estimatedSeconds}
             onPlayFromStart={() => tts.actions.playFrom(0)}
             onPlayFromCurrent={() => {
               // Resume from last read position if available, otherwise start from first visible paragraph
@@ -1939,8 +1949,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onPrev={goPrevPage}
           onNext={goNextPage}
           ttsStatus={tts.state.status}
-          ttsRate={settings.ttsRate}
-          wordsRemaining={ttsProgress.wordsRemaining}
+          estimatedSeconds={ttsProgress.estimatedSeconds}
           branchMode={!!activeBranch}
           branchEntityName={activeBranch?.entityName}
           onExitBranch={handleExitBranch}

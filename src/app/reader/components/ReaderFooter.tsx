@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -29,8 +29,7 @@ interface ReaderFooterProps {
   onNext: () => void;
   // TTS
   ttsStatus: TTSStatus;
-  ttsRate: number;
-  wordsRemaining: number;
+  estimatedSeconds: number;
   // Branch mode
   branchMode?: boolean;
   branchEntityName?: string;
@@ -47,14 +46,12 @@ export const FOOTER_HEIGHT = 52;
 
 /* ── ETA helpers ──────────────────────────────────────────── */
 
-function formatEta(words: number, wpm: number): string {
-  if (words <= 0) return "";
-  const mins = words / wpm;
-  if (mins < 1) return "< 1 min";
-  if (mins < 60) return `~${Math.round(mins)} min`;
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
-  return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
+function formatHms(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 /* ── Progress bar ─────────────────────────────────────────── */
@@ -182,8 +179,7 @@ export function ReaderFooter({
   onPrev,
   onNext,
   ttsStatus,
-  ttsRate,
-  wordsRemaining,
+  estimatedSeconds,
   branchMode = false,
   branchEntityName,
   onExitBranch,
@@ -197,9 +193,26 @@ export function ReaderFooter({
   const isVisible = !immersiveMode || immersiveVisible;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
+  // Live countdown — syncs to estimatedSeconds on paragraph transitions, ticks independently
+  const [displaySeconds, setDisplaySeconds] = useState(0);
+  const prevEstimateRef = useRef(0);
+
+  useEffect(() => {
+    // Resync whenever the estimate changes (new paragraph) or TTS starts/stops
+    setDisplaySeconds(Math.round(estimatedSeconds));
+    prevEstimateRef.current = estimatedSeconds;
+  }, [estimatedSeconds]);
+
+  useEffect(() => {
+    if (ttsStatus !== "playing") return;
+    const id = setInterval(() => {
+      setDisplaySeconds(s => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [ttsStatus]);
+
   const ttsActive = ttsStatus !== "idle";
-  const wpm = 150 * ttsRate;
-  const eta = ttsActive ? formatEta(wordsRemaining, wpm) : "";
+  const eta = ttsActive ? formatHms(displaySeconds) : "";
 
   return (
     <footer
@@ -318,7 +331,7 @@ export function ReaderFooter({
             <TtsPill status={ttsStatus} />
             {/* ETA — fixed-width slot to prevent layout shift */}
             <span
-              className="w-14 text-right text-xs tabular-nums font-medium"
+              className="w-[52px] text-right text-xs tabular-nums font-medium"
               style={{ color: "var(--accent-brand)", opacity: 0.85 }}
             >
               {eta}
