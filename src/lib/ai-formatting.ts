@@ -30,7 +30,7 @@ Read the content, understand the genre and tone, and apply visual enhancements f
 8. Keep enhancements compact and inline. Don't dominate the page.
 9. Consecutive structured paragraphs: merge into first index, set consumed indices to "".
 10. Stat block labels: 1-2 words max, EVERY label gets an icon. Use icons to replace words.
-11. Dialogue tags: CRITICAL — the `ai-fmt-dialogue-*` span MUST appear ONLY immediately before quoted speech (the opening quote character). Example: `<span class="ai-fmt-dialogue-hero">Name</span> "Hello."` — NEVER wrap character name mentions inside narration or action paragraphs with this class. The span signals "the next thing is speech by this character" and nothing else.
+11. Dialogue tags: CRITICAL — the ai-fmt-dialogue-* span MUST appear ONLY immediately before quoted speech (the opening quote character). Example: <span class="ai-fmt-dialogue-hero">Name</span> "Hello." — NEVER wrap character name mentions inside narration or action paragraphs with this class. The span signals "the next thing is speech by this character" and nothing else.
 12. System messages: keep text SHORT and punchy.
 13. Plain narration paragraphs with no dialogue, grammar issues, or structured data may be skipped. But when in doubt, format it.
 
