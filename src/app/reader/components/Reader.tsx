@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2, MessageCircle, Quote } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
@@ -86,6 +86,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
   const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
   const [wikiEntryCount, setWikiEntryCount] = useState(0);
+
+  // Quote toast
+  const [quoteToastVisible, setQuoteToastVisible] = useState(false);
+  const quoteToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // AI Buddy state
   const [buddyEnabled, setBuddyEnabled] = useState(false);
@@ -1018,6 +1022,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       chapterTitle,
       title
     );
+
+    // Show toast
+    if (quoteToastTimer.current) clearTimeout(quoteToastTimer.current);
+    setQuoteToastVisible(true);
+    quoteToastTimer.current = setTimeout(() => setQuoteToastVisible(false), 2000);
 
     // Fire-and-forget AI enrichment
     const apiKey = await api.getSetting("openrouterApiKey").catch(() => null);
@@ -1974,6 +1983,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             </div>
           </div>
         )}
+
+        {/* Quote saved toast */}
+        <div
+          className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2 transition-all duration-300"
+          style={{ opacity: quoteToastVisible ? 1 : 0, transform: `translateX(-50%) translateY(${quoteToastVisible ? "0" : "6px"})` }}
+        >
+          <div
+            className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-xs text-white/80 shadow-lg shadow-black/40 backdrop-blur-xl"
+            style={{ backgroundColor: "var(--bg-overlay)" }}
+          >
+            <Quote className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+            Quote saved
+          </div>
+        </div>
 
         {/* Footer — hidden during speed reader mode */}
         {!speedReaderActive && <ReaderFooter

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, Trash2, User, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, Filter } from "lucide-react";
+import { TitleBar } from "@/components/title-bar";
 
 interface SavedQuote {
   id: number;
@@ -91,16 +92,17 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-inset)] text-white">
-      {/* Header */}
+      <TitleBar breadcrumb={bookTitle ? ["Quotes", bookTitle] : ["Quotes"]} />
+
+      {/* Sub-header */}
       <div
         className="shrink-0 border-b border-white/[0.06]"
         style={{ backgroundColor: "var(--bg-surface)" }}
       >
-        <div className="flex items-center gap-3 px-5 py-4">
-          <QuoteIcon className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+        <div className="flex items-center gap-3 px-5 py-3">
+          <QuoteIcon className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
           <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-semibold text-white/90 truncate">{title}</h1>
-            <p className="text-xs text-white/40 mt-0.5">
+            <p className="text-xs text-white/40">
               {loading ? "Loading…" : `${quotes.length} quote${quotes.length !== 1 ? "s" : ""}`}
             </p>
           </div>
