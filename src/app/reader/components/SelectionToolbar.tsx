@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Copy, BookOpen, Play, Check, Sparkles } from "lucide-react";
+import { Copy, BookOpen, Play, Check, Sparkles, Quote } from "lucide-react";
 import type { ThemeClasses } from "../lib/types";
 
 interface SelectionToolbarProps {
@@ -9,6 +9,7 @@ interface SelectionToolbarProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   onPlayFromParagraph?: (paraIndex: number) => void;
   onExplain?: (selectedText: string, paraIndex: number) => void;
+  onSaveQuote?: (text: string, paraIndex: number) => void;
 }
 
 interface ToolbarState {
@@ -18,7 +19,7 @@ interface ToolbarState {
   paraIndex: number;
 }
 
-export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onExplain }: SelectionToolbarProps) {
+export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onExplain, onSaveQuote }: SelectionToolbarProps) {
   const [state, setState] = useState<ToolbarState | null>(null);
   const [copied, setCopied] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -142,6 +143,12 @@ export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onE
     window.getSelection()?.removeAllRanges();
   };
 
+  const handleSaveQuote = () => {
+    onSaveQuote?.(state.text, state.paraIndex);
+    dismiss();
+    window.getSelection()?.removeAllRanges();
+  };
+
   // Compute toolbar position, clamped to container bounds
   const toolbarWidth = 192;
   const containerWidth = containerRef.current?.clientWidth ?? 800;
@@ -187,6 +194,14 @@ export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onE
             icon={<Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />}
             label="Explain"
             onClick={handleExplain}
+            theme={theme}
+          />
+        )}
+        {onSaveQuote && (
+          <ToolbarButton
+            icon={<Quote className="h-3.5 w-3.5" strokeWidth={1.5} />}
+            label="Quote"
+            onClick={handleSaveQuote}
             theme={theme}
           />
         )}

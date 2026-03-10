@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2, MessageCircle, Quote } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
@@ -27,6 +27,7 @@ import { generateWikiForChapter, generateWikiForChapterBatch, buildEntityIndexFr
 import { BATCH_TEXT_BUDGET, CHAPTER_TEXT_BUDGET, MAX_CHAPTERS_PER_BATCH } from "@/lib/ai-wiki-prompt";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
+import { enrichQuote } from "@/lib/ai-quotes";
 import { AIBuddyPanel } from "./AIBuddyPanel";
 import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
 import { SpeedReaderView } from "./SpeedReaderView";
@@ -1002,6 +1003,40 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, [explainState, filePath]);
 
+  // ── Quote save handler ─────────────────────────────
+
+  const handleSaveQuote = useCallback(async (text: string, paraIndex: number) => {
+    if (!filePath) return;
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const savedQuote = await api.quotesAdd(
+      filePath,
+      currentChapter,
+      paraIndex,
+      text,
+      chapterTitle,
+      title
+    );
+
+    // Fire-and-forget AI enrichment
+    const apiKey = await api.getSetting("openrouterApiKey").catch(() => null);
+    if (apiKey) {
+      const surrounding = chapters[currentChapter]?.paragraphs
+        .slice(Math.max(0, paraIndex - 2), paraIndex + 3)
+        .join(" ");
+      enrichQuote(apiKey, text, { chapterTitle, bookTitle: title, surroundingText: surrounding })
+        .then((enrichment) => {
+          api.quotesUpdate(savedQuote.id, {
+            speaker: enrichment.speaker,
+            kind: enrichment.kind,
+            aiEnhanced: true,
+          });
+        })
+        .catch(() => {/* silent */});
+    }
+  }, [filePath, currentChapter, chapterTitle, title, chapters]);
+
   // ── Simulate handlers ──────────────────────────────
 
   const handleSimulateEntity = useCallback(async (entity: { id: string; name: string; type: WikiEntryType; color: string }, paragraphIndex: number) => {
@@ -1847,6 +1882,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onAddComment={addUserComment}
               onDeleteComment={deleteUserComment}
               onExplain={handleExplain}
+              onSaveQuote={handleSaveQuote}
               speedReaderActive={speedReaderActive}
               speedReaderParaIndex={srChunkParaIndex}
               speedReaderChunkText={srChunkText}
@@ -1933,6 +1969,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                 style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
               >
                 <MessageCircle className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+              </button>
+              <button
+                onClick={() => window.electronAPI?.openQuotes({ filePath, title })}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)]"
+                style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
+                title="View quotes"
+              >
+                <Quote className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
               </button>
             </div>
           </div>

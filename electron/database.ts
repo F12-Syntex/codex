@@ -76,6 +76,24 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_reading_activity_file
       ON reading_activity (filePath, timestamp);
 
+    -- ── Quotes ───────────────────────────────────────
+
+    CREATE TABLE IF NOT EXISTS quotes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filePath TEXT NOT NULL,
+      chapterIndex INTEGER NOT NULL,
+      paragraphIndex INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      chapterTitle TEXT NOT NULL DEFAULT '',
+      bookTitle TEXT NOT NULL DEFAULT '',
+      speaker TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT 'quote',
+      note TEXT NOT NULL DEFAULT '',
+      aiEnhanced INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_quotes_file ON quotes(filePath);
+
     -- ── Wiki Tables ──────────────────────────────────
 
     CREATE TABLE IF NOT EXISTS wiki_entries (
@@ -385,6 +403,86 @@ export function addBookmark(filePath: string, chapterIndex: number, paragraphInd
 
 export function deleteBookmark(id: number): void {
   db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
+}
+
+// ── Quotes ─────────────────────────────────────────
+
+export interface Quote {
+  id: number;
+  filePath: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  text: string;
+  chapterTitle: string;
+  bookTitle: string;
+  speaker: string;
+  kind: string;
+  note: string;
+  aiEnhanced: boolean;
+  createdAt: string;
+}
+
+export function getQuotes(filePath: string): Quote[] {
+  const rows = db.prepare(
+    "SELECT * FROM quotes WHERE filePath = ? ORDER BY chapterIndex ASC, paragraphIndex ASC, id ASC"
+  ).all(filePath) as unknown[];
+  return (rows as Record<string, unknown>[]).map((r) => ({
+    id: r.id as number, filePath: r.filePath as string,
+    chapterIndex: r.chapterIndex as number, paragraphIndex: r.paragraphIndex as number,
+    text: r.text as string, chapterTitle: r.chapterTitle as string,
+    bookTitle: r.bookTitle as string, speaker: (r.speaker as string) ?? "",
+    kind: (r.kind as string) ?? "quote", note: (r.note as string) ?? "",
+    aiEnhanced: (r.aiEnhanced as number) === 1,
+    createdAt: r.createdAt as string,
+  }));
+}
+
+export function getAllQuotes(): Quote[] {
+  const rows = db.prepare(
+    "SELECT * FROM quotes ORDER BY createdAt DESC"
+  ).all() as unknown[];
+  return (rows as Record<string, unknown>[]).map((r) => ({
+    id: r.id as number, filePath: r.filePath as string,
+    chapterIndex: r.chapterIndex as number, paragraphIndex: r.paragraphIndex as number,
+    text: r.text as string, chapterTitle: r.chapterTitle as string,
+    bookTitle: r.bookTitle as string, speaker: (r.speaker as string) ?? "",
+    kind: (r.kind as string) ?? "quote", note: (r.note as string) ?? "",
+    aiEnhanced: (r.aiEnhanced as number) === 1,
+    createdAt: r.createdAt as string,
+  }));
+}
+
+export function addQuote(
+  filePath: string, chapterIndex: number, paragraphIndex: number,
+  text: string, chapterTitle: string, bookTitle: string
+): Quote {
+  const stmt = db.prepare(`
+    INSERT INTO quotes (filePath, chapterIndex, paragraphIndex, text, chapterTitle, bookTitle)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(filePath, chapterIndex, paragraphIndex, text, chapterTitle, bookTitle);
+  return {
+    id: Number(result.lastInsertRowid),
+    filePath, chapterIndex, paragraphIndex, text, chapterTitle, bookTitle,
+    speaker: "", kind: "quote", note: "", aiEnhanced: false,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function updateQuote(id: number, fields: { speaker?: string; kind?: string; note?: string; aiEnhanced?: boolean }): void {
+  const parts: string[] = [];
+  const values: unknown[] = [];
+  if (fields.speaker !== undefined) { parts.push("speaker = ?"); values.push(fields.speaker); }
+  if (fields.kind !== undefined) { parts.push("kind = ?"); values.push(fields.kind); }
+  if (fields.note !== undefined) { parts.push("note = ?"); values.push(fields.note); }
+  if (fields.aiEnhanced !== undefined) { parts.push("aiEnhanced = ?"); values.push(fields.aiEnhanced ? 1 : 0); }
+  if (parts.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE quotes SET ${parts.join(", ")} WHERE id = ?`).run(...values);
+}
+
+export function deleteQuote(id: number): void {
+  db.prepare("DELETE FROM quotes WHERE id = ?").run(id);
 }
 
 export function getAllSettings(): Record<string, string> {

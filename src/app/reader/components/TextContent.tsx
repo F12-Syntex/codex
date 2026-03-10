@@ -55,6 +55,7 @@ interface TextContentProps {
   onAddComment?: (paraIndex: number, text: string) => void;
   onDeleteComment?: (paraIndex: number, author: "ai" | "user", text: string) => void;
   onExplain?: (selectedText: string, paraIndex: number) => void;
+  onSaveQuote?: (text: string, paraIndex: number) => void;
   // Speed reader overlay
   speedReaderActive?: boolean;
   speedReaderParaIndex?: number;
@@ -136,6 +137,7 @@ export function TextContent({
   onAddComment,
   onDeleteComment,
   onExplain,
+  onSaveQuote,
   speedReaderActive = false,
   speedReaderParaIndex = -1,
   speedReaderChunkText,
@@ -1374,6 +1376,7 @@ export function TextContent({
           containerRef={clipperRef}
           onPlayFromParagraph={onPlayFromParagraph}
           onExplain={onExplain}
+          onSaveQuote={onSaveQuote}
         />
 
       </div>
