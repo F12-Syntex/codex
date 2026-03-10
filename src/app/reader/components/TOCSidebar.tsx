@@ -22,6 +22,7 @@ interface TOCSidebarProps {
   wikiEnabled?: boolean;
   wikiProcessedChapters?: Set<number>;
   readChapters?: Set<number>;
+  chapterLabels?: Record<number, number>;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
   onDeleteBookmark: (id: number) => void;
@@ -44,6 +45,7 @@ export function TOCSidebar({
   wikiEnabled = false,
   wikiProcessedChapters = new Set(),
   readChapters = new Set(),
+  chapterLabels = {},
   onSelectChapter,
   onJumpToBookmark,
   onDeleteBookmark,
@@ -193,7 +195,7 @@ export function TOCSidebar({
                   } ${isRead && i !== currentChapter ? "opacity-40" : ""}`}
                 >
                   <span className={`w-5 shrink-0 text-right tabular-nums text-xs ${theme.muted}`}>
-                    {i + 1}
+                    {Object.keys(chapterLabels).length > 0 ? (chapterLabels[i] ?? "·") : i + 1}
                   </span>
                   <button
                     onClick={() => { onSelectChapter(i); onClose(); }}

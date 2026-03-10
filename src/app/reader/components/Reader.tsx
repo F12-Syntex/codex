@@ -57,6 +57,7 @@ interface ReaderProps {
 export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [bookContent, setBookContent] = useState<BookContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [chapterLabels, setChapterLabels] = useState<Record<number, number>>({});
   const [currentChapter, setCurrentChapter] = useState(0);
   const [customFonts] = useState<CustomFont[]>([]);
 
@@ -321,14 +322,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       });
   }, [filePath, format]);
 
-  // Chapter labeling — run once per book, skipping known non-story pages by title
+  // Chapter labeling — skip known non-story pages by title, store once per book
   useEffect(() => {
     if (!bookContent || !filePath) return;
     const toc = bookContent.toc ?? [];
     if (toc.length === 0) return;
     const key = `chapter-labels-v2:${filePath}`;
     window.electronAPI?.getSetting(key).then((existing) => {
-      if (existing) return;
+      if (existing) {
+        try { setChapterLabels(JSON.parse(existing)); } catch { /* ignore */ }
+        return;
+      }
       const labels: Record<number, number> = {};
       let chNum = 0;
       for (const entry of toc) {
@@ -339,6 +343,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       }
       if (Object.keys(labels).length > 0) {
         window.electronAPI?.setSetting(key, JSON.stringify(labels));
+        setChapterLabels(labels);
       }
     });
   }, [bookContent, filePath]);
@@ -1791,6 +1796,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             <TOCSidebar
               chapters={chapters} currentChapter={currentChapter}
               bookmarks={bookmarkState.bookmarks} theme={theme}
+              chapterLabels={chapterLabels}
               enrichedNames={enrichedNames}
               enrichEnabled={enrichEnabled}
               enrichingChapter={enrichingChapter}
