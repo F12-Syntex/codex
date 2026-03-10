@@ -171,6 +171,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteBookmark: (id: number) =>
     ipcRenderer.invoke("bookmarks:delete", id),
 
+  // Quotes
+  quotesGet: (filePath: string) =>
+    ipcRenderer.invoke("quotes:get", filePath),
+  quotesGetAll: () =>
+    ipcRenderer.invoke("quotes:get-all"),
+  quotesAdd: (filePath: string, chapterIndex: number, paragraphIndex: number, text: string, chapterTitle: string, bookTitle: string) =>
+    ipcRenderer.invoke("quotes:add", filePath, chapterIndex, paragraphIndex, text, chapterTitle, bookTitle),
+  quotesUpdate: (id: number, fields: { speaker?: string; kind?: string; note?: string; aiEnhanced?: boolean }) =>
+    ipcRenderer.invoke("quotes:update", id, fields),
+  quotesDelete: (id: number) =>
+    ipcRenderer.invoke("quotes:delete", id),
+  openQuotes: (info: { filePath?: string; title?: string }) =>
+    ipcRenderer.invoke("quotes:open", info),
+
   // TTS
   ttsGetVoices: () => ipcRenderer.invoke("tts:get-voices"),
   ttsSynthesize: (text: string, voice: string, rate: string, pitch?: string, volume?: string) =>

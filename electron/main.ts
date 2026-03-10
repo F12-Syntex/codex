@@ -6,6 +6,7 @@ import { initUpdater } from "./updater";
 import {
   initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, updateItemMeta,
   getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark,
+  getQuotes, getAllQuotes, addQuote, updateQuote, deleteQuote,
   getExcludedPaths, recordPageView, getReadingActivity, getReadingStats,
   // Wiki
   upsertWikiEntry, getWikiEntries, getWikiEntry, deleteWikiEntry,
@@ -253,6 +254,24 @@ function createWindow() {
 
   ipcMain.handle("bookmarks:delete", (_event, id: number) => {
     deleteBookmark(id);
+  });
+
+  // ── Quotes ──────────────────────────────────────────
+  ipcMain.handle("quotes:get", (_event, filePath: string) => getQuotes(filePath));
+  ipcMain.handle("quotes:get-all", () => getAllQuotes());
+  ipcMain.handle("quotes:add", (_event, filePath: string, chapterIndex: number, paragraphIndex: number, text: string, chapterTitle: string, bookTitle: string) =>
+    addQuote(filePath, chapterIndex, paragraphIndex, text, chapterTitle, bookTitle)
+  );
+  ipcMain.handle("quotes:update", (_event, id: number, fields: { speaker?: string; kind?: string; note?: string; aiEnhanced?: boolean }) =>
+    updateQuote(id, fields)
+  );
+  ipcMain.handle("quotes:delete", (_event, id: number) => deleteQuote(id));
+
+  ipcMain.handle("quotes:open", (_event, info: { filePath?: string; title?: string }) => {
+    const params = new URLSearchParams();
+    if (info.filePath) params.set("filePath", info.filePath);
+    if (info.title) params.set("title", info.title);
+    createAppWindow("quotes", params, { width: 860, height: 700, minWidth: 600, minHeight: 450 });
   });
 
   // ── TTS: Edge TTS via @andresaya/edge-tts ─────────

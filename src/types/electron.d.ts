@@ -46,6 +46,21 @@ interface ReaderBookmark {
   createdAt: string;
 }
 
+interface SavedQuote {
+  id: number;
+  filePath: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  text: string;
+  chapterTitle: string;
+  bookTitle: string;
+  speaker: string;
+  kind: string;
+  note: string;
+  aiEnhanced: boolean;
+  createdAt: string;
+}
+
 interface BookChapter {
   title: string;
   paragraphs: string[];
@@ -354,6 +369,14 @@ interface ElectronAPI {
   getBookmarks: (filePath: string) => Promise<ReaderBookmark[]>;
   addBookmark: (filePath: string, chapterIndex: number, paragraphIndex: number, label: string) => Promise<ReaderBookmark>;
   deleteBookmark: (id: number) => Promise<void>;
+
+  // Quotes
+  quotesGet: (filePath: string) => Promise<SavedQuote[]>;
+  quotesGetAll: () => Promise<SavedQuote[]>;
+  quotesAdd: (filePath: string, chapterIndex: number, paragraphIndex: number, text: string, chapterTitle: string, bookTitle: string) => Promise<SavedQuote>;
+  quotesUpdate: (id: number, fields: { speaker?: string; kind?: string; note?: string; aiEnhanced?: boolean }) => Promise<void>;
+  quotesDelete: (id: number) => Promise<void>;
+  openQuotes: (info: { filePath?: string; title?: string }) => Promise<void>;
 
   // TTS
   ttsGetVoices: () => Promise<Array<{ name: string; shortName: string; gender: string; locale: string }>>;
