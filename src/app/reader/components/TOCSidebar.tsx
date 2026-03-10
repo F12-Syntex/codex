@@ -57,6 +57,16 @@ export function TOCSidebar({
   const inputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<Tab>("chapters");
   const [searchQuery, setSearchQuery] = useState("");
+  const [renderLimit, setRenderLimit] = useState(60);
+
+  // Expand render limit after first paint so the sidebar opens instantly
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setRenderLimit(Infinity));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Reset limit when search changes so results appear immediately
+  useEffect(() => { setRenderLimit(searchQuery ? Infinity : 60); }, [searchQuery]);
 
   // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
@@ -174,7 +184,7 @@ export function TOCSidebar({
           filteredChapters.length === 0 ? (
             <p className={`py-8 text-center text-xs ${theme.muted}`}>No chapters found</p>
           ) : (
-            filteredChapters.map(({ ch, i, displayTitle }) => {
+            filteredChapters.slice(0, renderLimit).map(({ ch, i, displayTitle }) => {
               const canEnrich = enrichEnabled;
               const isEnriching = enrichingChapter === i;
 

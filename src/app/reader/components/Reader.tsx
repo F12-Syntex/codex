@@ -1832,10 +1832,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               currentChapterEnrichDone={!!enrichedNames[currentChapter]}
               wikiEnabled={wikiEnabled}
               wikiEntryCount={wikiEntryCount}
-              wikiProcessedCount={wikiProcessedChapters.size}
+              wikiProcessedCount={
+                Object.keys(chapterLabels).length > 0
+                  ? Array.from(wikiProcessedChapters).filter((i) => i in chapterLabels).length
+                  : wikiProcessedChapters.size
+              }
               wikiProcessingChapter={wikiProcessingChapter}
               wikiAllProgress={wikiAllProgress}
-              totalChapters={chapters.length}
+              totalChapters={Object.keys(chapterLabels).length > 0 ? Object.keys(chapterLabels).length : chapters.length}
               currentChapter={currentChapter}
               onWikiToggle={toggleWikiEnabled}
               onWikiProcessAll={processAllWikiChapters}
