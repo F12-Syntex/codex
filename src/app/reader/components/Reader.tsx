@@ -24,7 +24,6 @@ import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { generateWikiForChapter, generateWikiForChapterBatch, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
-import { BATCH_TEXT_BUDGET, CHAPTER_TEXT_BUDGET, MAX_CHAPTERS_PER_BATCH } from "@/lib/ai-wiki-prompt";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { enrichQuote } from "@/lib/ai-quotes";
@@ -1336,7 +1335,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
     // Per-chapter attempt counter — prevent infinite retries on persistently broken chapters
     const attemptCounts = new Map<number, number>();
-    let batchNum = 0;
     const initialCount = unprocessed.length;
 
     while (unprocessed.length > 0 && !wikiAbortRef.current) {
@@ -1350,46 +1348,27 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       const toProcess = unprocessed.filter((i) => (attemptCounts.get(i) ?? 0) < 2);
       if (toProcess.length === 0) break;
 
-      // Build next batch greedily — first chapter always goes in, rest fill up to budget
-      const batch: { index: number; text: string }[] = [];
-      let currentSize = 0;
+      // Process exactly one chapter at a time
+      const chapterIndex = toProcess[0];
+      const text = chapters[chapterIndex].paragraphs.join("\n");
+      attemptCounts.set(chapterIndex, (attemptCounts.get(chapterIndex) ?? 0) + 1);
 
-      for (const i of toProcess) {
-        const text = chapters[i].paragraphs.join("\n");
-        const chunkSize = Math.min(text.length, CHAPTER_TEXT_BUDGET);
-
-        if (batch.length === 0) {
-          batch.push({ index: i, text });
-          currentSize = chunkSize;
-        } else if (batch.length >= MAX_CHAPTERS_PER_BATCH || currentSize + chunkSize > BATCH_TEXT_BUDGET) {
-          break; // remainder goes to next loop iteration
-        } else {
-          batch.push({ index: i, text });
-          currentSize += chunkSize;
-        }
-      }
-
-      if (batch.length === 0) break;
-
-      // Count this attempt for each chapter in the batch
-      for (const ch of batch) {
-        attemptCounts.set(ch.index, (attemptCounts.get(ch.index) ?? 0) + 1);
-      }
-
-      batchNum++;
-      setWikiProcessingChapter(batch[0].index);
+      setWikiProcessingChapter(chapterIndex);
       const doneCount = initialCount - unprocessed.length;
       setWikiAllProgress({ current: doneCount, total: initialCount });
 
       try {
-        await generateWikiForChapterBatch(batch, title, filePath, () => wikiAbortRef.current);
+        await generateWikiForChapterBatch(
+          [{ index: chapterIndex, text }],
+          title, filePath, () => wikiAbortRef.current,
+        );
         if (wikiAbortRef.current) break;
         await refreshWikiState();
       } catch (err) {
-        console.error(`Wiki batch error at chapter ${batch[0].index}:`, err);
+        console.error(`Wiki error at chapter ${chapterIndex}:`, err);
       }
 
-      // Re-query DB — marks made by the batch call are now reflected
+      // Re-query DB — marks made by the chapter call are now reflected
       unprocessed = await getUnprocessed();
       const newDoneCount = initialCount - unprocessed.length;
       setWikiAllProgress({ current: newDoneCount, total: initialCount });
