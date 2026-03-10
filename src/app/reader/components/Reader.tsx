@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Loader2, MessageCircle, Quote } from "lucide-react";
+import { Loader2, MessageCircle } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
@@ -1684,6 +1684,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onAIToggle={toggleAI}
           speedReaderActive={speedReaderActive}
           onSpeedReaderToggle={handleSpeedReaderToggle}
+          onOpenQuotes={() => window.electronAPI?.openQuotes({ filePath, title })}
         />
 
         {/* TTS Panel */}
@@ -1969,14 +1970,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                 style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
               >
                 <MessageCircle className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-              </button>
-              <button
-                onClick={() => window.electronAPI?.openQuotes({ filePath, title })}
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)]"
-                style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
-                title="View quotes"
-              >
-                <Quote className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
               </button>
             </div>
           </div>

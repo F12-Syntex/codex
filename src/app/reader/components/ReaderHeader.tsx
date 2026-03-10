@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Square, X, Copy, Maximize, Minimize, List, ALargeSmall, Bookmark, BookmarkCheck, AudioLines, Sparkles, Zap } from "lucide-react";
+import { Minus, Square, X, Copy, Maximize, Minimize, List, ALargeSmall, Bookmark, BookmarkCheck, AudioLines, Sparkles, Zap, Quote } from "lucide-react";
 import type { ReadingTheme, ThemeClasses } from "../lib/types";
 
 interface ReaderHeaderProps {
@@ -27,6 +27,7 @@ interface ReaderHeaderProps {
   onFullscreenToggle: () => void;
   onAIToggle: () => void;
   onSpeedReaderToggle: () => void;
+  onOpenQuotes?: () => void;
 }
 
 export function ReaderHeader({
@@ -53,6 +54,7 @@ export function ReaderHeader({
   onFullscreenToggle,
   onAIToggle,
   onSpeedReaderToggle,
+  onOpenQuotes,
 }: ReaderHeaderProps) {
   return (
     <div className="flex h-11 min-w-0 items-center" data-reader-header>
@@ -123,6 +125,18 @@ export function ReaderHeader({
             ) : (
               <Bookmark className="h-3.5 w-3.5" strokeWidth={1.5} />
             )}
+          </button>
+        )}
+
+        {/* Quotes */}
+        {!isImageBook && onOpenQuotes && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onOpenQuotes}
+            title="View saved quotes"
+            className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
+          >
+            <Quote className="h-3.5 w-3.5" strokeWidth={1.5} />
           </button>
         )}
 
