@@ -5,7 +5,10 @@ import type { OpenRouterMessage } from "./openrouter";
 import { chatWithPreset } from "./openrouter";
 import { loadOverrides } from "./ai-presets";
 import type { StyleDictionary } from "./ai-style-dictionary";
-import { extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary } from "./ai-style-dictionary";
+import {
+  extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary,
+  extractCharacterStyles, mergeCharacterStyles,
+} from "./ai-style-dictionary";
 import { buildClassReference } from "./ai-formatting-classes";
 
 const CHUNK_SIZE = 40;
@@ -41,6 +44,19 @@ Return ONLY valid JSON: {"0":"<div>...</div>","3":"<p>text</p>","4":""}. No mark
 const SYSTEM_PROMPT = SYSTEM_RULES + "\n\n# CLASS REFERENCE\n" + buildClassReference();
 
 /**
+ * Build a brief wiki context string from wiki entries for the formatter prompt.
+ */
+function buildWikiContextString(entries: { name: string; type: string; short_description: string; significance: number }[]): string {
+  const chars = entries
+    .filter(e => e.type === "character")
+    .sort((a, b) => (b.significance ?? 0) - (a.significance ?? 0))
+    .slice(0, 25);
+  if (chars.length === 0) return "";
+  const lines = chars.map(e => `- ${e.name}: ${e.short_description || "character"}`).join("\n");
+  return `\n\n# KEY CHARACTERS IN THIS BOOK\n${lines}\n\nUse these names to correctly identify speakers in dialogue.`;
+}
+
+/**
  * Build the messages array for the AI formatting call.
  * chunkOffset is the starting index of this chunk within the full chapter
  * (used so the AI returns correct 0-based indices within the chunk).
@@ -50,6 +66,7 @@ export function buildFormattingPrompt(
   bookTitle: string,
   chunkOffset: number = 0,
   styleContext: string = "",
+  wikiContext: string = "",
 ): OpenRouterMessage[] {
   // Build indexed object so AI knows the indices
   const indexed: Record<number, string> = {};
@@ -58,7 +75,7 @@ export function buildFormattingPrompt(
   }
 
   return [
-    { role: "system", content: SYSTEM_PROMPT + styleContext },
+    { role: "system", content: SYSTEM_PROMPT + styleContext + wikiContext },
     {
       role: "user",
       content: `Book: "${bookTitle}"\n\nFormat these ${paragraphs.length} paragraphs (indices 0-${paragraphs.length - 1}). Return ONLY modified ones as {index: html}:\n${JSON.stringify(indexed)}`,
@@ -289,11 +306,22 @@ export async function formatChapterContent(
   const overrides = await loadOverrides();
   const styleContext = existingDictionary ? buildStyleContext(existingDictionary) : "";
 
+  // Fetch wiki context for character identification (non-critical)
+  let wikiContext = "";
+  if (filePath) {
+    try {
+      const entries = await window.electronAPI?.wikiGetEntries(filePath);
+      if (entries && entries.length > 0) {
+        wikiContext = buildWikiContextString(entries);
+      }
+    } catch { /* non-critical */ }
+  }
+
   let formatted: string[] | null;
 
   // Small enough for a single call
   if (htmlParagraphs.length <= MAX_SINGLE_CALL) {
-    formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext);
+    formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext, wikiContext);
   } else {
     // Build all chunks
     const chunks: { start: number; paragraphs: string[] }[] = [];
@@ -310,7 +338,7 @@ export async function formatChapterContent(
 
       const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
       const batchResults = await Promise.all(
-        batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start, styleContext)),
+        batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start, styleContext, wikiContext)),
       );
 
       for (let j = 0; j < batchResults.length; j++) {
@@ -324,13 +352,17 @@ export async function formatChapterContent(
 
   if (!formatted) return null;
 
-  // Extract style rules from the formatted output
+  // Extract style rules and character styles from the formatted output
   const newRules = extractRulesFromFormatted(htmlParagraphs, formatted);
   const existingRules = existingDictionary?.rules ?? [];
   const mergedRules = mergeRules(existingRules, newRules);
 
+  const newCharStyles = extractCharacterStyles(formatted);
+  const mergedCharStyles = mergeCharacterStyles(existingDictionary?.characterStyles, newCharStyles);
+
   const dictionary: StyleDictionary = {
     rules: mergedRules,
+    characterStyles: Object.keys(mergedCharStyles).length > 0 ? mergedCharStyles : undefined,
     bookTitle,
     updatedAt: new Date().toISOString(),
   };
@@ -352,10 +384,11 @@ async function formatChunk(
   bookTitle: string,
   chunkOffset: number = 0,
   styleContext: string = "",
+  wikiContext: string = "",
 ): Promise<string[] | null> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext);
+      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext, wikiContext);
       const response = await chatWithPreset(
         apiKey, "format", messages, overrides,
       );

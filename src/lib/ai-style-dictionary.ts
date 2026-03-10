@@ -18,6 +18,8 @@ export interface StyleRule {
 
 export interface StyleDictionary {
   rules: StyleRule[];
+  /** characterName (lowercase) → dialogue CSS class, for visual consistency across chapters */
+  characterStyles?: Record<string, string>;
   bookTitle: string;
   updatedAt: string;
 }
@@ -170,6 +172,37 @@ export function mergeRules(
   return Array.from(map.values());
 }
 
+// ── Character style extraction ──────────────────────
+
+/**
+ * Scan formatted HTML for dialogue spans and extract character → class mappings.
+ * Looks for: <span class="ai-fmt-dialogue-*">CharacterName</span>
+ */
+export function extractCharacterStyles(formatted: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const html of formatted) {
+    if (!html) continue;
+    for (const m of html.matchAll(/<span\s+class="(ai-fmt-dialogue-[^"\s]+)"[^>]*>([^<]+)<\/span>/g)) {
+      const cls = m[1];
+      const name = m[2].trim().toLowerCase();
+      if (name && name.length > 0 && name.length < 60) {
+        result[name] = cls;
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Merge character styles — existing wins (first assignment wins for visual consistency).
+ */
+export function mergeCharacterStyles(
+  existing: Record<string, string> = {},
+  incoming: Record<string, string>,
+): Record<string, string> {
+  return { ...incoming, ...existing };
+}
+
 // ── Style context for AI prompt ────────────────────
 
 /**
@@ -177,17 +210,26 @@ export function mergeRules(
  * This gets appended to the system prompt so the AI follows existing patterns.
  */
 export function buildStyleContext(dict: StyleDictionary): string {
-  if (dict.rules.length === 0) return "";
+  const parts: string[] = [];
 
-  const ruleDescriptions = dict.rules.map(r => {
-    // Strip the example to just the key structural part
-    const shortExample = r.exampleHtml.length > 150
-      ? r.exampleHtml.slice(0, 150) + "..."
-      : r.exampleHtml;
-    return `- ${r.pattern}: use \`${r.component}\` — example: ${shortExample}`;
-  }).join("\n");
+  if (dict.rules.length > 0) {
+    const ruleDescriptions = dict.rules.map(r => {
+      const shortExample = r.exampleHtml.length > 150
+        ? r.exampleHtml.slice(0, 150) + "..."
+        : r.exampleHtml;
+      return `- ${r.pattern}: use \`${r.component}\` — example: ${shortExample}`;
+    }).join("\n");
+    parts.push(`# ESTABLISHED STYLE RULES (follow these for consistency)\nThis book has already been partially formatted. Follow these established patterns:\n${ruleDescriptions}\n\nMaintain consistency with these choices. Use the same classes for the same types of content.`);
+  }
 
-  return `\n\n# ESTABLISHED STYLE RULES (follow these for consistency)\nThis book has already been partially formatted. Follow these established patterns:\n${ruleDescriptions}\n\nMaintain consistency with these choices. Use the same classes for the same types of content.`;
+  if (dict.characterStyles && Object.keys(dict.characterStyles).length > 0) {
+    const assignments = Object.entries(dict.characterStyles)
+      .map(([name, cls]) => `- "${name}": ALWAYS use \`${cls}\``)
+      .join("\n");
+    parts.push(`# CHARACTER DIALOGUE CLASSES — CRITICAL: never change these, always use exactly these classes for these characters\n${assignments}`);
+  }
+
+  return parts.length > 0 ? "\n\n" + parts.join("\n\n") : "";
 }
 
 // ── Persistence ────────────────────────────────────

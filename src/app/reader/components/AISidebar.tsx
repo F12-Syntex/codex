@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
   Loader2, Trash2, Clapperboard, ExternalLink, BarChart3,
-  BookMarked, Square, Play, RefreshCw,
+  BookMarked, Square, Play, RefreshCw, Check, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
+import { BulkAnalyserModal } from "./BulkAnalyserModal";
 
 interface AISidebarProps {
   theme: ThemeClasses;
@@ -65,7 +66,6 @@ interface AISidebarProps {
   chapterLabels?: ChapterLabels;
 }
 
-type Scope = "current" | "all";
 
 export function AISidebar({
   theme,
@@ -120,7 +120,7 @@ export function AISidebar({
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
-  const [scope, setScope] = useState<Scope>("current");
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   useEffect(() => {
     window.electronAPI?.getSetting("openrouterApiKey").then((key) => {
@@ -132,7 +132,6 @@ export function AISidebar({
 
   const disabled = hasApiKey === false;
   const loading = hasApiKey === null;
-  const chapterLimit = scope === "current" ? currentChapter : undefined;
 
   /* ── Counts ─────────────────────────────────────────────── */
 
@@ -219,35 +218,6 @@ export function AISidebar({
         </div>
       )}
 
-      {/* ── Scope bar ── */}
-      <div className={cn("flex shrink-0 items-center gap-2 border-b px-3 py-2", theme.border)}>
-        <span className={cn("text-xs", theme.muted)} style={{ opacity: 0.6 }}>Analyse</span>
-        <div className="flex flex-1 rounded-lg overflow-hidden" style={{ background: "var(--bg-inset)" }}>
-          <button
-            onClick={() => setScope("current")}
-            className={cn(
-              "flex-1 py-1 text-xs font-medium transition-colors",
-              scope === "current"
-                ? "bg-[var(--accent-brand)] text-white"
-                : cn(theme.muted, "hover:text-white/60"),
-            )}
-          >
-            Ch. {fmtCh(currentChapter, chapterLabels) ?? currentChapter + 1}
-          </button>
-          <button
-            onClick={() => setScope("all")}
-            className={cn(
-              "flex-1 py-1 text-xs font-medium transition-colors",
-              scope === "all"
-                ? "bg-[var(--accent-brand)] text-white"
-                : cn(theme.muted, "hover:text-white/60"),
-            )}
-          >
-            All
-          </button>
-        </div>
-      </div>
-
       {/* ── Content ── */}
       <div className={cn("flex-1 overflow-y-auto py-1", disabled ? "pointer-events-none select-none opacity-40" : "")}>
 
@@ -262,9 +232,9 @@ export function AISidebar({
           status={wikiStatusText}
           running={isWikiRunning}
           runCount={wikiRunCount}
-          canRun={wikiEnabled && !isWikiRunning && (scope === "current" ? !currentChapterWikiDone : wikiToDo > 0)}
-          onRun={() => onWikiProcessAll(chapterLimit)}
-          canRetry={wikiEnabled && !isWikiRunning && scope === "current" && currentChapterWikiDone}
+          canRun={wikiEnabled && !isWikiRunning && !currentChapterWikiDone}
+          onRun={() => onWikiProcessAll(currentChapter)}
+          canRetry={wikiEnabled && !isWikiRunning && currentChapterWikiDone}
           onRetry={onWikiRetry}
           onCancel={onCancelWikiProcessAll}
           canClear={wikiEntryCount > 0 && !isWikiRunning}
@@ -274,7 +244,7 @@ export function AISidebar({
           theme={theme}
         />
 
-        {/* Formatting — independent feature */}
+        {/* Formatting */}
         <Row
           Icon={Paintbrush}
           label="Formatting"
@@ -287,9 +257,9 @@ export function AISidebar({
           }
           running={isFormatRunning}
           runCount={formatRunCount}
-          canRun={formattingEnabled && !isFormatRunning && (scope === "current" ? !currentChapterFormatDone : formatToDo > 0)}
-          onRun={() => onFormatAll(chapterLimit)}
-          canRetry={formattingEnabled && !isFormatRunning && scope === "current" && currentChapterFormatDone}
+          canRun={formattingEnabled && !isFormatRunning && !currentChapterFormatDone}
+          onRun={() => onFormatAll(currentChapter)}
+          canRetry={formattingEnabled && !isFormatRunning && currentChapterFormatDone}
           onRetry={onFormatRetry}
           onCancel={onCancelFormatAll}
           canClear={formattedChapterCount > 0 && !isFormatRunning}
@@ -308,9 +278,9 @@ export function AISidebar({
           status={enrichStatusText}
           running={isEnrichRunning}
           runCount={enrichRunCount}
-          canRun={enrichEnabled && !isEnrichRunning && (scope === "current" ? !currentChapterEnrichDone : enrichToDo > 0)}
-          onRun={() => onEnrichAll(chapterLimit)}
-          canRetry={enrichEnabled && !isEnrichRunning && scope === "current" && currentChapterEnrichDone}
+          canRun={enrichEnabled && !isEnrichRunning && !currentChapterEnrichDone}
+          onRun={() => onEnrichAll(currentChapter)}
+          canRetry={enrichEnabled && !isEnrichRunning && currentChapterEnrichDone}
           onRetry={onEnrichRetry}
           onCancel={onCancelEnrichAll}
           canClear={alreadyEnriched > 0 && !isEnrichRunning}
@@ -357,6 +327,48 @@ export function AISidebar({
           theme={theme}
         />
       </div>
+
+      {/* ── Bulk Analyse button ── */}
+      <div className={cn("shrink-0 border-t p-3", theme.border)}>
+        <button
+          onClick={() => setBulkOpen(true)}
+          disabled={disabled}
+          className={cn(
+            "flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all",
+            disabled ? "cursor-not-allowed opacity-30" : "hover:opacity-90 active:scale-[0.99]",
+          )}
+          style={{ background: "var(--accent-brand-dim)", color: "var(--accent-brand)" }}
+        >
+          <Layers className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Bulk Analyse
+        </button>
+      </div>
+
+      {/* ── Bulk modal ── */}
+      <BulkAnalyserModal
+        isOpen={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        theme={theme}
+        chapters={chapters}
+        chapterLabels={chapterLabels}
+        totalChapters={totalChapters}
+        currentChapter={currentChapter}
+        wikiEnabled={wikiEnabled}
+        formattingEnabled={formattingEnabled}
+        enrichEnabled={enrichEnabled}
+        wikiAllProgress={wikiAllProgress}
+        wikiProcessingChapter={wikiProcessingChapter}
+        formatAllProgress={formatAllProgress}
+        formattingChapter={formattingChapter}
+        enrichAllProgress={enrichAllProgress}
+        enrichingChapter={enrichingChapter}
+        onRunWiki={onWikiProcessAll}
+        onRunFormat={onFormatAll}
+        onRunTitles={onEnrichAll}
+        onCancelWiki={onCancelWikiProcessAll}
+        onCancelFormat={onCancelFormatAll}
+        onCancelTitles={onCancelEnrichAll}
+      />
     </div>
   );
 }
@@ -418,6 +430,20 @@ function Row({
   onLink,
   theme,
 }: RowProps) {
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClearClick = () => {
+    if (confirmingClear) {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      setConfirmingClear(false);
+      onClear?.();
+    } else {
+      setConfirmingClear(true);
+      confirmTimerRef.current = setTimeout(() => setConfirmingClear(false), 2500);
+    }
+  };
+
   return (
     <div className={cn("flex items-center gap-2 px-3 py-[7px] transition-colors", active ? "bg-[var(--accent-brand)]/[0.04]" : "")}>
       {/* Toggle */}
@@ -460,7 +486,7 @@ function Row({
             {lockNote}
           </span>
         )}
-        {/* Status shown inline under label — avoids overflow with long counts like "62 / 1434" */}
+        {/* Status shown inline under label */}
         {!running && status && (
           <span
             className={cn("block text-xs tabular-nums leading-tight", status === "done" ? "text-[var(--accent-brand)]" : theme.muted)}
@@ -507,11 +533,23 @@ function Row({
         <div className="h-6 w-6 shrink-0" />
       )}
 
-      {/* Clear button — always shown when data exists and not running */}
+      {/* Clear button — two-step confirm */}
       {canClear && onClear && !running ? (
-        <ActionBtn onClick={onClear} theme={theme}>
-          <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-        </ActionBtn>
+        <button
+          onClick={handleClearClick}
+          title={confirmingClear ? "Click again to confirm" : "Clear data"}
+          className={cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-all",
+            confirmingClear
+              ? "bg-red-500/20 text-red-400 scale-110"
+              : theme.btn,
+          )}
+        >
+          {confirmingClear
+            ? <Check className="h-3 w-3" strokeWidth={2.5} />
+            : <Trash2 className="h-3 w-3" strokeWidth={1.5} />
+          }
+        </button>
       ) : (
         <div className="h-6 w-6 shrink-0" />
       )}
