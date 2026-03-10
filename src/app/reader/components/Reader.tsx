@@ -35,6 +35,11 @@ import { chunkParagraphs } from "@/lib/speed-reader-engine";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
+const NON_STORY_RE = /^\s*(cover|title[\s-]?page|table\s+of\s+contents?|toc|contents?|copyright(\s+page)?|dedication|about\s+(the\s+)?(author|book|story)?|preface|foreword|acknowledgements?|acknowledgments?|index|glossary|bibliography|colophon|epigraph|half[\s-]?title|imprint|legal(\s+notice)?|disclaimer|author'?s?\s+(note|word)|front\s+matter|back\s+matter)\s*$/i;
+function isNonStoryTitle(label: string): boolean {
+  return NON_STORY_RE.test(label);
+}
+
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
   const totalLen = chapter.htmlParagraphs.reduce((sum, p) => sum + p.length, 0);
   // Skip if total HTML is over 500K chars (~roughly 500K tokens) or contains base64 images
@@ -316,24 +321,24 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       });
   }, [filePath, format]);
 
-  // AI chapter labeling — run once per book to assign accurate chapter numbers (skipping cover/TOC pages)
+  // Chapter labeling — run once per book, skipping known non-story pages by title
   useEffect(() => {
     if (!bookContent || !filePath) return;
     const toc = bookContent.toc ?? [];
     if (toc.length === 0) return;
     const key = `chapter-labels:${filePath}`;
-    window.electronAPI?.getSetting(key).then(async (existing) => {
-      if (existing) return; // already labeled
-      const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-      if (!apiKey) return;
-      try {
-        const { labelChapters } = await import("@/lib/ai-chapter-labels");
-        const labels = await labelChapters(apiKey, toc.map((e) => ({ index: e.chapterIndex, label: e.label })));
-        if (Object.keys(labels).length > 0) {
-          window.electronAPI?.setSetting(key, JSON.stringify(labels));
+    window.electronAPI?.getSetting(key).then((existing) => {
+      if (existing) return;
+      const labels: Record<number, number> = {};
+      let chNum = 0;
+      for (const entry of toc) {
+        if (!isNonStoryTitle(entry.label)) {
+          chNum++;
+          labels[entry.chapterIndex] = chNum;
         }
-      } catch (err) {
-        console.warn("[Reader] Chapter labeling failed:", err);
+      }
+      if (Object.keys(labels).length > 0) {
+        window.electronAPI?.setSetting(key, JSON.stringify(labels));
       }
     });
   }, [bookContent, filePath]);
