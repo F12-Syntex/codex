@@ -26,12 +26,13 @@ Read the content, understand the genre and tone, and apply visual enhancements f
 4. Light prose cleanup: fix obvious translation artifacts, awkward phrasing, missing words, and broken sentences. Keep changes minimal — the reader should not notice edits. NEVER alter character voice, intentional slang, or stylistic choices.
 5. Narration/dialogue: do NOT add new content or rewrite meaning. Only fix clear errors.
 6. Structured data (stats, skills, tables): MAY restructure for clarity. Keep all info.
-7. Most paragraphs stay as plain text — SKIP THEM (unless they have grammar/spelling issues).
+7. FORMAT ALL dialogue lines — never skip a paragraph that contains spoken dialogue. If a paragraph has quoted speech (", ", ', ', or standard " marks), it MUST be formatted with a dialogue speaker span. This is mandatory, not optional.
 8. Keep enhancements compact and inline. Don't dominate the page.
 9. Consecutive structured paragraphs: merge into first index, set consumed indices to "".
 10. Stat block labels: 1-2 words max, EVERY label gets an icon. Use icons to replace words.
-11. Dialogue tags: use the CHARACTER'S ACTUAL NAME, never generic roles like "HERO"/"VILLAIN".
+11. Dialogue tags: CRITICAL — the `ai-fmt-dialogue-*` span MUST appear ONLY immediately before quoted speech (the opening quote character). Example: `<span class="ai-fmt-dialogue-hero">Name</span> "Hello."` — NEVER wrap character name mentions inside narration or action paragraphs with this class. The span signals "the next thing is speech by this character" and nothing else.
 12. System messages: keep text SHORT and punchy.
+13. Plain narration paragraphs with no dialogue, grammar issues, or structured data may be skipped. But when in doubt, format it.
 
 # OUTPUT
 Return ONLY valid JSON: {"0":"<div>...</div>","3":"<p>text</p>","4":""}. No markdown fences, no explanation.`;

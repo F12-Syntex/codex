@@ -166,8 +166,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
     // Strip dialogue speaker tags (e.g. <span class="ai-fmt-dialogue-hero">Name</span>) then strip remaining HTML
     return html.map(h => {
-      // Remove AI dialogue speaker name tags entirely so TTS doesn't read them
-      let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">[^<]*<\/span>\s*/g, "");
+      // Remove AI dialogue speaker name tags ONLY when they immediately precede quoted speech
+      // (e.g. <span class="ai-fmt-dialogue-hero">Name</span> "Hello" → "Hello")
+      // Character name mentions in narration are NOT stripped.
+      let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">[^<]*<\/span>\s*(?=[\u201C\u201D\u2018\u2019"'])/g, "");
       // Strip remaining HTML tags and decode entities
       text = text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
       return text;
