@@ -316,6 +316,28 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       });
   }, [filePath, format]);
 
+  // AI chapter labeling — run once per book to assign accurate chapter numbers (skipping cover/TOC pages)
+  useEffect(() => {
+    if (!bookContent || !filePath) return;
+    const toc = bookContent.toc ?? [];
+    if (toc.length === 0) return;
+    const key = `chapter-labels:${filePath}`;
+    window.electronAPI?.getSetting(key).then(async (existing) => {
+      if (existing) return; // already labeled
+      const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+      if (!apiKey) return;
+      try {
+        const { labelChapters } = await import("@/lib/ai-chapter-labels");
+        const labels = await labelChapters(apiKey, toc.map((e) => ({ index: e.chapterIndex, label: e.label })));
+        if (Object.keys(labels).length > 0) {
+          window.electronAPI?.setSetting(key, JSON.stringify(labels));
+        }
+      } catch (err) {
+        console.warn("[Reader] Chapter labeling failed:", err);
+      }
+    });
+  }, [bookContent, filePath]);
+
   // Load enriched chapter names + toggle state from DB
   useEffect(() => {
     if (!bookContent || !filePath) return;

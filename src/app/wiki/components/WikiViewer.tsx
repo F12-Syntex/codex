@@ -28,6 +28,11 @@ const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; p
 
 const TYPE_ORDER: WikiEntryType[] = ["character", "item", "location", "event", "concept"];
 
+/** Format a 0-based chapter index as a display number, using AI labels when available. */
+function fmtCh(index: number, labels: Record<number, number>): number {
+  return index in labels ? labels[index] : index + 1;
+}
+
 interface EntryListItem {
   id: string;
   name: string;
@@ -94,6 +99,16 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [chapterLabels, setChapterLabels] = useState<Record<number, number>>({});
+
+  // Load AI-assigned chapter labels (skips cover/TOC pages)
+  useEffect(() => {
+    if (!filePath) return;
+    window.electronAPI?.getSetting(`chapter-labels:${filePath}`).then((raw) => {
+      if (!raw) return;
+      try { setChapterLabels(JSON.parse(raw)); } catch { /* ignore */ }
+    });
+  }, [filePath]);
 
   const refreshData = useCallback(async () => {
     const api = window.electronAPI;
@@ -272,6 +287,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               onBack={goBack}
               onMerge={handleMerge}
               canGoBack
+              chapterLabels={chapterLabels}
             />
           ) : activeView === "stats" ? (
             <StatsPage
@@ -637,7 +653,7 @@ function HomePage({
               <SectionHeader icon={<Hash className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Chapter Timeline" color="rgb(253, 164, 175)" />
               <div className="mt-3 space-y-2">
                 {chapterSummaries.map((ch) => (
-                  <ChapterRow key={ch.chapter_index} chapter={ch} />
+                  <ChapterRow key={ch.chapter_index} chapter={ch} chapterLabels={chapterLabels} />
                 ))}
               </div>
             </section>
@@ -711,7 +727,7 @@ function HomePage({
    ══════════════════════════════════════════════════════════ */
 
 function EntryPage({
-  entry, allEntries, resolvedNames, onNavigate, onBack, onMerge, canGoBack,
+  entry, allEntries, resolvedNames, onNavigate, onBack, onMerge, canGoBack, chapterLabels,
 }: {
   entry: WikiEntry;
   allEntries: EntryListItem[];
@@ -720,6 +736,7 @@ function EntryPage({
   onBack: () => void;
   onMerge: (sourceId: string, targetId: string) => void;
   canGoBack: boolean;
+  chapterLabels: Record<number, number>;
 }) {
   const [showMergePicker, setShowMergePicker] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
@@ -879,7 +896,7 @@ function EntryPage({
 
       {/* Quick info bar */}
       <div className="mb-6 flex flex-wrap gap-2">
-        <InfoPill icon={<Clock className="h-3 w-3" strokeWidth={1.5} />} label={`First: Ch. ${entry.firstAppearance + 1}`} />
+        <InfoPill icon={<Clock className="h-3 w-3" strokeWidth={1.5} />} label={`First: Ch. ${fmtCh(entry.firstAppearance, chapterLabels)}`} />
         <InfoPill icon={<BookOpen className="h-3 w-3" strokeWidth={1.5} />} label={`${entry.chapterAppearances.length} ${entry.chapterAppearances.length === 1 ? "chapter" : "chapters"}`} />
         {uniqueRels.length > 0 && (
           <InfoPill icon={<User className="h-3 w-3" strokeWidth={1.5} />} label={`${uniqueRels.length} ${uniqueRels.length === 1 ? "connection" : "connections"}`} />
@@ -909,7 +926,7 @@ function EntryPage({
                 {items.map((item, i) => (
                   <div key={i} className="flex gap-3 rounded-lg bg-[var(--bg-surface)] px-3 py-2">
                     <span className="shrink-0 rounded-lg px-1.5 py-0.5 text-xs tabular-nums font-medium" style={{ background: meta.bg, color: meta.color }}>
-                      {item.chapterIndex + 1}
+                      {fmtCh(item.chapterIndex, chapterLabels)}
                     </span>
                     <p className="text-xs leading-relaxed text-white/55">{item.content}</p>
                   </div>
@@ -920,7 +937,7 @@ function EntryPage({
 
           {/* Archive — superseded / low-relevance details */}
           {Object.keys(archivedByCategory).length > 0 && (
-            <ArchivedDetailsSection archivedByCategory={archivedByCategory} metaBg={meta.bg} metaColor={meta.color} />
+            <ArchivedDetailsSection archivedByCategory={archivedByCategory} metaBg={meta.bg} metaColor={meta.color} chapterLabels={chapterLabels} />
           )}
 
           {/* Historical aliases */}
@@ -1066,10 +1083,12 @@ function ArchivedDetailsSection({
   archivedByCategory,
   metaBg,
   metaColor,
+  chapterLabels,
 }: {
   archivedByCategory: Record<string, { chapterIndex: number; content: string; isSuperseded: boolean }[]>;
   metaBg: string;
   metaColor: string;
+  chapterLabels: Record<number, number>;
 }) {
   const [open, setOpen] = useState(false);
   const totalCount = Object.values(archivedByCategory).reduce((n, arr) => n + arr.length, 0);
@@ -1091,7 +1110,7 @@ function ArchivedDetailsSection({
                 {items.map((item, i) => (
                   <div key={i} className="flex gap-3 rounded-lg bg-white/[0.02] px-3 py-2 opacity-50">
                     <span className="shrink-0 rounded px-1.5 py-0.5 text-xs tabular-nums" style={{ background: metaBg, color: metaColor, opacity: 0.6 }}>
-                      {item.chapterIndex + 1}
+                      {fmtCh(item.chapterIndex, chapterLabels)}
                     </span>
                     <p className="text-xs leading-relaxed text-white/35 line-through decoration-white/20">
                       {item.content}
@@ -1152,7 +1171,7 @@ function FilterChip({ label, count, active, onClick, icon, color }: { label: str
   );
 }
 
-function ChapterRow({ chapter }: { chapter: ChapterSummary }) {
+function ChapterRow({ chapter, chapterLabels }: { chapter: ChapterSummary; chapterLabels: Record<number, number> }) {
   let events: string[] = [];
   try { events = JSON.parse(chapter.key_events); } catch { /* ignore */ }
 
@@ -1160,7 +1179,7 @@ function ChapterRow({ chapter }: { chapter: ChapterSummary }) {
     <div className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-3">
       <div className="flex items-center gap-2">
         <span className="rounded-lg px-1.5 py-0.5 text-xs font-medium tabular-nums" style={{ background: "rgba(253, 164, 175, 0.12)", color: "rgb(253, 164, 175)" }}>
-          {chapter.chapter_index + 1}
+          {fmtCh(chapter.chapter_index, chapterLabels)}
         </span>
         <MoodBadge mood={chapter.mood} />
       </div>
