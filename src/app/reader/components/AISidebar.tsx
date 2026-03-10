@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
+import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 
 interface AISidebarProps {
   theme: ThemeClasses;
@@ -61,6 +62,7 @@ interface AISidebarProps {
   onCommentsToggle: () => void;
   onClearComments: () => void;
   onClose: () => void;
+  chapterLabels?: ChapterLabels;
 }
 
 type Scope = "current" | "all";
@@ -114,6 +116,7 @@ export function AISidebar({
   onCommentsToggle,
   onClearComments,
   onClose,
+  chapterLabels = {},
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
@@ -229,7 +232,7 @@ export function AISidebar({
                 : cn(theme.muted, "hover:text-white/60"),
             )}
           >
-            Ch. {currentChapter + 1}
+            Ch. {fmtCh(currentChapter, chapterLabels) ?? currentChapter + 1}
           </button>
           <button
             onClick={() => setScope("all")}

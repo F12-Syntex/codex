@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { WindowHeader } from "@/components/window-header";
 import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
+import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiAIChat } from "./WikiAIChat";
 
@@ -28,10 +29,6 @@ const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; p
 
 const TYPE_ORDER: WikiEntryType[] = ["character", "item", "location", "event", "concept"];
 
-/** Format a 0-based chapter index as a display number, using AI labels when available. */
-function fmtCh(index: number, labels: Record<number, number>): number {
-  return index in labels ? labels[index] : index + 1;
-}
 
 interface EntryListItem {
   id: string;
@@ -99,7 +96,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
-  const [chapterLabels, setChapterLabels] = useState<Record<number, number>>({});
+  const [chapterLabels, setChapterLabels] = useState<ChapterLabels>({});
 
   // Load AI-assigned chapter labels (skips cover/TOC pages)
   useEffect(() => {
@@ -320,6 +317,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
           filePath={filePath}
           bookTitle={bookTitle}
           onEntryClick={navigateTo}
+          chapterLabels={chapterLabels}
           onOpenChange={(open, expanded) => { setChatOpen(open); setChatExpanded(expanded); }}
         />
       </div>
@@ -413,8 +411,8 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
                     {mcEntry.status}
                   </span>
                 </div>
-                {mcEntry.aliases.filter((a) => a.relevance >= 3).length > 0 && (
-                  <p className="mt-0.5 text-xs text-white/25">aka {mcEntry.aliases.filter((a) => a.relevance >= 3).map((a) => a.alias).join(", ")}</p>
+                {mcEntry.aliases.filter((a) => a.relevance >= 4).length > 0 && (
+                  <p className="mt-0.5 text-xs text-white/25">aka {mcEntry.aliases.filter((a) => a.relevance >= 4).slice(0, 5).map((a) => a.alias).join(", ")}</p>
                 )}
                 <p className="mt-1.5 text-xs leading-relaxed text-white/50">{mcEntry.shortDescription}</p>
                 {mcEntry.description && (
@@ -447,7 +445,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
                   {stat.value && (
                     <p className="mt-1.5 text-sm font-semibold" style={{ color: meta.color }}>{stat.value}</p>
                   )}
-                  <p className="mt-0.5 text-xs text-white/20">Ch. {stat.last_chapter + 1}</p>
+                  <p className="mt-0.5 text-xs text-white/20">Ch. {fmtCh(stat.last_chapter, chapterLabels) ?? stat.last_chapter + 1}</p>
                 </div>
               ))}
             </div>
@@ -471,7 +469,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
                     {stat.value && (
                       <p className="mt-1.5 text-sm font-semibold text-white/60">{stat.value}</p>
                     )}
-                    <p className="mt-0.5 text-xs text-white/20">Ch. {stat.last_chapter + 1}</p>
+                    <p className="mt-0.5 text-xs text-white/20">Ch. {fmtCh(stat.last_chapter, chapterLabels) ?? stat.last_chapter + 1}</p>
                   </div>
                 ))}
               </div>
@@ -521,7 +519,7 @@ function HomePage({
   onFilterChange: (t: WikiEntryType | "all") => void;
   onEntryClick: (id: string) => void;
   onUnmerge: (mergeLogId: number) => void;
-  chapterLabels: Record<number, number>;
+  chapterLabels: ChapterLabels;
 }) {
   const mainCharacters = entries.filter((e) => e.type === "character" && e.significance >= 3).slice(0, 6);
   const recentEntries = [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);
@@ -740,7 +738,7 @@ function EntryPage({
   onBack: () => void;
   onMerge: (sourceId: string, targetId: string) => void;
   canGoBack: boolean;
-  chapterLabels: Record<number, number>;
+  chapterLabels: ChapterLabels;
 }) {
   const [showMergePicker, setShowMergePicker] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
@@ -786,9 +784,12 @@ function EntryPage({
     archivedByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content, isSuperseded: d.isSuperseded });
   }
 
-  // Split aliases: primary (relevance >= 3) vs historical (relevance < 3)
-  const primaryAliases = entry.aliases.filter((a) => a.relevance >= 3);
-  const historicalAliases = entry.aliases.filter((a) => a.relevance < 3);
+  // Primary aliases: names/titles with high relevance (≥4), capped at 8
+  // Everything else goes to the historical/archive section
+  const primaryAliases = entry.aliases
+    .filter((a) => a.relevance >= 4)
+    .slice(0, 8);
+  const historicalAliases = entry.aliases.filter((a) => a.relevance < 4);
 
   // Group relationships
   const deduped = new Map<string, { targetId: string; relation: string; since: number }>();
@@ -1092,7 +1093,7 @@ function ArchivedDetailsSection({
   archivedByCategory: Record<string, { chapterIndex: number; content: string; isSuperseded: boolean }[]>;
   metaBg: string;
   metaColor: string;
-  chapterLabels: Record<number, number>;
+  chapterLabels: ChapterLabels;
 }) {
   const [open, setOpen] = useState(false);
   const totalCount = Object.values(archivedByCategory).reduce((n, arr) => n + arr.length, 0);
@@ -1175,7 +1176,7 @@ function FilterChip({ label, count, active, onClick, icon, color }: { label: str
   );
 }
 
-function ChapterRow({ chapter, chapterLabels }: { chapter: ChapterSummary; chapterLabels: Record<number, number> }) {
+function ChapterRow({ chapter, chapterLabels }: { chapter: ChapterSummary; chapterLabels: ChapterLabels }) {
   let events: string[] = [];
   try { events = JSON.parse(chapter.key_events); } catch { /* ignore */ }
 

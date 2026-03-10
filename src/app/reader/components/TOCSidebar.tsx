@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { fmtCh } from "@/lib/chapter-labels";
 import { X, Search, List, Bookmark, Sparkles, Paintbrush, BookMarked, Loader2 } from "lucide-react";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
 
@@ -195,7 +196,7 @@ export function TOCSidebar({
                   } ${isRead && i !== currentChapter ? "opacity-40" : ""}`}
                 >
                   <span className={`w-5 shrink-0 text-right tabular-nums text-xs ${theme.muted}`}>
-                    {Object.keys(chapterLabels).length > 0 ? (chapterLabels[i] ?? "·") : i + 1}
+                    {fmtCh(i, chapterLabels) ?? ""}
                   </span>
                   <button
                     onClick={() => { onSelectChapter(i); onClose(); }}

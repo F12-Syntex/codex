@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ThemeClasses, TTSStatus } from "../lib/types";
+import { fmtCh } from "@/lib/chapter-labels";
 
 interface ReaderFooterProps {
   currentPage: number;
   totalPages: number;
   chapterIndex: number;
   chapterCount: number;
+  chapterLabels?: Record<number, number>;
   chapterTitle: string;
   theme: ThemeClasses;
   immersiveMode: boolean;
@@ -189,6 +191,7 @@ export function ReaderFooter({
   onLoadBranch,
   onDeleteBranch,
   activeBranchId,
+  chapterLabels = {},
 }: ReaderFooterProps) {
   const isVisible = !immersiveMode || immersiveVisible;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -314,7 +317,7 @@ export function ReaderFooter({
 
               {/* Chapter counter */}
               <span className={cn("shrink-0 text-xs tabular-nums", theme.muted)} style={{ opacity: 0.38 }}>
-                Ch {chapterIndex + 1}
+                Ch {fmtCh(chapterIndex, chapterLabels) ?? chapterIndex + 1}
                 <span style={{ opacity: 0.7 }}> / {chapterCount}</span>
               </span>
             </>

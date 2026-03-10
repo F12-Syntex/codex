@@ -28,6 +28,7 @@ import { BATCH_TEXT_BUDGET, CHAPTER_TEXT_BUDGET, MAX_CHAPTERS_PER_BATCH } from "
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import { enrichQuote } from "@/lib/ai-quotes";
+import { buildChapterLabels, type ChapterLabels } from "@/lib/chapter-labels";
 import { AIBuddyPanel } from "./AIBuddyPanel";
 import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
 import { SpeedReaderView } from "./SpeedReaderView";
@@ -35,11 +36,6 @@ import { chunkParagraphs } from "@/lib/speed-reader-engine";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
 /** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
-const NON_STORY_RE = /^\s*(cover|title[\s-]?page|table\s+of\s+contents?|toc|contents?|copyright(\s+page)?|dedication|about\s+(the\s+)?(author|book|story)?|preface|foreword|acknowledgements?|acknowledgments?|index|glossary|bibliography|colophon|epigraph|half[\s-]?title|imprint|legal(\s+notice)?|disclaimer|author'?s?\s+(note|word)|front\s+matter|back\s+matter)\s*$/i;
-function isNonStoryTitle(label: string): boolean {
-  return NON_STORY_RE.test(label);
-}
-
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
   const totalLen = chapter.htmlParagraphs.reduce((sum, p) => sum + p.length, 0);
   // Skip if total HTML is over 500K chars (~roughly 500K tokens) or contains base64 images
@@ -57,7 +53,7 @@ interface ReaderProps {
 export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [bookContent, setBookContent] = useState<BookContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [chapterLabels, setChapterLabels] = useState<Record<number, number>>({});
+  const [chapterLabels, setChapterLabels] = useState<ChapterLabels>({});
   const [currentChapter, setCurrentChapter] = useState(0);
   const [customFonts] = useState<CustomFont[]>([]);
 
@@ -333,14 +329,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         try { setChapterLabels(JSON.parse(existing)); } catch { /* ignore */ }
         return;
       }
-      const labels: Record<number, number> = {};
-      let chNum = 0;
-      for (const entry of toc) {
-        if (!isNonStoryTitle(entry.label)) {
-          chNum++;
-          labels[entry.chapterIndex] = chNum;
-        }
-      }
+      const labels = buildChapterLabels(toc);
       if (Object.keys(labels).length > 0) {
         window.electronAPI?.setSetting(key, JSON.stringify(labels));
         setChapterLabels(labels);
@@ -1864,6 +1853,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               chapterCommentCount={Object.keys(chapterComments).length}
               onCommentsToggle={toggleCommentsEnabled}
               onClearComments={clearComments}
+              chapterLabels={chapterLabels}
               onClose={() => setShowAI(false)}
             />
           )}
@@ -2054,6 +2044,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onLoadBranch={handleLoadBranch}
           onDeleteBranch={handleDeleteBranch}
           activeBranchId={activeBranch?.id}
+          chapterLabels={chapterLabels}
         />}
       </div>
     </div>

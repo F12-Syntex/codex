@@ -8,11 +8,13 @@ import {
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { chatWithPreset } from "@/lib/openrouter";
 import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
+import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 
 interface WikiAIChatProps {
   filePath: string;
   bookTitle: string;
   onEntryClick: (id: string) => void;
+  chapterLabels?: ChapterLabels;
   /** Called when open/expanded state changes so parent can adjust scroll padding */
   onOpenChange?: (isOpen: boolean, isExpanded: boolean) => void;
 }
@@ -58,7 +60,7 @@ const SUGGESTIONS = [
   "What mysteries are unresolved?",
 ];
 
-export function WikiAIChat({ filePath, bookTitle, onEntryClick, onOpenChange }: WikiAIChatProps) {
+export function WikiAIChat({ filePath, bookTitle, onEntryClick, chapterLabels = {}, onOpenChange }: WikiAIChatProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -130,7 +132,7 @@ export function WikiAIChat({ filePath, bookTitle, onEntryClick, onOpenChange }: 
     if (summaries.length > 0) {
       context += "## Chapter Summaries\n";
       for (const s of summaries) {
-        context += `- Ch. ${s.chapter_index + 1}: ${s.summary}\n`;
+        context += `- Ch. ${fmtCh(s.chapter_index, chapterLabels) ?? s.chapter_index + 1}: ${s.summary}\n`;
       }
       context += "\n";
     }
