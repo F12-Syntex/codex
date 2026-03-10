@@ -104,7 +104,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   // Load AI-assigned chapter labels (skips cover/TOC pages)
   useEffect(() => {
     if (!filePath) return;
-    window.electronAPI?.getSetting(`chapter-labels:${filePath}`).then((raw) => {
+    window.electronAPI?.getSetting(`chapter-labels-v2:${filePath}`).then((raw) => {
       if (!raw) return;
       try { setChapterLabels(JSON.parse(raw)); } catch { /* ignore */ }
     });
@@ -654,9 +654,11 @@ function HomePage({
             <section className="mb-8">
               <SectionHeader icon={<Hash className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Chapter Timeline" color="rgb(253, 164, 175)" />
               <div className="mt-3 space-y-2">
-                {chapterSummaries.map((ch) => (
-                  <ChapterRow key={ch.chapter_index} chapter={ch} chapterLabels={chapterLabels} />
-                ))}
+                {chapterSummaries
+                  .filter((ch) => Object.keys(chapterLabels).length === 0 || ch.chapter_index in chapterLabels)
+                  .map((ch) => (
+                    <ChapterRow key={ch.chapter_index} chapter={ch} chapterLabels={chapterLabels} />
+                  ))}
               </div>
             </section>
           )}

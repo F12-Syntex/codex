@@ -326,7 +326,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!bookContent || !filePath) return;
     const toc = bookContent.toc ?? [];
     if (toc.length === 0) return;
-    const key = `chapter-labels:${filePath}`;
+    const key = `chapter-labels-v2:${filePath}`;
     window.electronAPI?.getSetting(key).then((existing) => {
       if (existing) return;
       const labels: Record<number, number> = {};
