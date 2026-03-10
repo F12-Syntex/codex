@@ -8,7 +8,7 @@ import {
   Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity,
 } from "lucide-react";
 import { WindowHeader } from "@/components/window-header";
-import type { WikiEntry, WikiEntryType, WikiArc } from "@/lib/ai-wiki";
+import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiAIChat } from "./WikiAIChat";
 
@@ -396,8 +396,8 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
                     {mcEntry.status}
                   </span>
                 </div>
-                {mcEntry.aliases.length > 0 && (
-                  <p className="mt-0.5 text-xs text-white/25">aka {mcEntry.aliases.join(", ")}</p>
+                {mcEntry.aliases.filter((a) => a.relevance >= 3).length > 0 && (
+                  <p className="mt-0.5 text-xs text-white/25">aka {mcEntry.aliases.filter((a) => a.relevance >= 3).map((a) => a.alias).join(", ")}</p>
                 )}
                 <p className="mt-1.5 text-xs leading-relaxed text-white/50">{mcEntry.shortDescription}</p>
                 {mcEntry.description && (
@@ -744,13 +744,30 @@ function EntryPage({
   }, [allEntries, entry.id, entry.type, mergeSearch]);
   const meta = TYPE_META[entry.type];
 
-  // Group details by category
-  const detailsByCategory: Record<string, { chapterIndex: number; content: string }[]> = {};
-  for (const d of entry.details) {
+  // Split details: active (relevance >= 2, not superseded) vs archived
+  const activeDetails = entry.details.filter((d) => !d.isSuperseded && d.relevance >= 2);
+  const archivedDetails = entry.details.filter((d) => d.isSuperseded || d.relevance < 2);
+
+  const detailsByCategory: Record<string, { chapterIndex: number; content: string; relevance: number }[]> = {};
+  for (const d of activeDetails) {
     const cat = d.category || "info";
     if (!detailsByCategory[cat]) detailsByCategory[cat] = [];
-    detailsByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content });
+    detailsByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content, relevance: d.relevance });
   }
+  for (const items of Object.values(detailsByCategory)) {
+    items.sort((a, b) => b.relevance - a.relevance || a.chapterIndex - b.chapterIndex);
+  }
+
+  const archivedByCategory: Record<string, { chapterIndex: number; content: string; isSuperseded: boolean }[]> = {};
+  for (const d of archivedDetails) {
+    const cat = d.category || "info";
+    if (!archivedByCategory[cat]) archivedByCategory[cat] = [];
+    archivedByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content, isSuperseded: d.isSuperseded });
+  }
+
+  // Split aliases: primary (relevance >= 3) vs historical (relevance < 3)
+  const primaryAliases = entry.aliases.filter((a) => a.relevance >= 3);
+  const historicalAliases = entry.aliases.filter((a) => a.relevance < 3);
 
   // Group relationships
   const deduped = new Map<string, { targetId: string; relation: string; since: number }>();
@@ -842,8 +859,20 @@ function EntryPage({
             )}
           </div>
           <h1 className="mt-1 text-sm font-bold tracking-tight text-white/90">{entry.name}</h1>
-          {entry.aliases.length > 0 && (
-            <p className="mt-0.5 text-xs text-white/25">Also known as: {entry.aliases.join(", ")}</p>
+          {primaryAliases.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {primaryAliases.map((a) => (
+                <span key={a.alias} className="inline-flex items-center gap-1 rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-white/40">
+                  {a.alias}
+                  {a.alias_type !== "name" && <span className="text-white/20">{a.alias_type}</span>}
+                </span>
+              ))}
+              {historicalAliases.length > 0 && (
+                <span className="inline-flex items-center rounded border border-white/[0.04] px-1.5 py-0.5 text-[10px] text-white/20">
+                  +{historicalAliases.length} historical
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -888,6 +917,16 @@ function EntryPage({
               </div>
             </ArticleSection>
           ))}
+
+          {/* Archive — superseded / low-relevance details */}
+          {Object.keys(archivedByCategory).length > 0 && (
+            <ArchivedDetailsSection archivedByCategory={archivedByCategory} metaBg={meta.bg} metaColor={meta.color} />
+          )}
+
+          {/* Historical aliases */}
+          {historicalAliases.length > 0 && (
+            <HistoricalAliasesSection aliases={historicalAliases} />
+          )}
 
           {/* Relationships */}
           {relGroups.length > 0 && (
@@ -935,8 +974,11 @@ function EntryPage({
               <InfoRow label="First seen" value={`Chapter ${entry.firstAppearance + 1}`} />
               <InfoRow label="Appearances" value={`${entry.chapterAppearances.length}`} />
               <InfoRow label="Significance" value={entry.significance >= 3 ? "★".repeat(entry.significance) : `${entry.significance}/5`} />
-              {entry.aliases.length > 0 && (
-                <InfoRow label="Aliases" value={entry.aliases.join(", ")} />
+              {primaryAliases.length > 0 && (
+                <InfoRow label="Names" value={primaryAliases.map((a) => a.alias).join(", ")} />
+              )}
+              {historicalAliases.length > 0 && (
+                <InfoRow label="Other refs" value={`${historicalAliases.length} contextual`} />
               )}
             </div>
             {/* Chapter appearances */}
@@ -1016,6 +1058,79 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-start justify-between gap-2 py-1.5">
       <span className="text-xs text-white/30">{label}</span>
       <span className="text-right text-xs text-white/55">{value}</span>
+    </div>
+  );
+}
+
+function ArchivedDetailsSection({
+  archivedByCategory,
+  metaBg,
+  metaColor,
+}: {
+  archivedByCategory: Record<string, { chapterIndex: number; content: string; isSuperseded: boolean }[]>;
+  metaBg: string;
+  metaColor: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const totalCount = Object.values(archivedByCategory).reduce((n, arr) => n + arr.length, 0);
+  return (
+    <div className="rounded-lg border border-white/[0.04] overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-xs text-white/25 hover:text-white/40 transition-colors"
+      >
+        <span>{totalCount} archived / superseded entr{totalCount === 1 ? "y" : "ies"}</span>
+        <span className="text-white/15">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-white/[0.04] px-3 py-3 space-y-4">
+          {Object.entries(archivedByCategory).map(([cat, items]) => (
+            <div key={cat}>
+              <p className="mb-1.5 text-[10px] uppercase tracking-wider text-white/20">{cat.replace(/_/g, " ")}</p>
+              <div className="space-y-1">
+                {items.map((item, i) => (
+                  <div key={i} className="flex gap-3 rounded-lg bg-white/[0.02] px-3 py-2 opacity-50">
+                    <span className="shrink-0 rounded px-1.5 py-0.5 text-xs tabular-nums" style={{ background: metaBg, color: metaColor, opacity: 0.6 }}>
+                      {item.chapterIndex + 1}
+                    </span>
+                    <p className="text-xs leading-relaxed text-white/35 line-through decoration-white/20">
+                      {item.content}
+                    </p>
+                    {item.isSuperseded && (
+                      <span className="ml-auto shrink-0 text-[9px] text-amber-400/40">superseded</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoricalAliasesSection({ aliases }: { aliases: WikiAliasDetailed[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-white/[0.04] overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-xs text-white/25 hover:text-white/40 transition-colors"
+      >
+        <span>{aliases.length} contextual / historical reference{aliases.length !== 1 ? "s" : ""}</span>
+        <span className="text-white/15">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-white/[0.04] px-3 py-3 flex flex-wrap gap-1.5">
+          {aliases.map((a) => (
+            <span key={a.alias} className="inline-flex items-center gap-1 rounded border border-white/[0.04] bg-white/[0.02] px-1.5 py-0.5 text-[10px] text-white/30">
+              {a.alias}
+              <span className="text-white/15">{a.alias_type}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

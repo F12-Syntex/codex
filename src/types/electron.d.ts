@@ -133,6 +133,15 @@ interface WikiDetailRow {
   chapter_index: number;
   category: string;
   content: string;
+  relevance: number;
+  is_superseded: number;
+  superseded_chapter: number | null;
+}
+
+interface WikiAliasRow {
+  alias: string;
+  alias_type: string;
+  relevance: number;
 }
 
 interface WikiRelationshipRow {
@@ -310,11 +319,12 @@ interface ElectronAPI {
   wikiGetEntry: (filePath: string, entryId: string) => Promise<WikiEntryRow | null>;
   wikiDeleteEntry: (filePath: string, entryId: string) => Promise<void>;
 
-  wikiAddAliases: (filePath: string, entryId: string, aliases: string[]) => Promise<void>;
-  wikiGetAliases: (filePath: string, entryId: string) => Promise<string[]>;
+  wikiAddAliases: (filePath: string, entryId: string, aliases: Array<string | { alias: string; alias_type?: string; relevance?: number }>) => Promise<void>;
+  wikiGetAliases: (filePath: string, entryId: string) => Promise<WikiAliasRow[]>;
 
-  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]) => Promise<void>;
+  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]) => Promise<void>;
   wikiGetDetails: (filePath: string, entryId: string, maxChapter?: number) => Promise<WikiDetailRow[]>;
+  wikiSupersedeDetails: (filePath: string, entryId: string, category: string, currentChapter: number) => Promise<void>;
 
   wikiAddRelationship: (filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) => Promise<void>;
   wikiGetRelationships: (filePath: string, entryId: string, maxChapter?: number) => Promise<WikiRelationshipRow[]>;

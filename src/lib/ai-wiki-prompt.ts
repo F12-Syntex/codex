@@ -13,6 +13,32 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a compreh
 - Keep shortDescription to 1 sentence (for tooltips)
 - Keep detail content concise but specific
 - Assign significance: 1=minor/mentioned once, 2=recurring, 3=major/important, 4=protagonist/core
+
+## Alias Classification (IMPORTANT)
+Aliases must be structured objects — not plain strings. Each alias needs:
+- **alias**: the string itself
+- **type**: one of "name" (real alternate name), "title" (formal rank/role), "epithet" (contextual descriptor, often temporary), "nickname" (informal), "honorific" (respectful address)
+- **relevance**: 1–5 — how persistently this name is used
+  - 5 = used throughout the book as a primary identifier (e.g. "Jin-Woo" for "Sung Jin-Woo")
+  - 4 = used frequently by multiple characters or for extended periods
+  - 3 = used regularly across several chapters
+  - 2 = used occasionally or by just one character
+  - 1 = used once or only in this chapter's specific context ("that newcomer", "the figure in black", "the bastard in room 5")
+- CRITICAL: Ephemeral epithets used in a single chapter to refer to a character should have relevance 1. Do NOT give relevance ≥ 3 to a reference that appears only once.
+
+## Detail Relevance (IMPORTANT)
+Each detail entry needs a **relevance** score (1–5):
+- 5 = defines who this entity fundamentally is (core identity, primary role, defining trait)
+- 4 = important, frequently referenced fact
+- 3 = notable background or recurring characteristic
+- 2 = minor supporting detail
+- 1 = trivia, one-off mention, highly contextual
+
+## Superseding Old Information
+When new chapter information directly replaces or invalidates a previous fact about an entity (status change, location change, role change, title revoked, power lost, etc.), include a **supersede** array in the update:
+- {"category": "status", "reason": "Character died in this chapter"}
+- This marks all previously recorded details in that category for this entity as no longer current
+- Only supersede when genuinely contradicted — not just when adding more detail
 - Track entity status changes: active, deceased, destroyed, unknown, transformed, captured, missing
 - When referencing existing entities in arcs/relationships, use their exact IDs from the entity index
 - IMPORTANT: For EVERY existing entity that appears in or is mentioned in this chapter, include them in "updates" even if there are no new details — this tracks chapter appearances. At minimum include their id with empty arrays.
@@ -122,12 +148,12 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "id": "kebab-case-slug",
           "name": "Display Name",
           "type": "character|item|location|event|concept",
-          "aliases": ["Alt Name"],
+          "aliases": [{ "alias": "Alt Name", "type": "name|title|epithet|nickname|honorific", "relevance": 3 }],
           "shortDescription": "One-line summary",
           "description": "Full wiki description",
           "significance": 2,
           "status": "active",
-          "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality" }],
+          "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality", "relevance": 3 }],
           "relationships": [{ "targetId": "other-entity-slug", "relation": "ally|enemy|mentor|etc", "since": 0 }],
           "color": "blue|amber|emerald|rose|violet"
         }
@@ -135,12 +161,13 @@ You may be asked to analyse one chapter or multiple chapters in a single request
       "updates": [
         {
           "id": "existing-entity-slug",
-          "newAliases": [],
+          "newAliases": [{ "alias": "New Name", "type": "title", "relevance": 4 }],
           "descriptionAppend": "",
           "significance": 3,
           "status": "active",
-          "details": [{ "chapterIndex": 0, "content": "New information", "category": "category" }],
-          "relationships": [{ "targetId": "other-slug", "relation": "type", "since": 0 }]
+          "details": [{ "chapterIndex": 0, "content": "New information", "category": "category", "relevance": 3 }],
+          "relationships": [{ "targetId": "other-slug", "relation": "type", "since": 0 }],
+          "supersede": [{ "category": "status", "reason": "Character's status changed in this chapter" }]
         }
       ],
       "mc_stats": [

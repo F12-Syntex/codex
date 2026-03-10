@@ -67,15 +67,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   wikiDeleteEntry: (filePath: string, entryId: string) =>
     ipcRenderer.invoke("wiki:delete-entry", filePath, entryId),
 
-  wikiAddAliases: (filePath: string, entryId: string, aliases: string[]) =>
+  wikiAddAliases: (filePath: string, entryId: string, aliases: Array<string | { alias: string; alias_type?: string; relevance?: number }>) =>
     ipcRenderer.invoke("wiki:add-aliases", filePath, entryId, aliases),
   wikiGetAliases: (filePath: string, entryId: string) =>
     ipcRenderer.invoke("wiki:get-aliases", filePath, entryId),
 
-  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]) =>
+  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]) =>
     ipcRenderer.invoke("wiki:add-details", filePath, entryId, details),
   wikiGetDetails: (filePath: string, entryId: string, maxChapter?: number) =>
     ipcRenderer.invoke("wiki:get-details", filePath, entryId, maxChapter),
+  wikiSupersedeDetails: (filePath: string, entryId: string, category: string, currentChapter: number) =>
+    ipcRenderer.invoke("wiki:supersede-details", filePath, entryId, category, currentChapter),
 
   wikiAddRelationship: (filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) =>
     ipcRenderer.invoke("wiki:add-relationship", filePath, rel),

@@ -1136,7 +1136,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         .map(s => `- Chapter ${s.chapter_index + 1}: ${s.summary}`);
 
       // Extract voice lines from the original book text (all chapters up to branch point)
-      const entityNames = [activeBranch.entityName, ...(aliases ?? [])];
+      const entityNames = [activeBranch.entityName, ...((aliases ?? []) as Array<{ alias: string } | string>).map(a => typeof a === "string" ? a : a.alias)];
       const allBookParas: string[] = [];
       for (let ci = 0; ci <= activeBranch.chapterIndex; ci++) {
         const chParas = chapters[ci]?.htmlParagraphs ?? [];

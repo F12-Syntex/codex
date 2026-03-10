@@ -11,7 +11,7 @@ import {
   // Wiki
   upsertWikiEntry, getWikiEntries, getWikiEntry, deleteWikiEntry,
   addWikiAliases, getWikiAliases,
-  addWikiDetails, getWikiDetailsForEntry,
+  addWikiDetails, getWikiDetailsForEntry, supersedeWikiDetails,
   addWikiRelationship, getRelationshipsForEntry,
   addWikiAppearance, getAppearancesForEntry,
   upsertChapterSummary, getChapterSummaries, getAllChapterSummaries,
@@ -451,11 +451,12 @@ function createWindow() {
   ipcMain.handle("wiki:get-entry", (_event, filePath: string, entryId: string) => getWikiEntry(filePath, entryId));
   ipcMain.handle("wiki:delete-entry", (_event, filePath: string, entryId: string) => { deleteWikiEntry(filePath, entryId); });
 
-  ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: string[]) => { addWikiAliases(filePath, entryId, aliases); });
+  ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: unknown[]) => { addWikiAliases(filePath, entryId, aliases as Parameters<typeof addWikiAliases>[2]); });
   ipcMain.handle("wiki:get-aliases", (_event, filePath: string, entryId: string) => getWikiAliases(filePath, entryId));
 
-  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]) => { addWikiDetails(filePath, entryId, details); });
+  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]) => { addWikiDetails(filePath, entryId, details); });
   ipcMain.handle("wiki:get-details", (_event, filePath: string, entryId: string, maxChapter?: number) => getWikiDetailsForEntry(filePath, entryId, maxChapter));
+  ipcMain.handle("wiki:supersede-details", (_event, filePath: string, entryId: string, category: string, currentChapter: number) => { supersedeWikiDetails(filePath, entryId, category, currentChapter); });
 
   ipcMain.handle("wiki:add-relationship", (_event, filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) => { addWikiRelationship(filePath, rel); });
   ipcMain.handle("wiki:get-relationships", (_event, filePath: string, entryId: string, maxChapter?: number) => getRelationshipsForEntry(filePath, entryId, maxChapter));

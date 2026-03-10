@@ -282,6 +282,12 @@ export function initDatabase(): void {
 
   // Schema migrations — safe to run repeatedly
   try { db.prepare("ALTER TABLE wiki_meta ADD COLUMN mc_entity_id TEXT DEFAULT NULL").run(); } catch { /* already exists */ }
+  // v0.78 — alias relevance + detail tiering
+  try { db.prepare("ALTER TABLE wiki_aliases ADD COLUMN alias_type TEXT NOT NULL DEFAULT 'name'").run(); } catch { /* already exists */ }
+  try { db.prepare("ALTER TABLE wiki_aliases ADD COLUMN relevance INTEGER NOT NULL DEFAULT 3").run(); } catch { /* already exists */ }
+  try { db.prepare("ALTER TABLE wiki_details ADD COLUMN relevance INTEGER NOT NULL DEFAULT 3").run(); } catch { /* already exists */ }
+  try { db.prepare("ALTER TABLE wiki_details ADD COLUMN is_superseded INTEGER NOT NULL DEFAULT 0").run(); } catch { /* already exists */ }
+  try { db.prepare("ALTER TABLE wiki_details ADD COLUMN superseded_chapter INTEGER").run(); } catch { /* already exists */ }
 }
 
 // ── Items ──────────────────────────────────────────
@@ -588,6 +594,15 @@ export interface WikiDetailRow {
   chapter_index: number;
   category: string;
   content: string;
+  relevance: number;
+  is_superseded: number;
+  superseded_chapter: number | null;
+}
+
+export interface WikiAliasRow {
+  alias: string;
+  alias_type: string;
+  relevance: number;
 }
 
 export interface WikiRelationshipRow {
@@ -823,38 +838,51 @@ export function getWikiMergeLog(filePath: string): WikiMergeLogRow[] {
 
 // ── Wiki Aliases ──
 
-export function addWikiAliases(filePath: string, entryId: string, aliases: string[]): void {
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)"
-  );
+export type WikiAliasInput = string | { alias: string; alias_type?: string; relevance?: number };
+
+export function addWikiAliases(filePath: string, entryId: string, aliases: WikiAliasInput[]): void {
+  const stmt = db.prepare(`
+    INSERT INTO wiki_aliases (file_path, entry_id, alias, alias_type, relevance) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(file_path, entry_id, alias) DO UPDATE SET
+      alias_type = CASE WHEN excluded.relevance > wiki_aliases.relevance THEN excluded.alias_type ELSE wiki_aliases.alias_type END,
+      relevance = MAX(wiki_aliases.relevance, excluded.relevance)
+  `);
   const insertAll = db.transaction(() => {
-    for (const alias of aliases) {
-      if (alias) stmt.run(filePath, entryId, alias);
+    for (const a of aliases) {
+      const alias = typeof a === "string" ? a : a.alias;
+      const alias_type = typeof a === "string" ? "name" : (a.alias_type ?? "name");
+      const relevance = typeof a === "string" ? 3 : (a.relevance ?? 3);
+      if (alias) stmt.run(filePath, entryId, alias, alias_type, relevance);
     }
   });
   insertAll();
 }
 
-export function getWikiAliases(filePath: string, entryId: string): string[] {
-  const rows = db.prepare(
-    "SELECT alias FROM wiki_aliases WHERE file_path = ? AND entry_id = ?"
-  ).all(filePath, entryId) as { alias: string }[];
-  return rows.map((r) => r.alias);
+export function getWikiAliases(filePath: string, entryId: string): WikiAliasRow[] {
+  return db.prepare(
+    "SELECT alias, alias_type, relevance FROM wiki_aliases WHERE file_path = ? AND entry_id = ? ORDER BY relevance DESC"
+  ).all(filePath, entryId) as WikiAliasRow[];
 }
 
 // ── Wiki Details ──
 
-export function addWikiDetails(filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string }[]): void {
+export function addWikiDetails(filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]): void {
   const stmt = db.prepare(
-    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content, relevance) VALUES (?, ?, ?, ?, ?, ?)"
   );
   const insertAll = db.transaction(() => {
     for (const d of details) {
       if (!d.content) continue;
-      stmt.run(filePath, entryId, d.chapterIndex, d.category || "info", d.content);
+      stmt.run(filePath, entryId, d.chapterIndex, d.category || "info", d.content, d.relevance ?? 3);
     }
   });
   insertAll();
+}
+
+export function supersedeWikiDetails(filePath: string, entryId: string, category: string, currentChapter: number): void {
+  db.prepare(
+    "UPDATE wiki_details SET is_superseded = 1, superseded_chapter = ? WHERE file_path = ? AND entry_id = ? AND category = ? AND chapter_index < ? AND is_superseded = 0"
+  ).run(currentChapter, filePath, entryId, category, currentChapter);
 }
 
 export function getWikiDetailsForEntry(filePath: string, entryId: string, maxChapter?: number): WikiDetailRow[] {

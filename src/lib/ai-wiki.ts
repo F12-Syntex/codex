@@ -20,6 +20,15 @@ export interface WikiEntryDetail {
   chapterIndex: number;
   content: string;
   category: string;
+  relevance: number;
+  isSuperseded: boolean;
+  supersededChapter?: number;
+}
+
+export interface WikiAliasDetailed {
+  alias: string;
+  alias_type: string; // 'name' | 'title' | 'epithet' | 'nickname' | 'honorific'
+  relevance: number;  // 1-5
 }
 
 export interface WikiRelationship {
@@ -33,7 +42,7 @@ export interface WikiEntry {
   id: string;
   name: string;
   type: WikiEntryType;
-  aliases: string[];
+  aliases: WikiAliasDetailed[];
   shortDescription: string;
   description: string;
   firstAppearance: number;
@@ -71,6 +80,9 @@ export interface ChapterSummary {
 
 /* ── AI Response Types ──────────────────────────────────── */
 
+// AI response can send aliases as plain strings (legacy) or structured objects
+type AIAliasInput = string | { alias: string; type?: string; alias_type?: string; relevance?: number };
+
 interface AIChapterSummary {
   summary: string;
   mood: string;
@@ -96,25 +108,31 @@ interface AINewEntry {
   id: string;
   name: string;
   type: WikiEntryType;
-  aliases?: string[];
+  aliases?: AIAliasInput[];
   shortDescription: string;
   description: string;
   significance?: number;
   status?: string;
   firstAppearance?: number;
-  details?: WikiEntryDetail[];
+  details?: { chapterIndex: number; content: string; category: string; relevance?: number }[];
   relationships?: WikiRelationship[];
   color?: string;
 }
 
+interface AISupersede {
+  category: string;
+  reason?: string;
+}
+
 interface AIUpdate {
   id: string;
-  newAliases?: string[];
+  newAliases?: AIAliasInput[];
   descriptionAppend?: string;
   significance?: number;
   status?: string;
-  details?: WikiEntryDetail[];
+  details?: { chapterIndex: number; content: string; category: string; relevance?: number }[];
   relationships?: WikiRelationship[];
+  supersede?: AISupersede[];
 }
 
 interface AIArcAmendment {
@@ -336,11 +354,12 @@ async function buildContextFromDB(
     }
   }
 
-  // Fetch aliases for roster entities
+  // Fetch aliases for roster entities (use string forms for AI context)
   const rosterAliases = new Map<string, string[]>();
   for (const e of rosterEntries) {
     const aliases = await api.wikiGetAliases(filePath, e.id);
-    if (aliases.length > 0) rosterAliases.set(e.id, aliases);
+    const relevant = aliases.filter((a) => a.relevance >= 3).map((a) => a.alias);
+    if (relevant.length > 0) rosterAliases.set(e.id, relevant);
   }
 
   // Get relationships for roster entities
@@ -407,6 +426,18 @@ async function buildContextFromDB(
   });
 }
 
+/** Normalize AI alias inputs (string or object) into the DB-compatible format */
+function normalizeAliases(aliases: AIAliasInput[]): Array<{ alias: string; alias_type: string; relevance: number }> {
+  return aliases.map((a) => {
+    if (typeof a === "string") return { alias: a, alias_type: "name", relevance: 3 };
+    return {
+      alias: a.alias,
+      alias_type: a.alias_type ?? a.type ?? "name",
+      relevance: a.relevance ?? 3,
+    };
+  }).filter((a) => a.alias);
+}
+
 /* ── Write AI response to DB ────────────────────────────── */
 
 async function writeResponseToDB(
@@ -436,9 +467,9 @@ async function writeResponseToDB(
     nameToId.set(e.name.toLowerCase(), e.id);
     existingNames.push({ name: e.name.toLowerCase(), id: e.id });
     const aliases = await api.wikiGetAliases(filePath, e.id);
-    for (const alias of aliases) {
-      nameToId.set(alias.toLowerCase(), e.id);
-      existingNames.push({ name: alias.toLowerCase(), id: e.id });
+    for (const a of aliases) {
+      nameToId.set(a.alias.toLowerCase(), e.id);
+      existingNames.push({ name: a.alias.toLowerCase(), id: e.id });
     }
   }
 
@@ -493,9 +524,9 @@ async function writeResponseToDB(
         });
 
         // Add the new name as an alias if it differs from the existing name
-        const aliasesToAdd = [...(entry.aliases ?? [])];
+        const aliasesToAdd = normalizeAliases(entry.aliases ?? []);
         if (entry.name.toLowerCase() !== existing.name.toLowerCase()) {
-          aliasesToAdd.push(entry.name);
+          aliasesToAdd.push({ alias: entry.name, alias_type: "name", relevance: 4 });
         }
         if (aliasesToAdd.length > 0) {
           await api.wikiAddAliases(filePath, existingId, aliasesToAdd);
@@ -535,7 +566,7 @@ async function writeResponseToDB(
     });
 
     if (entry.aliases && entry.aliases.length > 0) {
-      await api.wikiAddAliases(filePath, entry.id, entry.aliases);
+      await api.wikiAddAliases(filePath, entry.id, normalizeAliases(entry.aliases));
     }
 
     if (entry.details && entry.details.length > 0) {
@@ -558,8 +589,9 @@ async function writeResponseToDB(
     // Register in lookup for subsequent entries in same batch
     nameToId.set(entry.name.toLowerCase(), entry.id);
     if (entry.aliases) {
-      for (const alias of entry.aliases) {
-        nameToId.set(alias.toLowerCase(), entry.id);
+      for (const a of entry.aliases) {
+        const str = typeof a === "string" ? a : a.alias;
+        nameToId.set(str.toLowerCase(), entry.id);
       }
     }
   }
@@ -594,11 +626,20 @@ async function writeResponseToDB(
     }
 
     if (update.newAliases && update.newAliases.length > 0) {
-      await api.wikiAddAliases(filePath, resolvedId, update.newAliases);
+      await api.wikiAddAliases(filePath, resolvedId, normalizeAliases(update.newAliases));
     }
 
     if (update.details && update.details.length > 0) {
       await api.wikiAddDetails(filePath, resolvedId, update.details);
+    }
+
+    // Mark old details as superseded when the AI indicates a fact has changed
+    if (update.supersede && update.supersede.length > 0) {
+      for (const s of update.supersede) {
+        if (s.category) {
+          await api.wikiSupersedeDetails(filePath, resolvedId, s.category, chapterIndex);
+        }
+      }
     }
 
     if (update.relationships) {
@@ -898,6 +939,9 @@ export async function fetchWikiEntry(filePath: string, entryId: string, maxChapt
       chapterIndex: d.chapter_index,
       content: d.content,
       category: d.category,
+      relevance: d.relevance ?? 3,
+      isSuperseded: (d.is_superseded ?? 0) === 1,
+      supersededChapter: d.superseded_chapter ?? undefined,
     })),
     relationships: relationships
       .filter((r) => r.source_id === entryId)
