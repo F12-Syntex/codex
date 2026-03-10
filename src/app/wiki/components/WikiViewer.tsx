@@ -291,6 +291,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               mcEntry={mcEntry}
               mcStats={mcStats}
               onNavigateToMC={mcEntityId ? () => navigateTo(mcEntityId) : undefined}
+              chapterLabels={chapterLabels}
             />
           ) : (
             <HomePage
@@ -359,10 +360,11 @@ const STAT_CATEGORY_META: Record<string, { icon: React.ReactNode; label: string;
 
 const STAT_CATEGORY_ORDER = ["attributes", "skills", "inventory", "currency", "status", "other"];
 
-function StatsPage({ mcEntry, mcStats, onNavigateToMC }: {
+function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
   mcEntry: WikiEntry | null;
   mcStats: MCStat[];
   onNavigateToMC?: () => void;
+  chapterLabels: ChapterLabels;
 }) {
   const activeStats = mcStats.filter((s) => s.is_active);
   const inactiveStats = mcStats.filter((s) => !s.is_active);
