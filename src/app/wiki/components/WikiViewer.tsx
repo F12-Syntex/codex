@@ -149,6 +149,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
   useEffect(() => {
     if (!filePath) { setIsLoading(false); return; }
+    window.electronAPI?.wikiPurgeNullEntries(filePath).catch(() => {});
     refreshData();
     const interval = setInterval(refreshData, 5000);
     return () => clearInterval(interval);

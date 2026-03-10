@@ -804,14 +804,22 @@ function tryParseJSON(s: string): AIWikiResponse | null {
   }
 }
 
+const VALID_ENTRY_TYPES = new Set(["character", "item", "location", "event", "concept"]);
+
 function validateChapterData(d: AIWikiChapterData): AIWikiChapterData {
   if (!Array.isArray(d.new_entries)) d.new_entries = [];
   if (!Array.isArray(d.updates)) d.updates = [];
   if (!Array.isArray(d.arc_updates)) d.arc_updates = [];
   if (!Array.isArray(d.new_arcs)) d.new_arcs = [];
   if (!Array.isArray(d.arc_amendments)) d.arc_amendments = [];
-  d.new_entries = d.new_entries.filter((e) => e && typeof e.id === "string" && typeof e.name === "string");
-  d.updates = d.updates.filter((u) => u && typeof u.id === "string");
+  d.new_entries = d.new_entries.filter((e) =>
+    e &&
+    typeof e.id === "string" && e.id.trim().length > 0 &&
+    typeof e.name === "string" && e.name.trim().length > 0 &&
+    typeof e.type === "string" && VALID_ENTRY_TYPES.has(e.type) &&
+    typeof e.shortDescription === "string" && e.shortDescription.trim().length > 0,
+  );
+  d.updates = d.updates.filter((u) => u && typeof u.id === "string" && u.id.trim().length > 0);
   return d;
 }
 
@@ -853,11 +861,11 @@ function repairTruncatedJSON(s: string): string | null {
 
   // Remove trailing incomplete key-value pairs (truncated mid-string value)
   // Use [\s\S]* so the pattern spans newlines in long string values
-  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*"(?:[^"\\]|\\.)*$/s, "");
+  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*"(?:[^"\\]|\\.)*$/, "");
   // Truncated mid-key
-  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*$/s, "");
+  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*$/, "");
   // Truncated after colon (value not yet started)
-  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*$/s, "");
+  repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "");
   // Trailing comma
   repaired = repaired.replace(/,\s*$/, "");
 

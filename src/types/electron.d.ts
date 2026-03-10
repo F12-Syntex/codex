@@ -367,6 +367,7 @@ interface ElectronAPI {
   wikiGetMCStats: (filePath: string) => Promise<MCStatRow[]>;
   wikiSetMCEntityId: (filePath: string, entityId: string) => Promise<void>;
   wikiGetMCEntityId: (filePath: string) => Promise<string | null>;
+  wikiPurgeNullEntries: (filePath: string) => Promise<number>;
 
   // Simulate
   simUpsertBranch: (branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => Promise<void>;
