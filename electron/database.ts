@@ -685,6 +685,16 @@ export function upsertWikiEntry(entry: {
   );
 }
 
+/** Remove wiki entries with empty/null name, id, or short_description (created by truncated AI responses). */
+export function purgeNullWikiEntries(filePath: string): number {
+  const result = db.prepare(
+    `DELETE FROM wiki_entries
+     WHERE file_path = ?
+       AND (trim(name) = '' OR trim(id) = '' OR trim(COALESCE(short_description,'')) = '')`
+  ).run(filePath);
+  return result.changes;
+}
+
 export function getWikiEntries(filePath: string): WikiEntryRow[] {
   return db.prepare(
     "SELECT * FROM wiki_entries WHERE file_path = ? ORDER BY first_appearance ASC"

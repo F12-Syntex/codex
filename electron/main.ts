@@ -9,7 +9,7 @@ import {
   getQuotes, getAllQuotes, addQuote, updateQuote, deleteQuote,
   getExcludedPaths, recordPageView, getReadingActivity, getReadingStats,
   // Wiki
-  upsertWikiEntry, getWikiEntries, getWikiEntry, deleteWikiEntry,
+  upsertWikiEntry, getWikiEntries, getWikiEntry, deleteWikiEntry, purgeNullWikiEntries,
   addWikiAliases, getWikiAliases,
   addWikiDetails, getWikiDetailsForEntry, supersedeWikiDetails,
   addWikiRelationship, getRelationshipsForEntry,
@@ -450,6 +450,7 @@ function createWindow() {
   ipcMain.handle("wiki:get-entries", (_event, filePath: string) => getWikiEntries(filePath));
   ipcMain.handle("wiki:get-entry", (_event, filePath: string, entryId: string) => getWikiEntry(filePath, entryId));
   ipcMain.handle("wiki:delete-entry", (_event, filePath: string, entryId: string) => { deleteWikiEntry(filePath, entryId); });
+  ipcMain.handle("wiki:purge-null-entries", (_event, filePath: string) => purgeNullWikiEntries(filePath));
 
   ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: unknown[]) => { addWikiAliases(filePath, entryId, aliases as Parameters<typeof addWikiAliases>[2]); });
   ipcMain.handle("wiki:get-aliases", (_event, filePath: string, entryId: string) => getWikiAliases(filePath, entryId));

@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("wiki:get-entry", filePath, entryId),
   wikiDeleteEntry: (filePath: string, entryId: string) =>
     ipcRenderer.invoke("wiki:delete-entry", filePath, entryId),
+  wikiPurgeNullEntries: (filePath: string) =>
+    ipcRenderer.invoke("wiki:purge-null-entries", filePath),
 
   wikiAddAliases: (filePath: string, entryId: string, aliases: Array<string | { alias: string; alias_type?: string; relevance?: number }>) =>
     ipcRenderer.invoke("wiki:add-aliases", filePath, entryId, aliases),
