@@ -35,10 +35,10 @@ import { SpeedReaderView } from "./SpeedReaderView";
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
-/** Strip HTML for TTS: remove dialogue speaker labels then all tags, decode entities. */
+/** Strip HTML for TTS: unwrap dialogue speaker spans (keep name text), then strip remaining tags. */
 function stripHtmlForTTS(html: string[]): string[] {
   return html.map(h => {
-    let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">[^<]*<\/span>\s*(?=[\u201C\u201D\u2018\u2019"'])/g, "");
+    let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">([^<]*)<\/span>/g, "$1");
     text = text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
     return text;
   });
