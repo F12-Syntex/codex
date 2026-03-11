@@ -5,7 +5,7 @@ import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
   Loader2, Trash2, Clapperboard, ExternalLink, BarChart3,
-  BookMarked, Square, Play, RefreshCw, Check, Layers,
+  BookMarked, Square, Play, RefreshCw, Check, Layers, Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookChapter, ThemeClasses } from "../lib/types";
@@ -34,6 +34,15 @@ interface AISidebarProps {
   onCancelFormatAll: () => void;
   onClearFormatting: () => void;
   styleDictionary: StyleDictionary | null;
+  condenseEnabled: boolean;
+  condensedChapterCount: number;
+  condensingChapter: number | null;
+  condenseAllProgress: { current: number; total: number } | null;
+  onCondenseToggle: () => void;
+  onCondenseAll: (upToChapter?: number) => void;
+  onCancelCondenseAll: () => void;
+  onClearCondense: () => void;
+  currentChapterCondenseDone: boolean;
   filePath: string;
   bookTitle: string;
   wikiEnabled: boolean;
@@ -87,6 +96,15 @@ export function AISidebar({
   onCancelFormatAll,
   onClearFormatting,
   styleDictionary,
+  condenseEnabled,
+  condensedChapterCount,
+  condensingChapter,
+  condenseAllProgress,
+  onCondenseToggle,
+  onCondenseAll,
+  onCancelCondenseAll,
+  onClearCondense,
+  currentChapterCondenseDone,
   filePath,
   bookTitle,
   wikiEnabled,
@@ -144,6 +162,7 @@ export function AISidebar({
 
   const isEnrichRunning = enrichAllProgress !== null || enrichingChapter !== null;
   const isFormatRunning = formatAllProgress !== null || formattingChapter !== null;
+  const isCondenseRunning = condenseAllProgress !== null || condensingChapter !== null;
   const isWikiRunning = wikiProcessingChapter !== null;
 
   /* ── Status strings ──────────────────────────────────────── */
@@ -165,6 +184,10 @@ export function AISidebar({
   const formatRunCount = formatAllProgress
     ? `${formatAllProgress.current + 1} / ${formatAllProgress.total}`
     : formattingChapter !== null ? "…" : undefined;
+
+  const condenseRunCount = condenseAllProgress
+    ? `${condenseAllProgress.current + 1} / ${condenseAllProgress.total}`
+    : condensingChapter !== null ? "…" : undefined;
 
   const formatToDo = chapters.length - formattedChapterCount;
 
@@ -241,6 +264,30 @@ export function AISidebar({
           onClear={onClearWiki}
           linkIcon={wikiEnabled && wikiEntryCount > 0 ? ExternalLink : undefined}
           onLink={wikiEnabled && wikiEntryCount > 0 ? openWiki : undefined}
+          theme={theme}
+        />
+
+        {/* Concise Reading */}
+        <Row
+          Icon={Minimize2}
+          label="Concise Reading"
+          subLabel={condenseEnabled && formattingEnabled ? "formats condensed text" : undefined}
+          active={condenseEnabled}
+          onToggle={onCondenseToggle}
+          status={
+            condensedChapterCount >= chapters.length && chapters.length > 0 ? "done"
+            : condensedChapterCount > 0 ? `${condensedChapterCount} / ${chapters.length}`
+            : undefined
+          }
+          running={isCondenseRunning}
+          runCount={condenseRunCount}
+          canRun={condenseEnabled && !isCondenseRunning && !currentChapterCondenseDone}
+          onRun={() => onCondenseAll(currentChapter)}
+          canRetry={condenseEnabled && !isCondenseRunning && currentChapterCondenseDone}
+          onRetry={() => onCondenseAll(currentChapter)}
+          onCancel={onCancelCondenseAll}
+          canClear={condensedChapterCount > 0 && !isCondenseRunning}
+          onClear={onClearCondense}
           theme={theme}
         />
 
