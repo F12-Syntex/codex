@@ -761,38 +761,46 @@ export function parseWikiResponse(raw: string): AIWikiResponse | null {
   if (fenceMatch) cleaned = fenceMatch[1];
   cleaned = cleaned.trim();
 
-  // 2. Try direct parse
-  const direct = tryParseJSON(cleaned);
-  if (direct) return validateWikiResponse(direct);
+  // Try parsing with progressively more aggressive fixes
+  const attempts: Array<() => string> = [
+    // Pass 1: raw (control chars only)
+    () => sanitizeJSONControlChars(cleaned),
+    // Pass 2: also fix unescaped quotes in string values
+    () => sanitizeUnescapedQuotes(sanitizeJSONControlChars(cleaned)),
+  ];
 
-  // 3. Model may have prepended reasoning text — find the first top-level JSON object
-  const objStart = raw.indexOf("{");
-  if (objStart !== -1) {
-    const fromBrace = raw.slice(objStart);
-    const direct2 = tryParseJSON(fromBrace);
-    if (direct2) return validateWikiResponse(direct2);
+  for (const makeFixed of attempts) {
+    const fixed = makeFixed();
 
-    const repaired2 = repairTruncatedJSON(fromBrace);
-    if (repaired2) {
+    // Direct parse
+    const direct = tryParseJSON(fixed);
+    if (direct) return validateWikiResponse(direct);
+
+    // Strip preamble: find first {
+    const objStart = fixed.indexOf("{");
+    if (objStart !== -1) {
+      const fromBrace = fixed.slice(objStart);
+      const direct2 = tryParseJSON(fromBrace);
+      if (direct2) return validateWikiResponse(direct2);
+
+      const repaired2 = repairTruncatedJSON(fromBrace);
       const parsed2 = tryParseJSON(repaired2);
       if (parsed2) {
-        console.warn("Wiki response was truncated (preamble stripped), salvaged partial data");
+        console.warn("Wiki response salvaged (truncated, preamble stripped)");
         return validateWikiResponse(parsed2);
       }
     }
-  }
 
-  // 4. Try repairing original cleaned string
-  const repaired = repairTruncatedJSON(cleaned);
-  if (repaired) {
+    // Repair truncation on cleaned string directly
+    const repaired = repairTruncatedJSON(fixed);
     const parsed = tryParseJSON(repaired);
     if (parsed) {
-      console.warn("Wiki response was truncated, salvaged partial data");
+      console.warn("Wiki response salvaged (truncated)");
       return validateWikiResponse(parsed);
     }
   }
 
-  console.error("Failed to parse wiki response:", raw.slice(0, 300));
+  console.error("Failed to parse wiki response (len=%d):", raw.length, raw.slice(0, 500));
   return null;
 }
 
@@ -856,7 +864,102 @@ function getChapterDataFromResponse(response: AIWikiResponse, fallbackChapterInd
   }];
 }
 
-function repairTruncatedJSON(s: string): string | null {
+/** Escape literal control characters inside JSON string values (e.g. raw newlines the AI emitted) */
+function sanitizeJSONControlChars(s: string): string {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\" && inString) {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+      continue;
+    }
+
+    if (inString) {
+      const code = ch.charCodeAt(0);
+      if (ch === "\n") { result += "\\n"; continue; }
+      if (ch === "\r") { result += "\\r"; continue; }
+      if (ch === "\t") { result += "\\t"; continue; }
+      if (code < 0x20) { result += "\\u" + code.toString(16).padStart(4, "0"); continue; }
+    }
+
+    result += ch;
+  }
+
+  return result;
+}
+
+/**
+ * Fix unescaped double quotes inside JSON string values.
+ * When AI generates literary content like `"The Fool"` inside a summary, the quotes
+ * end up unescaped. This heuristic detects a `"` inside a string that is NOT followed
+ * by a structural JSON character (`,`, `:`, `}`, `]`, or whitespace-then-structural)
+ * and escapes it.
+ */
+function sanitizeUnescapedQuotes(s: string): string {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      if (!inString) {
+        inString = true;
+        result += ch;
+      } else {
+        // Peek ahead (skip whitespace) to see if this is a genuine string-closing quote
+        let j = i + 1;
+        while (j < s.length && (s[j] === " " || s[j] === "\t" || s[j] === "\n" || s[j] === "\r")) j++;
+        const next = j < s.length ? s[j] : "";
+        if (next === "" || next === "," || next === ":" || next === "}" || next === "]") {
+          // Structural char follows → genuine end of string
+          inString = false;
+          result += ch;
+        } else {
+          // Non-structural char follows → unescaped internal quote, escape it
+          result += '\\"';
+        }
+      }
+      continue;
+    }
+
+    result += ch;
+  }
+
+  return result;
+}
+
+function repairTruncatedJSON(s: string): string {
   let repaired = s;
 
   // Remove trailing incomplete key-value pairs (truncated mid-string value)
