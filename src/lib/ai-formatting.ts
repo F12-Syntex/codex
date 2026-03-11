@@ -258,13 +258,47 @@ function clearMergedDuplicates(result: string[], originals: string[]): void {
 }
 
 function stripUnrecognizedClasses(html: string): string {
-  return html.replace(/class="([^"]*)"/g, (_match, classes: string) => {
+  const stripped = html.replace(/class="([^"]*)"/g, (_match, classes: string) => {
     const filtered = classes
       .split(/\s+/)
       .filter((c: string) => c && c.startsWith(AI_FMT_PREFIX))
       .join(" ");
     return filtered ? `class="${filtered}"` : "";
   });
+  return fixDialogueSpans(stripped);
+}
+
+/**
+ * Fix dialogue spans where the AI incorrectly wrapped the quoted speech inside the
+ * speaker span instead of only the speaker name.
+ *
+ * Correct:   <span class="ai-fmt-dialogue-hero">Klein</span> "Hello."
+ * Broken:    <span class="ai-fmt-dialogue-hero">Klein "Hello."</span>
+ * Also fix:  <span class="ai-fmt-dialogue-hero">"Hello."</span>  (no speaker, just wrapped quote)
+ *
+ * Strategy: if a dialogue span contains a quote character, split the content at the
+ * first quote — keep only the pre-quote part (speaker name) inside the span, and move
+ * the rest (the quoted speech) outside.
+ */
+function fixDialogueSpans(html: string): string {
+  // Matches <span class="ai-fmt-dialogue-VARIANT">CONTENT</span>
+  // where CONTENT contains a quote character (straight or curly)
+  return html.replace(
+    /<span(\s+class="ai-fmt-dialogue-[^"]*")>([\s\S]*?)<\/span>/g,
+    (_match, classAttr: string, content: string) => {
+      const quoteIdx = content.search(/[\u201C\u201D\u2018\u2019"']/);
+      if (quoteIdx === -1) return _match; // no quote inside — already correct
+
+      const speakerPart = content.slice(0, quoteIdx).trimEnd();
+      const quotePart = content.slice(quoteIdx);
+
+      if (speakerPart.length === 0) {
+        // No speaker name at all — just unwrap the span, keep plain text
+        return quotePart;
+      }
+      return `<span${classAttr}>${speakerPart}</span> ${quotePart}`;
+    },
+  );
 }
 
 /**
