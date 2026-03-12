@@ -38,7 +38,9 @@ import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 /** Strip HTML for TTS: unwrap dialogue speaker spans (keep name text), then strip remaining tags. */
 function stripHtmlForTTS(html: string[]): string[] {
   return html.map(h => {
-    let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">([^<]*)<\/span>/g, "$1");
+    // Drop dialogue-speaker spans entirely (name + trailing comma/space) so TTS reads
+    // only the quoted speech, not "Sirius, \"As you know...\""
+    let text = h.replace(/<span\s+class="ai-fmt-dialogue-[^"]*">[^<]*<\/span>\s*,?\s*/g, "");
     text = text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
     return text;
   });
