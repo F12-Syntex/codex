@@ -763,10 +763,12 @@ export function parseWikiResponse(raw: string): AIWikiResponse | null {
 
   // Try parsing with progressively more aggressive fixes
   const attempts: Array<() => string> = [
-    // Pass 1: raw (control chars only)
+    // Pass 1: control chars only
     () => sanitizeJSONControlChars(cleaned),
-    // Pass 2: also fix unescaped quotes in string values
-    () => sanitizeUnescapedQuotes(sanitizeJSONControlChars(cleaned)),
+    // Pass 2: unescaped-quote fix FIRST so that sanitizeJSONControlChars tracks string
+    // boundaries correctly (blindly toggling inString on every `"` corrupts state when
+    // the AI emits unescaped dialogue quotes inside a string value)
+    () => sanitizeJSONControlChars(sanitizeUnescapedQuotes(cleaned)),
   ];
 
   for (const makeFixed of attempts) {
@@ -962,9 +964,10 @@ function sanitizeUnescapedQuotes(s: string): string {
 function repairTruncatedJSON(s: string): string {
   let repaired = s;
 
-  // Remove trailing incomplete key-value pairs (truncated mid-string value)
-  // Use [\s\S]* so the pattern spans newlines in long string values
+  // Remove trailing incomplete key-value pairs (truncated mid-string value).
+  // Two variants: comma-separated (middle of object) and opening-brace (first key in object).
   repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*"(?:[^"\\]|\\.)*$/, "");
+  repaired = repaired.replace(/(\{)\s*"(?:[^"\\]|\\.)*"\s*:\s*"(?:[^"\\]|\\.)*$/, "$1");
   // Truncated mid-key
   repaired = repaired.replace(/,\s*"(?:[^"\\]|\\.)*$/, "");
   // Truncated after colon (value not yet started)
