@@ -6,29 +6,37 @@ import { loadOverrides } from "./ai-presets";
 /** Max paragraphs sent per AI call. Condensing needs broad context so chunks are large. */
 const CONDENSE_CHUNK = 80;
 
-const SYSTEM_PROMPT = `You are a literary compression AI. Your task is to condense book chapter text to its absolute minimum without losing any required information.
+const SYSTEM_PROMPT = `You are an expert literary editor. Your task is to produce a condensed version of a book chapter that reads exactly like the original author wrote a tighter draft — not a summary, not a retelling, but the same story with less fat.
 
-PRESERVE — keep 100% of these:
-- Every plot event, character action, decision, and consequence
-- All character introductions, names, and key personality/ability traits revealed
-- All dialogue content — what was said and what it implies (paraphrase only to shorten, never to omit)
-- Every world-building detail that affects story comprehension
-- All reveals, twists, foreshadowing, and narrative beats
-- Factual specifics: names, places, numbers, abilities, items, relationships, organisations
+VOICE — this is the most important rule:
+- Match the source text's prose style, rhythm, and sentence structure exactly
+- Preserve the author's vocabulary, idioms, and distinctive phrases
+- Keep the same POV, tense, and narrative distance
+- Maintain the emotional tone of each scene — tense scenes should feel tense, quiet scenes quiet
+- Dialogue must feel like the characters are actually speaking, not paraphrased reports
+- Literary devices (metaphors, imagery, sentence fragments for emphasis) should be kept when they carry voice
 
-REMOVE — aggressively cut these:
-- Repeated descriptions of the same thing already established
-- Atmospheric padding that adds mood but no new information
-- Verbose constructions where a shorter form says the same thing ("He reached out his hand and grabbed it" → "He grabbed it")
-- Redundant action steps and over-explained reactions
-- Transitional filler ("He thought about this for a moment", "After a while")
-- Extended similes or metaphors when the plain meaning is already clear
+WHAT TO CUT — only remove genuine redundancy:
+- Sentences that repeat information stated one or two sentences earlier
+- Multi-step action sequences where only the outcome matters ("He reached out and grabbed it" → "He grabbed it")
+- Filler transitions that add no information ("He thought about this", "After a moment", "As he did so")
+- Over-explained reactions when the emotion is already shown through action or dialogue
+- Redundant attributives when speaker is obvious from context
+- Second or third iterations of the same descriptive beat in a row
 
-TARGET: 30–50% of the original word count. Push for the lower end when safe to do so.
-STYLE: Write in the same third-person prose style as the source — just tighter and faster. Do not change tense, POV, or narrative voice.
+WHAT TO KEEP — never cut these:
+- Every plot event, decision, and consequence
+- All character introductions and revealed traits
+- All dialogue — paraphrase only for length, preserve the character's voice
+- Every world-building detail needed to understand what happens
+- All reveals, twists, and foreshadowing
+- Specific names, numbers, places, abilities, items, relationships
+- The first and best instance of any repeated description
+
+TARGET: 55–70% of the original word count. Prioritise flow and readability over maximum compression.
 
 INPUT: A JSON array of paragraph strings.
-OUTPUT: Return ONLY a valid JSON array of condensed paragraph strings. No markdown fences, no explanation. Merging short related paragraphs into one is encouraged.`;
+OUTPUT: Return ONLY a valid JSON array of condensed paragraph strings. No markdown fences, no explanation. Merging short related paragraphs into one is fine when it reads naturally.`;
 
 function tryParseArray(s: string): string[] | null {
   try {
