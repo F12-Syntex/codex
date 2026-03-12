@@ -38,9 +38,19 @@ import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 /** Strip HTML for TTS: unwrap dialogue speaker spans (keep name text), then strip remaining tags. */
 function stripHtmlForTTS(html: string[]): string[] {
   return html.map(h => {
-    // Drop dialogue-speaker spans (marked data-tts-skip by the formatter) and any
-    // trailing comma/space so TTS reads only the quoted speech.
-    let text = h.replace(/<span\b[^>]*\bdata-tts-skip="1"[^>]*>[^<]*<\/span>\s*,?\s*/g, "");
+    // When a dialogue-speaker span is immediately followed by a quote, drop the span
+    // (the visual badge already shows the speaker — no need to say the name).
+    // When NOT followed by a quote (name appears mid-narration), keep the text.
+    const QUOTE_CHARS = "\u201C\u201D\u2018\u2019\u0022\u0027";
+    let text = h
+      .replace(
+        new RegExp(
+          `<span\\b[^>]*\\bclass="ai-fmt-dialogue-[^"]*"[^>]*>[^<]*<\\/span>\\s*,?\\s*(?=[${QUOTE_CHARS}])`,
+          "g",
+        ),
+        "",
+      )
+      .replace(/<span\b[^>]*\bclass="ai-fmt-dialogue-[^"]*"[^>]*>([^<]*)<\/span>/g, "$1");
     text = text.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
     return text;
   });

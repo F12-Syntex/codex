@@ -287,11 +287,7 @@ function fixDialogueSpans(html: string): string {
     /<span(\s+class="ai-fmt-dialogue-[^"]*")>([\s\S]*?)<\/span>/g,
     (_match, classAttr: string, content: string) => {
       const quoteIdx = content.search(/[\u201C\u201D\u2018\u2019"']/);
-      if (quoteIdx === -1) {
-        // Already correct structure — stamp tts-skip if not already present
-        if (_match.includes("data-tts-skip")) return _match;
-        return `<span${classAttr} data-tts-skip="1">${content}</span>`;
-      }
+      if (quoteIdx === -1) return _match; // no quote inside — already correct
 
       const speakerPart = content.slice(0, quoteIdx).trimEnd();
       const quotePart = content.slice(quoteIdx);
@@ -300,7 +296,7 @@ function fixDialogueSpans(html: string): string {
         // No speaker name at all — just unwrap the span, keep plain text
         return quotePart;
       }
-      return `<span${classAttr} data-tts-skip="1">${speakerPart}</span> ${quotePart}`;
+      return `<span${classAttr}>${speakerPart}</span> ${quotePart}`;
     },
   );
 }
