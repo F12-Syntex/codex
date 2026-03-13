@@ -288,6 +288,8 @@ export function initDatabase(): void {
   try { db.prepare("ALTER TABLE wiki_details ADD COLUMN relevance INTEGER NOT NULL DEFAULT 3").run(); } catch { /* already exists */ }
   try { db.prepare("ALTER TABLE wiki_details ADD COLUMN is_superseded INTEGER NOT NULL DEFAULT 0").run(); } catch { /* already exists */ }
   try { db.prepare("ALTER TABLE wiki_details ADD COLUMN superseded_chapter INTEGER").run(); } catch { /* already exists */ }
+  // v0.83 — source text for details (quote from chapter)
+  try { db.prepare("ALTER TABLE wiki_details ADD COLUMN source_text TEXT NOT NULL DEFAULT ''").run(); } catch { /* already exists */ }
 }
 
 // ── Items ──────────────────────────────────────────
@@ -876,14 +878,14 @@ export function getWikiAliases(filePath: string, entryId: string): WikiAliasRow[
 
 // ── Wiki Details ──
 
-export function addWikiDetails(filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]): void {
+export function addWikiDetails(filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]): void {
   const stmt = db.prepare(
-    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content, relevance) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content, relevance, source_text) VALUES (?, ?, ?, ?, ?, ?, ?)"
   );
   const insertAll = db.transaction(() => {
     for (const d of details) {
       if (!d.content) continue;
-      stmt.run(filePath, entryId, d.chapterIndex, d.category || "info", d.content, d.relevance ?? 3);
+      stmt.run(filePath, entryId, d.chapterIndex, d.category || "info", d.content, d.relevance ?? 3, d.sourceText ?? "");
     }
   });
   insertAll();
@@ -950,6 +952,18 @@ export function getAppearancesForEntry(filePath: string, entryId: string): numbe
     "SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ? ORDER BY chapter_index ASC"
   ).all(filePath, entryId) as { chapter_index: number }[];
   return rows.map((r) => r.chapter_index);
+}
+
+export function getAllWikiRelationships(filePath: string): WikiRelationshipRow[] {
+  return db.prepare(
+    "SELECT * FROM wiki_relationships WHERE file_path = ? ORDER BY since_chapter ASC"
+  ).all(filePath) as WikiRelationshipRow[];
+}
+
+export function getAllAppearanceCounts(filePath: string): { entry_id: string; count: number }[] {
+  return db.prepare(
+    "SELECT entry_id, COUNT(*) as count FROM wiki_appearances WHERE file_path = ? GROUP BY entry_id"
+  ).all(filePath) as { entry_id: string; count: number }[];
 }
 
 // ── Chapter Summaries ──

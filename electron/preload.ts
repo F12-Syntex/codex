@@ -74,7 +74,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   wikiGetAliases: (filePath: string, entryId: string) =>
     ipcRenderer.invoke("wiki:get-aliases", filePath, entryId),
 
-  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]) =>
+  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]) =>
     ipcRenderer.invoke("wiki:add-details", filePath, entryId, details),
   wikiGetDetails: (filePath: string, entryId: string, maxChapter?: number) =>
     ipcRenderer.invoke("wiki:get-details", filePath, entryId, maxChapter),
@@ -90,6 +90,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("wiki:add-appearance", filePath, entryId, chapterIndex),
   wikiGetAppearances: (filePath: string, entryId: string) =>
     ipcRenderer.invoke("wiki:get-appearances", filePath, entryId),
+  wikiGetAllRelationships: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-all-relationships", filePath),
+  wikiGetAllAppearanceCounts: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-all-appearance-counts", filePath),
 
   wikiUpsertChapterSummary: (filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) =>
     ipcRenderer.invoke("wiki:upsert-chapter-summary", filePath, summary),

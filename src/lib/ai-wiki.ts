@@ -23,6 +23,7 @@ export interface WikiEntryDetail {
   relevance: number;
   isSuperseded: boolean;
   supersededChapter?: number;
+  sourceText: string;
 }
 
 export interface WikiAliasDetailed {
@@ -114,7 +115,7 @@ interface AINewEntry {
   significance?: number;
   status?: string;
   firstAppearance?: number;
-  details?: { chapterIndex: number; content: string; category: string; relevance?: number }[];
+  details?: { chapterIndex: number; content: string; category: string; relevance?: number; source?: string }[];
   relationships?: WikiRelationship[];
   color?: string;
 }
@@ -130,7 +131,7 @@ interface AIUpdate {
   descriptionAppend?: string;
   significance?: number;
   status?: string;
-  details?: { chapterIndex: number; content: string; category: string; relevance?: number }[];
+  details?: { chapterIndex: number; content: string; category: string; relevance?: number; source?: string }[];
   relationships?: WikiRelationship[];
   supersede?: AISupersede[];
 }
@@ -438,6 +439,11 @@ function normalizeAliases(aliases: AIAliasInput[]): Array<{ alias: string; alias
   }).filter((a) => a.alias);
 }
 
+/** Map AI detail objects (with optional `source`) to DB format (with `sourceText`) */
+function mapDetailsForDB(details: { chapterIndex: number; content: string; category: string; relevance?: number; source?: string }[]) {
+  return details.map((d) => ({ ...d, sourceText: d.source ?? "" }));
+}
+
 /* ── Write AI response to DB ────────────────────────────── */
 
 async function writeResponseToDB(
@@ -532,7 +538,7 @@ async function writeResponseToDB(
           await api.wikiAddAliases(filePath, existingId, aliasesToAdd);
         }
         if (entry.details && entry.details.length > 0) {
-          await api.wikiAddDetails(filePath, existingId, entry.details);
+          await api.wikiAddDetails(filePath, existingId, mapDetailsForDB(entry.details));
         }
         if (entry.relationships) {
           for (const rel of entry.relationships) {
@@ -570,7 +576,7 @@ async function writeResponseToDB(
     }
 
     if (entry.details && entry.details.length > 0) {
-      await api.wikiAddDetails(filePath, entry.id, entry.details);
+      await api.wikiAddDetails(filePath, entry.id, mapDetailsForDB(entry.details));
     }
 
     if (entry.relationships) {
@@ -630,7 +636,7 @@ async function writeResponseToDB(
     }
 
     if (update.details && update.details.length > 0) {
-      await api.wikiAddDetails(filePath, resolvedId, update.details);
+      await api.wikiAddDetails(filePath, resolvedId, mapDetailsForDB(update.details));
     }
 
     // Mark old details as superseded when the AI indicates a fact has changed
@@ -1034,6 +1040,7 @@ export async function fetchWikiEntry(filePath: string, entryId: string, maxChapt
       relevance: d.relevance ?? 3,
       isSuperseded: (d.is_superseded ?? 0) === 1,
       supersededChapter: d.superseded_chapter ?? undefined,
+      sourceText: d.source_text ?? "",
     })),
     relationships: relationships
       .filter((r) => r.source_id === entryId)

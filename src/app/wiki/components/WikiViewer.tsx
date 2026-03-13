@@ -5,13 +5,15 @@ import {
   Loader2, Search, ArrowLeft,
   User, Swords, MapPin, Flame, Lightbulb,
   BookOpen, GitBranch, Clock, ChevronRight, Hash,
-  Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity,
+  Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity, Network,
+  Quote,
 } from "lucide-react";
 import { WindowHeader } from "@/components/window-header";
 import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
 import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiAIChat } from "./WikiAIChat";
+import { RelationshipGraph } from "./RelationshipGraph";
 
 interface WikiViewerProps {
   filePath: string;
@@ -89,7 +91,8 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
   const [mergeLog, setMergeLog] = useState<MergeLogItem[]>([]);
-  const [activeView, setActiveView] = useState<"encyclopedia" | "stats">("encyclopedia");
+  const [activeView, setActiveView] = useState<"encyclopedia" | "stats" | "graph">("encyclopedia");
+  const [processedChapters, setProcessedChapters] = useState<number[]>([]);
   const [mcStats, setMcStats] = useState<MCStat[]>([]);
   const [mcEntityId, setMcEntityId] = useState<string | null>(null);
   const [mcEntry, setMcEntry] = useState<WikiEntry | null>(null);
@@ -127,6 +130,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
       significance: e.significance, status: e.status,
     })));
     setProcessedCount(processed.length);
+    setProcessedChapters(processed);
     setArcs(arcRows.map((a) => ({
       id: a.id, name: a.name, description: a.description, arcType: a.arc_type,
       status: a.status, startChapter: a.start_chapter, endChapter: a.end_chapter,
@@ -263,57 +267,74 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
             <BarChart2 className="h-3 w-3" strokeWidth={1.5} />
             Stats
           </TabButton>
+          <TabButton active={activeView === "graph"} onClick={() => setActiveView("graph")}>
+            <Network className="h-3 w-3" strokeWidth={1.5} />
+            Graph
+          </TabButton>
         </div>
       )}
 
       <div className="relative flex-1 overflow-hidden" style={{ zoom: zoom / 100 }}>
-        <div
-          ref={scrollRef}
-          className="h-full overflow-y-auto"
-          style={{
-            paddingBottom: chatOpen && !chatExpanded
-              ? "clamp(280px, 45%, 420px)"
-              : undefined,
-          }}
-        >
-          {selectedEntry ? (
-            <EntryPage
-              entry={selectedEntry}
-              allEntries={entries}
-              resolvedNames={resolvedNames}
-              onNavigate={navigateTo}
-              onBack={goBack}
-              onMerge={handleMerge}
-              canGoBack
-              chapterLabels={chapterLabels}
-            />
-          ) : activeView === "stats" ? (
-            <StatsPage
-              mcEntry={mcEntry}
-              mcStats={mcStats}
-              onNavigateToMC={mcEntityId ? () => navigateTo(mcEntityId) : undefined}
-              chapterLabels={chapterLabels}
-            />
-          ) : (
-            <HomePage
-              bookTitle={bookTitle}
-              entries={entries}
-              filteredEntries={filteredEntries}
-              groupedFiltered={groupedFiltered}
-              arcs={arcs}
-              chapterSummaries={chapterSummaries}
-              processedCount={processedCount}
-              mergeLog={mergeLog}
-              searchQuery={searchQuery}
-              filterType={filterType}
-              onSearchChange={setSearchQuery}
-              onFilterChange={setFilterType}
-              onEntryClick={navigateTo}
-              onUnmerge={handleUnmerge}
-              chapterLabels={chapterLabels}
-            />
-          )}
-        </div>
+        {/* Graph view fills the entire area without scroll */}
+        {!selectedEntry && activeView === "graph" && (
+          <RelationshipGraph
+            filePath={filePath}
+            chapterLabels={chapterLabels}
+            entries={entries}
+            onNavigate={navigateTo}
+          />
+        )}
+
+        {/* Scrollable views */}
+        {(selectedEntry || activeView !== "graph") && (
+          <div
+            ref={scrollRef}
+            className="h-full overflow-y-auto"
+            style={{
+              paddingBottom: chatOpen && !chatExpanded
+                ? "clamp(280px, 45%, 420px)"
+                : undefined,
+            }}
+          >
+            {selectedEntry ? (
+              <EntryPage
+                entry={selectedEntry}
+                allEntries={entries}
+                resolvedNames={resolvedNames}
+                onNavigate={navigateTo}
+                onBack={goBack}
+                onMerge={handleMerge}
+                canGoBack
+                chapterLabels={chapterLabels}
+              />
+            ) : activeView === "stats" ? (
+              <StatsPage
+                mcEntry={mcEntry}
+                mcStats={mcStats}
+                onNavigateToMC={mcEntityId ? () => navigateTo(mcEntityId) : undefined}
+                chapterLabels={chapterLabels}
+              />
+            ) : (
+              <HomePage
+                bookTitle={bookTitle}
+                entries={entries}
+                filteredEntries={filteredEntries}
+                groupedFiltered={groupedFiltered}
+                arcs={arcs}
+                chapterSummaries={chapterSummaries}
+                processedCount={processedCount}
+                mergeLog={mergeLog}
+                searchQuery={searchQuery}
+                filterType={filterType}
+                onSearchChange={setSearchQuery}
+                onFilterChange={setFilterType}
+                onEntryClick={navigateTo}
+                onUnmerge={handleUnmerge}
+                chapterLabels={chapterLabels}
+              />
+            )}
+          </div>
+        )}
 
         <WikiAIChat
           filePath={filePath}
@@ -770,11 +791,11 @@ function EntryPage({
   const activeDetails = entry.details.filter((d) => !d.isSuperseded && d.relevance >= 2);
   const archivedDetails = entry.details.filter((d) => d.isSuperseded || d.relevance < 2);
 
-  const detailsByCategory: Record<string, { chapterIndex: number; content: string; relevance: number }[]> = {};
+  const detailsByCategory: Record<string, { chapterIndex: number; content: string; relevance: number; sourceText: string }[]> = {};
   for (const d of activeDetails) {
     const cat = d.category || "info";
     if (!detailsByCategory[cat]) detailsByCategory[cat] = [];
-    detailsByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content, relevance: d.relevance });
+    detailsByCategory[cat].push({ chapterIndex: d.chapterIndex, content: d.content, relevance: d.relevance, sourceText: d.sourceText });
   }
   for (const items of Object.values(detailsByCategory)) {
     items.sort((a, b) => b.relevance - a.relevance || a.chapterIndex - b.chapterIndex);
@@ -912,7 +933,9 @@ function EntryPage({
       </div>
 
       {/* Short description */}
-      <p className="mb-6 text-sm leading-relaxed text-white/60">{entry.shortDescription}</p>
+      <p className="mb-6 text-sm leading-relaxed text-white/60">
+        <LinkedText text={entry.shortDescription} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+      </p>
 
       <div className="h-px bg-white/[0.06]" />
 
@@ -923,7 +946,9 @@ function EntryPage({
           {/* Overview */}
           {entry.description && (
             <ArticleSection title="Overview">
-              <p className="text-sm leading-relaxed text-white/55 whitespace-pre-wrap">{entry.description}</p>
+              <p className="text-sm leading-relaxed text-white/55 whitespace-pre-wrap">
+                <LinkedText text={entry.description} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+              </p>
             </ArticleSection>
           )}
 
@@ -936,7 +961,10 @@ function EntryPage({
                     <span className="shrink-0 rounded-lg px-1.5 py-0.5 text-xs tabular-nums font-medium" style={{ background: meta.bg, color: meta.color }}>
                       {fmtCh(item.chapterIndex, chapterLabels)}
                     </span>
-                    <p className="text-xs leading-relaxed text-white/55">{item.content}</p>
+                    <p className="flex-1 text-xs leading-relaxed text-white/55">
+                      <LinkedText text={item.content} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+                      <SourcePreview sourceText={item.sourceText} chapterIndex={item.chapterIndex} chapterLabels={chapterLabels} />
+                    </p>
                   </div>
                 ))}
               </div>
@@ -1213,6 +1241,151 @@ function MoodBadge({ mood }: { mood: string }) {
     <span className="rounded-lg px-1.5 py-0.5 text-xs font-medium capitalize" style={{ background: MOOD_COLORS[mood] ?? "var(--bg-inset)", color: MOOD_TEXT[mood] ?? "var(--text-muted)" }}>
       {mood}
     </span>
+  );
+}
+
+/* ── Clickable entity links in text ─────────────────────── */
+
+function LinkedText({
+  text,
+  entries,
+  currentEntryId,
+  onNavigate,
+}: {
+  text: string;
+  entries: EntryListItem[];
+  currentEntryId?: string;
+  onNavigate: (id: string) => void;
+}) {
+  const segments = useMemo(() => {
+    if (!text || entries.length === 0) return [{ text, entityId: null as string | null }];
+
+    // Build sorted list of (name/alias → entryId), longest first for greedy matching
+    const nameMap: { name: string; lower: string; id: string; type: WikiEntryType }[] = [];
+    for (const e of entries) {
+      if (e.id === currentEntryId) continue; // Don't link self
+      if (e.name.length >= 2) nameMap.push({ name: e.name, lower: e.name.toLowerCase(), id: e.id, type: e.type });
+    }
+    nameMap.sort((a, b) => b.name.length - a.name.length);
+
+    // Scan text for matches
+    const result: { text: string; entityId: string | null; entityType?: WikiEntryType }[] = [];
+    const lower = text.toLowerCase();
+    let cursor = 0;
+    const used = new Uint8Array(text.length); // track matched ranges
+
+    // First pass: find all non-overlapping matches (longest first)
+    const matches: { start: number; end: number; id: string; type: WikiEntryType }[] = [];
+    for (const entry of nameMap) {
+      let searchFrom = 0;
+      while (searchFrom < lower.length) {
+        const idx = lower.indexOf(entry.lower, searchFrom);
+        if (idx === -1) break;
+        const end = idx + entry.lower.length;
+        // Check word boundaries
+        const before = idx === 0 || /[\s,.\-—()"';:!?/\[\]]/.test(text[idx - 1]);
+        const after = end === text.length || /[\s,.\-—()"';:!?/\[\]]/.test(text[end]);
+        if (before && after) {
+          // Check no overlap with existing matches
+          let overlaps = false;
+          for (let i = idx; i < end; i++) {
+            if (used[i]) { overlaps = true; break; }
+          }
+          if (!overlaps) {
+            matches.push({ start: idx, end, id: entry.id, type: entry.type });
+            for (let i = idx; i < end; i++) used[i] = 1;
+          }
+        }
+        searchFrom = idx + 1;
+      }
+    }
+
+    // Sort matches by position
+    matches.sort((a, b) => a.start - b.start);
+
+    // Build segments
+    for (const m of matches) {
+      if (m.start > cursor) {
+        result.push({ text: text.slice(cursor, m.start), entityId: null });
+      }
+      result.push({ text: text.slice(m.start, m.end), entityId: m.id, entityType: m.type });
+      cursor = m.end;
+    }
+    if (cursor < text.length) {
+      result.push({ text: text.slice(cursor), entityId: null });
+    }
+
+    return result;
+  }, [text, entries, currentEntryId]);
+
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.entityId ? (
+          <button
+            key={i}
+            onClick={(e) => { e.stopPropagation(); onNavigate(seg.entityId!); }}
+            className="inline cursor-pointer border-b border-dotted border-white/20 text-white/70 transition-colors hover:border-white/40 hover:text-white/90"
+            style={{ color: seg.entityType ? TYPE_META[seg.entityType]?.color : undefined }}
+          >
+            {seg.text}
+          </button>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
+/* ── Source text preview popover ────────────────────────── */
+
+function SourcePreview({
+  sourceText,
+  chapterIndex,
+  chapterLabels,
+}: {
+  sourceText: string;
+  chapterIndex: number;
+  chapterLabels: ChapterLabels;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  if (!sourceText) return null;
+
+  return (
+    <div className="relative inline-flex" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="ml-1 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-white/20 transition-colors hover:bg-white/[0.06] hover:text-white/40"
+        title={`Source from Ch. ${fmtCh(chapterIndex, chapterLabels)}`}
+      >
+        <Quote className="h-2.5 w-2.5" strokeWidth={1.5} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-40 mb-1 w-72 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] p-3 shadow-lg shadow-black/40 backdrop-blur-xl">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <Quote className="h-3 w-3 shrink-0 text-white/25" strokeWidth={1.5} />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-white/30">
+              Source — Ch. {fmtCh(chapterIndex, chapterLabels)}
+            </span>
+          </div>
+          <p className="text-xs leading-relaxed text-white/50 italic">
+            &ldquo;{sourceText}&rdquo;
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

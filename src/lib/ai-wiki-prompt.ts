@@ -34,6 +34,9 @@ Each detail entry needs a **relevance** score (1–5):
 - 2 = minor supporting detail
 - 1 = trivia, one-off mention, highly contextual
 
+## Source Attribution (IMPORTANT)
+Each detail entry must include a **source** field — a short verbatim quote (1-2 sentences, max ~150 chars) from the chapter text that directly supports/proves the detail. This lets users trace facts back to the source material. Pick the most relevant sentence(s). If the detail is inferred from broader context rather than a single quote, pick the most representative excerpt.
+
 ## Superseding Old Information
 When new chapter information directly replaces or invalidates a previous fact about an entity (status change, location change, role change, title revoked, power lost, etc.), include a **supersede** array in the update:
 - {"category": "status", "reason": "Character died in this chapter"}
@@ -153,7 +156,7 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "description": "Full wiki description",
           "significance": 2,
           "status": "active",
-          "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality", "relevance": 3 }],
+          "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality", "relevance": 3, "source": "Verbatim quote from chapter" }],
           "relationships": [{ "targetId": "other-entity-slug", "relation": "ally|enemy|mentor|etc", "since": 0 }],
           "color": "blue|amber|emerald|rose|violet"
         }
@@ -165,7 +168,7 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "descriptionAppend": "",
           "significance": 3,
           "status": "active",
-          "details": [{ "chapterIndex": 0, "content": "New information", "category": "category", "relevance": 3 }],
+          "details": [{ "chapterIndex": 0, "content": "New information", "category": "category", "relevance": 3, "source": "Verbatim quote from chapter" }],
           "relationships": [{ "targetId": "other-slug", "relation": "type", "since": 0 }],
           "supersede": [{ "category": "status", "reason": "Character's status changed in this chapter" }]
         }

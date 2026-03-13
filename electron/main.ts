@@ -12,8 +12,8 @@ import {
   upsertWikiEntry, getWikiEntries, getWikiEntry, deleteWikiEntry, purgeNullWikiEntries,
   addWikiAliases, getWikiAliases,
   addWikiDetails, getWikiDetailsForEntry, supersedeWikiDetails,
-  addWikiRelationship, getRelationshipsForEntry,
-  addWikiAppearance, getAppearancesForEntry,
+  addWikiRelationship, getRelationshipsForEntry, getAllWikiRelationships,
+  addWikiAppearance, getAppearancesForEntry, getAllAppearanceCounts,
   upsertChapterSummary, getChapterSummaries, getAllChapterSummaries,
   upsertArc, getActiveArcs, getAllArcs, addArcBeat, getArcBeats,
   addArcEntity, getArcEntities, deleteArc, mergeArcs,
@@ -455,7 +455,7 @@ function createWindow() {
   ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: unknown[]) => { addWikiAliases(filePath, entryId, aliases as Parameters<typeof addWikiAliases>[2]); });
   ipcMain.handle("wiki:get-aliases", (_event, filePath: string, entryId: string) => getWikiAliases(filePath, entryId));
 
-  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]) => { addWikiDetails(filePath, entryId, details); });
+  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]) => { addWikiDetails(filePath, entryId, details); });
   ipcMain.handle("wiki:get-details", (_event, filePath: string, entryId: string, maxChapter?: number) => getWikiDetailsForEntry(filePath, entryId, maxChapter));
   ipcMain.handle("wiki:supersede-details", (_event, filePath: string, entryId: string, category: string, currentChapter: number) => { supersedeWikiDetails(filePath, entryId, category, currentChapter); });
 
@@ -464,6 +464,8 @@ function createWindow() {
 
   ipcMain.handle("wiki:add-appearance", (_event, filePath: string, entryId: string, chapterIndex: number) => { addWikiAppearance(filePath, entryId, chapterIndex); });
   ipcMain.handle("wiki:get-appearances", (_event, filePath: string, entryId: string) => getAppearancesForEntry(filePath, entryId));
+  ipcMain.handle("wiki:get-all-relationships", (_event, filePath: string) => getAllWikiRelationships(filePath));
+  ipcMain.handle("wiki:get-all-appearance-counts", (_event, filePath: string) => getAllAppearanceCounts(filePath));
 
   ipcMain.handle("wiki:upsert-chapter-summary", (_event, filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) => { upsertChapterSummary(filePath, summary); });
   ipcMain.handle("wiki:get-chapter-summaries", (_event, filePath: string, fromCh: number, toCh: number) => getChapterSummaries(filePath, fromCh, toCh));

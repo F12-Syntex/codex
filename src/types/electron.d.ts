@@ -136,6 +136,7 @@ interface WikiDetailRow {
   relevance: number;
   is_superseded: number;
   superseded_chapter: number | null;
+  source_text: string;
 }
 
 interface WikiAliasRow {
@@ -322,7 +323,7 @@ interface ElectronAPI {
   wikiAddAliases: (filePath: string, entryId: string, aliases: Array<string | { alias: string; alias_type?: string; relevance?: number }>) => Promise<void>;
   wikiGetAliases: (filePath: string, entryId: string) => Promise<WikiAliasRow[]>;
 
-  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number }[]) => Promise<void>;
+  wikiAddDetails: (filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]) => Promise<void>;
   wikiGetDetails: (filePath: string, entryId: string, maxChapter?: number) => Promise<WikiDetailRow[]>;
   wikiSupersedeDetails: (filePath: string, entryId: string, category: string, currentChapter: number) => Promise<void>;
 
@@ -331,6 +332,8 @@ interface ElectronAPI {
 
   wikiAddAppearance: (filePath: string, entryId: string, chapterIndex: number) => Promise<void>;
   wikiGetAppearances: (filePath: string, entryId: string) => Promise<number[]>;
+  wikiGetAllRelationships: (filePath: string) => Promise<WikiRelationshipRow[]>;
+  wikiGetAllAppearanceCounts: (filePath: string) => Promise<{ entry_id: string; count: number }[]>;
 
   wikiUpsertChapterSummary: (filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) => Promise<void>;
   wikiGetChapterSummaries: (filePath: string, fromCh: number, toCh: number) => Promise<WikiChapterSummaryRow[]>;
