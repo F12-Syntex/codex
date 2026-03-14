@@ -299,23 +299,23 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     ? ttsHighWaterMark
     : (persistedReadMarks[currentChapter] ?? -1);
 
-  // TTS progress info
+  // TTS progress info — use ttsParagraphs so ETA reflects condensed/formatted text
   const ttsProgress = useMemo(() => {
-    const total = paragraphs.length;
+    const total = ttsParagraphs.length;
     const current = tts.state.currentParagraph;
     if (tts.state.status === "idle") return { current: 0, total, wordsRemaining: 0, paragraphsRemaining: 0, estimatedSeconds: 0 };
     let words = 0;
     let speakableCount = 0;
-    for (let i = current; i < paragraphs.length; i++) {
-      if (isSpeakable(paragraphs[i])) {
-        words += (paragraphs[i].match(/\S+/g) ?? []).length;
+    for (let i = current; i < ttsParagraphs.length; i++) {
+      if (isSpeakable(ttsParagraphs[i])) {
+        words += (ttsParagraphs[i].match(/\S+/g) ?? []).length;
         speakableCount++;
       }
     }
     const estimatedSeconds = ttsMetrics.estimate(settings.ttsRate, words, speakableCount);
     return { current, total, wordsRemaining: words, paragraphsRemaining: speakableCount, estimatedSeconds };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paragraphs, tts.state.currentParagraph, tts.state.status, settings.ttsRate]);
+  }, [ttsParagraphs, tts.state.currentParagraph, tts.state.status, settings.ttsRate]);
 
   const bookmarkState = useBookmarks({
     filePath,
