@@ -46,3 +46,4 @@ next-env.d.ts
 /release
 .claude/settings.local.json
 firebase-debug.log
+.mcp.json
