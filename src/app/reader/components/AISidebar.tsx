@@ -57,6 +57,7 @@ interface AISidebarProps {
   currentChapterEnrichDone: boolean;
   onWikiToggle: () => void;
   onWikiProcessAll: (upToChapter?: number) => void;
+  onCondenseRetry: () => void;
   onWikiRetry: () => void;
   onFormatRetry: () => void;
   onEnrichRetry: () => void;
@@ -119,6 +120,7 @@ export function AISidebar({
   currentChapterEnrichDone,
   onWikiToggle,
   onWikiProcessAll,
+  onCondenseRetry,
   onWikiRetry,
   onFormatRetry,
   onEnrichRetry,
@@ -284,7 +286,7 @@ export function AISidebar({
           canRun={condenseEnabled && !isCondenseRunning && !currentChapterCondenseDone}
           onRun={() => onCondenseAll(currentChapter)}
           canRetry={condenseEnabled && !isCondenseRunning && currentChapterCondenseDone}
-          onRetry={() => onCondenseAll(currentChapter)}
+          onRetry={onCondenseRetry}
           onCancel={onCancelCondenseAll}
           canClear={condensedChapterCount > 0 && !isCondenseRunning}
           onClear={onClearCondense}

@@ -2114,6 +2114,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               currentChapter={currentChapter}
               onWikiToggle={toggleWikiEnabled}
               onWikiProcessAll={processAllWikiChapters}
+              onCondenseRetry={() => condenseChapter(currentChapter)}
               onWikiRetry={() => retryWikiChapter(currentChapter)}
               onFormatRetry={() => formatChapter(currentChapter)}
               onEnrichRetry={() => enrichChapter(currentChapter)}
