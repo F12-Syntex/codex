@@ -808,6 +808,13 @@ export function parseWikiResponse(raw: string): AIWikiResponse | null {
     }
   }
 
+  // Last resort: salvage complete batch entries from a truncated response
+  const salvaged = salvageBatchEntries(cleaned);
+  if (salvaged) {
+    console.warn("Wiki response salvaged (%d batch entries extracted from truncated response)", salvaged.batch!.length);
+    return salvaged;
+  }
+
   console.error("Failed to parse wiki response (len=%d):", raw.length, raw.slice(0, 500));
   return null;
 }
@@ -1006,6 +1013,77 @@ function repairTruncatedJSON(s: string): string {
   while (stack.length > 0) repaired += stack.pop()!;
 
   return repaired;
+}
+
+/**
+ * Last-resort salvage: extract complete batch entries from a truncated response
+ * using bracket-matching rather than regex, so it handles literary text with
+ * quoted terms followed by commas (e.g. "The Fool", said...).
+ */
+function salvageBatchEntries(raw: string): AIWikiResponse | null {
+  // Find the batch array opening
+  const batchMatch = raw.match(/"batch"\s*:\s*\[/);
+  if (!batchMatch || batchMatch.index === undefined) return null;
+
+  const batchStart = batchMatch.index + batchMatch[0].length;
+
+  // Extract mc_entity_id if present before the batch
+  let mcEntityId: string | undefined;
+  const mcMatch = raw.match(/"mc_entity_id"\s*:\s*"([^"]+)"/);
+  if (mcMatch) mcEntityId = mcMatch[1];
+
+  // Find complete objects in the batch array using bracket-depth tracking
+  const entries: AIWikiChapterData[] = [];
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let objStart = -1;
+
+  for (let i = batchStart; i < raw.length; i++) {
+    const ch = raw[i];
+    if (esc) { esc = false; continue; }
+    if (ch === "\\") { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+
+    if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        const objStr = raw.slice(objStart, i + 1);
+        const parsed = tryParseJSON(objStr);
+        if (parsed && typeof (parsed as Record<string, unknown>).chapter_index === "number") {
+          entries.push(validateChapterData(parsed as unknown as AIWikiChapterData));
+        }
+        objStart = -1;
+      }
+    } else if (ch === "]" && depth === 0) {
+      break; // End of batch array
+    }
+  }
+
+  if (entries.length === 0) return null;
+
+  const result: AIWikiResponse = { batch: entries } as AIWikiResponse;
+  if (mcEntityId) (result as Record<string, unknown>).mc_entity_id = mcEntityId;
+
+  // Try to extract mc_stats from after the batch if present and complete
+  const mcStatsMatch = raw.match(/"mc_stats"\s*:\s*\[/);
+  if (mcStatsMatch && mcStatsMatch.index !== undefined) {
+    const statsStart = mcStatsMatch.index + mcStatsMatch[0].length;
+    const statsEnd = raw.indexOf("]", statsStart);
+    if (statsEnd !== -1) {
+      const statsStr = "[" + raw.slice(statsStart, statsEnd + 1);
+      const statsParsed = tryParseJSON(statsStr);
+      if (Array.isArray(statsParsed)) {
+        (result as Record<string, unknown>).mc_stats = statsParsed;
+      }
+    }
+  }
+
+  return result;
 }
 
 /* ── Fetch full entry from DB (for display) ─────────────── */
