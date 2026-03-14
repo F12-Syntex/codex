@@ -1069,30 +1069,36 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       enrichChapter(nextIdx);
     }
 
-    // Condense current chapter if needed (must run before format so format has condensed base)
-    if (condenseEnabled && !condensedChapters[chapterIdx]) {
+    // Condense current chapter if needed (condenseChapter also formats inline when formattingEnabled)
+    const didCondenseCurrent = condenseEnabled && !condensedChapters[chapterIdx];
+    if (didCondenseCurrent) {
       await condenseChapter(chapterIdx);
     }
 
-    // Pre-condense next chapter (fire and forget)
+    // Pre-condense next chapter (fire and forget — also formats inline)
     if (condenseEnabled && nextIdx < chapters.length && !condensedChapters[nextIdx] && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
       condenseChapter(nextIdx);
     }
 
-    // Format current chapter if needed (uses condensed base when condense is on)
-    const needsFormat = condenseEnabled
-      ? (condensedChapters[chapterIdx] && !condensedFormattedChapters[chapterIdx])
-      : !formattedChapters[chapterIdx];
-    if (formattingEnabled && needsFormat) {
-      await formatChapter(chapterIdx);
+    // Format current chapter if needed (skip when condense just ran — it formats inline)
+    if (formattingEnabled && !didCondenseCurrent) {
+      const needsFormat = condenseEnabled
+        ? (condensedChapters[chapterIdx] && !condensedFormattedChapters[chapterIdx])
+        : !formattedChapters[chapterIdx];
+      if (needsFormat) {
+        await formatChapter(chapterIdx);
+      }
     }
 
-    // Pre-format next chapter (fire and forget)
-    const nextNeedsFormat = condenseEnabled
-      ? (condensedChapters[nextIdx] && !condensedFormattedChapters[nextIdx])
-      : !formattedChapters[nextIdx];
-    if (formattingEnabled && nextNeedsFormat && nextIdx < chapters.length && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
-      formatChapter(nextIdx);
+    // Pre-format next chapter (fire and forget, skip when condense pre-fired — it formats inline)
+    const didPreCondenseNext = condenseEnabled && nextIdx < chapters.length && !condensedChapters[nextIdx];
+    if (formattingEnabled && !didPreCondenseNext) {
+      const nextNeedsFormat = condenseEnabled
+        ? (condensedChapters[nextIdx] && !condensedFormattedChapters[nextIdx])
+        : !formattedChapters[nextIdx];
+      if (nextNeedsFormat && nextIdx < chapters.length && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
+        formatChapter(nextIdx);
+      }
     }
 
     // Wiki processing if enabled
