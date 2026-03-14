@@ -273,7 +273,7 @@ export function AISidebar({
         <Row
           Icon={Minimize2}
           label="Concise Reading"
-          subLabel={condenseEnabled && formattingEnabled ? "formats condensed text" : undefined}
+          subLabel={undefined}
           active={condenseEnabled}
           onToggle={onCondenseToggle}
           status={
