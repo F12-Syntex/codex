@@ -42,6 +42,12 @@ function tryParseArray(s: string): string[] | null {
   try {
     const parsed = JSON.parse(s);
     if (Array.isArray(parsed) && parsed.every(x => typeof x === "string")) return parsed;
+    // Handle wrapped response like {"paragraphs": [...]}
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const values = Object.values(parsed);
+      const arr = values.find(v => Array.isArray(v) && v.every(x => typeof x === "string"));
+      if (arr) return arr as string[];
+    }
     return null;
   } catch {
     return null;
@@ -95,7 +101,7 @@ async function condenseChunk(
   const direct = tryParseArray(cleaned);
   if (direct) return direct;
 
-  // Find first [
+  // Find first [ — handles both bare arrays and wrapped objects like {"paragraphs": [...
   const arrStart = cleaned.indexOf("[");
   if (arrStart !== -1) {
     const fromBracket = cleaned.slice(arrStart);
