@@ -74,6 +74,8 @@ interface AISidebarProps {
   onClearComments: () => void;
   onClose: () => void;
   chapterLabels?: ChapterLabels;
+  onBulkStarted?: () => void;
+  onBulkStateChange?: (state: import("./BulkAnalyserModal").BulkRunState) => void;
 }
 
 
@@ -137,6 +139,8 @@ export function AISidebar({
   onClearComments,
   onClose,
   chapterLabels = {},
+  onBulkStarted,
+  onBulkStateChange,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
@@ -397,6 +401,8 @@ export function AISidebar({
       <BulkAnalyserModal
         isOpen={bulkOpen}
         onClose={() => setBulkOpen(false)}
+        onStarted={() => { setBulkOpen(false); onBulkStarted?.(); }}
+        onStateChange={onBulkStateChange}
         theme={theme}
         chapters={chapters}
         chapterLabels={chapterLabels}
@@ -405,18 +411,23 @@ export function AISidebar({
         wikiEnabled={wikiEnabled}
         formattingEnabled={formattingEnabled}
         enrichEnabled={enrichEnabled}
+        condenseEnabled={condenseEnabled}
         wikiAllProgress={wikiAllProgress}
         wikiProcessingChapter={wikiProcessingChapter}
         formatAllProgress={formatAllProgress}
         formattingChapter={formattingChapter}
         enrichAllProgress={enrichAllProgress}
         enrichingChapter={enrichingChapter}
+        condenseAllProgress={condenseAllProgress}
+        condensingChapter={condensingChapter}
         onRunWiki={onWikiProcessAll}
         onRunFormat={onFormatAll}
         onRunTitles={onEnrichAll}
+        onRunCondense={onCondenseAll}
         onCancelWiki={onCancelWikiProcessAll}
         onCancelFormat={onCancelFormatAll}
         onCancelTitles={onCancelEnrichAll}
+        onCancelCondense={onCancelCondenseAll}
       />
     </div>
   );

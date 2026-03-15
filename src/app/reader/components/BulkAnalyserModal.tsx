@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  X, BookMarked, Paintbrush, Type, Play, Square,
+  X, BookMarked, Paintbrush, Type, Play, Square, Minimize2,
   CheckCircle2, Clock, AlertTriangle, Loader2, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,12 +11,13 @@ import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 
 /* ── Types ─────────────────────────────────────────────────── */
 
-export type FeatureKey = "wiki" | "format" | "titles";
+export type FeatureKey = "wiki" | "format" | "titles" | "condense";
 
 const FEATURE_META: Record<FeatureKey, { label: string; Icon: React.ElementType; color: string }> = {
-  wiki:    { label: "AI Wiki",         Icon: BookMarked, color: "var(--accent-brand)" },
-  format:  { label: "Formatting",      Icon: Paintbrush, color: "#a78bfa" },
-  titles:  { label: "Chapter Titles",  Icon: Type,       color: "#34d399" },
+  wiki:     { label: "AI Wiki",         Icon: BookMarked,  color: "var(--accent-brand)" },
+  format:   { label: "Formatting",      Icon: Paintbrush,  color: "#a78bfa" },
+  titles:   { label: "Chapter Titles",  Icon: Type,        color: "#34d399" },
+  condense: { label: "Concise Reading", Icon: Minimize2,   color: "#60a5fa" },
 };
 
 type PhaseStatus = "pending" | "running" | "done" | "cancelled";
@@ -42,6 +43,8 @@ interface LogEntry {
 interface BulkAnalyserModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called when bulk run starts — modal should dismiss and show dock */
+  onStarted: () => void;
   theme: ThemeClasses;
   chapters: BookChapter[];
   chapterLabels: ChapterLabels;
@@ -50,18 +53,33 @@ interface BulkAnalyserModalProps {
   wikiEnabled: boolean;
   formattingEnabled: boolean;
   enrichEnabled: boolean;
+  condenseEnabled: boolean;
   wikiAllProgress: { current: number; total: number } | null;
   wikiProcessingChapter: number | null;
   formatAllProgress: { current: number; total: number } | null;
   formattingChapter: number | null;
   enrichAllProgress: { current: number; total: number } | null;
   enrichingChapter: number | null;
+  condenseAllProgress: { current: number; total: number } | null;
+  condensingChapter: number | null;
   onRunWiki: (upTo?: number) => void;
   onRunFormat: (upTo?: number) => void;
   onRunTitles: (upTo?: number) => void;
+  onRunCondense: (upTo?: number) => void;
   onCancelWiki: () => void;
   onCancelFormat: () => void;
   onCancelTitles: () => void;
+  onCancelCondense: () => void;
+  /** Reports running state up to parent for the progress dock */
+  onStateChange?: (state: BulkRunState) => void;
+}
+
+export interface BulkRunState {
+  isRunning: boolean;
+  isDone: boolean;
+  phases: { feature: FeatureKey; status: PhaseStatus; completed: number; total: number; startTime: number | null; endTime: number | null }[];
+  currentPhaseIdx: number;
+  eta: number | null;
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -101,6 +119,7 @@ function fmtEta(ms: number): string {
 export function BulkAnalyserModal({
   isOpen,
   onClose,
+  onStarted,
   theme,
   chapters,
   chapterLabels,
@@ -109,18 +128,24 @@ export function BulkAnalyserModal({
   wikiEnabled,
   formattingEnabled,
   enrichEnabled,
+  condenseEnabled,
   wikiAllProgress,
   wikiProcessingChapter,
   formatAllProgress,
   formattingChapter,
   enrichAllProgress,
   enrichingChapter,
+  condenseAllProgress,
+  condensingChapter,
   onRunWiki,
   onRunFormat,
   onRunTitles,
+  onRunCondense,
   onCancelWiki,
   onCancelFormat,
   onCancelTitles,
+  onCancelCondense,
+  onStateChange,
 }: BulkAnalyserModalProps) {
   const maxChapter = maxStoryChapter(chapterLabels, totalChapters);
   const currentStoryChapter = fmtCh(currentChapter, chapterLabels) ?? currentChapter + 1;
@@ -157,6 +182,12 @@ export function BulkAnalyserModal({
   const eta = avgDuration !== null && totalRemaining > 0
     ? avgDuration * totalRemaining
     : null;
+
+  /* ── Report state to parent for dock ── */
+  useEffect(() => {
+    onStateChange?.({ isRunning, isDone, phases, currentPhaseIdx, eta });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, isDone, phases, currentPhaseIdx, eta]);
 
   /* ── Log helpers ── */
   const addLog = useCallback((entry: Omit<LogEntry, "id" | "ts">) => {
@@ -196,6 +227,7 @@ export function BulkAnalyserModal({
       if (feature === "wiki") onRunWiki(upToIndexRef.current);
       else if (feature === "format") onRunFormat(upToIndexRef.current);
       else if (feature === "titles") onRunTitles(upToIndexRef.current);
+      else if (feature === "condense") onRunCondense(upToIndexRef.current);
     }, 150);
 
     return () => clearTimeout(t);
@@ -209,17 +241,19 @@ export function BulkAnalyserModal({
 
     const feature = phases[currentPhaseIdx].feature;
     const isCurrentlyRunning =
-      feature === "wiki"   ? (wikiAllProgress !== null || wikiProcessingChapter !== null) :
-      feature === "format" ? (formatAllProgress !== null || formattingChapter !== null) :
-                             (enrichAllProgress !== null || enrichingChapter !== null);
+      feature === "wiki"     ? (wikiAllProgress !== null || wikiProcessingChapter !== null) :
+      feature === "format"   ? (formatAllProgress !== null || formattingChapter !== null) :
+      feature === "condense" ? (condenseAllProgress !== null || condensingChapter !== null) :
+                               (enrichAllProgress !== null || enrichingChapter !== null);
 
     if (isCurrentlyRunning) {
       phaseStartedRef.current = true;
       // Update phase totals from actual progress
       const prog =
-        feature === "wiki"   ? wikiAllProgress :
-        feature === "format" ? formatAllProgress :
-                               enrichAllProgress;
+        feature === "wiki"     ? wikiAllProgress :
+        feature === "format"   ? formatAllProgress :
+        feature === "condense" ? condenseAllProgress :
+                                 enrichAllProgress;
       if (prog) {
         setPhases(prev => prev.map((p, i) =>
           i === currentPhaseIdx ? { ...p, completed: prog.current, total: prog.total } : p
@@ -242,7 +276,7 @@ export function BulkAnalyserModal({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wikiAllProgress, wikiProcessingChapter, formatAllProgress, formattingChapter, enrichAllProgress, enrichingChapter]);
+  }, [wikiAllProgress, wikiProcessingChapter, formatAllProgress, formattingChapter, enrichAllProgress, enrichingChapter, condenseAllProgress, condensingChapter]);
 
   /* ── Per-chapter log entries for Wiki ── */
   const prevWikiChapterRef = useRef<number | null>(null);
@@ -333,6 +367,9 @@ export function BulkAnalyserModal({
     prevWikiChapterRef.current = null;
     prevFormatChapterRef.current = null;
     prevTitlesChapterRef.current = null;
+
+    // Close modal and show dock progress indicator
+    onStarted();
   };
 
   const handleCancel = () => {
@@ -340,6 +377,7 @@ export function BulkAnalyserModal({
     if (feature === "wiki") onCancelWiki();
     else if (feature === "format") onCancelFormat();
     else if (feature === "titles") onCancelTitles();
+    else if (feature === "condense") onCancelCondense();
     setPhases(prev => prev.map((p, i) => i === currentPhaseIdx ? { ...p, status: "cancelled" } : p));
     addLog({ feature: feature ?? "wiki", chapterIndex: null, type: "cancelled" });
     setIsRunning(false);
@@ -412,12 +450,13 @@ export function BulkAnalyserModal({
                 <p className={cn("mb-2 text-xs font-medium uppercase tracking-wider", theme.muted)} style={{ opacity: 0.45 }}>
                   Features
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {(Object.entries(FEATURE_META) as [FeatureKey, typeof FEATURE_META[FeatureKey]][]).map(([key, meta]) => {
                     const enabled =
-                      key === "wiki"   ? wikiEnabled :
-                      key === "format" ? formattingEnabled :
-                                         enrichEnabled;
+                      key === "wiki"     ? wikiEnabled :
+                      key === "format"   ? formattingEnabled :
+                      key === "condense" ? condenseEnabled :
+                                           enrichEnabled;
                     const selected = selectedFeatures.includes(key);
                     return (
                       <button

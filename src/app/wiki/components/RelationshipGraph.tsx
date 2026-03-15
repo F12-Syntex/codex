@@ -1,10 +1,15 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  User, Swords, MapPin, Flame, Lightbulb,
+  ChevronRight, ArrowLeft, ZoomIn, ZoomOut, Home,
+} from "lucide-react";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import type { ChapterLabels } from "@/lib/chapter-labels";
 
 /* ── Types ─────────────────────────────────────────────── */
+
 interface EntryListItem {
   id: string;
   name: string;
@@ -18,129 +23,95 @@ interface RelRow {
   relation: string;
 }
 
-/* ── Type colors (match WikiViewer TYPE_META) ──────────── */
-const TYPE_COLORS: Record<WikiEntryType, string> = {
-  character: "rgb(147, 197, 253)",
-  item: "rgb(252, 211, 77)",
-  location: "rgb(110, 231, 183)",
-  event: "rgb(253, 164, 175)",
-  concept: "rgb(196, 181, 253)",
+/* ── Type colors & icons ───────────────────────────────── */
+
+const TYPE_META: Record<WikiEntryType, { color: string; bg: string; icon: React.ElementType }> = {
+  character: { color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)", icon: User },
+  item:      { color: "rgb(252, 211, 77)",  bg: "rgba(251, 191, 36, 0.12)", icon: Swords },
+  location:  { color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)", icon: MapPin },
+  event:     { color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)", icon: Flame },
+  concept:   { color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)", icon: Lightbulb },
 };
 
-/* ── Layout node ───────────────────────────────────────── */
-interface GNode {
-  id: string;
-  name: string;
-  type: WikiEntryType;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
+/* ── Relation categories ───────────────────────────────── */
+
+const RELATION_CATEGORIES: { label: string; match: RegExp; color: string }[] = [
+  { label: "Allies", match: /ally|friend|companion|comrade|partner|trusted/i, color: "rgb(110, 231, 183)" },
+  { label: "Family", match: /family|father|mother|brother|sister|parent|child|son|daughter|spouse|husband|wife|sibling/i, color: "rgb(252, 211, 77)" },
+  { label: "Rivals", match: /enemy|rival|antagonist|opponent|adversary|nemesis|hostile/i, color: "rgb(253, 164, 175)" },
+  { label: "Mentors", match: /mentor|student|teacher|master|apprentice|disciple|guide/i, color: "rgb(196, 181, 253)" },
+  { label: "Other", match: /.*/, color: "rgb(148, 163, 184)" },
+];
+
+function categorizeRelation(relation: string): typeof RELATION_CATEGORIES[0] {
+  return RELATION_CATEGORIES.find(c => c.match.test(relation)) ?? RELATION_CATEGORIES[RELATION_CATEGORIES.length - 1];
 }
 
-interface GEdge {
-  source: number;
-  target: number;
-  label: string;
+/* ── Grouped relations for a node ──────────────────────── */
+
+interface GroupedRelation {
+  category: string;
+  color: string;
+  entries: { id: string; name: string; type: WikiEntryType; relation: string; significance: number }[];
 }
 
-/* ── Force layout (synchronous, capped) ────────────────── */
-function layoutGraph(
+function groupRelationsForEntity(
+  entityId: string,
   entries: EntryListItem[],
   rels: RelRow[],
-  width: number,
-  height: number,
-  maxNodes: number,
-): { nodes: GNode[]; edges: GEdge[] } {
-  const sorted = [...entries].sort((a, b) => b.significance - a.significance);
-  const top = sorted.slice(0, maxNodes);
-  const idToIdx = new Map(top.map((e, i) => [e.id, i]));
+): GroupedRelation[] {
+  const entryMap = new Map(entries.map(e => [e.id, e]));
+  const related = rels
+    .filter(r => r.source_id === entityId || r.target_id === entityId)
+    .map(r => {
+      const otherId = r.source_id === entityId ? r.target_id : r.source_id;
+      const other = entryMap.get(otherId);
+      if (!other) return null;
+      return { id: otherId, name: other.name, type: other.type, relation: r.relation, significance: other.significance };
+    })
+    .filter(Boolean) as GroupedRelation["entries"];
 
-  const nodes: GNode[] = top.map((e, i) => {
-    const angle = (2 * Math.PI * i) / top.length;
-    const r = Math.min(width, height) * 0.35;
-    return {
-      id: e.id,
-      name: e.name,
-      type: e.type,
-      x: width / 2 + r * Math.cos(angle) + (Math.random() - 0.5) * 40,
-      y: height / 2 + r * Math.sin(angle) + (Math.random() - 0.5) * 40,
-      vx: 0,
-      vy: 0,
-      radius: Math.max(4, Math.min(14, 4 + e.significance * 2)),
-    };
+  // Deduplicate
+  const seen = new Set<string>();
+  const unique = related.filter(r => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
   });
 
-  // Build edges — deduplicate by keeping lower-index source
-  const edgeSet = new Set<string>();
-  const edges: GEdge[] = [];
-  for (const rel of rels) {
-    const si = idToIdx.get(rel.source_id);
-    const ti = idToIdx.get(rel.target_id);
-    if (si === undefined || ti === undefined) continue;
-    const key = si < ti ? `${si}:${ti}` : `${ti}:${si}`;
-    if (edgeSet.has(key)) continue;
-    edgeSet.add(key);
-    edges.push({ source: Math.min(si, ti), target: Math.max(si, ti), label: rel.relation });
+  // Group by category
+  const groups = new Map<string, GroupedRelation>();
+  for (const r of unique) {
+    const cat = categorizeRelation(r.relation);
+    if (!groups.has(cat.label)) {
+      groups.set(cat.label, { category: cat.label, color: cat.color, entries: [] });
+    }
+    groups.get(cat.label)!.entries.push(r);
   }
 
-  // Force simulation
-  const iterations = Math.min(200, Math.max(60, 300 - top.length));
-  const repulsion = 800;
-  const attraction = 0.005;
-  const damping = 0.92;
-  const centerPull = 0.01;
-
-  for (let iter = 0; iter < iterations; iter++) {
-    const alpha = 1 - iter / iterations;
-
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[j].x - nodes[i].x;
-        const dy = nodes[j].y - nodes[i].y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = (repulsion * alpha) / (dist * dist);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        nodes[i].vx -= fx;
-        nodes[i].vy -= fy;
-        nodes[j].vx += fx;
-        nodes[j].vy += fy;
-      }
-    }
-
-    for (const edge of edges) {
-      const a = nodes[edge.source];
-      const b = nodes[edge.target];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = dist * attraction * alpha;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      a.vx += fx;
-      a.vy += fy;
-      b.vx -= fx;
-      b.vy -= fy;
-    }
-
-    for (const n of nodes) {
-      n.vx += (width / 2 - n.x) * centerPull * alpha;
-      n.vy += (height / 2 - n.y) * centerPull * alpha;
-      n.vx *= damping;
-      n.vy *= damping;
-      n.x += n.vx;
-      n.y += n.vy;
-      n.x = Math.max(n.radius + 4, Math.min(width - n.radius - 4, n.x));
-      n.y = Math.max(n.radius + 4, Math.min(height - n.radius - 4, n.y));
-    }
+  // Sort entries within each group by significance
+  for (const group of groups.values()) {
+    group.entries.sort((a, b) => b.significance - a.significance);
   }
 
-  return { nodes, edges };
+  return Array.from(groups.values());
 }
 
+/* ── Layout positions for the tree branches ──────────── */
+
+const BRANCH_ANGLES = [
+  { angle: -Math.PI / 2, label: "top" },    // up
+  { angle: Math.PI / 2, label: "bottom" },  // down
+  { angle: Math.PI, label: "left" },         // left
+  { angle: 0, label: "right" },              // right
+  { angle: -Math.PI / 4, label: "top-right" },
+  { angle: -3 * Math.PI / 4, label: "top-left" },
+  { angle: Math.PI / 4, label: "bottom-right" },
+  { angle: 3 * Math.PI / 4, label: "bottom-left" },
+];
+
 /* ── Component ─────────────────────────────────────────── */
+
 interface RelationshipGraphProps {
   filePath: string;
   chapterLabels: ChapterLabels;
@@ -148,272 +119,246 @@ interface RelationshipGraphProps {
   onNavigate: (id: string) => void;
 }
 
-const MAX_NODES = 150;
-
 export function RelationshipGraph({ filePath, entries, onNavigate }: RelationshipGraphProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 800, h: 600 });
-  const [hovered, setHovered] = useState<GNode | null>(null);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
   const [rels, setRels] = useState<RelRow[]>([]);
-  const dragging = useRef(false);
-  const lastMouse = useRef({ x: 0, y: 0 });
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [history, setHistory] = useState<string[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch all relationships once
+  // Fetch all relationships
   useEffect(() => {
     window.electronAPI?.wikiGetAllRelationships(filePath).then((rows: RelRow[]) => {
       if (rows) setRels(rows);
     });
   }, [filePath]);
 
-  // Observe container size
+  // Auto-detect MC (highest significance character)
+  const mcEntity = useMemo(() => {
+    const chars = entries
+      .filter(e => e.type === "character")
+      .sort((a, b) => b.significance - a.significance);
+    return chars[0] ?? entries[0] ?? null;
+  }, [entries]);
+
+  // Set initial focus to MC
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver(([e]) => {
-      const { width, height } = e.contentRect;
-      if (width > 0 && height > 0) setSize({ w: width, h: height });
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
-  const graph = useMemo(
-    () => layoutGraph(entries, rels, size.w, size.h, MAX_NODES),
-    [entries, rels, size.w, size.h],
-  );
-
-  const truncated = entries.length > MAX_NODES;
-
-  const toWorld = useCallback(
-    (sx: number, sy: number) => ({
-      x: (sx - pan.x) / zoom,
-      y: (sy - pan.y) / zoom,
-    }),
-    [pan, zoom],
-  );
-
-  const hitTest = useCallback(
-    (sx: number, sy: number): GNode | null => {
-      const { x, y } = toWorld(sx, sy);
-      for (let i = graph.nodes.length - 1; i >= 0; i--) {
-        const n = graph.nodes[i];
-        const dx = n.x - x;
-        const dy = n.y - y;
-        if (dx * dx + dy * dy <= (n.radius + 4) * (n.radius + 4)) return n;
-      }
-      return null;
-    },
-    [graph.nodes, toWorld],
-  );
-
-  // Draw
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = size.w * dpr;
-    canvas.height = size.h * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, size.w, size.h);
-    ctx.save();
-    ctx.translate(pan.x, pan.y);
-    ctx.scale(zoom, zoom);
-
-    const { nodes, edges } = graph;
-
-    // Edges (non-hovered)
-    ctx.lineWidth = 0.5;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    for (const e of edges) {
-      const a = nodes[e.source];
-      const b = nodes[e.target];
-      if (hovered && (a.id === hovered.id || b.id === hovered.id)) continue;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+    if (mcEntity && !focusedId) {
+      setFocusedId(mcEntity.id);
     }
+  }, [mcEntity, focusedId]);
 
-    // Highlighted edges
-    if (hovered) {
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
-      for (const e of edges) {
-        const a = nodes[e.source];
-        const b = nodes[e.target];
-        if (a.id === hovered.id || b.id === hovered.id) {
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-      }
+  const focusedEntry = useMemo(() => {
+    return entries.find(e => e.id === focusedId) ?? null;
+  }, [entries, focusedId]);
+
+  const groupedRelations = useMemo(() => {
+    if (!focusedId) return [];
+    return groupRelationsForEntity(focusedId, entries, rels);
+  }, [focusedId, entries, rels]);
+
+  const navigateTo = useCallback((id: string) => {
+    if (focusedId) {
+      setHistory(prev => [...prev, focusedId!]);
     }
+    setFocusedId(id);
+    setExpandedCategories(new Set());
+  }, [focusedId]);
 
-    // Nodes
-    for (const n of nodes) {
-      const color = TYPE_COLORS[n.type] ?? "rgb(200,200,200)";
-      const isHov = hovered?.id === n.id;
-      const isNeighbor = hovered && edges.some(
-        (e) =>
-          (nodes[e.source].id === hovered.id && nodes[e.target].id === n.id) ||
-          (nodes[e.target].id === hovered.id && nodes[e.source].id === n.id),
-      );
+  const goBack = useCallback(() => {
+    if (history.length === 0) return;
+    const prev = history[history.length - 1];
+    setHistory(h => h.slice(0, -1));
+    setFocusedId(prev);
+    setExpandedCategories(new Set());
+  }, [history]);
 
-      ctx.globalAlpha = hovered ? (isHov || isNeighbor ? 1 : 0.15) : 0.85;
-
-      if (isHov) {
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 12;
-      }
-
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (isHov) ctx.shadowBlur = 0;
-
-      // Labels
-      if (n.radius >= 8 || isHov || isNeighbor) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.font = `${isHov ? "bold " : ""}${isHov ? 11 : 9}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.fillText(n.name, n.x, n.y + n.radius + 12);
-      }
+  const goHome = useCallback(() => {
+    if (mcEntity) {
+      setHistory([]);
+      setFocusedId(mcEntity.id);
+      setExpandedCategories(new Set());
     }
+  }, [mcEntity]);
 
-    ctx.globalAlpha = 1;
-
-    // Relationship labels on hover
-    if (hovered) {
-      ctx.font = "8px system-ui, sans-serif";
-      ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-      ctx.textAlign = "center";
-      for (const e of edges) {
-        const a = nodes[e.source];
-        const b = nodes[e.target];
-        if (a.id === hovered.id || b.id === hovered.id) {
-          ctx.fillText(e.label, (a.x + b.x) / 2, (a.y + b.y) / 2 - 4);
-        }
-      }
-    }
-
-    ctx.restore();
-
-    if (truncated) {
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.font = "10px system-ui, sans-serif";
-      ctx.textAlign = "right";
-      ctx.fillText(`Showing top ${MAX_NODES} of ${entries.length}`, size.w - 12, size.h - 10);
-    }
-  }, [graph, size, hovered, pan, zoom, truncated, entries.length]);
-
-  // Mouse handlers
-  const onMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-
-      if (dragging.current) {
-        setPan((p) => ({
-          x: p.x + e.clientX - lastMouse.current.x,
-          y: p.y + e.clientY - lastMouse.current.y,
-        }));
-        lastMouse.current = { x: e.clientX, y: e.clientY };
-        return;
-      }
-
-      const hit = hitTest(sx, sy);
-      setHovered(hit);
-      if (canvasRef.current) canvasRef.current.style.cursor = hit ? "pointer" : "grab";
-    },
-    [hitTest],
-  );
-
-  const onClick = useCallback(
-    (e: React.MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const hit = hitTest(e.clientX - rect.left, e.clientY - rect.top);
-      if (hit) onNavigate(hit.id);
-    },
-    [hitTest, onNavigate],
-  );
-
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      if (!hitTest(e.clientX - rect.left, e.clientY - rect.top)) {
-        dragging.current = true;
-        lastMouse.current = { x: e.clientX, y: e.clientY };
-        if (canvasRef.current) canvasRef.current.style.cursor = "grabbing";
-      }
-    },
-    [hitTest],
-  );
-
-  const onMouseUp = useCallback(() => {
-    dragging.current = false;
-    if (canvasRef.current) canvasRef.current.style.cursor = hovered ? "pointer" : "grab";
-  }, [hovered]);
-
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    setZoom((z) => {
-      const nz = Math.max(0.2, Math.min(5, z * factor));
-      setPan((p) => ({ x: sx - (sx - p.x) * (nz / z), y: sy - (sy - p.y) * (nz / z) }));
-      return nz;
+  const toggleCategory = useCallback((cat: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
     });
   }, []);
 
-  if (entries.length === 0) {
+  if (entries.length === 0 || !focusedEntry) {
     return (
-      <div className="flex h-full items-center justify-center text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
+      <div className="flex h-full items-center justify-center text-xs text-white/30">
         No entities to graph
       </div>
     );
   }
 
+  const focusMeta = TYPE_META[focusedEntry.type];
+  const FocusIcon = focusMeta.icon;
+  const totalRelations = groupedRelations.reduce((sum, g) => sum + g.entries.length, 0);
+
   return (
-    <div ref={containerRef} className="relative h-full w-full">
-      <canvas
-        ref={canvasRef}
-        width={size.w}
-        height={size.h}
-        style={{ width: size.w, height: size.h, cursor: "grab" }}
-        onMouseMove={onMouseMove}
-        onMouseDown={onMouseDown}
-        onMouseUp={onMouseUp}
-        onMouseLeave={() => { setHovered(null); dragging.current = false; }}
-        onClick={onClick}
-        onWheel={onWheel}
-      />
+    <div ref={containerRef} className="relative flex h-full w-full flex-col overflow-hidden" style={{ background: "var(--bg-inset)" }}>
+      {/* Navigation bar */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
+        <button
+          onClick={goBack}
+          disabled={history.length === 0}
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50 disabled:opacity-20"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
+        </button>
+        <button
+          onClick={goHome}
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+        >
+          <Home className="h-3.5 w-3.5" strokeWidth={1.5} />
+        </button>
+        <div className="h-4 w-px bg-white/[0.06]" />
+        <div className="flex items-center gap-1.5 text-xs text-white/40">
+          {history.length > 0 && (
+            <>
+              <span className="text-white/20">
+                {entries.find(e => e.id === history[history.length - 1])?.name ?? "..."}
+              </span>
+              <ChevronRight className="h-3 w-3 text-white/15" />
+            </>
+          )}
+          <span style={{ color: focusMeta.color }} className="font-medium">{focusedEntry.name}</span>
+        </div>
+        <span className="ml-auto text-xs text-white/20">{totalRelations} connections</span>
+      </div>
+
+      {/* Graph content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-col items-center py-8 px-6">
+          {/* ── Central node ── */}
+          <button
+            onClick={() => onNavigate(focusedEntry.id)}
+            className="group relative flex flex-col items-center gap-2 mb-8"
+          >
+            <div
+              className="flex h-20 w-20 items-center justify-center rounded-lg transition-all group-hover:scale-105"
+              style={{
+                background: focusMeta.bg,
+                border: `2px solid ${focusMeta.color}`,
+                boxShadow: `0 0 24px ${focusMeta.color}25`,
+              }}
+            >
+              <FocusIcon className="h-8 w-8" style={{ color: focusMeta.color }} strokeWidth={1.5} />
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-semibold" style={{ color: focusMeta.color }}>{focusedEntry.name}</div>
+              <div className="text-xs text-white/30 capitalize">{focusedEntry.type}</div>
+            </div>
+          </button>
+
+          {/* ── Category branches ── */}
+          {groupedRelations.length === 0 ? (
+            <p className="text-xs text-white/25 mt-4">No connections found</p>
+          ) : (
+            <div className="w-full max-w-[600px] space-y-2">
+              {groupedRelations.map((group) => {
+                const isExpanded = expandedCategories.has(group.category);
+                const visibleEntries = isExpanded ? group.entries : group.entries.slice(0, 4);
+                const hasMore = group.entries.length > 4;
+
+                return (
+                  <div key={group.category} className="rounded-lg border border-white/[0.06] overflow-hidden">
+                    {/* Category header */}
+                    <button
+                      onClick={() => toggleCategory(group.category)}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-white/[0.02]"
+                    >
+                      {/* Branch line */}
+                      <div className="h-4 w-1 rounded-full" style={{ background: group.color }} />
+                      <span className="text-xs font-semibold text-white/60">{group.category}</span>
+                      <span className="text-xs text-white/25">{group.entries.length}</span>
+                      <ChevronRight
+                        className={`ml-auto h-3 w-3 text-white/20 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        strokeWidth={1.5}
+                      />
+                    </button>
+
+                    {/* Entity nodes */}
+                    <div className="border-t border-white/[0.04] px-2 py-1.5 space-y-0.5">
+                      {visibleEntries.map((entry) => {
+                        const meta = TYPE_META[entry.type];
+                        const EntryIcon = meta.icon;
+                        return (
+                          <div
+                            key={entry.id}
+                            className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.03] cursor-pointer"
+                            onClick={() => navigateTo(entry.id)}
+                          >
+                            {/* Connection line */}
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-px w-4" style={{ background: group.color, opacity: 0.3 }} />
+                              <div
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all group-hover:scale-110"
+                                style={{ background: meta.bg }}
+                              >
+                                <EntryIcon className="h-3.5 w-3.5" style={{ color: meta.color }} strokeWidth={1.5} />
+                              </div>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-white/70 group-hover:text-white/90 truncate transition-colors">
+                                {entry.name}
+                              </div>
+                              <div className="text-xs text-white/25 truncate">
+                                {entry.relation}
+                              </div>
+                            </div>
+
+                            {/* Navigate arrow */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onNavigate(entry.id); }}
+                                className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 opacity-0 group-hover:opacity-100 transition-all hover:bg-white/[0.06] hover:text-white/40"
+                                title="View wiki entry"
+                              >
+                                <ChevronRight className="h-3 w-3" strokeWidth={1.5} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Show more */}
+                      {hasMore && !isExpanded && (
+                        <button
+                          onClick={() => toggleCategory(group.category)}
+                          className="w-full py-1.5 text-xs text-white/25 hover:text-white/40 transition-colors"
+                        >
+                          +{group.entries.length - 4} more
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Legend */}
-      <div
-        className="absolute left-3 bottom-3 flex flex-wrap gap-2 rounded-lg px-2 py-1.5"
-        style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(8px)" }}
-      >
-        {(Object.entries(TYPE_COLORS) as [WikiEntryType, string][]).map(([type, color]) => (
-          <div key={type} className="flex items-center gap-1">
-            <div className="h-2 w-2 rounded-full" style={{ background: color }} />
-            <span className="text-[10px] capitalize" style={{ color: "rgba(255,255,255,0.5)" }}>{type}</span>
-          </div>
-        ))}
+      <div className="shrink-0 flex items-center justify-center gap-4 border-t border-white/[0.06] px-4 py-2">
+        {(Object.entries(TYPE_META) as [WikiEntryType, typeof TYPE_META[WikiEntryType]][]).map(([type, meta]) => {
+          const Icon = meta.icon;
+          return (
+            <div key={type} className="flex items-center gap-1">
+              <Icon className="h-3 w-3" style={{ color: meta.color, opacity: 0.6 }} strokeWidth={1.5} />
+              <span className="text-xs capitalize text-white/30">{type}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
