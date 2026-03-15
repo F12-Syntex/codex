@@ -2177,40 +2177,70 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           <div className="fixed inset-0 z-30" onClick={() => setShowBuddy(false)} />
         )}
 
-        {/* AI Buddy dock + panel — centered above footer */}
-        {buddyEnabled && wikiEnabled && (
-          <div className="absolute bottom-14 right-4 z-40">
-            <div className="relative">
-              {showBuddy && (
-                <AIBuddyPanel
-                  theme={theme}
-                  filePath={filePath}
-                  bookTitle={title}
-                  currentChapter={currentChapter}
-                  totalChapters={chapters.length}
-                  wikiEntryCount={wikiEntryCount}
-                  readChapter={(idx) => chapters[idx]?.paragraphs?.join("\n") ?? null}
-                  onEntityClick={(entityId) => {
-                    window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
-                  }}
-                  onClose={() => setShowBuddy(false)}
-                  onDetach={() => {
-                    setShowBuddy(false);
-                    window.electronAPI?.openBuddy({ filePath, title, currentChapter, totalChapters: chapters.length });
-                  }}
-                  onWikiUpdated={refreshWikiState}
-                />
-              )}
-              <button
-                onClick={() => setShowBuddy((v) => !v)}
-                className={`flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)] ${showBuddy ? "bg-white/[0.08]" : ""}`}
-                style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
-              >
-                <MessageCircle className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-              </button>
+        {/* Floating row above footer — buddy button + bulk progress dock */}
+        <div className="absolute bottom-14 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4 pointer-events-none">
+          {/* Bulk progress dock */}
+          {showBulkDock && bulkRunState && (
+            <div className="pointer-events-auto">
+              <BulkProgressDock
+                isRunning={bulkRunState.isRunning}
+                isDone={bulkRunState.isDone}
+                phases={bulkRunState.phases}
+                currentPhaseIdx={bulkRunState.currentPhaseIdx}
+                eta={bulkRunState.eta}
+                chapterLabels={chapterLabels}
+                activeChapters={{
+                  wiki: wikiProcessingChapter,
+                  format: formattingChapter,
+                  titles: enrichingChapter,
+                  condense: condensingChapter,
+                }}
+                onCancel={() => {
+                  cancelWikiProcessAll();
+                  cancelFormatAll();
+                  cancelEnrichAll();
+                  cancelCondenseAll();
+                }}
+                onDismiss={() => { setShowBulkDock(false); setBulkRunState(null); }}
+              />
             </div>
-          </div>
-        )}
+          )}
+
+          {/* AI Buddy button + panel */}
+          {buddyEnabled && wikiEnabled && (
+            <div className="pointer-events-auto">
+              <div className="relative">
+                {showBuddy && (
+                  <AIBuddyPanel
+                    theme={theme}
+                    filePath={filePath}
+                    bookTitle={title}
+                    currentChapter={currentChapter}
+                    totalChapters={chapters.length}
+                    wikiEntryCount={wikiEntryCount}
+                    readChapter={(idx) => chapters[idx]?.paragraphs?.join("\n") ?? null}
+                    onEntityClick={(entityId) => {
+                      window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
+                    }}
+                    onClose={() => setShowBuddy(false)}
+                    onDetach={() => {
+                      setShowBuddy(false);
+                      window.electronAPI?.openBuddy({ filePath, title, currentChapter, totalChapters: chapters.length });
+                    }}
+                    onWikiUpdated={refreshWikiState}
+                  />
+                )}
+                <button
+                  onClick={() => setShowBuddy((v) => !v)}
+                  className={`flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)] ${showBuddy ? "bg-white/[0.08]" : ""}`}
+                  style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
+                >
+                  <MessageCircle className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Quote saved toast */}
         <div
@@ -2251,30 +2281,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         />}
       </div>
 
-      {/* Bulk progress dock — floats bottom-right when bulk analysis is running */}
-      {showBulkDock && bulkRunState && (
-        <BulkProgressDock
-          isRunning={bulkRunState.isRunning}
-          isDone={bulkRunState.isDone}
-          phases={bulkRunState.phases}
-          currentPhaseIdx={bulkRunState.currentPhaseIdx}
-          eta={bulkRunState.eta}
-          chapterLabels={chapterLabels}
-          activeChapters={{
-            wiki: wikiProcessingChapter,
-            format: formattingChapter,
-            titles: enrichingChapter,
-            condense: condensingChapter,
-          }}
-          onCancel={() => {
-            cancelWikiProcessAll();
-            cancelFormatAll();
-            cancelEnrichAll();
-            cancelCondenseAll();
-          }}
-          onDismiss={() => { setShowBulkDock(false); setBulkRunState(null); }}
-        />
-      )}
     </div>
   );
 }

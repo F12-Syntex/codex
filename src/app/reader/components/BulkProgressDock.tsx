@@ -98,7 +98,7 @@ export function BulkProgressDock({
 
   return (
     <div
-      className="fixed bottom-5 right-5 z-50 flex flex-col overflow-hidden rounded-lg border border-white/[0.08] shadow-lg shadow-black/40"
+      className="flex flex-col overflow-hidden rounded-lg border border-white/[0.08] shadow-lg shadow-black/40"
       style={{
         background: "var(--bg-overlay)",
         backdropFilter: "blur(16px)",
