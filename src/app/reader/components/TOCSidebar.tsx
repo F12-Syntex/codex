@@ -22,7 +22,6 @@ interface TOCSidebarProps {
   onFormatChapter?: (index: number) => void;
   wikiEnabled?: boolean;
   wikiProcessedChapters?: Set<number>;
-  readChapters?: Set<number>;
   chapterLabels?: Record<number, number>;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
@@ -45,7 +44,6 @@ export function TOCSidebar({
   onFormatChapter,
   wikiEnabled = false,
   wikiProcessedChapters = new Set(),
-  readChapters = new Set(),
   chapterLabels = {},
   onSelectChapter,
   onJumpToBookmark,
@@ -195,7 +193,7 @@ export function TOCSidebar({
               const isFormatted = !!formattedChapters[i];
               const isWikiProcessed = wikiProcessedChapters.has(i);
               const hasIndicators = (enrichEnabled && isEnriched) || (formattingEnabled && isFormatted) || (wikiEnabled && isWikiProcessed);
-              const isRead = readChapters.has(i);
+              const isRead = i < currentChapter;
 
               return (
                 <div
