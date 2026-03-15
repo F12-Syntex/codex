@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, memo } from "react";
 import { Check } from "lucide-react";
 import type { BookFormat } from "@/lib/mock-data";
 import type { CoverStyle } from "@/lib/theme";
@@ -54,7 +54,7 @@ function extractDominantColor(img: HTMLImageElement): string {
   return `rgb(${Math.round(r / count)},${Math.round(g / count)},${Math.round(b / count)})`;
 }
 
-export function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress }: BookCardProps) {
+export const BookCard = memo(function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress }: BookCardProps) {
   const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
   const [glowColor, setGlowColor] = useState<string>(gradient);
   const extracted = useRef(false);
@@ -128,4 +128,4 @@ export function BookCard({ title, author, gradient, cover, format, coverStyle, s
       </div>
     </div>
   );
-}
+});
