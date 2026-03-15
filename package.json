@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "tsc -p electron/tsconfig.json && node --test dist-electron/*.test.js",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "concurrently --kill-others \"cross-env NODE_ENV=development yarn dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development yarn electron:compile && cross-env NODE_ENV=development electron dist-electron/main.js\"",
     "electron:build": "yarn build && yarn electron:compile && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
