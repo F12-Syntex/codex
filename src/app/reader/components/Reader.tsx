@@ -16,8 +16,7 @@ import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
 import { AISidebar } from "./AISidebar";
-import { BulkProgressDock } from "./BulkProgressDock";
-import type { BulkRunState } from "./BulkAnalyserModal";
+import { BulkProgressDock, useBulkRun } from "./BulkProgressDock";
 import { needsEnrichment, isStructuralChapter, buildChapterRenamePrompt, formatRenamedTitle } from "@/lib/ai-prompts";
 import { chatWithPreset } from "@/lib/openrouter";
 import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
@@ -127,10 +126,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
   const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
   const [wikiEntryCount, setWikiEntryCount] = useState(0);
-
-  // Bulk progress dock state
-  const [bulkRunState, setBulkRunState] = useState<BulkRunState | null>(null);
-  const [showBulkDock, setShowBulkDock] = useState(false);
 
   // Quote toast
   const [quoteToastVisible, setQuoteToastVisible] = useState(false);
@@ -1878,6 +1873,18 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
   }, [goNextPage, goPrevPage]);
 
+  // Bulk progress dock — must be after all callback definitions
+  const bulkRun = useBulkRun({
+    wikiAllProgress, wikiProcessingChapter,
+    formatAllProgress, formattingChapter,
+    enrichAllProgress, enrichingChapter,
+    condenseAllProgress, condensingChapter,
+    onRunWiki: processAllWikiChapters, onRunFormat: formatAllChapters,
+    onRunTitles: enrichAll, onRunCondense: condenseAllChapters,
+    cancelWiki: cancelWikiProcessAll, cancelFormat: cancelFormatAll,
+    cancelTitles: cancelEnrichAll, cancelCondense: cancelCondenseAll,
+  });
+
   if (!isLoaded) return null;
 
   const footerHeight = settings.immersiveMode && !immersiveVisible ? 0 : FOOTER_HEIGHT;
@@ -2056,8 +2063,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onClearComments={clearComments}
               chapterLabels={chapterLabels}
               onClose={() => setShowAI(false)}
-              onBulkStarted={() => setShowBulkDock(true)}
-              onBulkStateChange={setBulkRunState}
+              onBulkStart={bulkRun.start}
             />
           )}
 
@@ -2180,14 +2186,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         {/* Floating row above footer — buddy button + bulk progress dock */}
         <div className="absolute bottom-14 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4 pointer-events-none">
           {/* Bulk progress dock */}
-          {showBulkDock && bulkRunState && (
+          {bulkRun.showDock && (
             <div className="pointer-events-auto">
               <BulkProgressDock
-                isRunning={bulkRunState.isRunning}
-                isDone={bulkRunState.isDone}
-                phases={bulkRunState.phases}
-                currentPhaseIdx={bulkRunState.currentPhaseIdx}
-                eta={bulkRunState.eta}
+                isRunning={bulkRun.state.isRunning}
+                isDone={bulkRun.state.isDone}
+                phases={bulkRun.state.phases}
+                currentPhaseIdx={bulkRun.state.currentPhaseIdx}
+                eta={bulkRun.state.eta}
                 chapterLabels={chapterLabels}
                 activeChapters={{
                   wiki: wikiProcessingChapter,
@@ -2195,13 +2201,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                   titles: enrichingChapter,
                   condense: condensingChapter,
                 }}
-                onCancel={() => {
-                  cancelWikiProcessAll();
-                  cancelFormatAll();
-                  cancelEnrichAll();
-                  cancelCondenseAll();
-                }}
-                onDismiss={() => { setShowBulkDock(false); setBulkRunState(null); }}
+                onCancel={bulkRun.cancel}
+                onDismiss={bulkRun.dismiss}
               />
             </div>
           )}
