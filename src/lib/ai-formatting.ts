@@ -1,4 +1,11 @@
-/* ── AI Formatting — prompt building, parsing, orchestration ── */
+/* ── AI Formatting — visual HTML enhancements for book text ──
+ *
+ * Pure formatting module: takes raw HTML paragraphs and returns
+ * visually enhanced HTML using ai-fmt-* CSS classes. No condensing.
+ *
+ * Uses sparse object format: AI returns only modified paragraphs
+ * as {index: html}, unmodified paragraphs keep originals.
+ */
 
 import type { BookChapter } from "@/app/reader/lib/types";
 import type { OpenRouterMessage } from "./openrouter";
@@ -11,14 +18,18 @@ import {
 } from "./ai-style-dictionary";
 import { buildClassReference } from "./ai-formatting-classes";
 
-const CHUNK_SIZE = 40;
-const MAX_SINGLE_CALL = 50;
-const PARALLEL_CHUNKS = 3;
+/* ── Constants ──────────────────────────────────────────────── */
 
-/** Any class starting with "ai-fmt-" is allowed — gives AI full creative freedom. */
+const CHUNK_SIZE = 40;
+const PARALLEL_CHUNKS = 3;
+const MAX_RETRIES = 2;
+
+/** Any class starting with "ai-fmt-" is allowed. */
 const AI_FMT_PREFIX = "ai-fmt-";
 
-const SYSTEM_RULES = `You are a book formatting AI. You receive a JSON object of HTML paragraphs (keyed by index) and return ONLY the ones you changed, as a JSON object mapping index → formatted HTML.
+/* ── System prompt ──────────────────────────────────────────── */
+
+const SYSTEM_PROMPT = `You are a book formatting AI. You receive a JSON object of HTML paragraphs (keyed by index) and return ONLY the ones you changed, as a JSON object mapping index → formatted HTML.
 
 Read the content, understand the genre and tone, and apply visual enhancements from the CLASS REFERENCE below. Use your judgement — a literary novel needs different treatment than a game-lit novel. Adapt.
 
@@ -29,24 +40,28 @@ Read the content, understand the genre and tone, and apply visual enhancements f
 4. Light prose cleanup: fix obvious translation artifacts, awkward phrasing, missing words, and broken sentences. Keep changes minimal — the reader should not notice edits. NEVER alter character voice, intentional slang, or stylistic choices.
 5. Narration/dialogue: do NOT add new content or rewrite meaning. Only fix clear errors.
 6. Structured data (stats, skills, tables): MAY restructure for clarity. Keep all info.
-7. FORMAT ALL dialogue lines — never skip a paragraph that contains spoken dialogue. If a paragraph has quoted speech (", ", ', ', or standard " marks), it MUST be formatted with a dialogue speaker span. This is mandatory, not optional.
+7. FORMAT ALL dialogue lines — never skip a paragraph that contains spoken dialogue. If a paragraph has quoted speech (\u201C, \u201D, \u2018, \u2019, or standard " marks), it MUST be formatted with a dialogue speaker span. This is mandatory, not optional.
 8. Keep enhancements compact and inline. Don't dominate the page.
 9. Consecutive structured paragraphs: merge into first index, set consumed indices to "".
 10. Stat block labels: 1-2 words max, EVERY label gets an icon. Use icons to replace words.
-11. Dialogue tags: CRITICAL — the ai-fmt-dialogue-* span MUST appear ONLY immediately before quoted speech (the opening quote character). Example: <span class="ai-fmt-dialogue-hero">Name</span> "Hello." — NEVER wrap character name mentions inside narration or action paragraphs with this class. The span signals "the next thing is speech by this character" and nothing else.
+11. Dialogue tags: CRITICAL — the ai-fmt-dialogue-* span MUST appear ONLY immediately before quoted speech (the opening quote character). Example: <span class="ai-fmt-dialogue-hero">Name</span> \u201CHello.\u201D — NEVER wrap character name mentions inside narration or action paragraphs with this class. The span signals "the next thing is speech by this character" and nothing else.
 12. System messages: keep text SHORT and punchy.
 13. Plain narration paragraphs with no dialogue, grammar issues, or structured data may be skipped. But when in doubt, format it.
 
 # OUTPUT
-Return ONLY valid JSON: {"0":"<div>...</div>","3":"<p>text</p>","4":""}. No markdown fences, no explanation.`;
+Return ONLY valid JSON: {"0":"<div>...</div>","3":"<p>text</p>","4":""}. No markdown fences, no explanation.
 
-/** Full system prompt = rules + generated class reference */
-const SYSTEM_PROMPT = SYSTEM_RULES + "\n\n# CLASS REFERENCE\n" + buildClassReference();
+# CLASS REFERENCE
+` + buildClassReference();
+
+/* ── Helpers ────────────────────────────────────────────────── */
 
 /**
- * Build a brief wiki context string from wiki entries for the formatter prompt.
+ * Build wiki context string from wiki entries for character identification.
  */
-function buildWikiContextString(entries: { name: string; type: string; short_description: string; significance: number }[]): string {
+function buildWikiContextString(
+  entries: { name: string; type: string; short_description: string; significance: number }[],
+): string {
   const chars = entries
     .filter(e => e.type === "character")
     .sort((a, b) => (b.significance ?? 0) - (a.significance ?? 0))
@@ -57,18 +72,125 @@ function buildWikiContextString(entries: { name: string; type: string; short_des
 }
 
 /**
- * Build the messages array for the AI formatting call.
- * chunkOffset is the starting index of this chunk within the full chapter
- * (used so the AI returns correct 0-based indices within the chunk).
+ * Strip classes that don't start with "ai-fmt-" and fix dialogue spans.
  */
+export function stripUnrecognizedClasses(html: string): string {
+  const stripped = html.replace(/class="([^"]*)"/g, (_match, classes: string) => {
+    const filtered = classes
+      .split(/\s+/)
+      .filter((c: string) => c && c.startsWith(AI_FMT_PREFIX))
+      .join(" ");
+    return filtered ? `class="${filtered}"` : "";
+  });
+  return fixDialogueSpans(stripped);
+}
+
+/**
+ * Fix dialogue spans where the AI incorrectly wrapped quoted speech inside
+ * the speaker span instead of only the speaker name.
+ */
+function fixDialogueSpans(html: string): string {
+  return html.replace(
+    /<span(\s+class="ai-fmt-dialogue-[^"]*")>([\s\S]*?)<\/span>/g,
+    (_match, classAttr: string, content: string) => {
+      const quoteIdx = content.search(/[\u201C\u201D\u2018\u2019"']/);
+      if (quoteIdx === -1) return _match;
+
+      const speakerPart = content.slice(0, quoteIdx).trimEnd();
+      const quotePart = content.slice(quoteIdx);
+
+      if (speakerPart.length === 0) return quotePart;
+      return `<span${classAttr}>${speakerPart}</span> ${quotePart}`;
+    },
+  );
+}
+
+/* ── JSON extraction + repair ───────────────────────────────── */
+
+function extractAndRepairJson(raw: string): string | null {
+  const s = raw.trim();
+
+  const objStart = s.indexOf("{");
+  const arrStart = s.indexOf("[");
+  const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
+  if (start === -1) return null;
+
+  const extracted = s.slice(start);
+
+  try { JSON.parse(extracted); return extracted; } catch { /* fall through */ }
+
+  const lastBrace = extracted.lastIndexOf("}");
+  const lastBracket = extracted.lastIndexOf("]");
+  const end = Math.max(lastBrace, lastBracket);
+  if (end > 0) {
+    const trimmed = extracted.slice(0, end + 1);
+    try { JSON.parse(trimmed); return trimmed; } catch { /* fall through */ }
+  }
+
+  return repairTruncated(extracted);
+}
+
+function repairTruncated(s: string): string | null {
+  if (s.startsWith("{")) {
+    let r = s.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, "");
+    const quoteCount = (r.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) r += '"';
+    if (!r.endsWith("}")) r += "}";
+    try { JSON.parse(r); return r; } catch { /* fall through */ }
+
+    const lastGoodComma = r.lastIndexOf('",');
+    if (lastGoodComma > 0) {
+      const truncated = r.substring(0, lastGoodComma + 1) + "}";
+      try { JSON.parse(truncated); return truncated; } catch { /* fall through */ }
+    }
+  }
+
+  if (s.startsWith("[")) {
+    let r = s;
+    const quoteCount = (r.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) r += '"';
+    if (!r.endsWith("]")) r += "]";
+    try { JSON.parse(r); return r; } catch { /* fall through */ }
+  }
+
+  return null;
+}
+
+/**
+ * After parsing a sparse AI response, detect paragraphs that were merged
+ * into an earlier paragraph but not cleared by the AI.
+ */
+function clearMergedDuplicates(result: string[], originals: string[]): void {
+  const strip = (html: string) =>
+    html.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
+
+  const resultText = result.map(strip);
+
+  for (let j = 1; j < result.length; j++) {
+    if (result[j] === "") continue;
+    if (result[j] !== originals[j]) continue;
+
+    const origJ = strip(originals[j]);
+    if (origJ.length < 30) continue;
+
+    for (let i = 0; i < j; i++) {
+      if (resultText[i].includes(origJ)) {
+        result[j] = "";
+        break;
+      }
+    }
+  }
+}
+
+/* ── Prompt building ────────────────────────────────────────── */
+
 export function buildFormattingPrompt(
   paragraphs: string[],
   bookTitle: string,
-  chunkOffset: number = 0,
+  _chunkOffset: number = 0,
   styleContext: string = "",
   wikiContext: string = "",
 ): OpenRouterMessage[] {
-  // Build indexed object so AI knows the indices
   const indexed: Record<number, string> = {};
   for (let i = 0; i < paragraphs.length; i++) {
     indexed[i] = paragraphs[i];
@@ -83,19 +205,14 @@ export function buildFormattingPrompt(
   ];
 }
 
-/**
- * Parse the AI response (sparse object format) into a full array of HTML strings.
- * The AI returns {index: html} for only modified paragraphs.
- * Unmodified paragraphs keep their original content.
- * Also supports legacy full-array format for backwards compatibility.
- */
+/* ── Response parsing ───────────────────────────────────────── */
+
 export function parseFormattingResponse(
   response: string,
   expectedCount: number,
   originals?: string[],
 ): string[] | null {
   try {
-    // Strip markdown fences if present
     let cleaned = response.trim();
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
@@ -105,7 +222,6 @@ export function parseFormattingResponse(
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // AI response may have preamble text or be truncated — try to extract/repair
       const repaired = extractAndRepairJson(cleaned);
       if (repaired) {
         parsed = JSON.parse(repaired);
@@ -115,7 +231,7 @@ export function parseFormattingResponse(
       }
     }
 
-    // Handle sparse object format: {index: html}
+    // Sparse object format: {index: html}
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const result = originals ? [...originals] : new Array<string>(expectedCount).fill("");
       let changeCount = 0;
@@ -127,8 +243,6 @@ export function parseFormattingResponse(
         changeCount++;
       }
       console.log(`AI formatting: ${changeCount}/${expectedCount} paragraphs modified (sparse)`);
-      // Clear paragraphs whose original content was merged into an earlier paragraph
-      // (AI should set them to "" per rule 9, but often forgets)
       if (originals) clearMergedDuplicates(result, originals);
       return result;
     }
@@ -163,153 +277,51 @@ export function parseFormattingResponse(
   }
 }
 
-/**
- * Remove any class="..." values that don't start with "ai-fmt-".
- * This gives the AI full creative freedom within the ai-fmt namespace.
- */
-/**
- * Try to extract a JSON object/array from an AI response that may include
- * preamble text, trailing text, or be truncated. Falls back to repair strategies.
- */
-function extractAndRepairJson(raw: string): string | null {
-  const s = raw.trim();
+/* ── Single chunk processing ────────────────────────────────── */
 
-  // Find the first { or [ and try to parse from there
-  const objStart = s.indexOf("{");
-  const arrStart = s.indexOf("[");
-  const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
+async function formatChunk(
+  apiKey: string,
+  overrides: Record<string, { model: string }>,
+  paragraphs: string[],
+  bookTitle: string,
+  chunkOffset: number = 0,
+  styleContext: string = "",
+  wikiContext: string = "",
+): Promise<string[] | null> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext, wikiContext);
+      const response = await chatWithPreset(apiKey, "format", messages, overrides);
 
-  if (start === -1) return null;
+      const content = response.choices?.[0]?.message?.content;
+      if (!content) {
+        console.warn(`AI formatting: empty response (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        continue;
+      }
 
-  const extracted = s.slice(start);
+      const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
+      if (result) return result;
 
-  // Try the extracted slice as-is first
-  try { JSON.parse(extracted); return extracted; } catch { /* fall through */ }
-
-  // Try trimming trailing garbage after the last } or ]
-  const lastBrace = extracted.lastIndexOf("}");
-  const lastBracket = extracted.lastIndexOf("]");
-  const end = Math.max(lastBrace, lastBracket);
-  if (end > 0) {
-    const trimmed = extracted.slice(0, end + 1);
-    try { JSON.parse(trimmed); return trimmed; } catch { /* fall through */ }
-  }
-
-  return repairTruncated(extracted);
-}
-
-/**
- * Attempt to repair truncated JSON (unclosed strings/braces).
- */
-function repairTruncated(s: string): string | null {
-  if (s.startsWith("{")) {
-    // Remove trailing incomplete key-value
-    let r = s.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, "");
-    const quoteCount = (r.match(/(?<!\\)"/g) || []).length;
-    if (quoteCount % 2 !== 0) r += '"';
-    if (!r.endsWith("}")) r += "}";
-    try { JSON.parse(r); return r; } catch { /* fall through */ }
-
-    // Strip back to last complete key-value pair
-    const lastGoodComma = r.lastIndexOf('",');
-    if (lastGoodComma > 0) {
-      const truncated = r.substring(0, lastGoodComma + 1) + "}";
-      try { JSON.parse(truncated); return truncated; } catch { /* fall through */ }
+      console.warn(`AI formatting: parse failed (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    } catch (err) {
+      console.error(`AI formatting chunk failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
     }
   }
-
-  if (s.startsWith("[")) {
-    let r = s;
-    const quoteCount = (r.match(/(?<!\\)"/g) || []).length;
-    if (quoteCount % 2 !== 0) r += '"';
-    if (!r.endsWith("]")) r += "]";
-    try { JSON.parse(r); return r; } catch { /* fall through */ }
-  }
-
-  return null;
+  console.warn("AI formatting: all retries exhausted, returning originals");
+  return [...paragraphs];
 }
 
-/**
- * After parsing a sparse AI response, the AI is supposed to set merged/consumed
- * paragraphs to "" (rule 9) but often forgets. This detects those cases:
- * if an original paragraph's plain text appears inside an earlier formatted paragraph,
- * its slot is a duplicate and should be cleared.
- */
-function clearMergedDuplicates(result: string[], originals: string[]): void {
-  const strip = (html: string) =>
-    html.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
+/* ── Public API ─────────────────────────────────────────────── */
 
-  const resultText = result.map(strip);
-
-  for (let j = 1; j < result.length; j++) {
-    if (result[j] === "") continue; // already cleared
-    if (result[j] !== originals[j]) continue; // AI explicitly changed this paragraph — leave it
-
-    const origJ = strip(originals[j]);
-    if (origJ.length < 30) continue; // too short to match reliably
-
-    for (let i = 0; i < j; i++) {
-      if (resultText[i].includes(origJ)) {
-        result[j] = "";
-        break;
-      }
-    }
-  }
-}
-
-function stripUnrecognizedClasses(html: string): string {
-  const stripped = html.replace(/class="([^"]*)"/g, (_match, classes: string) => {
-    const filtered = classes
-      .split(/\s+/)
-      .filter((c: string) => c && c.startsWith(AI_FMT_PREFIX))
-      .join(" ");
-    return filtered ? `class="${filtered}"` : "";
-  });
-  return fixDialogueSpans(stripped);
-}
-
-/**
- * Fix dialogue spans where the AI incorrectly wrapped the quoted speech inside the
- * speaker span instead of only the speaker name.
- *
- * Correct:   <span class="ai-fmt-dialogue-hero">Klein</span> "Hello."
- * Broken:    <span class="ai-fmt-dialogue-hero">Klein "Hello."</span>
- * Also fix:  <span class="ai-fmt-dialogue-hero">"Hello."</span>  (no speaker, just wrapped quote)
- *
- * Strategy: if a dialogue span contains a quote character, split the content at the
- * first quote — keep only the pre-quote part (speaker name) inside the span, and move
- * the rest (the quoted speech) outside.
- */
-function fixDialogueSpans(html: string): string {
-  // Matches <span class="ai-fmt-dialogue-VARIANT">CONTENT</span>
-  // where CONTENT contains a quote character (straight or curly)
-  return html.replace(
-    /<span(\s+class="ai-fmt-dialogue-[^"]*")>([\s\S]*?)<\/span>/g,
-    (_match, classAttr: string, content: string) => {
-      const quoteIdx = content.search(/[\u201C\u201D\u2018\u2019"']/);
-      if (quoteIdx === -1) return _match; // no quote inside — already correct
-
-      const speakerPart = content.slice(0, quoteIdx).trimEnd();
-      const quotePart = content.slice(quoteIdx);
-
-      if (speakerPart.length === 0) {
-        // No speaker name at all — just unwrap the span, keep plain text
-        return quotePart;
-      }
-      return `<span${classAttr}>${speakerPart}</span> ${quotePart}`;
-    },
-  );
-}
-
-/**
- * Format a single chapter's content via AI.
- * Handles chunking for long chapters. Uses the "quick" preset.
- */
 export interface FormatResult {
   paragraphs: string[];
   dictionary: StyleDictionary;
 }
 
+/**
+ * Format a single chapter's content via AI.
+ * Handles chunking for long chapters and parallel processing.
+ */
 export async function formatChapterContent(
   apiKey: string,
   chapter: BookChapter,
@@ -326,7 +338,7 @@ export async function formatChapterContent(
     };
   }
 
-  // Skip chapters with embedded images or excessive size to avoid context overflow
+  // Skip chapters with embedded images or excessive size
   const totalLen = htmlParagraphs.reduce((sum, p) => sum + p.length, 0);
   const hasImages = htmlParagraphs.some(p => p.includes("data:image/") || p.includes("base64,"));
   if (hasImages || totalLen > 500_000) {
@@ -340,7 +352,7 @@ export async function formatChapterContent(
   const overrides = await loadOverrides();
   const styleContext = existingDictionary ? buildStyleContext(existingDictionary) : "";
 
-  // Fetch wiki context for character identification (non-critical)
+  // Fetch wiki context for character identification
   let wikiContext = "";
   if (filePath) {
     try {
@@ -353,18 +365,14 @@ export async function formatChapterContent(
 
   let formatted: string[] | null;
 
-  // Small enough for a single call
-  if (htmlParagraphs.length <= MAX_SINGLE_CALL) {
+  if (htmlParagraphs.length <= CHUNK_SIZE + 10) {
     formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext, wikiContext);
   } else {
-    // Build all chunks
     const chunks: { start: number; paragraphs: string[] }[] = [];
     for (let start = 0; start < htmlParagraphs.length; start += CHUNK_SIZE) {
-      const end = Math.min(start + CHUNK_SIZE, htmlParagraphs.length);
-      chunks.push({ start, paragraphs: htmlParagraphs.slice(start, end) });
+      chunks.push({ start, paragraphs: htmlParagraphs.slice(start, Math.min(start + CHUNK_SIZE, htmlParagraphs.length)) });
     }
 
-    // Process in parallel batches
     const results = new Array<string[] | null>(chunks.length).fill(null);
 
     for (let batch = 0; batch < chunks.length; batch += PARALLEL_CHUNKS) {
@@ -386,10 +394,9 @@ export async function formatChapterContent(
 
   if (!formatted) return null;
 
-  // Extract style rules and character styles from the formatted output
+  // Extract style rules from formatted output
   const newRules = extractRulesFromFormatted(htmlParagraphs, formatted);
-  const existingRules = existingDictionary?.rules ?? [];
-  const mergedRules = mergeRules(existingRules, newRules);
+  const mergedRules = mergeRules(existingDictionary?.rules ?? [], newRules);
 
   const newCharStyles = extractCharacterStyles(formatted);
   const mergedCharStyles = mergeCharacterStyles(existingDictionary?.characterStyles, newCharStyles);
@@ -401,7 +408,6 @@ export async function formatChapterContent(
     updatedAt: new Date().toISOString(),
   };
 
-  // Persist dictionary if filePath provided
   if (filePath) {
     saveDictionary(filePath, dictionary);
   }
@@ -409,47 +415,10 @@ export async function formatChapterContent(
   return { paragraphs: formatted, dictionary };
 }
 
-const MAX_RETRIES = 2;
-
-async function formatChunk(
-  apiKey: string,
-  overrides: Record<string, { model: string }>,
-  paragraphs: string[],
-  bookTitle: string,
-  chunkOffset: number = 0,
-  styleContext: string = "",
-  wikiContext: string = "",
-): Promise<string[] | null> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext, wikiContext);
-      const response = await chatWithPreset(
-        apiKey, "format", messages, overrides,
-      );
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) {
-        console.warn(`AI formatting: empty response (attempt ${attempt + 1}/${MAX_RETRIES})`);
-        continue;
-      }
-
-      const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
-      if (result) return result;
-
-      console.warn(`AI formatting: parse failed (attempt ${attempt + 1}/${MAX_RETRIES})`);
-    } catch (err) {
-      console.error(`AI formatting chunk failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
-    }
-  }
-  // Return originals instead of null so a single bad chunk doesn't kill the whole chapter
-  console.warn("AI formatting: all retries exhausted, returning original paragraphs for this chunk");
-  return [...paragraphs];
-}
+/* ── Regenerate rule ────────────────────────────────────────── */
 
 /**
- * Regenerate a component across ALL chapters.
- * The AI gets the original text and full creative freedom to use any classes/structure.
- * Returns a map of chapterKey → { paragraphIndex → newHtml } for all affected chapters.
+ * Regenerate a component across ALL chapters with fresh creative treatment.
  */
 export async function regenerateRule(
   apiKey: string,
@@ -461,8 +430,6 @@ export async function regenerateRule(
 ): Promise<Record<string, Record<number, string>> | null> {
   const overrides = await loadOverrides();
 
-  // Collect ALL paragraphs across ALL chapters that use this component
-  // Group by chapter so we can batch them
   const allUpdates: Record<string, Record<number, string>> = {};
   let anyFound = false;
 
@@ -471,7 +438,6 @@ export async function regenerateRule(
     const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
     if (!originals || !formatted) continue;
 
-    // Find indices in this chapter that use the component
     const indices: number[] = [];
     for (let i = 0; i < formatted.length; i++) {
       if (formatted[i].includes(componentClass)) {
@@ -481,7 +447,6 @@ export async function regenerateRule(
     if (indices.length === 0) continue;
     anyFound = true;
 
-    // Get the original (unformatted) text for these paragraphs
     const originalSubset = indices.map(i => originals[i]);
     const previousSubset = indices.map(i => formatted[i]);
 
@@ -491,12 +456,10 @@ PREVIOUS OUTPUT (do NOT repeat this — make something that looks DIFFERENT):
 ${JSON.stringify(Object.fromEntries(previousSubset.map((p, i) => [i, p])))}
 
 Creative freedom:
-- Use ANY combination of classes from your toolkit — you are not limited to "${componentClass}"
-- Try completely different structures: if it was a stat-block, try system-msg + badges. If it was badges, try a stat-block or item-card. If it was a system-msg, try inline badges or a thought block.
+- Use ANY combination of classes from your toolkit
+- Try completely different structures
 - Change the layout, grouping, and visual hierarchy
-- You can merge data, split it differently, use different icons
-- You can leave paragraphs as plain text if that works better
-- Be creative and surprising — don't default to the safe/obvious choice`;
+- Be creative and surprising`;
 
     if (userInstruction) {
       regenPrompt += `\n\nUSER REQUEST: ${userInstruction}`;
@@ -511,9 +474,7 @@ Creative freedom:
     ];
 
     try {
-      const response = await chatWithPreset(
-        apiKey, "format-regen", messages, overrides,
-      );
+      const response = await chatWithPreset(apiKey, "format-regen", messages, overrides);
 
       const content = response.choices?.[0]?.message?.content;
       if (!content) continue;
@@ -521,7 +482,6 @@ Creative freedom:
       const result = parseFormattingResponse(content, originalSubset.length, originalSubset);
       if (!result) continue;
 
-      // Map back to original indices — only include actually changed paragraphs
       const chapterUpdates: Record<number, string> = {};
       for (let j = 0; j < indices.length; j++) {
         if (result[j] === originalSubset[j]) continue;

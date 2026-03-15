@@ -1,4 +1,17 @@
-/* ── AI Concise Reading — condense + format in one pass ──── */
+/* ── AI Concise Reading — condense text to a shorter version ──
+ *
+ * This module handles CONDENSING only: reducing text to 55–70% of
+ * original word count while preserving voice and meaning.
+ *
+ * IMPORTANT: The output is ALWAYS formatted with ai-fmt-* CSS classes.
+ * The AI performs condensing + formatting in a single pass for reliability.
+ * This is by design — separating them into two steps was unreliable
+ * because the condense step would strip formatting context and the
+ * format step would re-expand condensed text. One-pass is the solution.
+ *
+ * When Concise Reading is active, its output already includes formatting.
+ * There is NO need to run the Formatting module on top of condensed text.
+ */
 
 import type { BookChapter } from "@/app/reader/lib/types";
 import { chatWithPreset } from "./openrouter";
@@ -11,10 +24,14 @@ import {
   extractCharacterStyles, mergeCharacterStyles,
 } from "./ai-style-dictionary";
 
-/** Max paragraphs sent per AI call. */
+/* ── Constants ──────────────────────────────────────────────── */
+
+/** Max paragraphs per AI call. */
 const CONDENSE_CHUNK = 60;
 
 const CLASS_REFERENCE = buildClassReference();
+
+/* ── System prompt ──────────────────────────────────────────── */
 
 const SYSTEM_PROMPT = `You are an expert literary editor AND book formatting AI combined into one.
 Your job is TWO things at once:
@@ -72,6 +89,8 @@ Merging short related paragraphs is fine when it reads naturally.
 # CLASS REFERENCE
 ${CLASS_REFERENCE}`;
 
+/* ── Helpers ────────────────────────────────────────────────── */
+
 function buildWikiContextString(
   entries: { name: string; type: string; short_description: string; significance: number }[],
 ): string {
@@ -84,7 +103,7 @@ function buildWikiContextString(
   return `\n\n# KEY CHARACTERS\n${lines}\n\nUse these names to identify speakers in dialogue.`;
 }
 
-/* ── JSON parsing helpers ───────────────────────────────── */
+/* ── JSON parsing ───────────────────────────────────────────── */
 
 function tryParseArray(s: string): string[] | null {
   try {
@@ -109,6 +128,8 @@ function repairArray(s: string): string[] | null {
   if (!t.endsWith("]")) t += "]";
   return tryParseArray(t);
 }
+
+/* ── HTML sanitization ──────────────────────────────────────── */
 
 const AI_FMT_PREFIX = "ai-fmt-";
 
@@ -140,7 +161,7 @@ function sanitizeHtml(html: string): string {
   return fixDialogueSpans(stripUnrecognizedClasses(html));
 }
 
-/* ── Single chunk: condense + format ────────────────────── */
+/* ── Single chunk processing ────────────────────────────────── */
 
 async function condenseFormatChunk(
   apiKey: string,
@@ -192,18 +213,21 @@ async function condenseFormatChunk(
   return null;
 }
 
-/* ── Public API ─────────────────────────────────────────── */
+/* ── Public API ─────────────────────────────────────────────── */
 
 export interface CondenseResult {
-  /** Condensed + formatted HTML paragraphs */
+  /** Condensed + formatted HTML paragraphs (always includes formatting) */
   paragraphs: string[];
   /** Updated style dictionary */
   dictionary: StyleDictionary;
 }
 
 /**
- * Condense a chapter's content using AI — produces formatted HTML in a single pass.
- * No separate formatting step needed.
+ * Condense a chapter's content — produces formatted HTML in a single pass.
+ *
+ * NOTE: The output is ALWAYS formatted. When Concise Reading is active,
+ * there is no need to run the separate Formatting module on top of this.
+ * The AI prompt handles both condensing and formatting simultaneously.
  */
 export async function condenseChapterContent(
   apiKey: string,
@@ -261,8 +285,7 @@ export async function condenseChapterContent(
   // Extract style rules from the formatted output
   const originals = htmlParagraphs.slice(0, allCondensed.length);
   const newRules = extractRulesFromFormatted(originals, allCondensed);
-  const existingRules = existingDictionary?.rules ?? [];
-  const mergedRules = mergeRules(existingRules, newRules);
+  const mergedRules = mergeRules(existingDictionary?.rules ?? [], newRules);
   const newCharStyles = extractCharacterStyles(allCondensed);
   const mergedCharStyles = mergeCharacterStyles(existingDictionary?.characterStyles, newCharStyles);
 
