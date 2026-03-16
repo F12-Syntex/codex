@@ -1033,7 +1033,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     autoProcessTargetRef.current = currentChapter;
     runAutoProcessQueue();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, bookContent, enrichEnabled, formattingEnabled, wikiEnabled, commentsEnabled]);
+  }, [currentChapter, bookContent, enrichEnabled, formattingEnabled, wikiEnabled, commentsEnabled, condenseEnabled]);
 
   const toggleWikiEnabled = useCallback(() => {
     const next = !wikiEnabled;
@@ -2061,7 +2061,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               htmlParagraphs={effectiveHtml}
               theme={theme}
               readingTheme={settings.readingTheme}
-              aiFormattingEnabled={formattingEnabled && !!formattedChapters[currentChapter]}
+              aiFormattingEnabled={
+                (formattingEnabled && !!formattedChapters[currentChapter]) ||
+                (condenseEnabled && !!condensedChapters[currentChapter])
+              }
               fontFamily={settings.fontFamily}
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}

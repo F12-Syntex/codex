@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
-  Loader2, Trash2, Clapperboard, ExternalLink, BarChart3,
-  BookMarked, Square, Play, RefreshCw, Check, Layers, Minimize2,
-  Info,
+  Loader2, Trash2, Clapperboard, ExternalLink,
+  BookMarked, Square, RefreshCw, Check, Layers, Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookChapter, ThemeClasses } from "../lib/types";
 import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
-import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
+import { type ChapterLabels } from "@/lib/chapter-labels";
 import { BulkAnalyserModal } from "./BulkAnalyserModal";
 
 interface AISidebarProps {
@@ -79,66 +78,27 @@ interface AISidebarProps {
 }
 
 export function AISidebar({
-  theme,
-  chapters,
-  enrichedNames,
-  enrichEnabled,
-  enrichingChapter,
-  enrichAllProgress,
-  onEnrichToggle,
-  onEnrichAll,
-  onCancelEnrichAll,
-  onClearEnrichedNames,
-  formattingEnabled,
-  formattedChapterCount,
-  formattingChapter,
-  formatAllProgress,
-  onFormattingToggle,
-  onFormatAll,
-  onCancelFormatAll,
-  onClearFormatting,
+  theme, chapters,
+  enrichedNames, enrichEnabled, enrichingChapter, enrichAllProgress,
+  onEnrichToggle, onEnrichAll, onCancelEnrichAll, onClearEnrichedNames,
+  formattingEnabled, formattedChapterCount, formattingChapter, formatAllProgress,
+  onFormattingToggle, onFormatAll, onCancelFormatAll, onClearFormatting,
   styleDictionary,
-  condenseEnabled,
-  condensedChapterCount,
-  condensingChapter,
-  condenseAllProgress,
-  onCondenseToggle,
-  onCondenseAll,
-  onCancelCondenseAll,
-  onClearCondense,
+  condenseEnabled, condensedChapterCount, condensingChapter, condenseAllProgress,
+  onCondenseToggle, onCondenseAll, onCancelCondenseAll, onClearCondense,
   currentChapterCondenseDone,
-  filePath,
-  bookTitle,
-  wikiEnabled,
-  wikiEntryCount,
-  wikiProcessedCount,
-  wikiProcessingChapter,
-  wikiAllProgress,
-  totalChapters,
-  currentChapter,
-  currentChapterWikiDone,
-  currentChapterFormatDone,
-  currentChapterEnrichDone,
-  onWikiToggle,
-  onWikiProcessAll,
-  onCondenseRetry,
-  onWikiRetry,
-  onFormatRetry,
-  onEnrichRetry,
-  onCancelWikiProcessAll,
-  onClearWiki,
-  buddyEnabled,
-  onBuddyToggle,
-  simulateEnabled,
-  onSimulateToggle,
-  commentsEnabled,
-  commentingChapter,
-  chapterCommentCount,
-  onCommentsToggle,
-  onClearComments,
-  onClose,
-  chapterLabels = {},
-  onBulkStart,
+  filePath, bookTitle,
+  wikiEnabled, wikiEntryCount, wikiProcessedCount, wikiProcessingChapter, wikiAllProgress,
+  totalChapters, currentChapter,
+  currentChapterWikiDone, currentChapterFormatDone, currentChapterEnrichDone,
+  onWikiToggle, onWikiProcessAll,
+  onCondenseRetry, onWikiRetry, onFormatRetry, onEnrichRetry,
+  onCancelWikiProcessAll, onClearWiki,
+  buddyEnabled, onBuddyToggle,
+  simulateEnabled, onSimulateToggle,
+  commentsEnabled, commentingChapter, chapterCommentCount,
+  onCommentsToggle, onClearComments,
+  onClose, chapterLabels = {}, onBulkStart,
 }: AISidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
@@ -155,47 +115,15 @@ export function AISidebar({
   const disabled = hasApiKey === false;
   const loading = hasApiKey === null;
 
-  /* ── Counts ─────────────────────────────────────────────── */
+  /* ── Derived state ───────────────────────────────────────── */
 
   const alreadyEnriched = Object.keys(enrichedNames).length;
   const enrichToDo = chapters.filter((ch, i) => needsEnrichment(ch.title) && !enrichedNames[i]).length;
-
-  /* ── Running state ───────────────────────────────────────── */
 
   const isEnrichRunning = enrichAllProgress !== null || enrichingChapter !== null;
   const isFormatRunning = formatAllProgress !== null || formattingChapter !== null;
   const isCondenseRunning = condenseAllProgress !== null || condensingChapter !== null;
   const isWikiRunning = wikiProcessingChapter !== null;
-
-  /* ── Status strings ──────────────────────────────────────── */
-
-  const wikiStatusText =
-    wikiProcessedCount >= totalChapters && totalChapters > 0 ? "done"
-    : wikiProcessedCount > 0 ? `${wikiProcessedCount} / ${totalChapters}`
-    : undefined;
-
-  const enrichStatusText =
-    enrichToDo === 0 && alreadyEnriched > 0 ? "done"
-    : alreadyEnriched > 0 ? `${alreadyEnriched} renamed`
-    : undefined;
-
-  const enrichRunCount = enrichAllProgress
-    ? `${enrichAllProgress.current + 1} / ${enrichAllProgress.total}`
-    : enrichingChapter !== null ? "…" : undefined;
-
-  const formatRunCount = formatAllProgress
-    ? `${formatAllProgress.current + 1} / ${formatAllProgress.total}`
-    : formattingChapter !== null ? "…" : undefined;
-
-  const condenseRunCount = condenseAllProgress
-    ? `${condenseAllProgress.current + 1} / ${condenseAllProgress.total}`
-    : condensingChapter !== null ? "…" : undefined;
-
-  const wikiRunCount = isWikiRunning
-    ? wikiAllProgress
-      ? `${wikiAllProgress.current} / ${wikiAllProgress.total} ch`
-      : `ch. ${(wikiProcessingChapter ?? 0) + 1}`
-    : undefined;
 
   /* ── External links ──────────────────────────────────────── */
 
@@ -206,28 +134,20 @@ export function AISidebar({
     <div
       ref={sidebarRef}
       className={cn(
-        "absolute right-0 top-0 z-20 flex h-full w-[320px] flex-col border-l",
-        theme.panel,
-        theme.border,
+        "absolute right-0 top-0 z-20 flex h-full w-[280px] flex-col border-l",
+        theme.panel, theme.border,
       )}
       style={{ animation: "slideInRight 0.18s ease", boxShadow: "rgba(0,0,0,0.25) -8px 0 24px -4px" }}
     >
       {/* ── Header ── */}
-      <div className={cn("flex shrink-0 items-center justify-between px-4 py-3")}>
-        <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ background: "var(--accent-brand-dim)" }}
-          >
-            <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          </div>
-          <div>
-            <span className={cn("text-sm font-semibold", theme.text)}>AI Tools</span>
-          </div>
+      <div className="flex shrink-0 items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+          <span className={cn("text-sm font-semibold", theme.text)}>AI Tools</span>
         </div>
         <button
           onClick={onClose}
-          className={cn("flex h-7 w-7 items-center justify-center rounded-lg transition-colors", theme.btn)}
+          className={cn("flex h-6 w-6 items-center justify-center rounded-lg transition-colors", theme.btn)}
         >
           <X className="h-3.5 w-3.5" strokeWidth={1.5} />
         </button>
@@ -235,189 +155,122 @@ export function AISidebar({
 
       {/* ── API key warning ── */}
       {!loading && disabled && (
-        <div className="mx-3 mb-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+        <div className="mx-3 mb-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
           <div className="flex items-start gap-2">
             <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" strokeWidth={1.5} />
             <p className="text-xs leading-relaxed text-amber-300/80">
-              Add an <span className="font-medium text-amber-300">OpenRouter API key</span> in Settings → AI to enable these features.
+              Add an <span className="font-medium text-amber-300">OpenRouter API key</span> in Settings to enable AI.
             </p>
           </div>
         </div>
       )}
 
-      {/* ── Content ── */}
-      <div className={cn("flex-1 overflow-y-auto px-3 pb-3", disabled ? "pointer-events-none select-none opacity-40" : "")}>
+      {/* ── Feature list ── */}
+      <div className={cn("flex-1 overflow-y-auto", disabled ? "pointer-events-none select-none opacity-40" : "")}>
 
-        {/* ═══════ Analysis Section ═══════ */}
-        <SectionHeader label="Analysis" theme={theme} />
+        {/* ── Reading ── */}
+        <Section label="Reading" theme={theme} />
 
-        <div className="space-y-1.5">
-          {/* AI Wiki */}
-          <FeatureCard
-            Icon={BookMarked}
-            label="AI Wiki"
-            description="Extract characters, items, locations"
-            color="var(--accent-brand)"
-            active={wikiEnabled}
-            onToggle={onWikiToggle}
-            status={wikiStatusText}
-            running={isWikiRunning}
-            runCount={wikiRunCount}
-            canRun={wikiEnabled && !isWikiRunning && !currentChapterWikiDone}
-            onRun={() => onWikiProcessAll(currentChapter)}
-            canRetry={wikiEnabled && !isWikiRunning && currentChapterWikiDone}
-            onRetry={onWikiRetry}
-            onCancel={onCancelWikiProcessAll}
-            canClear={wikiEntryCount > 0 && !isWikiRunning}
-            onClear={onClearWiki}
-            linkIcon={wikiEnabled && wikiEntryCount > 0 ? ExternalLink : undefined}
-            onLink={wikiEnabled && wikiEntryCount > 0 ? openWiki : undefined}
-            theme={theme}
-          />
+        <FeatureRow
+          Icon={Paintbrush} label="Formatting" color="#a78bfa" theme={theme}
+          active={formattingEnabled} onToggle={onFormattingToggle}
+          running={isFormatRunning}
+          status={fmtStatus(formattedChapterCount, chapters.length, formatAllProgress, formattingChapter)}
+          canRetry={formattingEnabled && !isFormatRunning && currentChapterFormatDone}
+          onRetry={onFormatRetry}
+          canCancel={isFormatRunning}
+          onCancel={onCancelFormatAll}
+          canClear={formattedChapterCount > 0 && !isFormatRunning}
+          onClear={onClearFormatting}
+          extraAction={formattingEnabled && styleDictionary && styleDictionary.rules.length > 0
+            ? { icon: ExternalLink, onClick: openStyleDict, title: "Style dictionary" } : undefined}
+        />
 
-          {/* Chapter Titles */}
-          <FeatureCard
-            Icon={Type}
-            label="Chapter Titles"
-            description="Enrich generic chapter names"
-            color="#34d399"
-            active={enrichEnabled}
-            onToggle={onEnrichToggle}
-            status={enrichStatusText}
-            running={isEnrichRunning}
-            runCount={enrichRunCount}
-            canRun={enrichEnabled && !isEnrichRunning && !currentChapterEnrichDone}
-            onRun={() => onEnrichAll(currentChapter)}
-            canRetry={enrichEnabled && !isEnrichRunning && currentChapterEnrichDone}
-            onRetry={onEnrichRetry}
-            onCancel={onCancelEnrichAll}
-            canClear={alreadyEnriched > 0 && !isEnrichRunning}
-            onClear={onClearEnrichedNames}
-            theme={theme}
-          />
-        </div>
+        <FeatureRow
+          Icon={Minimize2} label="Concise" color="#60a5fa" theme={theme}
+          active={condenseEnabled} onToggle={onCondenseToggle}
+          running={isCondenseRunning}
+          status={fmtStatus(condensedChapterCount, chapters.length, condenseAllProgress, condensingChapter)}
+          canRetry={condenseEnabled && !isCondenseRunning && currentChapterCondenseDone}
+          onRetry={onCondenseRetry}
+          canCancel={isCondenseRunning}
+          onCancel={onCancelCondenseAll}
+          canClear={condensedChapterCount > 0 && !isCondenseRunning}
+          onClear={onClearCondense}
+        />
 
-        {/* ═══════ Reading Section ═══════ */}
-        <SectionHeader label="Reading" theme={theme} />
+        {condenseEnabled && (
+          <p className={cn("px-4 pb-2 text-xs leading-relaxed", theme.muted)} style={{ opacity: 0.35 }}>
+            Concise output includes formatting automatically.
+          </p>
+        )}
 
-        <div className="space-y-1.5">
-          {/* Formatting */}
-          <FeatureCard
-            Icon={Paintbrush}
-            label="Formatting"
-            description="Visual HTML enhancements for text"
-            color="#a78bfa"
-            active={formattingEnabled}
-            onToggle={onFormattingToggle}
-            status={
-              formattedChapterCount >= chapters.length && chapters.length > 0 ? "done"
-              : formattedChapterCount > 0 ? `${formattedChapterCount} / ${chapters.length}`
-              : undefined
-            }
-            running={isFormatRunning}
-            runCount={formatRunCount}
-            canRun={formattingEnabled && !isFormatRunning && !currentChapterFormatDone}
-            onRun={() => onFormatAll(currentChapter)}
-            canRetry={formattingEnabled && !isFormatRunning && currentChapterFormatDone}
-            onRetry={onFormatRetry}
-            onCancel={onCancelFormatAll}
-            canClear={formattedChapterCount > 0 && !isFormatRunning}
-            onClear={onClearFormatting}
-            linkIcon={formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 ? BarChart3 : undefined}
-            onLink={formattingEnabled && styleDictionary && styleDictionary.rules.length > 0 ? openStyleDict : undefined}
-            theme={theme}
-          />
+        {/* ── Analysis ── */}
+        <Section label="Analysis" theme={theme} />
 
-          {/* Concise Reading */}
-          <FeatureCard
-            Icon={Minimize2}
-            label="Concise Reading"
-            description="Condense text to 55–70% length"
-            color="#60a5fa"
-            active={condenseEnabled}
-            onToggle={onCondenseToggle}
-            status={
-              condensedChapterCount >= chapters.length && chapters.length > 0 ? "done"
-              : condensedChapterCount > 0 ? `${condensedChapterCount} / ${chapters.length}`
-              : undefined
-            }
-            running={isCondenseRunning}
-            runCount={condenseRunCount}
-            canRun={condenseEnabled && !isCondenseRunning && !currentChapterCondenseDone}
-            onRun={() => onCondenseAll(currentChapter)}
-            canRetry={condenseEnabled && !isCondenseRunning && currentChapterCondenseDone}
-            onRetry={onCondenseRetry}
-            onCancel={onCancelCondenseAll}
-            canClear={condensedChapterCount > 0 && !isCondenseRunning}
-            onClear={onClearCondense}
-            theme={theme}
-          />
+        <FeatureRow
+          Icon={BookMarked} label="Wiki" color="var(--accent-brand)" theme={theme}
+          active={wikiEnabled} onToggle={onWikiToggle}
+          running={isWikiRunning}
+          status={fmtWikiStatus(wikiProcessedCount, totalChapters, wikiAllProgress, wikiProcessingChapter)}
+          canRetry={wikiEnabled && !isWikiRunning && currentChapterWikiDone}
+          onRetry={onWikiRetry}
+          canCancel={isWikiRunning}
+          onCancel={onCancelWikiProcessAll}
+          canClear={wikiEntryCount > 0 && !isWikiRunning}
+          onClear={onClearWiki}
+          extraAction={wikiEnabled && wikiEntryCount > 0
+            ? { icon: ExternalLink, onClick: openWiki, title: "Open wiki" } : undefined}
+          badge={wikiEnabled && wikiEntryCount > 0 ? `${wikiEntryCount}` : undefined}
+        />
 
-          {/* Note about concise reading always being formatted */}
-          {condenseEnabled && (
-            <div className="flex items-start gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--bg-inset)" }}>
-              <Info className="mt-0.5 h-3 w-3 shrink-0 text-[#60a5fa]" strokeWidth={1.5} style={{ opacity: 0.6 }} />
-              <p className={cn("text-xs leading-relaxed", theme.muted)} style={{ opacity: 0.5 }}>
-                Concise output is always formatted — formatting is applied during condensing in a single AI pass.
-              </p>
-            </div>
-          )}
-        </div>
+        <FeatureRow
+          Icon={Type} label="Titles" color="#34d399" theme={theme}
+          active={enrichEnabled} onToggle={onEnrichToggle}
+          running={isEnrichRunning}
+          status={fmtEnrichStatus(alreadyEnriched, enrichToDo, enrichAllProgress, enrichingChapter)}
+          canRetry={enrichEnabled && !isEnrichRunning && currentChapterEnrichDone}
+          onRetry={onEnrichRetry}
+          canCancel={isEnrichRunning}
+          onCancel={onCancelEnrichAll}
+          canClear={alreadyEnriched > 0 && !isEnrichRunning}
+          onClear={onClearEnrichedNames}
+        />
 
-        {/* ═══════ Experience Section ═══════ */}
-        <SectionHeader label="Experience" theme={theme} />
+        {/* ── Experience ── */}
+        <Section label="Experience" theme={theme} />
 
-        <div className="space-y-1.5">
-          {/* AI Buddy */}
-          <FeatureCard
-            Icon={MessageCircle}
-            label="AI Buddy"
-            description="Chat about the book"
-            color="#f472b6"
-            active={buddyEnabled && wikiEnabled}
-            onToggle={onBuddyToggle}
-            toggleDisabled={!wikiEnabled}
-            lockNote={!wikiEnabled ? "Requires Wiki" : undefined}
-            theme={theme}
-          />
+        <FeatureRow
+          Icon={MessageCircle} label="Buddy" color="#f472b6" theme={theme}
+          active={buddyEnabled && wikiEnabled} onToggle={onBuddyToggle}
+          disabled={!wikiEnabled}
+          lockNote={!wikiEnabled ? "Requires Wiki" : undefined}
+        />
 
-          {/* Simulate */}
-          <FeatureCard
-            Icon={Clapperboard}
-            label="Simulate"
-            description="Branching narrative continuations"
-            color="#fb923c"
-            active={simulateEnabled && wikiEnabled}
-            onToggle={onSimulateToggle}
-            toggleDisabled={!wikiEnabled}
-            lockNote={!wikiEnabled ? "Requires Wiki" : undefined}
-            theme={theme}
-          />
+        <FeatureRow
+          Icon={Clapperboard} label="Simulate" color="#fb923c" theme={theme}
+          active={simulateEnabled && wikiEnabled} onToggle={onSimulateToggle}
+          disabled={!wikiEnabled}
+          lockNote={!wikiEnabled ? "Requires Wiki" : undefined}
+        />
 
-          {/* Comments */}
-          <FeatureCard
-            Icon={MessageCircle}
-            label="Comments"
-            description="Inline reader reactions"
-            color="#a3e635"
-            active={commentsEnabled}
-            onToggle={onCommentsToggle}
-            status={chapterCommentCount > 0 ? `${chapterCommentCount} ch.` : undefined}
-            running={commentingChapter !== null}
-            canClear={chapterCommentCount > 0 && commentingChapter === null}
-            onClear={onClearComments}
-            theme={theme}
-          />
-        </div>
+        <FeatureRow
+          Icon={MessageCircle} label="Comments" color="#a3e635" theme={theme}
+          active={commentsEnabled} onToggle={onCommentsToggle}
+          running={commentingChapter !== null}
+          status={chapterCommentCount > 0 ? `${chapterCommentCount} ch.` : undefined}
+          canClear={chapterCommentCount > 0 && commentingChapter === null}
+          onClear={onClearComments}
+        />
       </div>
 
-      {/* ── Bulk Analyse button ── */}
+      {/* ── Bulk Analyse ── */}
       <div className={cn("shrink-0 border-t px-3 py-3", theme.border)}>
         <button
           onClick={() => setBulkOpen(true)}
           disabled={disabled}
           className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-medium transition-all",
+            "flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all",
             disabled ? "cursor-not-allowed opacity-30" : "hover:opacity-90 active:scale-[0.99]",
           )}
           style={{ background: "var(--accent-brand)", color: "var(--accent-brand-fg)" }}
@@ -427,7 +280,6 @@ export function AISidebar({
         </button>
       </div>
 
-      {/* ── Bulk modal ── */}
       <BulkAnalyserModal
         isOpen={bulkOpen}
         onClose={() => setBulkOpen(false)}
@@ -445,14 +297,52 @@ export function AISidebar({
   );
 }
 
-/* ── Sub-components ───────────────────────────────────────── */
+/* ── Status formatters ─────────────────────────────────────── */
 
-function SectionHeader({ label, theme }: { label: string; theme: ThemeClasses }) {
+function fmtStatus(
+  doneCount: number, total: number,
+  progress: { current: number; total: number } | null,
+  activeChapter: number | null,
+): string | undefined {
+  if (progress) return `${progress.current + 1}/${progress.total}`;
+  if (activeChapter !== null) return "...";
+  if (doneCount >= total && total > 0) return "done";
+  if (doneCount > 0) return `${doneCount}/${total}`;
+  return undefined;
+}
+
+function fmtWikiStatus(
+  processedCount: number, total: number,
+  progress: { current: number; total: number } | null,
+  activeChapter: number | null,
+): string | undefined {
+  if (progress) return `${progress.current}/${progress.total}`;
+  if (activeChapter !== null) return `ch. ${activeChapter + 1}`;
+  if (processedCount >= total && total > 0) return "done";
+  if (processedCount > 0) return `${processedCount}/${total}`;
+  return undefined;
+}
+
+function fmtEnrichStatus(
+  enriched: number, toDo: number,
+  progress: { current: number; total: number } | null,
+  activeChapter: number | null,
+): string | undefined {
+  if (progress) return `${progress.current + 1}/${progress.total}`;
+  if (activeChapter !== null) return "...";
+  if (toDo === 0 && enriched > 0) return "done";
+  if (enriched > 0) return `${enriched}`;
+  return undefined;
+}
+
+/* ── Section header ────────────────────────────────────────── */
+
+function Section({ label, theme }: { label: string; theme: ThemeClasses }) {
   return (
-    <div className="pb-1.5 pt-4 first:pt-1">
+    <div className="px-4 pb-1 pt-4 first:pt-2">
       <span
-        className={cn("text-xs font-semibold uppercase tracking-widest", theme.muted)}
-        style={{ opacity: 0.35, fontSize: "10px", letterSpacing: "0.1em" }}
+        className={cn("text-xs font-medium uppercase tracking-wider", theme.muted)}
+        style={{ opacity: 0.3, fontSize: "10px" }}
       >
         {label}
       </span>
@@ -460,218 +350,166 @@ function SectionHeader({ label, theme }: { label: string; theme: ThemeClasses })
   );
 }
 
-/* ── Feature Card ────────────────────────────────────────── */
+/* ── Feature row ───────────────────────────────────────────── */
 
-interface FeatureCardProps {
+interface FeatureRowProps {
   Icon: React.ElementType;
   label: string;
-  description: string;
   color: string;
+  theme: ThemeClasses;
   active: boolean;
   onToggle: () => void;
-  toggleDisabled?: boolean;
+  disabled?: boolean;
   lockNote?: string;
-  status?: string;
   running?: boolean;
-  runCount?: string;
-  canRun?: boolean;
-  onRun?: () => void;
+  status?: string;
+  badge?: string;
   canRetry?: boolean;
   onRetry?: () => void;
+  canCancel?: boolean;
   onCancel?: () => void;
   canClear?: boolean;
   onClear?: () => void;
-  linkIcon?: React.ElementType;
-  onLink?: () => void;
-  theme: ThemeClasses;
+  extraAction?: { icon: React.ElementType; onClick: () => void; title: string };
 }
 
-function FeatureCard({
-  Icon,
-  label,
-  description,
-  color,
-  active,
-  onToggle,
-  toggleDisabled,
-  lockNote,
-  status,
-  running,
-  runCount,
-  canRun,
-  onRun,
-  canRetry,
-  onRetry,
-  onCancel,
-  canClear,
-  onClear,
-  linkIcon: LinkIcon,
-  onLink,
-  theme,
-}: FeatureCardProps) {
-  const [confirmingClear, setConfirmingClear] = useState(false);
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+function FeatureRow({
+  Icon, label, color, theme,
+  active, onToggle, disabled: toggleDisabled, lockNote,
+  running, status, badge,
+  canRetry, onRetry,
+  canCancel, onCancel,
+  canClear, onClear,
+  extraAction,
+}: FeatureRowProps) {
+  const [confirmClear, setConfirmClear] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleClearClick = () => {
-    if (confirmingClear) {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      setConfirmingClear(false);
+  const handleClear = () => {
+    if (confirmClear) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setConfirmClear(false);
       onClear?.();
     } else {
-      setConfirmingClear(true);
-      confirmTimerRef.current = setTimeout(() => setConfirmingClear(false), 2500);
+      setConfirmClear(true);
+      timerRef.current = setTimeout(() => setConfirmClear(false), 2500);
     }
   };
 
-  const hasActions = running || canRun || canRetry || canClear || (LinkIcon && onLink);
+  const isRunning = running === true;
+  const isDone = status === "done";
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border transition-all",
-        active
-          ? "border-white/[0.08] bg-white/[0.03]"
-          : cn(theme.border, "bg-transparent"),
-      )}
-    >
-      {/* Main row: toggle + icon + label */}
-      <div className="flex items-center gap-2.5 px-3 py-2.5">
-        {/* Toggle */}
-        <button
-          onClick={toggleDisabled ? undefined : onToggle}
+    <div className={cn(
+      "group flex items-center gap-2 px-4 py-[7px] transition-colors",
+      active ? "bg-white/[0.02]" : "",
+    )}>
+      {/* Toggle */}
+      <button
+        onClick={toggleDisabled ? undefined : onToggle}
+        className={cn(
+          "relative h-[16px] w-7 shrink-0 rounded-full transition-colors",
+          toggleDisabled ? "cursor-not-allowed opacity-20" : "",
+        )}
+        style={{ background: active && !toggleDisabled ? color : "var(--bg-inset)" }}
+      >
+        <span
           className={cn(
-            "relative h-[18px] w-8 shrink-0 rounded-full transition-colors",
-            toggleDisabled
-              ? cn("cursor-not-allowed opacity-25", theme.subtle)
-              : active
-                ? ""
-                : theme.subtle,
+            "absolute left-[2px] top-[2px] h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+            active && !toggleDisabled ? "translate-x-[11px]" : "",
           )}
-          style={active && !toggleDisabled ? { background: color } : undefined}
-        >
-          <span
-            className={cn(
-              "absolute left-[3px] top-[3px] h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-              active && !toggleDisabled ? "translate-x-3.5" : "",
-            )}
-          />
-        </button>
+        />
+      </button>
 
-        {/* Icon */}
-        <div
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
-          style={{
-            background: active ? `${color}15` : "transparent",
-          }}
-        >
-          <Icon
-            className="h-3.5 w-3.5"
-            strokeWidth={1.5}
-            style={{ color: active ? color : undefined, opacity: active ? 0.9 : 0.3 }}
-          />
-        </div>
+      {/* Icon */}
+      <Icon
+        className="h-3.5 w-3.5 shrink-0"
+        strokeWidth={1.5}
+        style={{ color: active ? color : undefined, opacity: active ? 0.8 : 0.25 }}
+      />
 
-        {/* Label + description */}
-        <div className="min-w-0 flex-1">
-          <span
-            className={cn("block text-sm font-medium leading-tight", theme.text)}
-            style={{ opacity: active ? 1 : 0.5 }}
-          >
-            {label}
-          </span>
-          {lockNote ? (
-            <span className={cn("block text-xs leading-tight", theme.muted)} style={{ opacity: 0.3 }}>
-              {lockNote}
+      {/* Label */}
+      <span
+        className={cn("flex-1 text-sm", theme.text)}
+        style={{ opacity: active ? 0.9 : 0.4 }}
+      >
+        {lockNote || label}
+      </span>
+
+      {/* Status / actions (right side) */}
+      <div className="flex items-center gap-1">
+        {/* Running spinner + cancel */}
+        {isRunning && (
+          <>
+            <span className={cn("text-xs tabular-nums", theme.muted)} style={{ opacity: 0.5 }}>
+              {status !== "..." ? status : ""}
             </span>
-          ) : (
-            <span className={cn("block text-xs leading-tight", theme.muted)} style={{ opacity: 0.3 }}>
-              {description}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Status + action bar (only when active and has something to show) */}
-      {active && (hasActions || status) && (
-        <div className={cn("flex items-center gap-1.5 border-t px-3 py-1.5", "border-white/[0.04]")}>
-          {/* Status */}
-          <div className="min-w-0 flex-1">
-            {running ? (
-              <div className="flex items-center gap-1.5">
-                <Loader2 className="h-3 w-3 animate-spin" style={{ color }} strokeWidth={2} />
-                {runCount && (
-                  <span className={cn("text-xs tabular-nums", theme.muted)} style={{ opacity: 0.6 }}>
-                    {runCount}
-                  </span>
-                )}
-              </div>
-            ) : status ? (
-              <span
-                className={cn("text-xs tabular-nums", status === "done" ? "" : theme.muted)}
-                style={{
-                  opacity: status === "done" ? 0.7 : 0.4,
-                  color: status === "done" ? color : undefined,
-                }}
-              >
-                {status}
-              </span>
-            ) : null}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            {/* Run / Stop / Retry */}
-            {running && onCancel ? (
-              <SmallBtn onClick={onCancel} theme={theme} title="Stop">
+            <Loader2 className="h-3 w-3 animate-spin" style={{ color }} strokeWidth={2} />
+            {canCancel && onCancel && (
+              <ActionBtn onClick={onCancel} theme={theme} title="Stop">
                 <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
-              </SmallBtn>
-            ) : canRun && onRun ? (
-              <SmallBtn onClick={onRun} color={color} title="Run">
-                <Play className="h-2.5 w-2.5" strokeWidth={0} fill="currentColor" />
-              </SmallBtn>
-            ) : canRetry && onRetry ? (
-              <SmallBtn onClick={onRetry} color={color} title="Retry">
-                <RefreshCw className="h-3 w-3" strokeWidth={2} />
-              </SmallBtn>
-            ) : null}
-
-            {/* Clear */}
-            {canClear && onClear && !running && (
-              <SmallBtn
-                onClick={handleClearClick}
-                title={confirmingClear ? "Click again to confirm" : "Clear data"}
-                danger={confirmingClear}
-                theme={theme}
-              >
-                {confirmingClear
-                  ? <Check className="h-3 w-3" strokeWidth={2.5} />
-                  : <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-                }
-              </SmallBtn>
+              </ActionBtn>
             )}
+          </>
+        )}
 
-            {/* Link */}
-            {LinkIcon && onLink && (
-              <SmallBtn onClick={onLink} theme={theme} title="Open">
-                <LinkIcon className="h-3 w-3" strokeWidth={1.5} />
-              </SmallBtn>
-            )}
-          </div>
-        </div>
-      )}
+        {/* Idle status */}
+        {!isRunning && status && (
+          <span
+            className={cn("text-xs tabular-nums", theme.muted)}
+            style={{ opacity: isDone ? 0.6 : 0.4, color: isDone ? color : undefined }}
+          >
+            {status}
+          </span>
+        )}
+
+        {/* Badge (e.g. wiki entry count) */}
+        {!isRunning && badge && (
+          <span
+            className="rounded-lg px-1.5 py-0.5 text-xs tabular-nums"
+            style={{ background: `${color}15`, color, opacity: 0.7 }}
+          >
+            {badge}
+          </span>
+        )}
+
+        {/* Re-process current chapter */}
+        {!isRunning && canRetry && onRetry && (
+          <ActionBtn onClick={onRetry} color={color} title="Re-process chapter">
+            <RefreshCw className="h-3 w-3" strokeWidth={2} />
+          </ActionBtn>
+        )}
+
+        {/* Clear data */}
+        {!isRunning && canClear && onClear && (
+          <ActionBtn
+            onClick={handleClear}
+            title={confirmClear ? "Confirm clear" : "Clear all"}
+            danger={confirmClear}
+            theme={theme}
+          >
+            {confirmClear
+              ? <Check className="h-3 w-3" strokeWidth={2.5} />
+              : <Trash2 className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={1.5} />
+            }
+          </ActionBtn>
+        )}
+
+        {/* Extra action (external link) */}
+        {!isRunning && extraAction && (
+          <ActionBtn onClick={extraAction.onClick} theme={theme} title={extraAction.title}>
+            <extraAction.icon className="h-3 w-3" strokeWidth={1.5} />
+          </ActionBtn>
+        )}
+      </div>
     </div>
   );
 }
 
-/* ── Tiny action button ──────────────────────────────────── */
+/* ── Tiny action button ────────────────────────────────────── */
 
-function SmallBtn({
-  onClick,
-  theme,
-  color,
-  danger,
-  title,
-  children,
+function ActionBtn({
+  onClick, theme, color, danger, title, children,
 }: {
   onClick: () => void;
   theme?: ThemeClasses;
@@ -685,14 +523,10 @@ function SmallBtn({
       onClick={onClick}
       title={title}
       className={cn(
-        "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-all",
-        danger
-          ? "bg-red-500/20 text-red-400 scale-105"
-          : color
-            ? ""
-            : theme?.btn,
+        "flex h-5 w-5 shrink-0 items-center justify-center rounded-lg transition-all",
+        danger ? "bg-red-500/20 text-red-400" : color ? "" : theme?.btn,
       )}
-      style={color && !danger ? { background: `${color}20`, color } : undefined}
+      style={color && !danger ? { color } : undefined}
     >
       {children}
     </button>

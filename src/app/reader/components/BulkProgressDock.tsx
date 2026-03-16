@@ -68,6 +68,7 @@ export function useBulkRun(deps: BulkRunDeps) {
   const upToRef = useRef(0);
   const phaseTriggeredRef = useRef(false);
   const phaseStartedRef = useRef(false);
+  const phaseIdleCountRef = useRef(0);
   const durationsRef = useRef<number[]>([]);
   const chapterStartRef = useRef(0);
   const prevChapterRef = useRef<number | null>(null);
@@ -173,6 +174,7 @@ export function useBulkRun(deps: BulkRunDeps) {
 
     if (isCurrentlyRunning) {
       phaseStartedRef.current = true;
+      phaseIdleCountRef.current = 0;
 
       // Track per-chapter durations for ETA
       if (chapter !== null && chapter !== prevChapterRef.current) {
@@ -192,6 +194,7 @@ export function useBulkRun(deps: BulkRunDeps) {
     } else if (phaseStartedRef.current) {
       // Phase just finished
       phaseStartedRef.current = false;
+      phaseIdleCountRef.current = 0;
       const endTime = Date.now();
       setPhases(prev => prev.map((p, i) =>
         i === currentPhaseIdx ? { ...p, status: "done", completed: p.total, endTime } : p
@@ -206,6 +209,37 @@ export function useBulkRun(deps: BulkRunDeps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    deps.wikiAllProgress, deps.wikiProcessingChapter,
+    deps.formatAllProgress, deps.formattingChapter,
+    deps.enrichAllProgress, deps.enrichingChapter,
+    deps.condenseAllProgress, deps.condensingChapter,
+  ]);
+
+  // Skip phases where all chapters are already processed — the "all" function
+  // returns immediately, so progress props never change. Detect this by polling:
+  // if the phase was triggered but never started running after 500ms, skip it.
+  useEffect(() => {
+    if (!isRunning || currentPhaseIdx < 0 || currentPhaseIdx >= phases.length) return;
+    if (!phaseTriggeredRef.current || phaseStartedRef.current) return;
+
+    const timer = setTimeout(() => {
+      if (!phaseStartedRef.current && phaseTriggeredRef.current) {
+        // Phase was triggered but feature never started — nothing to process, skip it
+        setPhases(prev => prev.map((p, i) =>
+          i === currentPhaseIdx ? { ...p, status: "done", total: 0, completed: 0, endTime: Date.now() } : p
+        ));
+        if (currentPhaseIdx + 1 < phases.length) {
+          setCurrentPhaseIdx(i => i + 1);
+        } else {
+          setIsRunning(false);
+          setIsDone(true);
+        }
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPhaseIdx, isRunning, phases.length,
     deps.wikiAllProgress, deps.wikiProcessingChapter,
     deps.formatAllProgress, deps.formattingChapter,
     deps.enrichAllProgress, deps.enrichingChapter,
