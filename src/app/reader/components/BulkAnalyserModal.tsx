@@ -22,7 +22,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; Icon: React.Eleme
 interface BulkAnalyserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onStart: (features: FeatureKey[], upToIndex: number) => void;
+  onStart: (features: FeatureKey[], fromIndex: number, upToIndex: number) => void;
   theme: ThemeClasses;
   chapterLabels: ChapterLabels;
   totalChapters: number;
@@ -68,6 +68,7 @@ export function BulkAnalyserModal({
   const currentStoryChapter = fmtCh(currentChapter, chapterLabels) ?? currentChapter + 1;
 
   const [selectedFeatures, setSelectedFeatures] = useState<FeatureKey[]>(["wiki", "format"]);
+  const [fromInput, setFromInput] = useState<string>("1");
   const [upToInput, setUpToInput] = useState<string>(String(currentStoryChapter));
 
   const toggleFeature = (key: FeatureKey) => {
@@ -78,11 +79,13 @@ export function BulkAnalyserModal({
 
   if (!isOpen) return null;
 
-  const storyNum = Math.max(1, Math.min(maxChapter, parseInt(upToInput) || 1));
+  const fromNum = Math.max(1, Math.min(maxChapter, parseInt(fromInput) || 1));
+  const toNum = Math.max(fromNum, Math.min(maxChapter, parseInt(upToInput) || 1));
 
   const handleStart = () => {
-    const upToIndex = storyChToIndex(storyNum, chapterLabels);
-    onStart(selectedFeatures, upToIndex);
+    const fromIndex = storyChToIndex(fromNum, chapterLabels);
+    const upToIndex = storyChToIndex(toNum, chapterLabels);
+    onStart(selectedFeatures, fromIndex, upToIndex);
   };
 
   return (
@@ -171,14 +174,32 @@ export function BulkAnalyserModal({
           {/* Chapter range */}
           <div>
             <p className={cn("mb-2 text-xs font-medium uppercase tracking-wider", theme.muted)} style={{ opacity: 0.45 }}>
-              Analyse up to
+              Chapter range
             </p>
             <div className="flex items-center gap-2">
               <div
                 className="flex items-center gap-2 rounded-lg border px-3 py-2 flex-1"
                 style={{ background: "var(--bg-inset)", borderColor: "var(--glass-border)" }}
               >
-                <span className={cn("text-xs", theme.muted)} style={{ opacity: 0.4 }}>Ch.</span>
+                <span className={cn("text-xs shrink-0", theme.muted)} style={{ opacity: 0.4 }}>From</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={maxChapter}
+                  value={fromInput}
+                  onChange={e => setFromInput(e.target.value)}
+                  className={cn(
+                    "w-12 bg-transparent text-sm font-medium tabular-nums outline-none",
+                    theme.text,
+                  )}
+                />
+              </div>
+              <span className={cn("text-xs shrink-0", theme.muted)} style={{ opacity: 0.3 }}>–</span>
+              <div
+                className="flex items-center gap-2 rounded-lg border px-3 py-2 flex-1"
+                style={{ background: "var(--bg-inset)", borderColor: "var(--glass-border)" }}
+              >
+                <span className={cn("text-xs shrink-0", theme.muted)} style={{ opacity: 0.4 }}>To</span>
                 <input
                   type="number"
                   min={1}
@@ -186,13 +207,13 @@ export function BulkAnalyserModal({
                   value={upToInput}
                   onChange={e => setUpToInput(e.target.value)}
                   className={cn(
-                    "w-16 bg-transparent text-sm font-medium tabular-nums outline-none",
+                    "w-12 bg-transparent text-sm font-medium tabular-nums outline-none",
                     theme.text,
                   )}
                 />
               </div>
-              <span className={cn("text-xs tabular-nums shrink-0", theme.muted)} style={{ opacity: 0.4 }}>
-                of {maxChapter.toLocaleString()}
+              <span className={cn("text-xs tabular-nums shrink-0", theme.muted)} style={{ opacity: 0.3 }}>
+                / {maxChapter}
               </span>
             </div>
             <p className={cn("mt-1.5 text-xs", theme.muted)} style={{ opacity: 0.3 }}>
@@ -217,7 +238,7 @@ export function BulkAnalyserModal({
           >
             <Play className="h-3.5 w-3.5" strokeWidth={0} fill="currentColor" />
             Start Analysis
-            <span className="opacity-60">— {selectedFeatures.length} feature{selectedFeatures.length !== 1 ? "s" : ""}, Ch. 1–{storyNum}</span>
+            <span className="opacity-60">— {selectedFeatures.length} feature{selectedFeatures.length !== 1 ? "s" : ""}, Ch. {fromNum}–{toNum}</span>
           </button>
         </div>
       </div>

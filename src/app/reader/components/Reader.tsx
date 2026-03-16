@@ -111,12 +111,15 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const formatAbortRef = useRef(false);
   const [styleDictionary, setStyleDictionary] = useState<StyleDictionary | null>(null);
 
-  // AI Concise Reading state
+  // AI Concise Reading state (plain text — no formatting)
   const [condenseEnabled, setCondenseEnabled] = useState(false);
   const [condensedChapters, setCondensedChapters] = useState<Record<number, string[]>>({});
   const [condensingChapter, setCondensingChapter] = useState<number | null>(null);
   const [condenseAllProgress, setCondenseAllProgress] = useState<{ current: number; total: number } | null>(null);
   const condenseAbortRef = useRef(false);
+
+  // Formatted condensed chapters (formatting applied to condensed text)
+  const [fmtCondensedChapters, setFmtCondensedChapters] = useState<Record<number, string[]>>({});
 
   // AI Wiki state (DB-backed — lightweight)
   const [wikiEnabled, setWikiEnabled] = useState(false);
@@ -201,19 +204,23 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       return stripHtmlForTTS(html);
     }
 
-    // Formatted (works for both condensed-then-formatted and original-formatted)
+    // Condensed + formatted
+    if (condenseEnabled && condensedChapters[currentChapter]) {
+      if (formattingEnabled && fmtCondensedChapters[currentChapter]) {
+        return stripHtmlForTTS(fmtCondensedChapters[currentChapter]);
+      }
+      // Condensed is plain text — return directly
+      return condensedChapters[currentChapter];
+    }
+
+    // Formatted original
     if (formattingEnabled && formattedChapters[currentChapter]) {
       return stripHtmlForTTS(formattedChapters[currentChapter]);
     }
 
-    // Condensed (now HTML — needs stripping for TTS)
-    if (condenseEnabled && condensedChapters[currentChapter]) {
-      return stripHtmlForTTS(condensedChapters[currentChapter]);
-    }
-
     return paragraphs; // original plain text
   }, [isBranchChapterForTTS, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters,
-      condenseEnabled, condensedChapters, currentChapter, chapters, paragraphs]);
+      fmtCondensedChapters, condenseEnabled, condensedChapters, currentChapter, chapters, paragraphs]);
 
   const ttsMetrics = useTTSMetrics();
 
@@ -432,14 +439,15 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(next));
   }, [enrichEnabled, filePath, chapters, currentChapter, enrichedNames, enrichChapter]);
 
-  const enrichAll = useCallback(async (upToChapter?: number) => {
+  const enrichAll = useCallback(async (fromChapter?: number, upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
+    const start = fromChapter ?? 0;
     const limit = upToChapter ?? chapters.length - 1;
     const toEnrich = chapters
       .map((ch, i) => ({ ch, i }))
-      .filter(({ ch, i }) => i <= limit && needsEnrichment(ch.title) && !enrichedNames[i]);
+      .filter(({ ch, i }) => i >= start && i <= limit && needsEnrichment(ch.title) && !enrichedNames[i]);
 
     if (toEnrich.length === 0) return;
 
@@ -515,16 +523,38 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       try {
         const parsed = JSON.parse(raw) as Record<string, string[]>;
         const ch: Record<number, string[]> = {};
+        let stale = false;
         for (const [k, v] of Object.entries(parsed)) {
-          if (Array.isArray(v)) ch[Number(k)] = v;
+          if (!Array.isArray(v)) continue;
+          // Detect old format: condensed data that contains ai-fmt HTML from the
+          // previous single-pass implementation. Discard it — needs re-condensation.
+          if (v.some(p => p.includes("ai-fmt-"))) { stale = true; break; }
+          ch[Number(k)] = v;
         }
-        if (Object.keys(ch).length > 0) setCondensedChapters(ch);
+        if (stale) {
+          // Wipe stale condensed data
+          window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify({}));
+          window.electronAPI?.setSetting(`fmtCondensed:${filePath}`, JSON.stringify({}));
+        } else if (Object.keys(ch).length > 0) {
+          setCondensedChapters(ch);
+        }
       } catch { /* ignore */ }
     });
     window.electronAPI?.getSetting(`condenseEnabled:${filePath}`).then((raw) => {
       if (raw != null) {
         try { setCondenseEnabled(JSON.parse(raw)); } catch { /* ignore */ }
       }
+    });
+    window.electronAPI?.getSetting(`fmtCondensed:${filePath}`).then((raw) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as Record<string, string[]>;
+        const ch: Record<number, string[]> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (Array.isArray(v)) ch[Number(k)] = v;
+        }
+        if (Object.keys(ch).length > 0) setFmtCondensedChapters(ch);
+      } catch { /* ignore */ }
     });
     loadDictionary(filePath).then((dict) => {
       if (dict) setStyleDictionary(dict);
@@ -581,9 +611,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey || !chapters[chapterIndex]) return;
 
-    // Condensed chapters are already formatted — no separate formatting needed
-    if (condenseEnabled && condensedChapters[chapterIndex]) return;
-
     setFormattingChapter(chapterIndex);
     formatAbortRef.current = false;
 
@@ -612,14 +639,15 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     }
   }, [chapters, title, filePath, styleDictionary, condenseEnabled, condensedChapters]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const formatAllChapters = useCallback(async (upToChapter?: number) => {
+  const formatAllChapters = useCallback(async (fromChapter?: number, upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
+    const start = fromChapter ?? 0;
     const limit = upToChapter ?? chapters.length - 1;
     const toFormat = chapters
       .map((_, i) => i)
-      .filter((i) => i <= limit && !formattedChapters[i]);
+      .filter((i) => i >= start && i <= limit && !formattedChapters[i]);
 
     if (toFormat.length === 0) return;
 
@@ -637,9 +665,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       setFormatAllProgress({ current: idx, total: toFormat.length });
 
       try {
-        // Skip if condense is on — condensed chapters are already formatted
-        if (condenseEnabled && condensedChapters[i]) continue;
-
         const chapterToFormat = chapters[i];
 
         const result = await formatChapterContent(
@@ -685,18 +710,59 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     saveDictionary(filePath, { rules: [], bookTitle: title, updatedAt: new Date().toISOString() });
   }, [filePath, title]);
 
+  // Format condensed text (separate from formatting original)
+  const formatCondensedChapter = useCallback(async (chapterIndex: number) => {
+    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
+    if (!apiKey || !condensedChapters[chapterIndex]) return;
+
+    setFormattingChapter(chapterIndex);
+    formatAbortRef.current = false;
+
+    try {
+      const fakeChapter = {
+        ...chapters[chapterIndex],
+        htmlParagraphs: condensedChapters[chapterIndex],
+        paragraphs: condensedChapters[chapterIndex],
+      };
+
+      const result = await formatChapterContent(
+        apiKey, fakeChapter, title,
+        () => formatAbortRef.current,
+        styleDictionary,
+        filePath,
+      );
+
+      if (formatAbortRef.current || !result) return;
+
+      setStyleDictionary(result.dictionary);
+      setFmtCondensedChapters((prev) => {
+        const updated = { ...prev, [chapterIndex]: result.paragraphs };
+        window.electronAPI?.setSetting(`fmtCondensed:${filePath}`, JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error(`Failed to format condensed chapter ${chapterIndex}:`, err);
+    } finally {
+      setFormattingChapter(null);
+    }
+  }, [chapters, condensedChapters, title, filePath, styleDictionary]);
+
   const toggleFormattingEnabled = useCallback(() => {
     const next = !formattingEnabled;
     if (!next) {
       formatAbortRef.current = true;
       setFormattingChapter(null);
       setFormatAllProgress(null);
-    } else if (!formattedChapters[currentChapter]) {
+    } else if (condenseEnabled && condensedChapters[currentChapter] && !fmtCondensedChapters[currentChapter]) {
+      // Format the condensed text
+      formatCondensedChapter(currentChapter);
+    } else if (!condenseEnabled && !formattedChapters[currentChapter]) {
       formatChapter(currentChapter);
     }
     setFormattingEnabled(next);
     window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(next));
-  }, [formattingEnabled, filePath, formattedChapters, currentChapter, formatChapter]);
+  }, [formattingEnabled, filePath, formattedChapters, fmtCondensedChapters, condensedChapters,
+      condenseEnabled, currentChapter, formatChapter, formatCondensedChapter]);
 
   // ── AI Concise Reading ───────────────────────────────
 
@@ -713,13 +779,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         chapters[chapterIndex],
         title,
         () => condenseAbortRef.current,
-        styleDictionary,
-        filePath,
       );
 
       if (condenseAbortRef.current || !result) return;
 
-      setStyleDictionary(result.dictionary);
       setCondensedChapters((prev) => {
         const updated = { ...prev, [chapterIndex]: result.paragraphs };
         window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify(updated));
@@ -730,16 +793,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     } finally {
       setCondensingChapter(null);
     }
-  }, [chapters, title, filePath, styleDictionary]);
+  }, [chapters, title, filePath]);
 
-  const condenseAllChapters = useCallback(async (upToChapter?: number) => {
+  const condenseAllChapters = useCallback(async (fromChapter?: number, upToChapter?: number) => {
     const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
     if (!apiKey) return;
 
+    const start = fromChapter ?? 0;
     const limit = upToChapter ?? chapters.length - 1;
     const toCondense = chapters
       .map((_, i) => i)
-      .filter((i) => i <= limit && !condensedChapters[i] && chapters[i] && !isChapterTooLarge(chapters[i]));
+      .filter((i) => i >= start && i <= limit && !condensedChapters[i] && chapters[i] && !isChapterTooLarge(chapters[i]));
 
     if (toCondense.length === 0) return;
 
@@ -747,7 +811,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setCondenseAllProgress({ current: 0, total: toCondense.length });
 
     let currentCondensed = { ...condensedChapters };
-    let currentDict = styleDictionary;
 
     for (let idx = 0; idx < toCondense.length; idx++) {
       if (condenseAbortRef.current) break;
@@ -760,17 +823,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         const result = await condenseChapterContent(
           apiKey, chapters[i], title,
           () => condenseAbortRef.current,
-          currentDict,
-          filePath,
         );
 
         if (condenseAbortRef.current) break;
 
         if (result) {
           currentCondensed = { ...currentCondensed, [i]: result.paragraphs };
-          currentDict = result.dictionary;
           setCondensedChapters({ ...currentCondensed });
-          setStyleDictionary(currentDict);
         }
       } catch (err) {
         console.error(`Failed to condense chapter ${i}:`, err);
@@ -780,7 +839,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     await window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify(currentCondensed));
     setCondensingChapter(null);
     setCondenseAllProgress(condenseAbortRef.current ? null : { current: toCondense.length, total: toCondense.length });
-  }, [chapters, title, filePath, condensedChapters, styleDictionary]);
+  }, [chapters, title, filePath, condensedChapters]);
 
   const cancelCondenseAll = useCallback(() => {
     condenseAbortRef.current = true;
@@ -791,10 +850,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const clearCondense = useCallback(() => {
     condenseAbortRef.current = true;
     setCondensedChapters({});
+    setFmtCondensedChapters({});
     setCondenseEnabled(false);
     setCondensingChapter(null);
     setCondenseAllProgress(null);
     window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify({}));
+    window.electronAPI?.setSetting(`fmtCondensed:${filePath}`, JSON.stringify({}));
     window.electronAPI?.setSetting(`condenseEnabled:${filePath}`, JSON.stringify(false));
   }, [filePath]);
 
@@ -983,14 +1044,22 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       condenseChapter(nextIdx);
     }
 
-    // Format current chapter if needed
-    if (formattingEnabled && !formattedChapters[chapterIdx]) {
-      await formatChapter(chapterIdx);
-    }
+    // Format based on current mode
+    if (formattingEnabled) {
+      if (condenseEnabled && condensedChapters[chapterIdx] && !fmtCondensedChapters[chapterIdx]) {
+        // Format condensed text
+        await formatCondensedChapter(chapterIdx);
+      } else if (!condenseEnabled && !formattedChapters[chapterIdx]) {
+        // Format original text
+        await formatChapter(chapterIdx);
+      }
 
-    // Pre-format next chapter (fire and forget)
-    if (formattingEnabled && !formattedChapters[nextIdx] && nextIdx < chapters.length && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
-      formatChapter(nextIdx);
+      // Pre-format next chapter
+      if (condenseEnabled && nextIdx < chapters.length && condensedChapters[nextIdx] && !fmtCondensedChapters[nextIdx]) {
+        formatCondensedChapter(nextIdx);
+      } else if (!condenseEnabled && nextIdx < chapters.length && !formattedChapters[nextIdx] && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
+        formatChapter(nextIdx);
+      }
     }
 
     // Wiki processing if enabled
@@ -1005,6 +1074,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   }, [chapters, enrichEnabled, enrichedNames, enrichChapter,
       condenseEnabled, condensedChapters, condenseChapter,
       formattingEnabled, formattedChapters, formatChapter,
+      fmtCondensedChapters, formatCondensedChapter,
       wikiEnabled, wikiProcessedChapters, processWikiChapter,
       commentsEnabled, chapterComments, generateCommentsForChapter]);
 
@@ -1473,20 +1543,21 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(false));
   }, [filePath]);
 
-  const processAllWikiChapters = useCallback(async (upToChapter?: number) => {
+  const processAllWikiChapters = useCallback(async (fromChapter?: number, upToChapter?: number) => {
     const api = window.electronAPI;
     const apiKey = await api?.getSetting("openrouterApiKey");
     if (!apiKey || !api) return;
 
     wikiAbortRef.current = false;
 
+    const start = fromChapter ?? 0;
     const limit = upToChapter ?? chapters.length - 1;
 
     // Always query DB (not React state) so we never miss chapters due to stale state
     const getUnprocessed = async (): Promise<number[]> => {
       const processed = new Set(await api.wikiGetProcessed(filePath));
       const queue: number[] = [];
-      for (let i = 0; i <= limit; i++) {
+      for (let i = start; i <= limit; i++) {
         if (!processed.has(i) && chapters[i]) {
           // Skip structural chapters (cover, TOC, etc.) — mark them processed so they don't re-appear
           if (isStructuralChapter(chapters[i].title)) {
@@ -1562,12 +1633,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     return wikiEntityIndex;
   }, [wikiEnabled, wikiEntityIndex]);
 
-  // Effective HTML paragraphs — priority: condensed-formatted > condensed > formatted > original
+  // Effective HTML paragraphs — layered: base (condensed or original) + formatting overlay
   // Branch only overrides content on the branch's own chapter — other chapters show normally
   const isBranchChapter = activeBranch && currentChapter === activeBranch.chapterIndex;
   const effectiveHtml = useMemo(() => {
     if (isBranchChapter && activeBranch) {
-      // Branch chapters always use original/formatted original (not condensed)
       const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
         ? formattedChapters[activeBranch.chapterIndex]
         : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
@@ -1576,16 +1646,24 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       return [...truncated, ...generated];
     }
 
-    // Priority: condensed (already formatted) > formatted > original
-    if (condenseEnabled && condensedChapters[currentChapter]) {
+    // Base layer: condensed (plain text) or original
+    const useCondensed = condenseEnabled && !!condensedChapters[currentChapter];
+
+    if (useCondensed) {
+      // Condensed base — use formatted-condensed if available, else plain condensed
+      if (formattingEnabled && fmtCondensedChapters[currentChapter]) {
+        return fmtCondensedChapters[currentChapter];
+      }
       return condensedChapters[currentChapter];
     }
+
+    // Original base — use formatted-original if available, else raw
     if (formattingEnabled && formattedChapters[currentChapter]) {
       return formattedChapters[currentChapter];
     }
     return chapter?.htmlParagraphs ?? [];
   }, [isBranchChapter, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters,
-      condenseEnabled, condensedChapters, currentChapter, chapter, chapters]);
+      fmtCondensedChapters, condenseEnabled, condensedChapters, currentChapter, chapter, chapters]);
 
   // Speed reader chunks from effective HTML (with wiki entity injection)
   const speedReaderChunks = useMemo(() => {
@@ -2002,7 +2080,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               filePath={filePath}
               bookTitle={title}
               currentChapterWikiDone={wikiProcessedChapters.has(currentChapter)}
-              currentChapterFormatDone={!!formattedChapters[currentChapter]}
+              currentChapterFormatDone={
+                condenseEnabled
+                  ? !!fmtCondensedChapters[currentChapter]
+                  : !!formattedChapters[currentChapter]
+              }
               currentChapterEnrichDone={!!enrichedNames[currentChapter]}
               wikiEnabled={wikiEnabled}
               wikiEntryCount={wikiEntryCount}
@@ -2018,10 +2100,21 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onWikiToggle={toggleWikiEnabled}
               onWikiProcessAll={processAllWikiChapters}
               onCondenseRetry={() => {
+                // Clear condensed + formatted-condensed for this chapter, then re-condense
+                setCondensedChapters(prev => { const u = {...prev}; delete u[currentChapter]; return u; });
+                setFmtCondensedChapters(prev => { const u = {...prev}; delete u[currentChapter]; return u; });
                 condenseChapter(currentChapter);
               }}
               onWikiRetry={() => retryWikiChapter(currentChapter)}
-              onFormatRetry={() => formatChapter(currentChapter)}
+              onFormatRetry={() => {
+                if (condenseEnabled && condensedChapters[currentChapter]) {
+                  // Re-format condensed text
+                  setFmtCondensedChapters(prev => { const u = {...prev}; delete u[currentChapter]; return u; });
+                  formatCondensedChapter(currentChapter);
+                } else {
+                  formatChapter(currentChapter);
+                }
+              }}
               onEnrichRetry={() => enrichChapter(currentChapter)}
               onCancelWikiProcessAll={cancelWikiProcessAll}
               onClearWiki={clearWiki}
@@ -2061,10 +2154,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               htmlParagraphs={effectiveHtml}
               theme={theme}
               readingTheme={settings.readingTheme}
-              aiFormattingEnabled={
-                (formattingEnabled && !!formattedChapters[currentChapter]) ||
-                (condenseEnabled && !!condensedChapters[currentChapter])
-              }
+              aiFormattingEnabled={formattingEnabled && (
+                (condenseEnabled && !!fmtCondensedChapters[currentChapter]) ||
+                (!condenseEnabled && !!formattedChapters[currentChapter])
+              )}
               fontFamily={settings.fontFamily}
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}

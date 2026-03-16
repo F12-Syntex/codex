@@ -74,7 +74,7 @@ interface AISidebarProps {
   onClearComments: () => void;
   onClose: () => void;
   chapterLabels?: ChapterLabels;
-  onBulkStart?: (features: import("./BulkAnalyserModal").FeatureKey[], upToIndex: number) => void;
+  onBulkStart?: (features: import("./BulkAnalyserModal").FeatureKey[], fromIndex: number, upToIndex: number) => void;
 }
 
 export function AISidebar({
@@ -199,11 +199,6 @@ export function AISidebar({
           onClear={onClearCondense}
         />
 
-        {condenseEnabled && (
-          <p className={cn("px-4 pb-2 text-xs leading-relaxed", theme.muted)} style={{ opacity: 0.35 }}>
-            Concise output includes formatting automatically.
-          </p>
-        )}
 
         {/* ── Analysis ── */}
         <Section label="Analysis" theme={theme} />
@@ -283,7 +278,7 @@ export function AISidebar({
       <BulkAnalyserModal
         isOpen={bulkOpen}
         onClose={() => setBulkOpen(false)}
-        onStart={(features, upToIndex) => { setBulkOpen(false); onBulkStart?.(features, upToIndex); }}
+        onStart={(features, fromIndex, upToIndex) => { setBulkOpen(false); onBulkStart?.(features, fromIndex, upToIndex); }}
         theme={theme}
         chapterLabels={chapterLabels}
         totalChapters={totalChapters}

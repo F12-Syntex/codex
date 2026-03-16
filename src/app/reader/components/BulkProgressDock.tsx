@@ -48,10 +48,10 @@ interface BulkRunDeps {
   enrichingChapter: number | null;
   condenseAllProgress: { current: number; total: number } | null;
   condensingChapter: number | null;
-  onRunWiki: (upTo?: number) => void;
-  onRunFormat: (upTo?: number) => void;
-  onRunTitles: (upTo?: number) => void;
-  onRunCondense: (upTo?: number) => void;
+  onRunWiki: (from?: number, upTo?: number) => void;
+  onRunFormat: (from?: number, upTo?: number) => void;
+  onRunTitles: (from?: number, upTo?: number) => void;
+  onRunCondense: (from?: number, upTo?: number) => void;
   cancelWiki: () => void;
   cancelFormat: () => void;
   cancelTitles: () => void;
@@ -65,6 +65,7 @@ export function useBulkRun(deps: BulkRunDeps) {
   const [isDone, setIsDone] = useState(false);
   const [showDock, setShowDock] = useState(false);
 
+  const fromRef = useRef(0);
   const upToRef = useRef(0);
   const phaseTriggeredRef = useRef(false);
   const phaseStartedRef = useRef(false);
@@ -73,7 +74,8 @@ export function useBulkRun(deps: BulkRunDeps) {
   const chapterStartRef = useRef(0);
   const prevChapterRef = useRef<number | null>(null);
 
-  const start = useCallback((features: FeatureKey[], upToIndex: number) => {
+  const start = useCallback((features: FeatureKey[], fromIndex: number, upToIndex: number) => {
+    fromRef.current = fromIndex;
     upToRef.current = upToIndex;
     durationsRef.current = [];
     prevChapterRef.current = null;
@@ -134,10 +136,10 @@ export function useBulkRun(deps: BulkRunDeps) {
       setPhases(prev => prev.map((p, i) =>
         i === currentPhaseIdx ? { ...p, status: "running", startTime: Date.now() } : p
       ));
-      if (feature === "wiki") deps.onRunWiki(upToRef.current);
-      else if (feature === "format") deps.onRunFormat(upToRef.current);
-      else if (feature === "titles") deps.onRunTitles(upToRef.current);
-      else if (feature === "condense") deps.onRunCondense(upToRef.current);
+      if (feature === "wiki") deps.onRunWiki(fromRef.current, upToRef.current);
+      else if (feature === "format") deps.onRunFormat(fromRef.current, upToRef.current);
+      else if (feature === "titles") deps.onRunTitles(fromRef.current, upToRef.current);
+      else if (feature === "condense") deps.onRunCondense(fromRef.current, upToRef.current);
     }, 150);
 
     return () => clearTimeout(t);
