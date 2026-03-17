@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useDeferredValue } from "react";
 import { createPortal } from "react-dom";
 import { Search, ArrowRight, BookOpen, Hash } from "lucide-react";
 import type { MockItem, LibraryData } from "@/lib/mock-data";
@@ -50,6 +50,12 @@ function highlightMatch(text: string, query: string) {
 
 export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOverlayProps) {
   const [query, setQuery] = useState("");
+
+  // ⚡ Bolt: Defer the search query to keep the input UI responsive (non-blocking)
+  // while the heavy O(N) string-matching filtering runs in the background.
+  // Reduces perceived input lag when the library is large.
+  const deferredQuery = useDeferredValue(query);
+
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -57,14 +63,14 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
   const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
+    if (!deferredQuery.trim()) return [];
+    const q = deferredQuery.toLowerCase();
     return allItems.filter(
       (r) =>
         r.item.title.toLowerCase().includes(q) ||
         r.item.author.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [deferredQuery, allItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
@@ -86,7 +92,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query]);
+  }, [deferredQuery]);
 
   useEffect(() => {
     if (!resultsRef.current) return;
@@ -116,7 +122,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
   let flatIndex = 0;
   const hasResults = filtered.length > 0;
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = deferredQuery.trim().length > 0;
 
   return createPortal(
     <div
@@ -203,11 +209,11 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                             {/* Text */}
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-white/80">
-                                {highlightMatch(r.item.title, query)}
+                                {highlightMatch(r.item.title, deferredQuery)}
                               </p>
                               <div className="mt-0.5 flex items-center gap-2">
                                 <p className="truncate text-xs text-white/30">
-                                  {highlightMatch(r.item.author, query)}
+                                  {highlightMatch(r.item.author, deferredQuery)}
                                 </p>
                                 <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[2px] text-xs font-semibold uppercase tracking-wide text-white/30">
                                   {r.item.format}

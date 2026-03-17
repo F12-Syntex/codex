@@ -1,0 +1,3 @@
+## 2024-03-24 - React 18+ useDeferredValue for Heavy Frontend Filtering
+**Learning:** Performing O(N) string-matching and filtering operations directly on search keystrokes can cause noticeable input lag, especially as the library size grows. Memoizing the results with `useMemo` isn't enough because the heavy calculation blocks the main thread from updating the input value immediately.
+**Action:** Use React's `useDeferredValue` on the search query state before passing it to the filtering logic. This allows React to immediately render the updated input value (keeping the UI responsive) while executing the expensive filtering calculation in the background when the main thread is idle.
