@@ -333,7 +333,7 @@ export function TextContent({
     return -1;
   }, [filteredHtml]);
 
-  const buildFirstParagraph = (html: string) => {
+  const buildFirstParagraph = useCallback((html: string) => {
     const text = stripTags(html);
     if (!text || text.length === 0) return html;
     const bigSize = Math.round(fontSize * 1.8);
@@ -341,117 +341,131 @@ export function TextContent({
       /(<p[^>]*>(?:\s*<[^/][^>]*>)*)([A-Za-z\u00C0-\u024F])/,
       `$1<span style="font-size:${bigSize}px;font-weight:600;line-height:1">${"$2"}</span>`,
     );
-  };
+  }, [fontSize]);
 
-  const paragraphsJSX = filteredHtml.map((html, i) => {
-    const isEmpty = html === "<p></p>" || html.trim() === "";
-    if (isEmpty) return <div key={i} style={{ height: `${paraSpacing}px` }} />;
+  const paragraphsJSX = useMemo(() => {
+    return filteredHtml.map((html, i) => {
+      const isEmpty = html === "<p></p>" || html.trim() === "";
+      if (isEmpty) return <div key={i} style={{ height: `${paraSpacing}px` }} />;
 
-    const isImage = html.includes("<img ") && !html.includes("<p");
-    if (isImage) {
+      const isImage = html.includes("<img ") && !html.includes("<p");
+      if (isImage) {
+        return (
+          <div
+            key={i}
+            className="reader-image"
+            style={{ marginBottom: `${paraSpacing}px`, breakInside: "avoid" }}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      }
+
+      const isFirst = i === firstTextIndex;
+      const renderedHtml = isFirst ? buildFirstParagraph(html) : html;
+
+      // Store original htmlParagraphs index for TTS word lookup
+      const originalIdx = i + filterOffset;
+      // Subtle opacity dim for paragraphs TTS has already read (live or persisted)
+      const isRead = ttsShowReadMark && ttsHighWaterMark >= 0 && (
+        ttsParagraphIndex >= 0
+          ? (originalIdx < ttsParagraphIndex && originalIdx <= ttsHighWaterMark)
+          : originalIdx <= ttsHighWaterMark
+      );
+
+      const paraComments = commentsByPara.get(originalIdx);
+      const hasComments = commentsEnabled && paraComments && paraComments.length > 0;
+
       return (
         <div
           key={i}
-          className="reader-image"
-          style={{ marginBottom: `${paraSpacing}px`, breakInside: "avoid" }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+          data-para-idx={originalIdx}
+          className="comment-para-wrap"
+          style={{
+            marginBottom: `${paraSpacing}px`,
+            textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
+            opacity: isRead ? 0.45 : undefined,
+            transition: "opacity 0.4s ease",
+            position: "relative",
+          }}
+        >
+          <span dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+          {/* Comment indicator — absolutely positioned, zero layout impact */}
+          {commentsEnabled && hasComments && (
+            <span
+              className="comment-badge"
+              data-comment-para={originalIdx}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedCommentPara(prev => prev === originalIdx ? null : originalIdx);
+                setAddingCommentPara(null);
+                setCommentInput("");
+              }}
+              style={{
+                position: "absolute", right: "4px", top: "0",
+                display: "inline-flex", alignItems: "center", gap: "2px",
+                cursor: "pointer", opacity: 0.7, transition: "opacity 0.15s ease",
+                zIndex: 5,
+              }}
+            >
+              {paraComments!.some((c) => c.author === "ai") && (
+                <span style={{
+                  width: "18px", height: "18px", borderRadius: "50%",
+                  background: "linear-gradient(135deg, var(--accent-brand), #a78bfa)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: "1.5px solid rgba(255,255,255,0.1)",
+                }}>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11 6.5 7.5 3 6l3.5-1.5L8 1z" fill="white" opacity="0.9"/><circle cx="4" cy="12" r="1.5" fill="white" opacity="0.5"/><circle cx="12" cy="13" r="1" fill="white" opacity="0.4"/></svg>
+                </span>
+              )}
+              {paraComments!.some((c) => c.author === "user") && (
+                <span style={{
+                  width: "18px", height: "18px", borderRadius: "50%",
+                  background: "linear-gradient(135deg, rgb(52, 211, 153), rgb(110, 231, 183))",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: "1.5px solid rgba(255,255,255,0.1)",
+                  marginLeft: paraComments!.some((c) => c.author === "ai") ? "-5px" : "0",
+                }}>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.8 2 4 3.8 4 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 9c-3 0-6 1.5-6 3v1h12v-1c0-1.5-3-3-6-3z" fill="black" opacity="0.7"/></svg>
+                </span>
+              )}
+            </span>
+          )}
+          {/* Add comment icon — absolutely positioned, hidden until hover */}
+          {commentsEnabled && !hasComments && (
+            <span
+              className="comment-add-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAddingCommentPara(prev => prev === originalIdx ? null : originalIdx);
+                setExpandedCommentPara(null);
+                setCommentInput("");
+              }}
+              style={{
+                position: "absolute", right: "4px", top: "0",
+                display: "inline-flex", alignItems: "center",
+                cursor: "pointer", opacity: 0, transition: "opacity 0.15s ease",
+                zIndex: 5,
+              }}
+            >
+              <Plus style={{ width: "12px", height: "12px", color: "var(--text-muted, rgba(255,255,255,0.3))" }} strokeWidth={2} />
+            </span>
+          )}
+        </div>
       );
-    }
-
-    const isFirst = i === firstTextIndex;
-    const renderedHtml = isFirst ? buildFirstParagraph(html) : html;
-
-    // Store original htmlParagraphs index for TTS word lookup
-    const originalIdx = i + filterOffset;
-    // Subtle opacity dim for paragraphs TTS has already read (live or persisted)
-    const isRead = ttsShowReadMark && ttsHighWaterMark >= 0 && (
-      ttsParagraphIndex >= 0
-        ? (originalIdx < ttsParagraphIndex && originalIdx <= ttsHighWaterMark)
-        : originalIdx <= ttsHighWaterMark
-    );
-
-    const paraComments = commentsByPara.get(originalIdx);
-    const hasComments = commentsEnabled && paraComments && paraComments.length > 0;
-
-    return (
-      <div
-        key={i}
-        data-para-idx={originalIdx}
-        className="comment-para-wrap"
-        style={{
-          marginBottom: `${paraSpacing}px`,
-          textIndent: !isFirst && i > 0 ? `${fontSize * 1.5}px` : undefined,
-          opacity: isRead ? 0.45 : undefined,
-          transition: "opacity 0.4s ease",
-          position: "relative",
-        }}
-      >
-        <span dangerouslySetInnerHTML={{ __html: renderedHtml }} />
-        {/* Comment indicator — absolutely positioned, zero layout impact */}
-        {commentsEnabled && hasComments && (
-          <span
-            className="comment-badge"
-            data-comment-para={originalIdx}
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpandedCommentPara(expandedCommentPara === originalIdx ? null : originalIdx);
-              setAddingCommentPara(null);
-              setCommentInput("");
-            }}
-            style={{
-              position: "absolute", right: "4px", top: "0",
-              display: "inline-flex", alignItems: "center", gap: "2px",
-              cursor: "pointer", opacity: 0.7, transition: "opacity 0.15s ease",
-              zIndex: 5,
-            }}
-          >
-            {paraComments!.some((c) => c.author === "ai") && (
-              <span style={{
-                width: "18px", height: "18px", borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--accent-brand), #a78bfa)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                border: "1.5px solid rgba(255,255,255,0.1)",
-              }}>
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11 6.5 7.5 3 6l3.5-1.5L8 1z" fill="white" opacity="0.9"/><circle cx="4" cy="12" r="1.5" fill="white" opacity="0.5"/><circle cx="12" cy="13" r="1" fill="white" opacity="0.4"/></svg>
-              </span>
-            )}
-            {paraComments!.some((c) => c.author === "user") && (
-              <span style={{
-                width: "18px", height: "18px", borderRadius: "50%",
-                background: "linear-gradient(135deg, rgb(52, 211, 153), rgb(110, 231, 183))",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                border: "1.5px solid rgba(255,255,255,0.1)",
-                marginLeft: paraComments!.some((c) => c.author === "ai") ? "-5px" : "0",
-              }}>
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.8 2 4 3.8 4 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 9c-3 0-6 1.5-6 3v1h12v-1c0-1.5-3-3-6-3z" fill="black" opacity="0.7"/></svg>
-              </span>
-            )}
-          </span>
-        )}
-        {/* Add comment icon — absolutely positioned, hidden until hover */}
-        {commentsEnabled && !hasComments && (
-          <span
-            className="comment-add-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setAddingCommentPara(addingCommentPara === originalIdx ? null : originalIdx);
-              setExpandedCommentPara(null);
-              setCommentInput("");
-            }}
-            style={{
-              position: "absolute", right: "4px", top: "0",
-              display: "inline-flex", alignItems: "center",
-              cursor: "pointer", opacity: 0, transition: "opacity 0.15s ease",
-              zIndex: 5,
-            }}
-          >
-            <Plus style={{ width: "12px", height: "12px", color: "var(--text-muted, rgba(255,255,255,0.3))" }} strokeWidth={2} />
-          </span>
-        )}
-      </div>
-    );
-  });
+    });
+  }, [
+    filteredHtml,
+    firstTextIndex,
+    filterOffset,
+    fontSize,
+    paraSpacing,
+    ttsShowReadMark,
+    ttsHighWaterMark,
+    ttsParagraphIndex,
+    commentsEnabled,
+    commentsByPara,
+    buildFirstParagraph
+  ]);
 
   // Parse chapter title into parts
   const titleParts = useMemo(() => {
