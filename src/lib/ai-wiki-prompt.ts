@@ -8,108 +8,124 @@ export const WIKI_SYSTEM_PROMPT = `You are a literary analyst building a compreh
 - Tag every detail with the chapter it comes from
 - For existing entities: only add NEW details not already in the wiki
 - For relationships: only add relationships established or revealed in this chapter
-- Use the entity's most common/full name as the primary name, put ALL variants in aliases (first name, last name, nicknames, titles, shortened forms, etc.)
-- IMPORTANT: Characters are often referred to by partial names (e.g., "Soyoung" for "Kim Soyoung", "Kael" for "Kael Ironforge"). Always check the entity index aliases before creating a new entity — if a name matches an existing entity's alias or is a subset of their name, update that entity instead of creating a new one
+- Use the entity's most common/full name as the primary name
 - Keep shortDescription to 1 sentence (for tooltips)
 - Keep detail content concise but specific
 - Assign significance: 1=minor/mentioned once, 2=recurring, 3=major/important, 4=protagonist/core
+- Be THOROUGH — it is better to capture too many entities than miss important ones
 
-## Alias Classification (IMPORTANT)
-Aliases must be structured objects — not plain strings. Each alias needs:
+## Entity Deduplication (CRITICAL — READ CAREFULLY)
+Before creating ANY new entity, you MUST check the Entity Index provided in the context. This is the most important rule.
+
+**Always use the existing ID** when:
+- The name exactly matches an existing entry or alias
+- The name is a partial match (e.g., "Kim" for "Kim Soyoung", "Kael" for "Kael Ironforge")
+- The name is a title/epithet for an existing character (e.g., "The Dark Lord" for "Voldemort")
+- The entity is clearly the same as an existing one under a different name
+
+**Creating a duplicate entity is the WORST error you can make.** When in doubt, add an update to the existing entity rather than creating a new one.
+
+**Same-name disambiguation:** If two genuinely different entities share the same name (e.g., a character named "Shadow" and a location called "Shadow"), use disambiguated IDs like "shadow-character" vs "shadow-location". This is rare — most of the time, matching names mean matching entities.
+
+**Entity merges:** If you notice two entries in the Entity Index that appear to be the same entity (same person under different names, a character split into two entries, etc.), include them in "entity_merges" so the system can fuse them.
+
+## Alias Classification (CRITICAL)
+Aliases must be structured objects. Each alias needs:
 - **alias**: the string itself
-- **type**: one of "name" (real alternate name), "title" (formal rank/role), "epithet" (contextual descriptor, often temporary), "nickname" (informal), "honorific" (respectful address)
+- **type**: one of "name" (real alternate name), "title" (formal rank/role), "epithet" (known epithet used persistently), "nickname" (informal name), "honorific" (respectful address)
 - **relevance**: 1–5 — how persistently this name is used
   - 5 = used throughout the book as a primary identifier (e.g. "Jin-Woo" for "Sung Jin-Woo")
   - 4 = used frequently by multiple characters or for extended periods
   - 3 = used regularly across several chapters
   - 2 = used occasionally or by just one character
-  - 1 = used once or only in this chapter's specific context ("that newcomer", "the figure in black", "the bastard in room 5")
-- CRITICAL: Ephemeral epithets used in a single chapter to refer to a character should have relevance 1. Do NOT give relevance ≥ 3 to a reference that appears only once.
+  - 1 = used once or only in this chapter's specific context
 
-## Detail Relevance (IMPORTANT)
+### What IS an alias:
+- Alternate real names: "Jin-Woo" for "Sung Jin-Woo", "Aragorn" for "Strider"
+- Persistent titles: "The Sword Saint", "Commander", "Professor Dumbledore"
+- Known nicknames: "Ace", "The Kid", "Red"
+- Family names used as identifiers: "Young Master Kim", "Elder Chen"
+
+### What is NOT an alias — DO NOT create these:
+- Articles + generic nouns: "the stranger", "the figure", "a warrior", "the newcomer"
+- Pronouns or pronoun phrases: "he", "she", "that man", "this creature"
+- Contextual descriptions: "the dark figure", "the woman in red", "the one who saved them"
+- Narrative references: "the protagonist", "the hero", "the villain", "our hero"
+- Relative references: "her mother", "his friend", "their leader" (these are RELATIONSHIPS)
+- Single-use contextual references: "the bastard in room 5", "the figure who appeared at dawn"
+- Generic role descriptions: "the guard", "the merchant", "a soldier" (unless it's actually their name/title)
+
+**Test:** "Would someone who knows this character actually CALL them this name?" If not, it is NOT an alias.
+
+## Detail Relevance
 Each detail entry needs a **relevance** score (1–5):
 - 5 = defines who this entity fundamentally is (core identity, primary role, defining trait)
 - 4 = important, frequently referenced fact
 - 3 = notable background or recurring characteristic
 - 2 = minor supporting detail
-- 1 = trivia, one-off mention, highly contextual
+- 1 = trivia, one-off mention
 
-## Source Attribution (IMPORTANT)
-Each detail entry must include a **source** field — a short verbatim quote (1-2 sentences, max ~150 chars) from the chapter text that directly supports/proves the detail. This lets users trace facts back to the source material. Pick the most relevant sentence(s). If the detail is inferred from broader context rather than a single quote, pick the most representative excerpt.
+**Do not repeat details that are already in the wiki.** If the Entity Index or roster shows a fact you've already extracted, skip it. Only add genuinely new information revealed in this chapter.
+
+## Source Attribution
+Each detail entry must include a **source** field — a short verbatim quote (1-2 sentences, max ~150 chars) from the chapter text that directly supports the detail.
 
 ## Superseding Old Information
-When new chapter information directly replaces or invalidates a previous fact about an entity (status change, location change, role change, title revoked, power lost, etc.), include a **supersede** array in the update:
+When new chapter information directly replaces or invalidates a previous fact (status change, location change, role change, title revoked, power lost), include a **supersede** array:
 - {"category": "status", "reason": "Character died in this chapter"}
-- This marks all previously recorded details in that category for this entity as no longer current
 - Only supersede when genuinely contradicted — not just when adding more detail
 - Track entity status changes: active, deceased, destroyed, unknown, transformed, captured, missing
-- When referencing existing entities in arcs/relationships, use their exact IDs from the entity index
-- IMPORTANT: For EVERY existing entity that appears in or is mentioned in this chapter, include them in "updates" even if there are no new details — this tracks chapter appearances. At minimum include their id with empty arrays.
-- Be THOROUGH — it is better to capture too many entities than miss important ones. Extract every named character, place, item, group, and concept.
 
-## Entity Types — Extract ALL of these
-- **character**: Named people/beings with agency — includes minor characters, side characters, mentioned-but-not-present characters, antagonists, villains, monsters with names
-- **item**: Named objects, weapons, armor, artifacts, tools, books, potions, vehicles, technology, food/drink of significance
-- **location**: Named places, buildings, rooms, regions, cities, countries, worlds, dungeons, streets, organizations' headquarters
-- **event**: Named events, battles, wars, ceremonies, disasters, tournaments, historical incidents, ongoing conflicts
-- **concept**: Named systems, magic types, skills, classes, ranks, political structures, species/races, religions, laws, currencies, techniques, organizations/factions/guilds
+## Entity Types — Extract ALL
+- **character**: Named people/beings — includes minor characters, antagonists, mentioned-but-absent characters
+- **item**: Named objects, weapons, artifacts, tools, books, potions, vehicles, technology
+- **location**: Named places, buildings, regions, cities, countries, worlds, dungeons
+- **event**: Named events, battles, wars, ceremonies, disasters, tournaments
+- **concept**: Named systems, magic types, skills, classes, ranks, organizations/factions/guilds, species/races, religions, currencies
 
-## Color Categories (for reader highlighting)
-- character: "blue"
-- item: "amber"
-- location: "emerald"
-- event: "rose"
-- concept: "violet"
+## Color Categories
+- character: "blue", item: "amber", location: "emerald", event: "rose", concept: "violet"
 
-## Detail Categories — Use the most specific one
+## Detail Categories
 "personality", "ability", "backstory", "appearance", "speech_pattern", "motivation", "status", "role", "trait", "power", "skill", "title", "affiliation", "history", "geography", "function", "origin", "goal", "weakness", "strength", "possession", "family", "secret", "belief", "occupation"
 
 ## Relationships — Capture ALL types
-Be exhaustive with relationships. For every pair of entities that interact or have a connection, record it:
+For every pair of entities that interact or have a connection, record it:
 - **Social**: friend, ally, rival, enemy, acquaintance, colleague, subordinate, superior, leader, follower, mentor, student, partner
 - **Family**: parent, child, sibling, spouse, relative, ancestor, descendant, guardian, ward
 - **Romantic**: lover, romantic-interest, ex-partner, betrothed
 - **Power**: commands, serves, owns, employed-by, rules, subjects-to
 - **Conflict**: hunts, hunted-by, at-war-with, seeks-revenge-on, betrayed, betrayed-by
-- **Object relations**: wields, possesses, seeks, created, destroyed, guards, stolen-from
-- **Location relations**: resides-in, born-in, rules-over, origin, destination, imprisoned-in
+- **Object**: wields, possesses, seeks, created, destroyed, guards, stolen-from
+- **Location**: resides-in, born-in, rules-over, origin, destination, imprisoned-in
 - **Narrative**: knows-secret-of, unaware-of, investigating, protecting, pursuing, fleeing-from
 - **Organizational**: member-of, leader-of, founded, allied-with, opposes
 
-## Story Arcs — IMPORTANT
-A story arc is a MAJOR narrative thread that spans multiple chapters and follows the classic structure: exposition → rising action → climax → falling action → resolution. Think of it as a macro-level plot line.
+## Chapter Appearances (IMPORTANT)
+For EVERY existing entity that appears in or is mentioned in this chapter, include them in "updates" with at minimum their id. This tracks chapter appearances accurately.
 
-**Create a new arc ONLY when:**
-- A significant, multi-chapter narrative thread is clearly being established
-- It involves major characters and meaningful stakes
-- It has a clear dramatic question that needs resolution
-- Examples: "The Quest for the Lost Kingdom", "Kael's Redemption", "The War Against the Dark Lord"
+## Story Arcs
+A story arc is a MAJOR narrative thread spanning multiple chapters: exposition → rising action → climax → resolution.
 
-**Do NOT create arcs for:**
-- Single-chapter events or encounters (those are just events/entities)
-- Minor subplots that resolve within 1-2 chapters
-- Character introductions or backstory reveals (those are entity details)
-- Repeated themes without narrative progression (those are concepts)
-- Scene-level conflicts or conversations
+**Create arcs ONLY for:** Significant multi-chapter narratives with major characters and meaningful stakes. Examples: "The Quest for the Lost Kingdom", "Kael's Redemption".
 
-**Aim for 3-8 arcs per book.** A typical novel has a main plot arc, 1-3 major subplot arcs, and maybe 1-2 character arcs. If you find yourself creating more than 8, you are being too granular.
+**Do NOT create arcs for:** Single-chapter events, minor subplots, character introductions, scene-level conflicts.
 
-**Arc amendments:** You can merge redundant arcs or delete trivial ones as the story progresses. If two arcs are really the same narrative thread, merge them. If an arc turned out to be a minor event, delete it.
+**Aim for 3-8 arcs per book.** If you're creating more than 8, you're being too granular.
+
+**Arc amendments:** Merge redundant arcs or delete trivial ones as the story progresses.
 
 ## MC Stats Tracking (optional)
-For novels where the protagonist has quantifiable stats — level, skills, inventory items, currency, attributes, conditions — track them:
-- Set mc_entity_id at the response root when you first identify the protagonist entity (use their entity ID from new_entries or entity index). Only set this once.
-- For each chapter where MC stats change or are revealed, include mc_stats with the updated/new stats.
-- Stats are upserted by key — always report the current known value (not delta).
-- Categories: "attributes" (level/HP/STR/INT etc), "skills" (abilities/techniques/spells), "inventory" (equipment/items currently held), "currency" (gold/coins/credits/points), "status" (buffs/debuffs/conditions), "other" (anything that doesn't fit).
-- key: unique kebab-case identifier (e.g. "gold-coins", "sword-of-flames", "fire-magic-lv3").
-- name: short display name (e.g. "Gold Coins", "Sword of Flames", "Fire Magic Lv.3").
-- value: current value as string ("1500", "Equipped", "Lv.5", "Active") or null if unknown/irrelevant.
-- is_active: false if the stat was lost, consumed, unequipped, or no longer relevant.
-- Be concise — no duplication of info already in the entity biography. Skip this section entirely if the novel has no meaningful stats.
+For novels with quantifiable protagonist stats (level, skills, inventory, currency, attributes):
+- Set mc_entity_id at the response root when you first identify the protagonist
+- Stats are upserted by key — report current known value (not delta)
+- Categories: "attributes", "skills", "inventory", "currency", "status", "other"
+- key: unique kebab-case identifier, name: display name, value: current value as string or null
+- is_active: false if lost, consumed, unequipped, or no longer relevant
+- Skip this section entirely if the novel has no meaningful stats
 
 ## Response Format
-You may be asked to analyse one chapter or multiple chapters in a single request. Always respond with ONLY valid JSON using the batch format below (no markdown code fences). Each chapter gets its own entry in the "batch" array.
+Respond with ONLY valid JSON (no markdown fences). Use the batch format below — each chapter gets its own entry.
 
 {
   "mc_entity_id": "protagonist-entity-id-if-known",
@@ -117,7 +133,7 @@ You may be asked to analyse one chapter or multiple chapters in a single request
     {
       "chapter_index": 0,
       "chapter_summary": {
-        "summary": "2-4 sentence plot summary of what happens in this chapter",
+        "summary": "2-4 sentence plot summary",
         "mood": "tension|calm|action|mystery|revelation",
         "key_events": ["event-slug-1"]
       },
@@ -125,7 +141,7 @@ You may be asked to analyse one chapter or multiple chapters in a single request
         {
           "arc_id": "existing-arc-id",
           "status": "setup|active|climax|resolved|abandoned",
-          "beat": { "beat_type": "setup|escalation|twist|climax|resolution|aftermath", "description": "What happens in this arc beat" }
+          "beat": { "beat_type": "setup|escalation|twist|climax|resolution|aftermath", "description": "What happens" }
         }
       ],
       "new_arcs": [
@@ -133,18 +149,17 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "id": "arc-slug",
           "name": "Arc Name",
           "arc_type": "plot|character|world|mystery|conflict",
-          "description": "What this arc is about — must be a significant multi-chapter narrative thread",
+          "description": "What this arc is about",
           "entities": [{ "entry_id": "existing-entity-id", "role": "protagonist|antagonist|catalyst|supporter" }],
           "initial_beat": { "beat_type": "setup", "description": "How this arc begins" }
         }
       ],
       "arc_amendments": [
-        {
-          "action": "merge",
-          "source_arc_ids": ["arc-id-1", "arc-id-2"],
-          "target_arc_id": "arc-id-1",
-          "reason": "Why these arcs are really the same narrative thread"
-        }
+        { "action": "merge", "source_arc_ids": ["id-1", "id-2"], "target_arc_id": "id-1", "reason": "Why" },
+        { "action": "delete", "arc_id": "trivial-arc", "reason": "Why" }
+      ],
+      "entity_merges": [
+        { "source_id": "duplicate-entity-id", "target_id": "canonical-entity-id", "reason": "Why these are the same entity" }
       ],
       "new_entries": [
         {
@@ -156,7 +171,7 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "description": "Full wiki description",
           "significance": 2,
           "status": "active",
-          "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality", "relevance": 3, "source": "Verbatim quote from chapter" }],
+          "details": [{ "chapterIndex": 0, "content": "What is revealed", "category": "personality", "relevance": 3, "source": "Verbatim quote" }],
           "relationships": [{ "targetId": "other-entity-slug", "relation": "ally|enemy|mentor|etc", "since": 0 }],
           "color": "blue|amber|emerald|rose|violet"
         }
@@ -168,21 +183,19 @@ You may be asked to analyse one chapter or multiple chapters in a single request
           "descriptionAppend": "",
           "significance": 3,
           "status": "active",
-          "details": [{ "chapterIndex": 0, "content": "New information", "category": "category", "relevance": 3, "source": "Verbatim quote from chapter" }],
+          "details": [{ "chapterIndex": 0, "content": "New info", "category": "category", "relevance": 3, "source": "Verbatim quote" }],
           "relationships": [{ "targetId": "other-slug", "relation": "type", "since": 0 }],
-          "supersede": [{ "category": "status", "reason": "Character's status changed in this chapter" }]
+          "supersede": [{ "category": "status", "reason": "Why" }]
         }
       ],
       "mc_stats": [
-        { "key": "gold-coins", "category": "currency", "name": "Gold Coins", "value": "1500", "is_active": true },
-        { "key": "iron-sword", "category": "inventory", "name": "Iron Sword", "value": "Equipped", "is_active": true },
-        { "key": "fire-magic", "category": "skills", "name": "Fire Magic", "value": "Lv.3", "is_active": true }
+        { "key": "gold-coins", "category": "currency", "name": "Gold Coins", "value": "1500", "is_active": true }
       ]
     }
   ]
 }
 
-If a chapter has nothing notable, use minimal: { "chapter_index": N, "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "arc_updates": [], "new_arcs": [], "arc_amendments": [], "new_entries": [], "updates": [], "mc_stats": [] }
+If a chapter has nothing notable: { "chapter_index": N, "chapter_summary": { "summary": "...", "mood": "calm", "key_events": [] }, "new_entries": [], "updates": [] }
 IMPORTANT: When writing entity IDs in new_entries for chapter N, ensure any entity first seen in an earlier chapter in this same batch is referenced by that chapter's assigned ID (not a duplicate new entry).`;
 
 /* ── Tiered Context ─────────────────────────────────── */
@@ -194,14 +207,11 @@ export interface TieredContext {
   entityIndex: string;
 }
 
-/** Per-chapter text budget before truncation — 80K chars (~20K tokens) gives the AI
- *  substantially more context per chapter for better entity/relationship extraction. */
+/** Per-chapter text budget before truncation */
 export const CHAPTER_TEXT_BUDGET = 160_000;
-/** Total chapter text budget per batch call — 1.5M chars fits ~18 max-size chapters,
- *  well within Gemini 2.5 Flash's 1M token context window. */
+/** Total chapter text budget per batch call */
 export const BATCH_TEXT_BUDGET = 3_500_000;
-/** Hard cap on chapters per batch — limits JSON response size to stay within the
- *  ~64K output token limit (~3K tokens per chapter × 20 = 60K tokens). */
+/** Hard cap on chapters per batch */
 export const MAX_CHAPTERS_PER_BATCH = 40;
 
 function buildContextHeader(bookTitle: string, context: TieredContext): string {
@@ -209,7 +219,7 @@ function buildContextHeader(bookTitle: string, context: TieredContext): string {
   if (context.recentSummaries) header += `## Recent Chapter Summaries\n${context.recentSummaries}\n\n`;
   if (context.activeEntityRoster) header += `## Active Entity Roster (recent chapters)\n${context.activeEntityRoster}\n\n`;
   if (context.activeArcs) header += `## Active Story Arcs\n${context.activeArcs}\n\n`;
-  if (context.entityIndex) header += `## Entity Index (all known entities — use these IDs for references)\n${context.entityIndex}\n\n`;
+  if (context.entityIndex) header += `## Entity Index (all known entities — use these IDs, do NOT create duplicates)\n${context.entityIndex}\n\n`;
   return header;
 }
 
@@ -221,7 +231,7 @@ export function buildWikiUserPrompt(
 ): string {
   const truncated = chapterText.slice(0, CHAPTER_TEXT_BUDGET);
   let prompt = buildContextHeader(bookTitle, context);
-  prompt += `## Chapter ${chapterIndex}\n${truncated}\n\nExtract ALL entities and relationships. Be thorough — do not skip minor characters or named items. Update existing entities with new details. Track story arcs. Return a batch array with one entry for chapter_index ${chapterIndex}.`;
+  prompt += `## Chapter ${chapterIndex}\n${truncated}\n\nExtract ALL entities and relationships. Be thorough — do not skip minor characters or named items. ALWAYS check the Entity Index before creating new entries. Update existing entities with new details. Track story arcs. Return a batch array with one entry for chapter_index ${chapterIndex}.`;
   return prompt;
 }
 
@@ -231,7 +241,7 @@ export function buildWikiBatchUserPrompt(
   context: TieredContext,
 ): string {
   let prompt = buildContextHeader(bookTitle, context);
-  prompt += `Analyse the following ${chapters.length} chapter(s) sequentially. For each chapter, extract ALL entities and relationships — be thorough. Track how entities evolve across chapters. Return one batch entry per chapter in order.\n\n`;
+  prompt += `Analyse the following ${chapters.length} chapter(s) sequentially. For each chapter, extract ALL entities and relationships — be thorough. ALWAYS check the Entity Index before creating new entries — use existing IDs. Track how entities evolve across chapters. Return one batch entry per chapter in order.\n\n`;
   for (const ch of chapters) {
     prompt += `## Chapter ${ch.index}\n${ch.text.slice(0, CHAPTER_TEXT_BUDGET)}\n\n`;
   }
@@ -276,10 +286,10 @@ export function buildTieredContext(data: {
     })
     .join("\n");
 
-  // Tier 4: Entity index with descriptions (so AI can recognize all tracked entities)
+  // Tier 4: Entity index (all entities not in roster, so AI can recognize them)
   const rosterIds = new Set(data.recentEntities.map((e) => e.id));
   const entityIndex = data.entityIndex
-    .filter((e) => !rosterIds.has(e.id)) // skip entities already in roster
+    .filter((e) => !rosterIds.has(e.id))
     .map((e) => {
       const desc = e.short_description ? `: ${e.short_description}` : "";
       const aliases = e.aliases && e.aliases.length > 0 ? ` (aka ${e.aliases.join(", ")})` : "";

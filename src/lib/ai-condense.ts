@@ -60,6 +60,43 @@ function repairArray(s: string): string[] | null {
   return tryParseArray(t);
 }
 
+/** Handle AI returning [[text], [text]] instead of ["text", "text"] */
+function tryFlattenNestedArray(s: string): string[] | null {
+  try {
+    const parsed = JSON.parse(s);
+    if (!Array.isArray(parsed)) return null;
+    // Check if it's an array of single-element arrays
+    if (parsed.every(x => Array.isArray(x))) {
+      const flat = parsed.flatMap(x => x).filter(x => typeof x === "string");
+      return flat.length > 0 ? flat : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Last resort: extract paragraph text from malformed response line by line */
+function extractParagraphLines(s: string): string[] | null {
+  let inner = s.trim();
+  if (inner.startsWith("[")) inner = inner.slice(1);
+  if (inner.endsWith("]")) inner = inner.slice(0, -1);
+
+  const lines = inner.split("\n")
+    .map(l => l.trim())
+    .filter(l => l.length > 15)
+    .map(l => {
+      // Strip leading/trailing brackets, quotes, commas
+      let t = l;
+      t = t.replace(/^\[?"?\s*/, "");
+      t = t.replace(/\s*"?\]?,?\s*$/, "");
+      return t.trim();
+    })
+    .filter(l => l.length > 10);
+
+  return lines.length > 0 ? lines : null;
+}
+
 /* ── Post-processing ───────────────────────────────────────── */
 
 /** Strip any HTML tags the AI adds despite instructions, decode entities. */
@@ -99,21 +136,42 @@ async function condenseChunk(
   if (!content) return null;
 
   let cleaned = content;
+  // Handle both complete and truncated code fences
   const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) cleaned = fenceMatch[1].trim();
+  if (fenceMatch) {
+    cleaned = fenceMatch[1].trim();
+  } else {
+    const openFence = cleaned.match(/```(?:json)?\s*([\s\S]*)/);
+    if (openFence) cleaned = openFence[1].trim();
+  }
 
   const direct = tryParseArray(cleaned);
   if (direct) return direct.map(cleanParagraph);
+
+  // Flatten nested arrays: [[text], [text]] → [text, text]
+  const flattened = tryFlattenNestedArray(cleaned);
+  if (flattened) return flattened.map(cleanParagraph);
 
   const arrStart = cleaned.indexOf("[");
   if (arrStart !== -1) {
     const fromBracket = cleaned.slice(arrStart);
     const d2 = tryParseArray(fromBracket);
     if (d2) return d2.map(cleanParagraph);
+
+    const f2 = tryFlattenNestedArray(fromBracket);
+    if (f2) return f2.map(cleanParagraph);
+
     const repaired = repairArray(fromBracket);
     if (repaired) {
       console.warn("ai-condense: salvaged truncated response");
       return repaired.map(cleanParagraph);
+    }
+
+    // Last resort: extract text lines from malformed response
+    const extracted = extractParagraphLines(fromBracket);
+    if (extracted) {
+      console.warn("ai-condense: extracted %d paragraphs from malformed response", extracted.length);
+      return extracted.map(cleanParagraph);
     }
   }
 

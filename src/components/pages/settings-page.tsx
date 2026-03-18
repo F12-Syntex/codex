@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Trash2,
   Download,
+  BookOpen,
   Key,
   Eye,
   EyeOff,
@@ -103,6 +104,8 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const [testingKey, setTestingKey] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [presetOverrides, setPresetOverrides] = useState<PresetOverrides>({});
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const [clearStatus, setClearStatus] = useState<string | null>(null);
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
@@ -204,6 +207,41 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const handleClearLibrary = async () => {
     // This would need confirmation in a real app
     // For now just a placeholder
+  };
+
+  const handleClearWiki = async () => {
+    if (confirmAction !== "wiki") {
+      setConfirmAction("wiki");
+      return;
+    }
+    setConfirmAction(null);
+    try {
+      await api?.wikiClearAll?.();
+      setClearStatus("Wiki data cleared");
+      setTimeout(() => setClearStatus(null), 3000);
+    } catch {
+      setClearStatus("Failed to clear wiki data");
+      setTimeout(() => setClearStatus(null), 3000);
+    }
+  };
+
+  const handleClearFormatting = async () => {
+    if (confirmAction !== "formatting") {
+      setConfirmAction("formatting");
+      return;
+    }
+    setConfirmAction(null);
+    try {
+      await api?.clearSettingsByPrefix?.("formattedChapters:");
+      await api?.clearSettingsByPrefix?.("fmtCondensedChapters:");
+      await api?.clearSettingsByPrefix?.("styleDictionary:");
+      await api?.clearSettingsByPrefix?.("formattingEnabled:");
+      setClearStatus("Formatting cache cleared");
+      setTimeout(() => setClearStatus(null), 3000);
+    } catch {
+      setClearStatus("Failed to clear formatting");
+      setTimeout(() => setClearStatus(null), 3000);
+    }
   };
 
   const handleApiKeyChange = (value: string) => {
@@ -324,6 +362,44 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
               >
                 <Trash2 className="h-3 w-3" />
                 Clear
+              </button>
+            </SettingRow>
+
+            <SettingRow
+              label="Clear wiki data"
+              description={clearStatus ?? "Delete all wiki entries, relationships, arcs, and summaries for every book."}
+            >
+              <button
+                onClick={handleClearWiki}
+                onBlur={() => { if (confirmAction === "wiki") setConfirmAction(null); }}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                  confirmAction === "wiki"
+                    ? "bg-red-500/15 text-red-400"
+                    : "bg-white/[0.06] text-white/40 hover:bg-red-500/10 hover:text-red-400"
+                )}
+              >
+                <BookOpen className="h-3 w-3" />
+                {confirmAction === "wiki" ? "Confirm?" : "Clear"}
+              </button>
+            </SettingRow>
+
+            <SettingRow
+              label="Clear formatting cache"
+              description="Delete all AI-formatted chapter data. Chapters will reformat on next visit."
+            >
+              <button
+                onClick={handleClearFormatting}
+                onBlur={() => { if (confirmAction === "formatting") setConfirmAction(null); }}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                  confirmAction === "formatting"
+                    ? "bg-red-500/15 text-red-400"
+                    : "bg-white/[0.06] text-white/40 hover:bg-red-500/10 hover:text-red-400"
+                )}
+              >
+                <Trash2 className="h-3 w-3" />
+                {confirmAction === "formatting" ? "Confirm?" : "Clear"}
               </button>
             </SettingRow>
           </SettingSection>

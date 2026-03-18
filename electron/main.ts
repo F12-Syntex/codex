@@ -20,8 +20,9 @@ import {
   markChapterProcessed, unmarkChapterProcessed, getProcessedChapters,
   getWikiMeta, upsertWikiMeta,
   getEntityIndex, getRecentEntities,
-  clearWiki, migrateJsonWiki,
+  clearWiki, clearAllWiki, clearChapterWikiData, migrateJsonWiki,
   mergeWikiEntries, unmergeWikiEntries, getWikiMergeLog,
+  getAllWikiAliases, clearSettingsByPrefix,
   upsertMCStat, getMCStats, setMCEntityId, getMCEntityId,
   // Simulate
   upsertBranch, getBranches, getBranchSegments, addSegment, deleteBranch,
@@ -492,6 +493,10 @@ function createWindow() {
   ipcMain.handle("wiki:get-recent-entities", (_event, filePath: string, lastN: number, currentChapter: number) => getRecentEntities(filePath, lastN, currentChapter));
 
   ipcMain.handle("wiki:clear", (_event, filePath: string) => { clearWiki(filePath); });
+  ipcMain.handle("wiki:clear-all", () => { clearAllWiki(); });
+  ipcMain.handle("wiki:clear-chapter-data", (_event, filePath: string, chapterIndex: number) => { clearChapterWikiData(filePath, chapterIndex); });
+  ipcMain.handle("wiki:get-all-aliases", (_event, filePath: string) => getAllWikiAliases(filePath));
+  ipcMain.handle("settings:clear-prefix", (_event, prefix: string) => { clearSettingsByPrefix(prefix); });
   ipcMain.handle("wiki:migrate-json", (_event, filePath: string) => migrateJsonWiki(filePath));
 
   ipcMain.handle("wiki:merge-entries", (_event, filePath: string, sourceId: string, targetId: string) => { mergeWikiEntries(filePath, sourceId, targetId); });

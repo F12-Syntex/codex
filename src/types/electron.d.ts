@@ -360,7 +360,11 @@ interface ElectronAPI {
   wikiGetRecentEntities: (filePath: string, lastN: number, currentChapter: number) => Promise<WikiEntryRow[]>;
 
   wikiClear: (filePath: string) => Promise<void>;
+  wikiClearAll: () => Promise<void>;
+  wikiClearChapterData: (filePath: string, chapterIndex: number) => Promise<void>;
+  wikiGetAllAliases: (filePath: string) => Promise<{ entry_id: string; alias: string; alias_type: string; relevance: number }[]>;
   wikiMigrateJson: (filePath: string) => Promise<boolean>;
+  clearSettingsByPrefix: (prefix: string) => Promise<void>;
 
   wikiMergeEntries: (filePath: string, sourceId: string, targetId: string) => Promise<void>;
   wikiUnmergeEntries: (filePath: string, mergeLogId: number) => Promise<void>;

@@ -140,6 +140,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   wikiClear: (filePath: string) =>
     ipcRenderer.invoke("wiki:clear", filePath),
+  wikiClearAll: () =>
+    ipcRenderer.invoke("wiki:clear-all"),
+  wikiClearChapterData: (filePath: string, chapterIndex: number) =>
+    ipcRenderer.invoke("wiki:clear-chapter-data", filePath, chapterIndex),
+  wikiGetAllAliases: (filePath: string) =>
+    ipcRenderer.invoke("wiki:get-all-aliases", filePath),
+  clearSettingsByPrefix: (prefix: string) =>
+    ipcRenderer.invoke("settings:clear-prefix", prefix),
   wikiMigrateJson: (filePath: string) =>
     ipcRenderer.invoke("wiki:migrate-json", filePath),
 

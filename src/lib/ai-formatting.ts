@@ -307,8 +307,8 @@ async function formatChunk(
       console.error(`AI formatting chunk failed (attempt ${attempt + 1}/${MAX_RETRIES}):`, err);
     }
   }
-  console.warn("AI formatting: all retries exhausted, returning originals");
-  return [...paragraphs];
+  console.warn("AI formatting: all retries exhausted");
+  return null;
 }
 
 /* ── Public API ─────────────────────────────────────────────── */

@@ -779,11 +779,21 @@ export function mergeWikiEntries(filePath: string, sourceId: string, targetId: s
     db.prepare("UPDATE wiki_relationships SET source_id = ? WHERE file_path = ? AND source_id = ?").run(targetId, filePath, sourceId);
     db.prepare("UPDATE wiki_relationships SET target_id = ? WHERE file_path = ? AND target_id = ?").run(targetId, filePath, sourceId);
 
+    // Clean up self-referencing relationships (both sides now point to targetId)
+    db.prepare("DELETE FROM wiki_relationships WHERE file_path = ? AND source_id = target_id").run(filePath);
+
+    // Clean up duplicate relationships (same source, target, relation)
+    db.prepare(`DELETE FROM wiki_relationships WHERE file_path = ? AND id NOT IN (
+      SELECT MIN(id) FROM wiki_relationships WHERE file_path = ? GROUP BY source_id, target_id, relation
+    )`).run(filePath, filePath);
+
     // Move arc entity references
     const arcEntities = db.prepare("SELECT arc_id, role FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { arc_id: string; role: string }[];
     for (const ae of arcEntities) {
       db.prepare("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)").run(filePath, ae.arc_id, targetId, ae.role);
     }
+    // Remove source arc entities before deleting entry
+    db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").run(filePath, sourceId);
 
     // Delete source entry (cascades aliases, remaining references)
     db.prepare("DELETE FROM wiki_entries WHERE file_path = ? AND id = ?").run(filePath, sourceId);
@@ -879,13 +889,27 @@ export function getWikiAliases(filePath: string, entryId: string): WikiAliasRow[
 // ── Wiki Details ──
 
 export function addWikiDetails(filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]): void {
-  const stmt = db.prepare(
-    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content, relevance, source_text) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  const insertStmt = db.prepare(
+    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content, relevance, source_text) VALUES (@fp, @eid, @ch, @cat, @con, @rel, @src)"
+  );
+  // Dedup: skip if identical content already exists for this entry (any chapter)
+  const checkStmt = db.prepare(
+    "SELECT 1 FROM wiki_details WHERE file_path = ? AND entry_id = ? AND content = ? LIMIT 1"
   );
   const insertAll = db.transaction(() => {
     for (const d of details) {
       if (!d.content) continue;
-      stmt.run(filePath, entryId, d.chapterIndex, d.category || "info", d.content, d.relevance ?? 3, d.sourceText ?? "");
+      const content = String(d.content);
+      if (checkStmt.get(filePath, entryId, content)) continue;
+      insertStmt.run({
+        fp: filePath,
+        eid: entryId,
+        ch: d.chapterIndex ?? 0,
+        cat: d.category || "info",
+        con: content,
+        rel: d.relevance ?? 3,
+        src: d.sourceText ?? "",
+      });
     }
   });
   insertAll();
@@ -911,13 +935,28 @@ export function getWikiDetailsForEntry(filePath: string, entryId: string, maxCha
 // ── Wiki Relationships ──
 
 export function addWikiRelationship(filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }): void {
-  // Check for duplicate
+  // Skip self-relationships
+  if (rel.sourceId === rel.targetId) return;
+
+  // Check for duplicate (same direction)
   const existing = db.prepare(
     "SELECT id FROM wiki_relationships WHERE file_path = ? AND source_id = ? AND target_id = ? AND relation = ?"
   ).get(filePath, rel.sourceId, rel.targetId, rel.relation);
   if (existing) return;
 
-  // Skip if target entity doesn't exist (AI may reference entities not yet created)
+  // Check for reverse direction (B→A with same relation)
+  const reverse = db.prepare(
+    "SELECT id FROM wiki_relationships WHERE file_path = ? AND source_id = ? AND target_id = ? AND relation = ?"
+  ).get(filePath, rel.targetId, rel.sourceId, rel.relation);
+  if (reverse) return;
+
+  // Skip if source entity doesn't exist
+  const sourceExists = db.prepare(
+    "SELECT 1 FROM wiki_entries WHERE file_path = ? AND id = ?"
+  ).get(filePath, rel.sourceId);
+  if (!sourceExists) return;
+
+  // Skip if target entity doesn't exist
   const targetExists = db.prepare(
     "SELECT 1 FROM wiki_entries WHERE file_path = ? AND id = ?"
   ).get(filePath, rel.targetId);
@@ -1170,7 +1209,7 @@ export function getEntityIndex(filePath: string): { id: string; name: string; ty
     SELECT e.id, e.name, e.type, e.color,
            GROUP_CONCAT(a.alias, '||') as aliases_str
     FROM wiki_entries e
-    LEFT JOIN wiki_aliases a ON a.file_path = e.file_path AND a.entry_id = e.id
+    LEFT JOIN wiki_aliases a ON a.file_path = e.file_path AND a.entry_id = e.id AND a.relevance >= 3
     WHERE e.file_path = ?
     GROUP BY e.id
     ORDER BY e.first_appearance ASC
@@ -1191,6 +1230,27 @@ export function getRecentEntities(filePath: string, lastNChapters: number, curre
     WHERE e.file_path = ? AND a.chapter_index >= ? AND a.chapter_index <= ?
     ORDER BY e.significance DESC, e.first_appearance ASC
   `).all(filePath, minChapter, currentChapter) as WikiEntryRow[];
+}
+
+// ── Clear Chapter Data (for clean reprocessing) ──
+
+export function clearChapterWikiData(filePath: string, chapterIndex: number): void {
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM wiki_details WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    db.prepare("DELETE FROM wiki_appearances WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    db.prepare("DELETE FROM wiki_arc_beats WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    db.prepare("DELETE FROM wiki_chapter_summaries WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    db.prepare("DELETE FROM wiki_processed WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+  });
+  tx();
+}
+
+// ── Batch Alias Fetch (avoids N+1 queries) ──
+
+export function getAllWikiAliases(filePath: string): { entry_id: string; alias: string; alias_type: string; relevance: number }[] {
+  return db.prepare(
+    "SELECT entry_id, alias, alias_type, relevance FROM wiki_aliases WHERE file_path = ? ORDER BY relevance DESC"
+  ).all(filePath) as { entry_id: string; alias: string; alias_type: string; relevance: number }[];
 }
 
 // ── Clear Wiki ──
@@ -1246,6 +1306,23 @@ export function clearWiki(filePath: string): void {
     }
   });
   clearAll();
+}
+
+/** Clear ALL wiki data for ALL books */
+export function clearAllWiki(): void {
+  const clearAll = db.transaction(() => {
+    for (const table of WIKI_TABLES) {
+      db.prepare(`DELETE FROM ${table}`).run();
+    }
+    // Also clear merge log
+    db.prepare("DELETE FROM wiki_merge_log").run();
+  });
+  clearAll();
+}
+
+/** Delete all settings whose key starts with the given prefix */
+export function clearSettingsByPrefix(prefix: string): void {
+  db.prepare("DELETE FROM settings WHERE key LIKE ?").run(prefix + "%");
 }
 
 // ── Migrate from JSON blob ──

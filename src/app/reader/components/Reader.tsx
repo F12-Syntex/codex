@@ -753,16 +753,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       formatAbortRef.current = true;
       setFormattingChapter(null);
       setFormatAllProgress(null);
-    } else if (condenseEnabled && condensedChapters[currentChapter] && !fmtCondensedChapters[currentChapter]) {
-      // Format the condensed text
-      formatCondensedChapter(currentChapter);
-    } else if (!condenseEnabled && !formattedChapters[currentChapter]) {
-      formatChapter(currentChapter);
     }
+    // Don't call formatChapter here — let the auto-process useEffect handle it
+    // to avoid duplicate concurrent formatting calls
     setFormattingEnabled(next);
     window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(next));
-  }, [formattingEnabled, filePath, formattedChapters, fmtCondensedChapters, condensedChapters,
-      condenseEnabled, currentChapter, formatChapter, formatCondensedChapter]);
+  }, [formattingEnabled, filePath]);
 
   // ── AI Concise Reading ───────────────────────────────
 
