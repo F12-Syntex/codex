@@ -635,3 +635,11 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-17 - [Memoizing large dynamic DOM lists]
+**Learning:** In Electron apps that interact heavily with frequent updates like Text-To-Speech word highlighting, mapping large arrays of components (e.g. `paragraphsJSX` mapping 500 paragraphs) on every render causes severe CPU bottlenecks and UI stuttering.
+**Action:** Always wrap large component mapping arrays with `useMemo` when the parent component receives frequently updated props. Eliminate unstable dependencies (like current state IDs in inline event handlers) using functional state updates (e.g., `setExpanded(prev => prev === id ? null : id)`) to keep the dependency array small and avoid unnecessary full list rebuilds.
+
+## 2025-02-17 - [Caching Canvas Operations on Render]
+**Learning:** `extractDominantColor` processes canvas pixels in JS which blocks the main thread for every image load. By default, it runs when an image remounts without any cache, recalculating color and slowing down the UI thread.
+**Action:** When performing expensive synchronous operations like canvas pixel manipulation during component mount/render cycles, ensure the result is cached (e.g. by `img.src`) so the calculation is only performed once per resource.
