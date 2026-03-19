@@ -6,6 +6,10 @@
 **Learning:** BookCard runs an expensive color extraction logic repeatedly on image load (`extractDominantColor`). This iterates over image pixels every time a cover is loaded.
 **Action:** Since BookCard is memoized, we should make sure that this extraction function doesn't cause unnecessary bottlenecks, or we can look for other bottlenecks.
 
+## 2025-02-17 - [Pre-computing strings for filters]
+**Learning:** In components with frequent key-press events like `search-overlay.tsx`, mapping through an array of objects to run `.toLowerCase()` dynamically for case-insensitive filtering adds massive GC pressure and CPU cycles during render loops.
+**Action:** Always pre-compute a `searchKey` string with lowercased values once (e.g., during the initial initialization logic or memoized dataset generation) instead of calling string allocation functions dynamically inside filtering loops that trigger often.
+
 **Learning:** `extractDominantColor` in `src/components/content/book-card.tsx` processes canvas pixels in JS which blocks the main thread for every image load. Removing it or substituting with a highly optimized one, or simply caching. Wait, the problem is simpler: `extractDominantColor` is called inside `handleImageLoad`. Can we memoize or speed it up?
 Actually, `size = 32` is 32x32 pixels = 1024 pixels, loop iterates 800 times. That is tiny and fast. It might not be the bottleneck.
 

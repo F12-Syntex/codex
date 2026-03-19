@@ -15,15 +15,36 @@ interface SearchOverlayProps {
 interface SearchResult {
   section: string;
   item: MockItem;
+  searchKey: string;
 }
 
+// ⚡ Bolt: Pre-compute search key during array generation to prevent expensive
+// .toLowerCase() string allocations on every single keystroke during filtering.
+// Impact: Reduces CPU overhead and GC pressure by O(N) string operations per keystroke,
+// making the search overlay feel significantly more responsive for large libraries.
 function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResult[] {
   const results: SearchResult[] = [];
   for (const items of Object.values(bookData)) {
-    if (items) items.forEach((item) => results.push({ section: "Books", item }));
+    if (items) {
+      items.forEach((item) => {
+        results.push({
+          section: "Books",
+          item,
+          searchKey: `${item.title} ${item.author}`.toLowerCase()
+        });
+      });
+    }
   }
   for (const items of Object.values(comicData)) {
-    if (items) items.forEach((item) => results.push({ section: "Comics", item }));
+    if (items) {
+      items.forEach((item) => {
+        results.push({
+          section: "Comics",
+          item,
+          searchKey: `${item.title} ${item.author}`.toLowerCase()
+        });
+      });
+    }
   }
   const seen = new Set<string>();
   return results.filter((r) => {
@@ -56,15 +77,13 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
   const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
+  // ⚡ Bolt: Filter array using pre-computed searchKey instead of lowercasing
+  // item.title and item.author for every item on every render.
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return allItems.filter(
-      (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
-    );
-  }, [query]);
+    return allItems.filter((r) => r.searchKey.includes(q));
+  }, [allItems, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
