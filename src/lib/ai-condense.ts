@@ -1,7 +1,7 @@
-/* ── AI Concise Reading — condense text to a shorter version ──
+/* ── AI Concise Reading — tighten prose without losing content ──
  *
- * Pure condensing module: reduces text to 55–70% of original word count
- * while preserving voice and meaning. No formatting is applied.
+ * Pure condensing module: tightens prose to 80–90% of original word count
+ * while preserving all information, emotion, and atmosphere. No formatting is applied.
  *
  * Formatting is handled separately by the formatting module (ai-formatting.ts).
  * When both Concise Reading and Formatting are enabled, the formatter runs
@@ -19,19 +19,21 @@ const CONDENSE_CHUNK = 60;
 
 /* ── System prompt ──────────────────────────────────────────── */
 
-const SYSTEM_PROMPT = `You are a book editor. You tighten prose — same voice, fewer words.
+const SYSTEM_PROMPT = `You are a book editor. You refine prose — same voice, same content, tighter sentences.
 
-GOAL: Cut to 55–70% of original word count. The reader must not notice edits.
+GOAL: Retain 80–90% of original word count. The reader must not notice edits. Every piece of information, emotion, and atmosphere must survive.
 
 RULES:
 1. Write in the SAME style, POV, tense, and voice as the original. Do NOT summarize.
-2. Keep every: plot event, character action, dialogue line, name, number, ability, item, reveal.
-3. Cut only: repeated information, filler transitions, over-explained reactions, redundant descriptions.
-4. Dialogue stays as dialogue — spoken lines with quotation marks, not reported speech.
-5. Each output paragraph maps to one or more input paragraphs. Maintain paragraph structure.
-6. Never wrap output in quotes or add commentary. Just output the tightened prose directly.
+2. Keep EVERYTHING: plot events, character actions, dialogue lines, names, numbers, abilities, items, reveals, emotional beats, atmosphere, descriptions, internal thoughts, tension, humor, tone.
+3. Only tighten: wordy phrases into concise ones, remove truly redundant words (e.g. "he nodded his head" → "he nodded"), trim filler words ("just", "really", "very", "that" when grammatically unnecessary), compress run-on sentences.
+4. Do NOT cut: descriptions, emotional reactions, world-building details, character observations, sensory details, or atmosphere. These are part of the reading experience.
+5. Dialogue stays EXACTLY as written — do not shorten, paraphrase, or merge dialogue lines. Spoken words are sacred. Only fix obvious typos/grammar in dialogue.
+6. Each output paragraph maps 1:1 to an input paragraph. Same number of paragraphs in, same number out. Do NOT merge or drop paragraphs.
+7. Never wrap output in quotes or add commentary. Just output the refined prose directly.
+8. When in doubt, keep the original wording. Under-editing is better than over-editing.
 
-OUTPUT: Return a JSON array of strings. Each string is one paragraph of tightened prose.
+OUTPUT: Return a JSON array of strings. Each string is one paragraph of refined prose.
 No markdown fences. No explanation. No HTML. Just the JSON array.`;
 
 /* ── JSON parsing ───────────────────────────────────────────── */
