@@ -29,6 +29,9 @@ interface TOCSidebarProps {
   onClose: () => void;
 }
 
+// Remember scroll position across open/close cycles
+let savedScrollTop: number | null = null;
+
 export function TOCSidebar({
   chapters,
   currentChapter,
@@ -56,6 +59,8 @@ export function TOCSidebar({
   const [tab, setTab] = useState<Tab>("chapters");
   const [searchQuery, setSearchQuery] = useState("");
   const [renderLimit, setRenderLimit] = useState(60);
+
+  const hasRestoredScroll = useRef(false);
 
   // Expand render limit after first paint so the sidebar opens instantly
   useEffect(() => {
@@ -101,13 +106,29 @@ export function TOCSidebar({
     };
   }, [onClose]);
 
-  // Scroll to current chapter on mount
+  // Restore saved scroll position or scroll to current chapter
+  // Runs when renderLimit changes so it fires after the full list renders
   useEffect(() => {
-    if (listRef.current && !searchQuery && tab === "chapters") {
+    if (!listRef.current || searchQuery || tab !== "chapters") return;
+    if (hasRestoredScroll.current) return;
+    if (renderLimit < Infinity) return; // wait for full render
+    hasRestoredScroll.current = true;
+    if (savedScrollTop !== null) {
+      listRef.current.scrollTop = savedScrollTop;
+    } else {
       const activeItem = listRef.current.querySelector("[data-active-chapter]");
       activeItem?.scrollIntoView({ block: "center" });
     }
-  }, [searchQuery, tab]);
+  }, [renderLimit, searchQuery, tab]);
+
+  // Continuously track scroll position so it's always up to date
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const handler = () => { savedScrollTop = el.scrollTop; };
+    el.addEventListener("scroll", handler, { passive: true });
+    return () => el.removeEventListener("scroll", handler);
+  }, []);
 
   // Focus search input
   useEffect(() => {

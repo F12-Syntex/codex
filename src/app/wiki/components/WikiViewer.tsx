@@ -1350,7 +1350,7 @@ function SourcePreview({
   chapterLabels: ChapterLabels;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -1364,7 +1364,7 @@ function SourcePreview({
   if (!sourceText) return null;
 
   return (
-    <div className="relative inline-flex" ref={ref}>
+    <span className="relative inline-flex" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="ml-1 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-white/20 transition-colors hover:bg-white/[0.06] hover:text-white/40"
@@ -1373,19 +1373,19 @@ function SourcePreview({
         <Quote className="h-2.5 w-2.5" strokeWidth={1.5} />
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 z-40 mb-1 w-72 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] p-3 shadow-lg shadow-black/40 backdrop-blur-xl">
-          <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="absolute bottom-full left-0 z-40 mb-1 block w-72 rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)] p-3 shadow-lg shadow-black/40 backdrop-blur-xl">
+          <span className="mb-1.5 flex items-center gap-1.5">
             <Quote className="h-3 w-3 shrink-0 text-white/25" strokeWidth={1.5} />
             <span className="text-[10px] font-medium uppercase tracking-wider text-white/30">
               Source — Ch. {fmtCh(chapterIndex, chapterLabels)}
             </span>
-          </div>
-          <p className="text-xs leading-relaxed text-white/50 italic">
+          </span>
+          <span className="block text-xs leading-relaxed text-white/50 italic">
             &ldquo;{sourceText}&rdquo;
-          </p>
-        </div>
+          </span>
+        </span>
       )}
-    </div>
+    </span>
   );
 }
 
