@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-05-18 - Avoid Inline Default Fallback Arrays in React
+**Learning:** Initializing default fallback arrays inline (e.g., `data ?? []`) inside a React component creates a new array reference on every render because `[] !== []`. If this derived data is passed into a `useMemo`, `useEffect`, or `useCallback` dependency array, or passed as a prop to a memoized child component, it will trigger unnecessary cascading re-renders.
+**Action:** Always extract empty fallback arrays into module-level constants (e.g., `const EMPTY_ARRAY = [];`) and use the stable reference (e.g., `data ?? EMPTY_ARRAY`). This ensures the reference remains constant across renders when the source data is missing or undefined.

@@ -36,6 +36,9 @@ import { SpeedReaderView } from "./SpeedReaderView";
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 
+// Stable reference for empty arrays to prevent unnecessary re-renders when used as default fallbacks
+const EMPTY_ARRAY: any[] = [];
+
 /** Decode all HTML entities using the DOM. Safe after tags are already stripped. */
 const _entityEl = typeof document !== "undefined" ? document.createElement("textarea") : null;
 function decodeHtmlEntities(text: string): string {
@@ -183,9 +186,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
 
-  const chapters = bookContent?.chapters ?? [];
+  const chapters = bookContent?.chapters ?? EMPTY_ARRAY;
   const chapter = chapters[currentChapter];
-  const paragraphs = chapter?.paragraphs ?? [];
+  const paragraphs = chapter?.paragraphs ?? EMPTY_ARRAY;
   const isImageBook = bookContent?.isImageBook ?? false;
   const rawChapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
   const chapterTitle = enrichEnabled && enrichedNames[currentChapter] ? enrichedNames[currentChapter] : rawChapterTitle;
@@ -197,9 +200,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (isBranchChapterForTTS && activeBranch) {
       const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
         ? formattedChapters[activeBranch.chapterIndex]
-        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
+        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? EMPTY_ARRAY;
       const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
-      const generated = (activeBranchSegments ?? []).flatMap(s => s.htmlParagraphs);
+      const generated = (activeBranchSegments ?? EMPTY_ARRAY).flatMap(s => s.htmlParagraphs);
       const html = [...truncated, ...generated];
       return stripHtmlForTTS(html);
     }
@@ -342,7 +345,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   // Chapter labeling — skip known non-story pages by title, store once per book
   useEffect(() => {
     if (!bookContent || !filePath) return;
-    const toc = bookContent.toc ?? [];
+    const toc = bookContent.toc ?? EMPTY_ARRAY;
     if (toc.length === 0) return;
     const key = `chapter-labels-v2:${filePath}`;
     window.electronAPI?.getSetting(key).then((existing) => {
@@ -1364,7 +1367,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       // Get preceding paragraphs for current chapter context
       const base = wikiEnabled && formattedChapters[activeBranch.chapterIndex]
         ? formattedChapters[activeBranch.chapterIndex]
-        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
+        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? EMPTY_ARRAY;
       const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
       const existingGenerated = activeBranchSegments.flatMap(s => s.htmlParagraphs);
       const allPrecedingParas = [...truncated, ...existingGenerated];
@@ -1388,15 +1391,15 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       }
 
       // Format chapter summaries for broader narrative context
-      const chapterSummaries = (chapterSummariesRaw ?? [])
+      const chapterSummaries = (chapterSummariesRaw ?? EMPTY_ARRAY)
         .slice(-8)
         .map(s => `- Chapter ${s.chapter_index + 1}: ${s.summary}`);
 
       // Extract voice lines from the original book text (all chapters up to branch point)
-      const entityNames = [activeBranch.entityName, ...((aliases ?? []) as Array<{ alias: string } | string>).map(a => typeof a === "string" ? a : a.alias)];
+      const entityNames = [activeBranch.entityName, ...((aliases ?? EMPTY_ARRAY) as Array<{ alias: string } | string>).map(a => typeof a === "string" ? a : a.alias)];
       const allBookParas: string[] = [];
       for (let ci = 0; ci <= activeBranch.chapterIndex; ci++) {
-        const chParas = chapters[ci]?.htmlParagraphs ?? [];
+        const chParas = chapters[ci]?.htmlParagraphs ?? EMPTY_ARRAY;
         if (ci === activeBranch.chapterIndex) {
           allBookParas.push(...chParas.slice(0, activeBranch.truncateAfterPara + 1));
         } else {
@@ -1499,7 +1502,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (!filePath) return;
 
     // Load segments
-    const segments = await window.electronAPI?.simGetSegments(filePath, branch.id) ?? [];
+    const segments = await window.electronAPI?.simGetSegments(filePath, branch.id) ?? EMPTY_ARRAY;
     const parsedSegments = segments.map(s => ({
       userInput: s.user_input,
       htmlParagraphs: JSON.parse(s.html_paragraphs) as string[],
@@ -1636,7 +1639,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (isBranchChapter && activeBranch) {
       const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
         ? formattedChapters[activeBranch.chapterIndex]
-        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
+        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? EMPTY_ARRAY;
       const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
       const generated = activeBranchSegments.flatMap(s => s.htmlParagraphs);
       return [...truncated, ...generated];
@@ -1657,7 +1660,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     if (formattingEnabled && formattedChapters[currentChapter]) {
       return formattedChapters[currentChapter];
     }
-    return chapter?.htmlParagraphs ?? [];
+    return chapter?.htmlParagraphs ?? EMPTY_ARRAY;
   }, [isBranchChapter, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters,
       fmtCondensedChapters, condenseEnabled, condensedChapters, currentChapter, chapter, chapters]);
 
@@ -2136,7 +2139,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           ) : isTOCChapter(chapterTitle) ? (
             <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
               <BookTableOfContents
-                toc={bookContent?.toc ?? []}
+                toc={bookContent?.toc ?? EMPTY_ARRAY}
                 currentChapter={currentChapter}
                 theme={theme}
                 enrichedNames={enrichedNames}
@@ -2185,9 +2188,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               simulateGenerating={!!isBranchChapter && simulateGenerating}
               onSimulateSubmit={handleSimulateSubmit}
               branchEntityName={activeBranch?.entityName}
-              simulateChoices={isBranchChapter ? simulateChoices : []}
+              simulateChoices={isBranchChapter ? simulateChoices : EMPTY_ARRAY}
               commentsEnabled={commentsEnabled}
-              inlineComments={chapterComments[currentChapter] ?? []}
+              inlineComments={chapterComments[currentChapter] ?? EMPTY_ARRAY}
               onAddComment={addUserComment}
               onDeleteComment={deleteUserComment}
               onExplain={handleExplain}
