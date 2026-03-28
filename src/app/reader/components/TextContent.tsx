@@ -10,6 +10,7 @@ import type { SimChoice } from "@/lib/ai-simulate";
 import type { InlineComment } from "@/lib/ai-comments";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 import { EntityContextMenu } from "./EntityContextMenu";
+import { applyReplacements, loadReplacements, type WordReplacement } from "@/lib/word-replacements";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -148,6 +149,12 @@ export function TextContent({
   const sliderRef = useRef<HTMLDivElement>(null);
   const simInputRef = useRef<HTMLInputElement>(null);
   const [simInputValue, setSimInputValue] = useState("");
+
+  // Word replacements (loaded once from settings)
+  const [wordReplacements, setWordReplacements] = useState<WordReplacement[]>([]);
+  useEffect(() => {
+    loadReplacements().then(setWordReplacements);
+  }, []);
 
   // Comment state
   const [expandedCommentPara, setExpandedCommentPara] = useState<number | null>(null);
@@ -305,10 +312,16 @@ export function TextContent({
   );
 
   // Inject wiki entity highlights
-  const filteredHtml = useMemo(() => {
+  const filteredHtmlWiki = useMemo(() => {
     if (!wikiEnabled || !entityRegex || wikiEntityIndex.length === 0) return filteredHtmlRaw;
     return filteredHtmlRaw.map((html) => injectWikiEntities(html, wikiEntityIndex, entityRegex));
   }, [filteredHtmlRaw, wikiEnabled, entityRegex, wikiEntityIndex]);
+
+  // Apply word replacements
+  const filteredHtml = useMemo(() => {
+    if (wordReplacements.length === 0) return filteredHtmlWiki;
+    return filteredHtmlWiki.map((html) => applyReplacements(html, wordReplacements));
+  }, [filteredHtmlWiki, wordReplacements]);
 
   // How many paragraphs were removed from the front (0 or 1)
   const filterOffset = htmlParagraphs.length - filteredHtml.length;

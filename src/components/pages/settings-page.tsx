@@ -15,6 +15,9 @@ import {
   ExternalLink,
   Cpu,
   RotateCcw,
+  Replace,
+  Plus,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -30,6 +33,12 @@ import {
   stringifyOverrides,
   type PresetOverrides,
 } from "@/lib/ai-presets";
+import {
+  loadReplacements,
+  saveReplacements,
+  getDefaultReplacements,
+  type WordReplacement,
+} from "@/lib/word-replacements";
 
 
 interface SettingsPageProps {
@@ -87,7 +96,7 @@ function SettingSection({
 
 /* ── Tab types ────────────────────────────────────────────── */
 
-type SettingsTab = "general" | "ai";
+type SettingsTab = "general" | "books" | "ai";
 
 /* ── Settings page ───────────────────────────────────────── */
 
@@ -106,6 +115,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
   const [presetOverrides, setPresetOverrides] = useState<PresetOverrides>({});
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [clearStatus, setClearStatus] = useState<string | null>(null);
+  const [wordReplacements, setWordReplacements] = useState<WordReplacement[]>([]);
 
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
   const hasApi = !!api && "getSetting" in api && "setSetting" in api && "scanFolder" in api;
@@ -124,6 +134,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
       if (key) setApiKey(key);
       setPresetOverrides(parseOverrides(overridesJson));
     });
+    loadReplacements().then(setWordReplacements);
   });
 
   const handleSelectFolder = async () => {
@@ -272,8 +283,28 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
   };
 
+  const handleReplacementChange = (index: number, field: "from" | "to", value: string) => {
+    const next = [...wordReplacements];
+    next[index] = { ...next[index], [field]: value };
+    setWordReplacements(next);
+    saveReplacements(next);
+  };
+
+  const handleAddReplacement = () => {
+    const next = [...wordReplacements, { from: "", to: "" }];
+    setWordReplacements(next);
+    saveReplacements(next);
+  };
+
+  const handleRemoveReplacement = (index: number) => {
+    const next = wordReplacements.filter((_, i) => i !== index);
+    setWordReplacements(next);
+    saveReplacements(next);
+  };
+
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: "general", label: "General" },
+    { id: "books", label: "Books" },
     { id: "ai", label: "AI" },
   ];
 
@@ -439,6 +470,50 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                 github.com/F12-Syntex/codex
               </button>
             </SettingRow>
+          </SettingSection>
+        </div>
+      )}
+
+      {activeTab === "books" && (
+        <div className="flex max-w-[560px] flex-col gap-5 p-6">
+          <SettingSection icon={Replace} title="Word Replacements">
+            <div className="flex flex-col gap-2 py-3">
+              <span className="text-xs text-white/30">
+                Replace specific words when rendering books. Case is preserved automatically.
+              </span>
+              {wordReplacements.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={r.from}
+                    onChange={(e) => handleReplacementChange(i, "from", e.target.value)}
+                    placeholder="Original word"
+                    className="w-36 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
+                  />
+                  <span className="text-xs text-white/20">→</span>
+                  <input
+                    type="text"
+                    value={r.to}
+                    onChange={(e) => handleReplacementChange(i, "to", e.target.value)}
+                    placeholder="Replacement"
+                    className="w-36 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
+                  />
+                  <button
+                    onClick={() => handleRemoveReplacement(i)}
+                    className="rounded-lg p-1.5 text-white/20 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={handleAddReplacement}
+                className="flex w-fit items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.10] hover:text-white/60"
+              >
+                <Plus className="h-3 w-3" />
+                Add Replacement
+              </button>
+            </div>
           </SettingSection>
         </div>
       )}
