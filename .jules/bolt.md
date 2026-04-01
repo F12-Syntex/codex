@@ -2,6 +2,10 @@
 **Learning:** Understanding React performance patterns in this Electron app
 **Action:** Found multiple areas where \`useMemo\` and \`useCallback\` are heavily used.
 
+## 2025-02-17 - [Sorting Optimization]
+**Learning:** Using `.toLowerCase()` inside sort comparators creates O(N log N) string allocations and high GC pressure.
+**Action:** Use `Intl.Collator` (e.g., `new Intl.Collator(undefined, { sensitivity: 'base' })`) outside the sort loop for case-insensitive string comparisons to minimize garbage collection and improve performance.
+
 ## 2025-02-17 - [Initial Learning]
 **Learning:** BookCard runs an expensive color extraction logic repeatedly on image load (`extractDominantColor`). This iterates over image pixels every time a cover is loaded.
 **Action:** Since BookCard is memoized, we should make sure that this extraction function doesn't cause unnecessary bottlenecks, or we can look for other bottlenecks.
