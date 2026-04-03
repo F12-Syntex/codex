@@ -254,7 +254,7 @@ function createWindow() {
   });
 
   ipcMain.handle("bookmarks:delete", (_event, id: number) => {
-    deleteBookmark(id);
+    return deleteBookmark(id);
   });
 
   // ── Quotes ──────────────────────────────────────────
@@ -351,7 +351,7 @@ function createWindow() {
   });
 
   ipcMain.handle("shell:show-item-in-folder", (_event, filePath: string) => {
-    shell.showItemInFolder(filePath);
+    return shell.showItemInFolder(filePath);
   });
 
   // ── Library: select folder ────────────────────────
@@ -398,23 +398,23 @@ function createWindow() {
   // ── Library: delete item ──────────────────────────
 
   ipcMain.handle("library:delete-item", (_event, id: number) => {
-    deleteItem(id);
+    return deleteItem(id);
   });
 
   // ── Library: move item (change view) ──────────────
 
   ipcMain.handle("library:move-item", (_event, id: number, targetView: string) => {
-    moveItem(id, targetView);
+    return moveItem(id, targetView);
   });
 
   // ── Library: transfer item (change section + view) ─
 
   ipcMain.handle("library:transfer-item", (_event, id: number, targetSection: string, targetView: string) => {
-    transferItem(id, targetSection, targetView);
+    return transferItem(id, targetSection, targetView);
   });
 
   ipcMain.handle("library:update-item-meta", (_event, id: number, fields: { title?: string; author?: string; cover?: string }) => {
-    updateItemMeta(id, fields);
+    return updateItemMeta(id, fields);
   });
 
   // ── Settings ──────────────────────────────────────
@@ -424,7 +424,7 @@ function createWindow() {
   });
 
   ipcMain.handle("library:set-setting", (_event, key: string, value: string) => {
-    setSetting(key, value);
+    return setSetting(key, value);
   });
 
   ipcMain.handle("library:get-all-settings", () => {
@@ -434,7 +434,7 @@ function createWindow() {
   // ── Reading Activity ──────────────────────────────
 
   ipcMain.handle("activity:record-page", (_event, filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) => {
-    recordPageView(filePath, title, chapterIndex, chapterTitle, pageIndex, totalPages, totalChapters);
+    return recordPageView(filePath, title, chapterIndex, chapterTitle, pageIndex, totalPages, totalChapters);
   });
 
   ipcMain.handle("activity:get", (_event, filePath?: string, limit?: number) => {
@@ -447,74 +447,74 @@ function createWindow() {
 
   // ── Wiki ────────────────────────────────────────────
 
-  ipcMain.handle("wiki:upsert-entry", (_event, entry) => { upsertWikiEntry(entry); });
+  ipcMain.handle("wiki:upsert-entry", (_event, entry) => { return upsertWikiEntry(entry); });
   ipcMain.handle("wiki:get-entries", (_event, filePath: string) => getWikiEntries(filePath));
   ipcMain.handle("wiki:get-entry", (_event, filePath: string, entryId: string) => getWikiEntry(filePath, entryId));
-  ipcMain.handle("wiki:delete-entry", (_event, filePath: string, entryId: string) => { deleteWikiEntry(filePath, entryId); });
+  ipcMain.handle("wiki:delete-entry", (_event, filePath: string, entryId: string) => { return deleteWikiEntry(filePath, entryId); });
   ipcMain.handle("wiki:purge-null-entries", (_event, filePath: string) => purgeNullWikiEntries(filePath));
 
-  ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: unknown[]) => { addWikiAliases(filePath, entryId, aliases as Parameters<typeof addWikiAliases>[2]); });
+  ipcMain.handle("wiki:add-aliases", (_event, filePath: string, entryId: string, aliases: unknown[]) => { return addWikiAliases(filePath, entryId, aliases as Parameters<typeof addWikiAliases>[2]); });
   ipcMain.handle("wiki:get-aliases", (_event, filePath: string, entryId: string) => getWikiAliases(filePath, entryId));
 
-  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]) => { addWikiDetails(filePath, entryId, details); });
+  ipcMain.handle("wiki:add-details", (_event, filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]) => { return addWikiDetails(filePath, entryId, details); });
   ipcMain.handle("wiki:get-details", (_event, filePath: string, entryId: string, maxChapter?: number) => getWikiDetailsForEntry(filePath, entryId, maxChapter));
-  ipcMain.handle("wiki:supersede-details", (_event, filePath: string, entryId: string, category: string, currentChapter: number) => { supersedeWikiDetails(filePath, entryId, category, currentChapter); });
+  ipcMain.handle("wiki:supersede-details", (_event, filePath: string, entryId: string, category: string, currentChapter: number) => { return supersedeWikiDetails(filePath, entryId, category, currentChapter); });
 
-  ipcMain.handle("wiki:add-relationship", (_event, filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) => { addWikiRelationship(filePath, rel); });
+  ipcMain.handle("wiki:add-relationship", (_event, filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }) => { return addWikiRelationship(filePath, rel); });
   ipcMain.handle("wiki:get-relationships", (_event, filePath: string, entryId: string, maxChapter?: number) => getRelationshipsForEntry(filePath, entryId, maxChapter));
 
-  ipcMain.handle("wiki:add-appearance", (_event, filePath: string, entryId: string, chapterIndex: number) => { addWikiAppearance(filePath, entryId, chapterIndex); });
+  ipcMain.handle("wiki:add-appearance", (_event, filePath: string, entryId: string, chapterIndex: number) => { return addWikiAppearance(filePath, entryId, chapterIndex); });
   ipcMain.handle("wiki:get-appearances", (_event, filePath: string, entryId: string) => getAppearancesForEntry(filePath, entryId));
   ipcMain.handle("wiki:get-all-relationships", (_event, filePath: string) => getAllWikiRelationships(filePath));
   ipcMain.handle("wiki:get-all-appearance-counts", (_event, filePath: string) => getAllAppearanceCounts(filePath));
 
-  ipcMain.handle("wiki:upsert-chapter-summary", (_event, filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) => { upsertChapterSummary(filePath, summary); });
+  ipcMain.handle("wiki:upsert-chapter-summary", (_event, filePath: string, summary: { chapterIndex: number; summary: string; keyEvents?: string; activeEntities?: string; mood?: string }) => { return upsertChapterSummary(filePath, summary); });
   ipcMain.handle("wiki:get-chapter-summaries", (_event, filePath: string, fromCh: number, toCh: number) => getChapterSummaries(filePath, fromCh, toCh));
   ipcMain.handle("wiki:get-all-chapter-summaries", (_event, filePath: string) => getAllChapterSummaries(filePath));
 
-  ipcMain.handle("wiki:upsert-arc", (_event, filePath: string, arc: { id: string; name: string; description?: string; arcType?: string; status?: string; startChapter: number; endChapter?: number | null }) => { upsertArc(filePath, arc); });
+  ipcMain.handle("wiki:upsert-arc", (_event, filePath: string, arc: { id: string; name: string; description?: string; arcType?: string; status?: string; startChapter: number; endChapter?: number | null }) => { return upsertArc(filePath, arc); });
   ipcMain.handle("wiki:get-active-arcs", (_event, filePath: string) => getActiveArcs(filePath));
   ipcMain.handle("wiki:get-all-arcs", (_event, filePath: string) => getAllArcs(filePath));
-  ipcMain.handle("wiki:add-arc-beat", (_event, filePath: string, arcId: string, beat: { chapterIndex: number; beatType: string; description: string }) => { addArcBeat(filePath, arcId, beat); });
+  ipcMain.handle("wiki:add-arc-beat", (_event, filePath: string, arcId: string, beat: { chapterIndex: number; beatType: string; description: string }) => { return addArcBeat(filePath, arcId, beat); });
   ipcMain.handle("wiki:get-arc-beats", (_event, filePath: string, arcId: string) => getArcBeats(filePath, arcId));
-  ipcMain.handle("wiki:add-arc-entity", (_event, filePath: string, arcId: string, entryId: string, role: string) => { addArcEntity(filePath, arcId, entryId, role); });
+  ipcMain.handle("wiki:add-arc-entity", (_event, filePath: string, arcId: string, entryId: string, role: string) => { return addArcEntity(filePath, arcId, entryId, role); });
   ipcMain.handle("wiki:get-arc-entities", (_event, filePath: string, arcId: string) => getArcEntities(filePath, arcId));
-  ipcMain.handle("wiki:delete-arc", (_event, filePath: string, arcId: string) => { deleteArc(filePath, arcId); });
-  ipcMain.handle("wiki:merge-arcs", (_event, filePath: string, sourceArcIds: string[], targetArcId: string) => { mergeArcs(filePath, sourceArcIds, targetArcId); });
+  ipcMain.handle("wiki:delete-arc", (_event, filePath: string, arcId: string) => { return deleteArc(filePath, arcId); });
+  ipcMain.handle("wiki:merge-arcs", (_event, filePath: string, sourceArcIds: string[], targetArcId: string) => { return mergeArcs(filePath, sourceArcIds, targetArcId); });
 
-  ipcMain.handle("wiki:mark-processed", (_event, filePath: string, chapterIndex: number) => { markChapterProcessed(filePath, chapterIndex); });
-  ipcMain.handle("wiki:unmark-processed", (_event, filePath: string, chapterIndex: number) => { unmarkChapterProcessed(filePath, chapterIndex); });
+  ipcMain.handle("wiki:mark-processed", (_event, filePath: string, chapterIndex: number) => { return markChapterProcessed(filePath, chapterIndex); });
+  ipcMain.handle("wiki:unmark-processed", (_event, filePath: string, chapterIndex: number) => { return unmarkChapterProcessed(filePath, chapterIndex); });
   ipcMain.handle("wiki:get-processed", (_event, filePath: string) => getProcessedChapters(filePath));
 
   ipcMain.handle("wiki:get-meta", (_event, filePath: string) => getWikiMeta(filePath));
-  ipcMain.handle("wiki:upsert-meta", (_event, filePath: string, bookTitle: string) => { upsertWikiMeta(filePath, bookTitle); });
+  ipcMain.handle("wiki:upsert-meta", (_event, filePath: string, bookTitle: string) => { return upsertWikiMeta(filePath, bookTitle); });
 
   ipcMain.handle("wiki:get-entity-index", (_event, filePath: string) => getEntityIndex(filePath));
   ipcMain.handle("wiki:get-recent-entities", (_event, filePath: string, lastN: number, currentChapter: number) => getRecentEntities(filePath, lastN, currentChapter));
 
-  ipcMain.handle("wiki:clear", (_event, filePath: string) => { clearWiki(filePath); });
-  ipcMain.handle("wiki:clear-all", () => { clearAllWiki(); });
-  ipcMain.handle("wiki:clear-chapter-data", (_event, filePath: string, chapterIndex: number) => { clearChapterWikiData(filePath, chapterIndex); });
+  ipcMain.handle("wiki:clear", (_event, filePath: string) => { return clearWiki(filePath); });
+  ipcMain.handle("wiki:clear-all", () => { return clearAllWiki(); });
+  ipcMain.handle("wiki:clear-chapter-data", (_event, filePath: string, chapterIndex: number) => { return clearChapterWikiData(filePath, chapterIndex); });
   ipcMain.handle("wiki:get-all-aliases", (_event, filePath: string) => getAllWikiAliases(filePath));
-  ipcMain.handle("settings:clear-prefix", (_event, prefix: string) => { clearSettingsByPrefix(prefix); });
+  ipcMain.handle("settings:clear-prefix", (_event, prefix: string) => { return clearSettingsByPrefix(prefix); });
   ipcMain.handle("wiki:migrate-json", (_event, filePath: string) => migrateJsonWiki(filePath));
 
-  ipcMain.handle("wiki:merge-entries", (_event, filePath: string, sourceId: string, targetId: string) => { mergeWikiEntries(filePath, sourceId, targetId); });
-  ipcMain.handle("wiki:unmerge-entries", (_event, filePath: string, mergeLogId: number) => { unmergeWikiEntries(filePath, mergeLogId); });
+  ipcMain.handle("wiki:merge-entries", (_event, filePath: string, sourceId: string, targetId: string) => { return mergeWikiEntries(filePath, sourceId, targetId); });
+  ipcMain.handle("wiki:unmerge-entries", (_event, filePath: string, mergeLogId: number) => { return unmergeWikiEntries(filePath, mergeLogId); });
   ipcMain.handle("wiki:get-merge-log", (_event, filePath: string) => getWikiMergeLog(filePath));
 
-  ipcMain.handle("wiki:upsert-mc-stat", (_event, filePath: string, stat: Parameters<typeof upsertMCStat>[1]) => { upsertMCStat(filePath, stat); });
+  ipcMain.handle("wiki:upsert-mc-stat", (_event, filePath: string, stat: Parameters<typeof upsertMCStat>[1]) => { return upsertMCStat(filePath, stat); });
   ipcMain.handle("wiki:get-mc-stats", (_event, filePath: string) => getMCStats(filePath));
-  ipcMain.handle("wiki:set-mc-entity-id", (_event, filePath: string, entityId: string) => { setMCEntityId(filePath, entityId); });
+  ipcMain.handle("wiki:set-mc-entity-id", (_event, filePath: string, entityId: string) => { return setMCEntityId(filePath, entityId); });
   ipcMain.handle("wiki:get-mc-entity-id", (_event, filePath: string) => getMCEntityId(filePath));
 
   // ── Simulate ────────────────────────────────────────
 
-  ipcMain.handle("sim:upsert-branch", (_event, branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => { upsertBranch(branch); });
+  ipcMain.handle("sim:upsert-branch", (_event, branch: { id: string; filePath: string; entityId: string; entityName: string; chapterIndex: number; truncateAfterPara: number }) => { return upsertBranch(branch); });
   ipcMain.handle("sim:get-branches", (_event, filePath: string) => getBranches(filePath));
   ipcMain.handle("sim:get-segments", (_event, filePath: string, branchId: string) => getBranchSegments(filePath, branchId));
   ipcMain.handle("sim:add-segment", (_event, segment: { filePath: string; branchId: string; segmentIndex: number; userInput: string; htmlParagraphs: string }) => addSegment(segment));
-  ipcMain.handle("sim:delete-branch", (_event, filePath: string, branchId: string) => { deleteBranch(filePath, branchId); });
+  ipcMain.handle("sim:delete-branch", (_event, filePath: string, branchId: string) => { return deleteBranch(filePath, branchId); });
 
   // ── Installer (dev-only) ──────────────────────────────
 
@@ -537,15 +537,15 @@ function createWindow() {
   });
 
   ipcMain.handle("installer:cancel-download", (_event, id: number) => {
-    getDownloadManager().cancelDownload(id);
+    return getDownloadManager().cancelDownload(id);
   });
 
   ipcMain.handle("installer:retry-download", (_event, id: number) => {
-    getDownloadManager().retryDownload(id);
+    return getDownloadManager().retryDownload(id);
   });
 
   ipcMain.handle("installer:remove-download", (_event, id: number) => {
-    removeDownload(id);
+    return removeDownload(id);
   });
 
   ipcMain.handle("installer:get-downloads", () => {
@@ -553,7 +553,7 @@ function createWindow() {
   });
 
   ipcMain.handle("installer:clear-completed", () => {
-    clearCompletedDownloads();
+    return clearCompletedDownloads();
   });
 
   ipcMain.handle("installer:import-completed", (_event, id: number) => {

@@ -17,24 +17,27 @@ import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
 import { TextContent } from "./TextContent";
 import { AISidebar } from "./AISidebar";
 import { BulkProgressDock, useBulkRun } from "./BulkProgressDock";
-import { needsEnrichment, isStructuralChapter, buildChapterRenamePrompt, formatRenamedTitle } from "@/lib/ai-prompts";
-import { chatWithPreset } from "@/lib/openrouter";
-import { parseOverrides, PRESET_OVERRIDES_KEY } from "@/lib/ai-presets";
-import { formatChapterContent } from "@/lib/ai-formatting";
-import { condenseChapterContent } from "@/lib/ai-condense";
-import type { StyleDictionary } from "@/lib/ai-style-dictionary";
-import { loadDictionary, saveDictionary } from "@/lib/ai-style-dictionary";
+import { isStructuralChapter } from "@/lib/ai-prompts";
+import { aiText } from "@/lib/ai-client";
 import type { WikiEntryType } from "@/lib/ai-wiki";
-import { generateWikiForChapter, generateWikiForChapterBatch, buildEntityIndexFromDB, attemptMigration } from "@/lib/ai-wiki";
+import { generateWikiForChapterBatch } from "@/lib/ai-wiki";
 import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
-import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
+import { formatChapterContent } from "@/lib/ai-formatting";
+import type { InlineComment } from "@/lib/ai-comments";
 import { enrichQuote } from "@/lib/ai-quotes";
+import { useEnrichment } from "../hooks/useEnrichment";
+import { useFormatting } from "../hooks/useFormatting";
+import { useCondense } from "../hooks/useCondense";
+import { useWiki } from "../hooks/useWiki";
+import { useComments } from "../hooks/useComments";
+import { useAutoProcess } from "../hooks/useAutoProcess";
 import { buildChapterLabels, type ChapterLabels } from "@/lib/chapter-labels";
 import { AIBuddyPanel } from "./AIBuddyPanel";
 import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
 import { SpeedReaderView } from "./SpeedReaderView";
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
+import { applyReplacements, loadReplacements, type WordReplacement } from "@/lib/word-replacements";
 
 /** Decode all HTML entities using the DOM. Safe after tags are already stripped. */
 const _entityEl = typeof document !== "undefined" ? document.createElement("textarea") : null;
@@ -97,38 +100,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [maximized, setMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [immersiveVisible, setImmersiveVisible] = useState(true);
-  const [enrichedNames, setEnrichedNames] = useState<Record<number, string>>({});
-  const [enrichEnabled, setEnrichEnabled] = useState(false);
-  const [enrichingChapter, setEnrichingChapter] = useState<number | null>(null);
-  const [enrichAllProgress, setEnrichAllProgress] = useState<{ current: number; total: number } | null>(null);
-  const enrichAbortRef = useRef(false);
-
-  // AI Formatting state
-  const [formattingEnabled, setFormattingEnabled] = useState(false);
-  const [formattedChapters, setFormattedChapters] = useState<Record<number, string[]>>({});
-  const [formattingChapter, setFormattingChapter] = useState<number | null>(null);
-  const [formatAllProgress, setFormatAllProgress] = useState<{ current: number; total: number } | null>(null);
-  const formatAbortRef = useRef(false);
-  const [styleDictionary, setStyleDictionary] = useState<StyleDictionary | null>(null);
-
-  // AI Concise Reading state (plain text — no formatting)
-  const [condenseEnabled, setCondenseEnabled] = useState(false);
-  const [condensedChapters, setCondensedChapters] = useState<Record<number, string[]>>({});
-  const [condensingChapter, setCondensingChapter] = useState<number | null>(null);
-  const [condenseAllProgress, setCondenseAllProgress] = useState<{ current: number; total: number } | null>(null);
-  const condenseAbortRef = useRef(false);
-
-  // Formatted condensed chapters (formatting applied to condensed text)
-  const [fmtCondensedChapters, setFmtCondensedChapters] = useState<Record<number, string[]>>({});
-
-  // AI Wiki state (DB-backed — lightweight)
-  const [wikiEnabled, setWikiEnabled] = useState(false);
-  const [wikiProcessingChapter, setWikiProcessingChapter] = useState<number | null>(null);
-  const [wikiAllProgress, setWikiAllProgress] = useState<{ current: number; total: number } | null>(null);
-  const wikiAbortRef = useRef(false);
-  const [wikiEntityIndex, setWikiEntityIndex] = useState<Array<{ id: string; name: string; type: WikiEntryType; color: string }>>([]);
-  const [wikiProcessedChapters, setWikiProcessedChapters] = useState<Set<number>>(new Set());
-  const [wikiEntryCount, setWikiEntryCount] = useState(0);
 
   // Quote toast
   const [quoteToastVisible, setQuoteToastVisible] = useState(false);
@@ -163,12 +134,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [showBranchList, setShowBranchList] = useState(false);
   const [savedBranches, setSavedBranches] = useState<SimBranchRow[]>([]);
 
-  // AI Comments state
-  const [commentsEnabled, setCommentsEnabled] = useState(false);
-  const [chapterComments, setChapterComments] = useState<Record<number, InlineComment[]>>({});
-  const [commentingChapter, setCommentingChapter] = useState<number | null>(null);
-  const commentAbortRef = useRef(false);
-
   // Speed Reader state
   const [speedReaderActive, setSpeedReaderActive] = useState(false);
   const [srChunkParaIndex, setSrChunkParaIndex] = useState(-1);
@@ -183,11 +148,60 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
 
+  // Word replacements for TTS (loaded once from settings)
+  const [wordReplacements, setWordReplacements] = useState<WordReplacement[]>([]);
+  useEffect(() => { loadReplacements().then(setWordReplacements); }, []);
+
   const chapters = bookContent?.chapters ?? [];
   const chapter = chapters[currentChapter];
   const paragraphs = chapter?.paragraphs ?? [];
   const isImageBook = bookContent?.isImageBook ?? false;
   const rawChapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
+
+  const bookLoaded = !!bookContent;
+
+  // ── AI Feature Hooks ──────────────────────────────────
+  const enrichHook = useEnrichment(chapters, title, filePath, currentChapter, bookLoaded);
+  const { enrichedNames, enrichEnabled, enrichingChapter, enrichAllProgress,
+          enrichChapter, enrichAll, toggleEnrichEnabled, clearEnrichedNames, cancelEnrichAll } = enrichHook;
+
+  const condenseHook = useCondense(chapters, title, filePath, currentChapter, bookLoaded);
+  const { condenseEnabled, condensedChapters, condensingChapter, condenseAllProgress,
+          condenseChapter, condenseAllChapters, toggleCondenseEnabled, clearCondense, cancelCondenseAll } = condenseHook;
+
+  const formatHook = useFormatting(chapters, title, filePath, condensedChapters, condenseEnabled, bookLoaded);
+  const { formattingEnabled, formattedChapters, formattingChapter, formatAllProgress,
+          styleDictionary, fmtCondensedChapters,
+          formatChapter, formatAllChapters, formatCondensedChapter,
+          toggleFormattingEnabled, clearFormatting, cancelFormatAll } = formatHook;
+
+  const wikiHook = useWiki(chapters, title, filePath, currentChapter, buddyEnabled, (v) => {
+    setBuddyEnabled(v);
+    if (!v) setShowBuddy(false);
+  }, simulateEnabled, (v) => {
+    setSimulateEnabled(v);
+    if (!v) { setActiveBranch(null); setActiveBranchSegments([]); }
+  });
+  const { wikiEnabled, wikiProcessingChapter, wikiAllProgress,
+          wikiEntityIndex, wikiProcessedChapters, wikiEntryCount,
+          processWikiChapter, retryWikiChapter, toggleWikiEnabled, cancelWikiAll, refreshWikiState,
+          setWikiEnabled, setWikiProcessedChapters, setWikiEntryCount,
+          setWikiEntityIndex, setWikiAllProgress, setWikiProcessingChapter,
+          wikiAbortRef } = wikiHook;
+
+  const commentsHook = useComments(chapters, title, filePath, currentChapter);
+  const { commentsEnabled, chapterComments, commentingChapter,
+          generateCommentsForChapter, toggleCommentsEnabled, addUserComment, deleteUserComment, clearComments } = commentsHook;
+
+  useAutoProcess({
+    chapters, bookContent, filePath, currentChapter,
+    enrichEnabled, enrichedNames, condenseEnabled, condensedChapters,
+    formattingEnabled, formattedChapters, fmtCondensedChapters,
+    wikiEnabled, wikiProcessedChapters, commentsEnabled, chapterComments,
+    enrichChapter, condenseChapter, formatChapter, formatCondensedChapter,
+    processWikiChapter, generateCommentsForChapter,
+  });
+
   const chapterTitle = enrichEnabled && enrichedNames[currentChapter] ? enrichedNames[currentChapter] : rawChapterTitle;
 
   // TTS — use condensed/formatted text when available, stripped to plain text
@@ -222,10 +236,16 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   }, [isBranchChapterForTTS, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters,
       fmtCondensedChapters, condenseEnabled, condensedChapters, currentChapter, chapters, paragraphs]);
 
+  // Apply word replacements to TTS text so the speech matches the display
+  const ttsReplacedParagraphs = useMemo(() => {
+    if (wordReplacements.length === 0) return ttsParagraphs;
+    return ttsParagraphs.map(p => applyReplacements(p, wordReplacements));
+  }, [ttsParagraphs, wordReplacements]);
+
   const ttsMetrics = useTTSMetrics();
 
   const tts = useTTS({
-    paragraphs: ttsParagraphs,
+    paragraphs: ttsReplacedParagraphs,
     voice: settings.ttsVoice,
     rate: settings.ttsRate,
     pitch: settings.ttsPitch,
@@ -358,226 +378,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     });
   }, [bookContent, filePath]);
 
-  // Load enriched chapter names + toggle state from DB
+  // (Settings loading for enrichment, formatting, condense, wiki, comments
+  //  is now handled inside each hook's own useEffect)
+
+  // Load buddy + simulate toggle states from settings
   useEffect(() => {
     if (!bookContent || !filePath) return;
-    window.electronAPI?.getSetting(`enrichedChapters:${filePath}`).then((raw) => {
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw) as Record<string, string>;
-        const names: Record<number, string> = {};
-        for (const [k, v] of Object.entries(parsed)) {
-          if (v) names[Number(k)] = v;
-        }
-        if (Object.keys(names).length > 0) setEnrichedNames(names);
-      } catch { /* ignore */ }
-    });
-    window.electronAPI?.getSetting(`enrichEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setEnrichEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookContent, filePath]);
-
-  // Per-chapter enrichment
-  const enrichChapter = useCallback(async (chapterIndex: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey || !chapters[chapterIndex]) return;
-
-    setEnrichingChapter(chapterIndex);
-    enrichAbortRef.current = false;
-
-    try {
-      const ch = chapters[chapterIndex];
-      const contentPreview = ch.paragraphs.join("\n").slice(0, 2000);
-      const prompt = buildChapterRenamePrompt(ch.title, contentPreview, title);
-      const overrides = parseOverrides(await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY) ?? null);
-
-      const response = await chatWithPreset(
-        apiKey, "quick",
-        [{ role: "user", content: prompt }],
-        overrides,
-      );
-
-      if (enrichAbortRef.current) return;
-
-      const aiTitle = response.choices?.[0]?.message?.content?.trim();
-      if (aiTitle) {
-        setEnrichedNames((prev) => {
-          const updated = { ...prev, [chapterIndex]: formatRenamedTitle(ch.title, aiTitle) };
-          window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify(updated));
-          return updated;
-        });
-      }
-    } catch (err) {
-      console.error(`Failed to enrich chapter ${chapterIndex}:`, err);
-    } finally {
-      setEnrichingChapter(null);
-    }
-  }, [chapters, title, filePath]);
-
-  const clearEnrichedNames = useCallback(() => {
-    enrichAbortRef.current = true;
-    setEnrichedNames({});
-    setEnrichEnabled(false);
-    setEnrichingChapter(null);
-    window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify({}));
-    window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(false));
-  }, [filePath]);
-
-  const toggleEnrichEnabled = useCallback(() => {
-    const next = !enrichEnabled;
-    if (!next) {
-      enrichAbortRef.current = true;
-      setEnrichingChapter(null);
-      setEnrichAllProgress(null);
-    } else if (needsEnrichment(chapters[currentChapter]?.title) && !enrichedNames[currentChapter]) {
-      enrichChapter(currentChapter);
-    }
-    setEnrichEnabled(next);
-    window.electronAPI?.setSetting(`enrichEnabled:${filePath}`, JSON.stringify(next));
-  }, [enrichEnabled, filePath, chapters, currentChapter, enrichedNames, enrichChapter]);
-
-  const enrichAll = useCallback(async (fromChapter?: number, upToChapter?: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey) return;
-
-    const start = fromChapter ?? 0;
-    const limit = upToChapter ?? chapters.length - 1;
-    const toEnrich = chapters
-      .map((ch, i) => ({ ch, i }))
-      .filter(({ ch, i }) => i >= start && i <= limit && needsEnrichment(ch.title) && !enrichedNames[i]);
-
-    if (toEnrich.length === 0) return;
-
-    enrichAbortRef.current = false;
-    setEnrichAllProgress({ current: 0, total: toEnrich.length });
-
-    const overrides = parseOverrides(await window.electronAPI?.getSetting(PRESET_OVERRIDES_KEY) ?? null);
-    let currentNames = { ...enrichedNames };
-
-    for (let idx = 0; idx < toEnrich.length; idx++) {
-      if (enrichAbortRef.current) break;
-
-      const { ch, i } = toEnrich[idx];
-      setEnrichingChapter(i);
-      setEnrichAllProgress({ current: idx, total: toEnrich.length });
-
-      try {
-        const contentPreview = ch.paragraphs.join("\n").slice(0, 2000);
-        const prompt = buildChapterRenamePrompt(ch.title, contentPreview, title);
-
-        const response = await chatWithPreset(
-          apiKey, "quick",
-          [{ role: "user", content: prompt }],
-          overrides,
-        );
-
-        if (enrichAbortRef.current) break;
-
-        const aiTitle = response.choices?.[0]?.message?.content?.trim();
-        if (aiTitle) {
-          currentNames = { ...currentNames, [i]: formatRenamedTitle(ch.title, aiTitle) };
-          setEnrichedNames({ ...currentNames });
-        }
-      } catch (err) {
-        console.error(`Failed to enrich chapter ${i}:`, err);
-      }
-    }
-
-    await window.electronAPI?.setSetting(`enrichedChapters:${filePath}`, JSON.stringify(currentNames));
-    setEnrichingChapter(null);
-    setEnrichAllProgress(enrichAbortRef.current ? null : { current: toEnrich.length, total: toEnrich.length });
-  }, [chapters, title, filePath, enrichedNames]);
-
-  const cancelEnrichAll = useCallback(() => {
-    enrichAbortRef.current = true;
-    setEnrichingChapter(null);
-    setEnrichAllProgress(null);
-  }, []);
-
-  // ── AI Formatting ──────────────────────────────────
-
-  // Load formatted chapters + toggle state + style dictionary from DB
-  useEffect(() => {
-    if (!bookContent || !filePath) return;
-    window.electronAPI?.getSetting(`formattedChapters:${filePath}`).then((raw) => {
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw) as Record<string, string[]>;
-        const chapters: Record<number, string[]> = {};
-        for (const [k, v] of Object.entries(parsed)) {
-          if (Array.isArray(v)) chapters[Number(k)] = v;
-        }
-        if (Object.keys(chapters).length > 0) setFormattedChapters(chapters);
-      } catch { /* ignore */ }
-    });
-    window.electronAPI?.getSetting(`formattingEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setFormattingEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
-    window.electronAPI?.getSetting(`condensedChapters:${filePath}`).then((raw) => {
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw) as Record<string, string[]>;
-        const ch: Record<number, string[]> = {};
-        let stale = false;
-        for (const [k, v] of Object.entries(parsed)) {
-          if (!Array.isArray(v)) continue;
-          // Detect old format: condensed data that contains ai-fmt HTML from the
-          // previous single-pass implementation. Discard it — needs re-condensation.
-          if (v.some(p => p.includes("ai-fmt-"))) { stale = true; break; }
-          ch[Number(k)] = v;
-        }
-        if (stale) {
-          // Wipe stale condensed data
-          window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify({}));
-          window.electronAPI?.setSetting(`fmtCondensed:${filePath}`, JSON.stringify({}));
-        } else if (Object.keys(ch).length > 0) {
-          setCondensedChapters(ch);
-        }
-      } catch { /* ignore */ }
-    });
-    window.electronAPI?.getSetting(`condenseEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setCondenseEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
-    window.electronAPI?.getSetting(`fmtCondensed:${filePath}`).then((raw) => {
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw) as Record<string, string[]>;
-        const ch: Record<number, string[]> = {};
-        for (const [k, v] of Object.entries(parsed)) {
-          if (Array.isArray(v)) ch[Number(k)] = v;
-        }
-        if (Object.keys(ch).length > 0) setFmtCondensedChapters(ch);
-      } catch { /* ignore */ }
-    });
-    loadDictionary(filePath).then((dict) => {
-      if (dict) setStyleDictionary(dict);
-    });
-    // Migrate old JSON wiki if exists, then load DB wiki state
-    const loadWikiState = async () => {
-      await attemptMigration(filePath);
-      const [processed, entityIdx] = await Promise.all([
-        window.electronAPI?.wikiGetProcessed(filePath),
-        window.electronAPI?.wikiGetEntityIndex(filePath),
-      ]);
-      if (processed) setWikiProcessedChapters(new Set(processed));
-      if (entityIdx) {
-        setWikiEntryCount(entityIdx.length);
-        setWikiEntityIndex(buildEntityIndexFromDB(entityIdx));
-      }
-    };
-    loadWikiState();
-    window.electronAPI?.getSetting(`wikiEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setWikiEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
     window.electronAPI?.getSetting(`buddyEnabled:${filePath}`).then((raw) => {
       if (raw != null) {
         try { setBuddyEnabled(JSON.parse(raw)); } catch { /* ignore */ }
@@ -588,542 +394,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         try { setSimulateEnabled(JSON.parse(raw)); } catch { /* ignore */ }
       }
     });
-    window.electronAPI?.getSetting(`commentsEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setCommentsEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
-    window.electronAPI?.getSetting(`chapterComments:${filePath}`).then((raw) => {
-      if (!raw) return;
-      try {
-        const parsed = JSON.parse(raw) as Record<string, InlineComment[]>;
-        const comments: Record<number, InlineComment[]> = {};
-        for (const [k, v] of Object.entries(parsed)) {
-          if (Array.isArray(v)) comments[Number(k)] = v;
-        }
-        if (Object.keys(comments).length > 0) setChapterComments(comments);
-      } catch { /* ignore */ }
-    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookContent, filePath]);
 
-  const formatChapter = useCallback(async (chapterIndex: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey || !chapters[chapterIndex]) return;
-
-    setFormattingChapter(chapterIndex);
-    formatAbortRef.current = false;
-
-    try {
-      const chapterToFormat = chapters[chapterIndex];
-
-      const result = await formatChapterContent(
-        apiKey, chapterToFormat, title,
-        () => formatAbortRef.current,
-        styleDictionary,
-        filePath,
-      );
-
-      if (formatAbortRef.current || !result) return;
-
-      setStyleDictionary(result.dictionary);
-      setFormattedChapters((prev) => {
-        const updated = { ...prev, [chapterIndex]: result.paragraphs };
-        window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error(`Failed to format chapter ${chapterIndex}:`, err);
-    } finally {
-      setFormattingChapter(null);
-    }
-  }, [chapters, title, filePath, styleDictionary, condenseEnabled, condensedChapters]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const formatAllChapters = useCallback(async (fromChapter?: number, upToChapter?: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey) return;
-
-    const start = fromChapter ?? 0;
-    const limit = upToChapter ?? chapters.length - 1;
-    const toFormat = chapters
-      .map((_, i) => i)
-      .filter((i) => i >= start && i <= limit && !formattedChapters[i]);
-
-    if (toFormat.length === 0) return;
-
-    formatAbortRef.current = false;
-    setFormatAllProgress({ current: 0, total: toFormat.length });
-
-    let currentFormatted = { ...formattedChapters };
-    let currentDict = styleDictionary;
-
-    for (let idx = 0; idx < toFormat.length; idx++) {
-      if (formatAbortRef.current) break;
-
-      const i = toFormat[idx];
-      setFormattingChapter(i);
-      setFormatAllProgress({ current: idx, total: toFormat.length });
-
-      try {
-        const chapterToFormat = chapters[i];
-
-        const result = await formatChapterContent(
-          apiKey, chapterToFormat, title,
-          () => formatAbortRef.current,
-          currentDict,
-          filePath,
-        );
-
-        if (formatAbortRef.current) break;
-
-        if (result) {
-          currentFormatted = { ...currentFormatted, [i]: result.paragraphs };
-          currentDict = result.dictionary;
-          setFormattedChapters({ ...currentFormatted });
-          setStyleDictionary(currentDict);
-        }
-      } catch (err) {
-        console.error(`Failed to format chapter ${i}:`, err);
-      }
-    }
-
-    await window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify(currentFormatted));
-    setFormattingChapter(null);
-    setFormatAllProgress(formatAbortRef.current ? null : { current: toFormat.length, total: toFormat.length });
-  }, [chapters, title, filePath, formattedChapters, condensedChapters, condenseEnabled, styleDictionary]);
-
-  const cancelFormatAll = useCallback(() => {
-    formatAbortRef.current = true;
-    setFormattingChapter(null);
-    setFormatAllProgress(null);
-  }, []);
-
-  const clearFormatting = useCallback(() => {
-    formatAbortRef.current = true;
-    setFormattedChapters({});
-    setFormattingEnabled(false);
-    setFormattingChapter(null);
-    setFormatAllProgress(null);
-    setStyleDictionary(null);
-    window.electronAPI?.setSetting(`formattedChapters:${filePath}`, JSON.stringify({}));
-    window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(false));
-    saveDictionary(filePath, { rules: [], bookTitle: title, updatedAt: new Date().toISOString() });
-  }, [filePath, title]);
-
-  // Format condensed text (separate from formatting original)
-  const formatCondensedChapter = useCallback(async (chapterIndex: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey || !condensedChapters[chapterIndex]) return;
-
-    setFormattingChapter(chapterIndex);
-    formatAbortRef.current = false;
-
-    try {
-      const fakeChapter = {
-        ...chapters[chapterIndex],
-        htmlParagraphs: condensedChapters[chapterIndex],
-        paragraphs: condensedChapters[chapterIndex],
-      };
-
-      const result = await formatChapterContent(
-        apiKey, fakeChapter, title,
-        () => formatAbortRef.current,
-        styleDictionary,
-        filePath,
-      );
-
-      if (formatAbortRef.current || !result) return;
-
-      setStyleDictionary(result.dictionary);
-      setFmtCondensedChapters((prev) => {
-        const updated = { ...prev, [chapterIndex]: result.paragraphs };
-        window.electronAPI?.setSetting(`fmtCondensed:${filePath}`, JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error(`Failed to format condensed chapter ${chapterIndex}:`, err);
-    } finally {
-      setFormattingChapter(null);
-    }
-  }, [chapters, condensedChapters, title, filePath, styleDictionary]);
-
-  const toggleFormattingEnabled = useCallback(() => {
-    const next = !formattingEnabled;
-    if (!next) {
-      formatAbortRef.current = true;
-      setFormattingChapter(null);
-      setFormatAllProgress(null);
-    }
-    // Don't call formatChapter here — let the auto-process useEffect handle it
-    // to avoid duplicate concurrent formatting calls
-    setFormattingEnabled(next);
-    window.electronAPI?.setSetting(`formattingEnabled:${filePath}`, JSON.stringify(next));
-  }, [formattingEnabled, filePath]);
-
-  // ── AI Concise Reading ───────────────────────────────
-
-  const condenseChapter = useCallback(async (chapterIndex: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey || !chapters[chapterIndex]) return;
-
-    setCondensingChapter(chapterIndex);
-    condenseAbortRef.current = false;
-
-    try {
-      const result = await condenseChapterContent(
-        apiKey,
-        chapters[chapterIndex],
-        title,
-        () => condenseAbortRef.current,
-      );
-
-      if (condenseAbortRef.current || !result) return;
-
-      setCondensedChapters((prev) => {
-        const updated = { ...prev, [chapterIndex]: result.paragraphs };
-        window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error(`Failed to condense chapter ${chapterIndex}:`, err);
-    } finally {
-      setCondensingChapter(null);
-    }
-  }, [chapters, title, filePath]);
-
-  const condenseAllChapters = useCallback(async (fromChapter?: number, upToChapter?: number) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey) return;
-
-    const start = fromChapter ?? 0;
-    const limit = upToChapter ?? chapters.length - 1;
-    const toCondense = chapters
-      .map((_, i) => i)
-      .filter((i) => i >= start && i <= limit && !condensedChapters[i] && chapters[i] && !isChapterTooLarge(chapters[i]));
-
-    if (toCondense.length === 0) return;
-
-    condenseAbortRef.current = false;
-    setCondenseAllProgress({ current: 0, total: toCondense.length });
-
-    let currentCondensed = { ...condensedChapters };
-
-    for (let idx = 0; idx < toCondense.length; idx++) {
-      if (condenseAbortRef.current) break;
-
-      const i = toCondense[idx];
-      setCondensingChapter(i);
-      setCondenseAllProgress({ current: idx, total: toCondense.length });
-
-      try {
-        const result = await condenseChapterContent(
-          apiKey, chapters[i], title,
-          () => condenseAbortRef.current,
-        );
-
-        if (condenseAbortRef.current) break;
-
-        if (result) {
-          currentCondensed = { ...currentCondensed, [i]: result.paragraphs };
-          setCondensedChapters({ ...currentCondensed });
-        }
-      } catch (err) {
-        console.error(`Failed to condense chapter ${i}:`, err);
-      }
-    }
-
-    await window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify(currentCondensed));
-    setCondensingChapter(null);
-    setCondenseAllProgress(condenseAbortRef.current ? null : { current: toCondense.length, total: toCondense.length });
-  }, [chapters, title, filePath, condensedChapters]);
-
-  const cancelCondenseAll = useCallback(() => {
-    condenseAbortRef.current = true;
-    setCondensingChapter(null);
-    setCondenseAllProgress(null);
-  }, []);
-
-  const clearCondense = useCallback(() => {
-    condenseAbortRef.current = true;
-    setCondensedChapters({});
-    setFmtCondensedChapters({});
-    setCondenseEnabled(false);
-    setCondensingChapter(null);
-    setCondenseAllProgress(null);
-    window.electronAPI?.setSetting(`condensedChapters:${filePath}`, JSON.stringify({}));
-    window.electronAPI?.setSetting(`fmtCondensed:${filePath}`, JSON.stringify({}));
-    window.electronAPI?.setSetting(`condenseEnabled:${filePath}`, JSON.stringify(false));
-  }, [filePath]);
-
-  const toggleCondenseEnabled = useCallback(() => {
-    const next = !condenseEnabled;
-
-    if (!next) {
-      condenseAbortRef.current = true;
-      setCondensingChapter(null);
-      setCondenseAllProgress(null);
-    } else if (!condensedChapters[currentChapter] && !isChapterTooLarge(chapters[currentChapter])) {
-      condenseChapter(currentChapter);
-    }
-    setCondenseEnabled(next);
-    window.electronAPI?.setSetting(`condenseEnabled:${filePath}`, JSON.stringify(next));
-  }, [condenseEnabled, filePath, condensedChapters, currentChapter, chapters, condenseChapter]);
-
-  // ── AI Wiki ──────────────────────────────────────────
-
-  // Refresh wiki state from DB (after processing)
-  const refreshWikiState = useCallback(async () => {
-    const [processed, entityIdx] = await Promise.all([
-      window.electronAPI?.wikiGetProcessed(filePath),
-      window.electronAPI?.wikiGetEntityIndex(filePath),
-    ]);
-    if (processed) setWikiProcessedChapters(new Set(processed));
-    if (entityIdx) {
-      setWikiEntryCount(entityIdx.length);
-      setWikiEntityIndex(buildEntityIndexFromDB(entityIdx));
-    }
-  }, [filePath]);
-
-  const processWikiChapter = useCallback(async (chapterIndex: number) => {
-    if (!chapters[chapterIndex]) return;
-    if (wikiProcessedChapters.has(chapterIndex)) return;
-
-    // Skip structural chapters (cover, TOC, copyright, etc.) — mark processed silently
-    if (isStructuralChapter(chapters[chapterIndex].title)) {
-      await window.electronAPI?.wikiMarkProcessed(filePath, chapterIndex);
-      await refreshWikiState();
-      return;
-    }
-
-    setWikiProcessingChapter(chapterIndex);
-    wikiAbortRef.current = false;
-
-    try {
-      const chapterText = chapters[chapterIndex].paragraphs.join("\n");
-      await generateWikiForChapter(
-        chapterIndex,
-        chapterText,
-        title,
-        filePath,
-        () => wikiAbortRef.current,
-      );
-
-      if (wikiAbortRef.current) return;
-
-      await refreshWikiState();
-    } catch (err) {
-      console.error(`Failed to process wiki for chapter ${chapterIndex}:`, err);
-    } finally {
-      setWikiProcessingChapter(null);
-    }
-  }, [chapters, title, filePath, wikiProcessedChapters, refreshWikiState]);
-
-  const retryWikiChapter = useCallback(async (chapterIndex: number) => {
-    if (!chapters[chapterIndex]) return;
-    await window.electronAPI?.wikiUnmarkProcessed(filePath, chapterIndex);
-    setWikiProcessedChapters((prev) => { const s = new Set(prev); s.delete(chapterIndex); return s; });
-    setWikiProcessingChapter(chapterIndex);
-    wikiAbortRef.current = false;
-    try {
-      const chapterText = chapters[chapterIndex].paragraphs.join("\n");
-      await generateWikiForChapter(chapterIndex, chapterText, title, filePath, () => wikiAbortRef.current, true);
-      if (wikiAbortRef.current) return;
-      await refreshWikiState();
-    } catch (err) {
-      console.error(`Failed to retry wiki for chapter ${chapterIndex}:`, err);
-    } finally {
-      if (!wikiAbortRef.current) setWikiProcessingChapter(null);
-    }
-  }, [chapters, filePath, title, refreshWikiState]);
-
-  // ── AI Comments ─────────────────────────────────────
-
-  const generateCommentsForChapter = useCallback(async (chapterIndex: number) => {
-    if (!chapters[chapterIndex] || chapterComments[chapterIndex]) return;
-    if (isChapterTooLarge(chapters[chapterIndex])) return;
-
-    setCommentingChapter(chapterIndex);
-    commentAbortRef.current = false;
-
-    try {
-      const ch = chapters[chapterIndex];
-      const result = await generateAIComments(
-        ch.paragraphs,
-        title,
-        ch.title,
-        chapterIndex,
-        () => commentAbortRef.current,
-      );
-
-      if (commentAbortRef.current) return;
-
-      setChapterComments((prev) => {
-        const existing = prev[chapterIndex] ?? [];
-        // Keep user comments, replace AI comments
-        const userComments = existing.filter((c) => c.author === "user");
-        const updated = { ...prev, [chapterIndex]: [...userComments, ...result] };
-        window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error(`Failed to generate comments for chapter ${chapterIndex}:`, err);
-    } finally {
-      setCommentingChapter(null);
-    }
-  }, [chapters, title, filePath, chapterComments]);
-
-  const toggleCommentsEnabled = useCallback(() => {
-    const next = !commentsEnabled;
-    setCommentsEnabled(next);
-    window.electronAPI?.setSetting(`commentsEnabled:${filePath}`, JSON.stringify(next));
-    if (next && !chapterComments[currentChapter] && chapters[currentChapter] && !isChapterTooLarge(chapters[currentChapter])) {
-      generateCommentsForChapter(currentChapter);
-    }
-  }, [commentsEnabled, filePath, currentChapter, chapters, chapterComments, generateCommentsForChapter]);
-
-  const addUserComment = useCallback((paraIndex: number, text: string) => {
-    const comment: InlineComment = { paraIndex, text, author: "user" };
-    setChapterComments((prev) => {
-      const existing = prev[currentChapter] ?? [];
-      const updated = { ...prev, [currentChapter]: [...existing, comment] };
-      window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [currentChapter, filePath]);
-
-  const deleteUserComment = useCallback((paraIndex: number, author: "ai" | "user", text: string) => {
-    setChapterComments((prev) => {
-      const existing = prev[currentChapter] ?? [];
-      const idx = existing.findIndex((c) => c.paraIndex === paraIndex && c.author === author && c.text === text);
-      if (idx === -1) return prev;
-      const updated = { ...prev, [currentChapter]: existing.filter((_, i) => i !== idx) };
-      window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
-      return updated;
-    });
-  }, [currentChapter, filePath]);
-
-  const clearComments = useCallback(() => {
-    commentAbortRef.current = true;
-    setChapterComments({});
-    setCommentingChapter(null);
-    window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify({}));
-  }, [filePath]);
-
-  // ── Queued auto-processing (format + wiki) ─────────────
-  // When the user navigates quickly through chapters, queue the current chapter
-  // and only process one at a time. New navigations replace the queue target.
-  const autoProcessTargetRef = useRef<number | null>(null);
-  const autoProcessingRef = useRef(false);
-
-  // Process one chapter: enrich (if needed) + format (if needed) + wiki (if enabled)
-  const autoProcessChapter = useCallback(async (chapterIdx: number) => {
-    if (!chapters[chapterIdx] || isChapterTooLarge(chapters[chapterIdx])) return;
-
-    // Enrich current chapter if needed
-    if (enrichEnabled && needsEnrichment(chapters[chapterIdx].title) && !enrichedNames[chapterIdx]) {
-      await enrichChapter(chapterIdx);
-    }
-
-    // Pre-enrich next chapter (fire and forget)
-    const nextIdx = chapterIdx + 1;
-    if (enrichEnabled && nextIdx < chapters.length && chapters[nextIdx] && needsEnrichment(chapters[nextIdx].title) && !enrichedNames[nextIdx]) {
-      enrichChapter(nextIdx);
-    }
-
-    // Condense current chapter if needed
-    if (condenseEnabled && !condensedChapters[chapterIdx]) {
-      await condenseChapter(chapterIdx);
-    }
-
-    // Pre-condense next chapter (fire and forget)
-    if (condenseEnabled && nextIdx < chapters.length && !condensedChapters[nextIdx] && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
-      condenseChapter(nextIdx);
-    }
-
-    // Format based on current mode
-    if (formattingEnabled) {
-      if (condenseEnabled && condensedChapters[chapterIdx] && !fmtCondensedChapters[chapterIdx]) {
-        // Format condensed text
-        await formatCondensedChapter(chapterIdx);
-      } else if (!condenseEnabled && !formattedChapters[chapterIdx]) {
-        // Format original text
-        await formatChapter(chapterIdx);
-      }
-
-      // Pre-format next chapter
-      if (condenseEnabled && nextIdx < chapters.length && condensedChapters[nextIdx] && !fmtCondensedChapters[nextIdx]) {
-        formatCondensedChapter(nextIdx);
-      } else if (!condenseEnabled && nextIdx < chapters.length && !formattedChapters[nextIdx] && chapters[nextIdx] && !isChapterTooLarge(chapters[nextIdx])) {
-        formatChapter(nextIdx);
-      }
-    }
-
-    // Wiki processing if enabled
-    if (wikiEnabled && !wikiProcessedChapters.has(chapterIdx)) {
-      await processWikiChapter(chapterIdx);
-    }
-
-    // AI Comments if enabled
-    if (commentsEnabled && !chapterComments[chapterIdx]) {
-      await generateCommentsForChapter(chapterIdx);
-    }
-  }, [chapters, enrichEnabled, enrichedNames, enrichChapter,
-      condenseEnabled, condensedChapters, condenseChapter,
-      formattingEnabled, formattedChapters, formatChapter,
-      fmtCondensedChapters, formatCondensedChapter,
-      wikiEnabled, wikiProcessedChapters, processWikiChapter,
-      commentsEnabled, chapterComments, generateCommentsForChapter]);
-
-  // Queue loop: processes the latest target, checks if it changed during processing
-  const runAutoProcessQueue = useCallback(async () => {
-    if (autoProcessingRef.current) return; // Already running
-    autoProcessingRef.current = true;
-
-    while (autoProcessTargetRef.current !== null) {
-      const target = autoProcessTargetRef.current;
-      await autoProcessChapter(target);
-      // If target hasn't changed, we're done. If it changed, loop again.
-      if (autoProcessTargetRef.current === target) {
-        autoProcessTargetRef.current = null;
-      }
-    }
-
-    autoProcessingRef.current = false;
-  }, [autoProcessChapter]);
-
-  // Trigger auto-processing when chapter changes
-  useEffect(() => {
-    if (!bookContent || !filePath) return;
-    if (!enrichEnabled && !formattingEnabled && !wikiEnabled && !commentsEnabled && !condenseEnabled) return;
-
-    autoProcessTargetRef.current = currentChapter;
-    runAutoProcessQueue();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, bookContent, enrichEnabled, formattingEnabled, wikiEnabled, commentsEnabled, condenseEnabled]);
-
-  const toggleWikiEnabled = useCallback(() => {
-    const next = !wikiEnabled;
-    if (!next) {
-      wikiAbortRef.current = true;
-      setWikiProcessingChapter(null);
-      // Buddy + Simulate require wiki — auto-disable
-      if (buddyEnabled) {
-        setBuddyEnabled(false);
-        setShowBuddy(false);
-        window.electronAPI?.setSetting(`buddyEnabled:${filePath}`, JSON.stringify(false));
-      }
-      if (simulateEnabled) {
-        setSimulateEnabled(false);
-        setActiveBranch(null);
-        setActiveBranchSegments([]);
-        window.electronAPI?.setSetting(`simulateEnabled:${filePath}`, JSON.stringify(false));
-      }
-    } else if (!wikiProcessedChapters.has(currentChapter)) {
-      processWikiChapter(currentChapter);
-    }
-    setWikiEnabled(next);
-    window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(next));
-  }, [wikiEnabled, filePath, buddyEnabled, simulateEnabled, wikiProcessedChapters, currentChapter, processWikiChapter]);
 
   const toggleBuddyEnabled = useCallback(() => {
     const next = !buddyEnabled;
@@ -1157,9 +430,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
     const api = window.electronAPI;
     if (!api) return;
-
-    const apiKey = await api.getSetting("openrouterApiKey");
-    if (!apiKey) return;
 
     // Build wiki context
     const allEntries = await api.wikiGetEntries(filePath);
@@ -1195,19 +465,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     setExplainState({ text: selectedText, messages: [userMsg], loading: true, systemPrompt });
 
     try {
-      const overrides = parseOverrides(await api.getSetting(PRESET_OVERRIDES_KEY) ?? null);
-
-      const response = await chatWithPreset(
-        apiKey,
-        "quick",
-        [
+      const reply = await aiText({
+        preset: "quick",
+        messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMsg.content },
         ],
-        overrides,
-      );
+      });
 
-      const reply = response.choices?.[0]?.message?.content?.trim() ?? "Unable to generate explanation.";
       setExplainState((prev) => prev ? {
         ...prev,
         messages: [...prev.messages, { role: "assistant", content: reply }],
@@ -1226,29 +491,20 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const handleExplainFollowUp = useCallback(async (question: string) => {
     if (!explainState || !filePath) return;
 
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const apiKey = await api.getSetting("openrouterApiKey");
-    if (!apiKey) return;
-
     const userMsg: ExplainMessage = { role: "user", content: question };
     const updatedMessages = [...explainState.messages, userMsg];
 
     setExplainState((prev) => prev ? { ...prev, messages: updatedMessages, loading: true } : null);
 
     try {
-      const overrides = parseOverrides(await api.getSetting(PRESET_OVERRIDES_KEY) ?? null);
-
       // Build full conversation for the API
       const apiMessages = [
         { role: "system" as const, content: explainState.systemPrompt },
         ...updatedMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       ];
 
-      const response = await chatWithPreset(apiKey, "quick", apiMessages, overrides);
+      const reply = await aiText({ preset: "quick", messages: apiMessages });
 
-      const reply = response.choices?.[0]?.message?.content?.trim() ?? "Unable to respond.";
       setExplainState((prev) => prev ? {
         ...prev,
         messages: [...prev.messages, { role: "assistant", content: reply }],
@@ -1286,21 +542,18 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     quoteToastTimer.current = setTimeout(() => setQuoteToastVisible(false), 2000);
 
     // Fire-and-forget AI enrichment
-    const apiKey = await api.getSetting("openrouterApiKey").catch(() => null);
-    if (apiKey) {
-      const surrounding = chapters[currentChapter]?.paragraphs
-        .slice(Math.max(0, paraIndex - 2), paraIndex + 3)
-        .join(" ");
-      enrichQuote(apiKey, text, { chapterTitle, bookTitle: title, surroundingText: surrounding })
-        .then((enrichment) => {
-          api.quotesUpdate(savedQuote.id, {
-            speaker: enrichment.speaker,
-            kind: enrichment.kind,
-            aiEnhanced: true,
-          });
-        })
-        .catch(() => {/* silent */});
-    }
+    const surrounding = chapters[currentChapter]?.paragraphs
+      .slice(Math.max(0, paraIndex - 2), paraIndex + 3)
+      .join(" ");
+    enrichQuote(text, { chapterTitle, bookTitle: title, surroundingText: surrounding })
+      .then((enrichment) => {
+        api.quotesUpdate(savedQuote.id, {
+          speaker: enrichment.speaker,
+          kind: enrichment.kind,
+          aiEnhanced: true,
+        });
+      })
+      .catch(() => {/* silent */});
   }, [filePath, currentChapter, chapterTitle, title, chapters]);
 
   // ── Simulate handlers ──────────────────────────────
@@ -1438,20 +691,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       let finalParagraphs = result.htmlParagraphs;
       if (formattingEnabled && styleDictionary) {
         try {
-          const fmtApiKey = await api.getSetting("openrouterApiKey");
-          if (fmtApiKey) {
             const syntheticChapter = {
               title: "",
               paragraphs: finalParagraphs.map(p => p.replace(/<[^>]+>/g, "").trim()),
               htmlParagraphs: finalParagraphs,
             };
             const fmtResult = await formatChapterContent(
-              fmtApiKey, syntheticChapter, title, () => false, styleDictionary, filePath,
+              syntheticChapter, title, () => false, styleDictionary, filePath,
             );
             if (fmtResult) {
               finalParagraphs = fmtResult.paragraphs;
             }
-          }
         } catch (fmtErr) {
           console.warn("Failed to format simulate content:", fmtErr);
         }
@@ -1617,11 +867,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const cancelWikiProcessAll = useCallback(() => {
     wikiAbortRef.current = true;
-    formatAbortRef.current = true;
     setWikiProcessingChapter(null);
     setWikiAllProgress(null);
-    setFormattingChapter(null);
-  }, []);
+    cancelFormatAll();
+  }, [cancelFormatAll]);
 
   // Wiki entity index for text highlighting (already from DB)
   const effectiveWikiEntityIndex = useMemo(() => {
@@ -2097,15 +1346,13 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onWikiProcessAll={processAllWikiChapters}
               onCondenseRetry={() => {
                 // Clear condensed + formatted-condensed for this chapter, then re-condense
-                setCondensedChapters(prev => { const u = {...prev}; delete u[currentChapter]; return u; });
-                setFmtCondensedChapters(prev => { const u = {...prev}; delete u[currentChapter]; return u; });
+                clearCondense();
                 condenseChapter(currentChapter);
               }}
               onWikiRetry={() => retryWikiChapter(currentChapter)}
               onFormatRetry={() => {
                 if (condenseEnabled && condensedChapters[currentChapter]) {
-                  // Re-format condensed text
-                  setFmtCondensedChapters(prev => { const u = {...prev}; delete u[currentChapter]; return u; });
+                  clearFormatting();
                   formatCondensedChapter(currentChapter);
                 } else {
                   formatChapter(currentChapter);

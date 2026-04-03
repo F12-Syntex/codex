@@ -9,7 +9,8 @@
  */
 
 import type { BookChapter } from "@/app/reader/lib/types";
-import { chatWithPreset } from "./openrouter";
+import { aiText, AIError } from "./ai-client";
+import type { PresetOverrides } from "./ai-presets";
 import { loadOverrides } from "./ai-presets";
 
 /* ── Constants ──────────────────────────────────────────────── */
@@ -113,18 +114,17 @@ function cleanParagraph(text: string): string {
 /* ── Single chunk processing ────────────────────────────────── */
 
 async function condenseChunk(
-  apiKey: string,
   paragraphs: string[],
   bookTitle: string,
-  overrides: Awaited<ReturnType<typeof loadOverrides>>,
+  overrides: PresetOverrides,
+  signal?: AbortSignal,
 ): Promise<string[] | null> {
   const filtered = paragraphs.filter(p => p.trim().length > 0);
   if (filtered.length === 0) return [];
 
-  const response = await chatWithPreset(
-    apiKey,
-    "format",
-    [
+  const content = await aiText({
+    preset: "format",
+    messages: [
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
@@ -132,10 +132,8 @@ async function condenseChunk(
       },
     ],
     overrides,
-  );
-
-  const content = response.choices?.[0]?.message?.content?.trim();
-  if (!content) return null;
+    signal,
+  });
 
   let cleaned = content;
   // Handle both complete and truncated code fences
@@ -195,10 +193,10 @@ export interface CondenseResult {
  * if visual enhancements are desired on the condensed output.
  */
 export async function condenseChapterContent(
-  apiKey: string,
   chapter: BookChapter,
   bookTitle: string,
   onAbortCheck?: () => boolean,
+  signal?: AbortSignal,
 ): Promise<CondenseResult | null> {
   const { htmlParagraphs, paragraphs } = chapter;
   if (paragraphs.length === 0) {
@@ -220,10 +218,14 @@ export async function condenseChapterContent(
     if (onAbortCheck?.()) return null;
 
     const chunk = paragraphs.slice(offset, offset + CONDENSE_CHUNK);
-    const result = await condenseChunk(apiKey, chunk, bookTitle, overrides);
-    if (result === null) return null;
-
-    allCondensed.push(...result);
+    try {
+      const result = await condenseChunk(chunk, bookTitle, overrides, signal);
+      if (result === null) return null;
+      allCondensed.push(...result);
+    } catch (err) {
+      if (err instanceof AIError && err.code === "aborted") return null;
+      throw err;
+    }
   }
 
   return { paragraphs: allCondensed };

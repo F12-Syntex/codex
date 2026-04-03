@@ -1,7 +1,6 @@
 /* ── AI Simulate — Branching Narrative Continuation ────────── */
 
-import { chatWithPreset, type OpenRouterMessage } from "./openrouter";
-import { loadOverrides } from "./ai-presets";
+import { aiText } from "./ai-client";
 
 interface EntityData {
   name: string;
@@ -236,25 +235,15 @@ export async function generateSimContinuation(
   chapterSummaries: string[],
   userInput: string,
 ): Promise<SimResult> {
-  const api = window.electronAPI;
-  if (!api) throw new Error("No API");
-
-  const apiKey = await api.getSetting("openrouterApiKey");
-  if (!apiKey) throw new Error("No API key configured");
-
-  const overrides = await loadOverrides();
-
   const systemPrompt = buildSimulatePrompt(bookTitle, entity, precedingParagraphs, prevChapterText, chapterSummaries, userInput);
 
-  const messages: OpenRouterMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userInput },
-  ];
-
-  const response = await chatWithPreset(apiKey, "creative", messages, overrides);
-  const content = response.choices?.[0]?.message?.content?.trim();
-
-  if (!content) throw new Error("No response from AI");
+  const content = await aiText({
+    preset: "creative",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userInput },
+    ],
+  });
 
   return parseSimResponse(content);
 }

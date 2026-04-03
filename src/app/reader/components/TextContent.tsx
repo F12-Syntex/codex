@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink, MessageCircle, Plus, X, Send } from "lucide-react";
+import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink, MessageCircle, Plus, X } from "lucide-react";
+import { CommentInput } from "./CommentInput";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
@@ -10,7 +11,7 @@ import type { SimChoice } from "@/lib/ai-simulate";
 import type { InlineComment } from "@/lib/ai-comments";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 import { EntityContextMenu } from "./EntityContextMenu";
-import { applyReplacements, loadReplacements, type WordReplacement } from "@/lib/word-replacements";
+import { applyReplacements, applyReplacementsPlain, loadReplacements, type WordReplacement } from "@/lib/word-replacements";
 
 interface TextContentProps {
   chapterTitle: string;
@@ -545,7 +546,7 @@ export function TextContent({
             letterSpacing: "-0.01em",
           }}
         >
-          {chapterTitle}
+          {wordReplacements.length > 0 ? applyReplacementsPlain(chapterTitle, wordReplacements) : chapterTitle}
         </h2>
       )}
       <div
@@ -1493,42 +1494,18 @@ export function TextContent({
               </div>
             ))}
             {/* User input */}
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "6px" }}>
-              <input
-                type="text"
-                placeholder="Add your thoughts..."
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "6px" }}>
+              <CommentInput
                 value={commentInput}
-                autoFocus
-                onChange={(e) => setCommentInput(e.target.value)}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter" && commentInput.trim() && onAddComment) {
+                onChange={setCommentInput}
+                onSubmit={() => {
+                  if (onAddComment) {
                     onAddComment(expandedCommentPara, commentInput.trim());
                     setCommentInput("");
                   }
-                  if (e.key === "Escape") { setExpandedCommentPara(null); setCommentInput(""); }
                 }}
-                style={{
-                  flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: "6px", padding: "5px 8px", fontSize: "11px", outline: "none",
-                  color: "rgba(255,255,255,0.8)",
-                }}
+                onCancel={() => { setExpandedCommentPara(null); setCommentInput(""); }}
               />
-              <button
-                onClick={() => {
-                  if (commentInput.trim() && onAddComment) {
-                    onAddComment(expandedCommentPara, commentInput.trim());
-                    setCommentInput("");
-                  }
-                }}
-                style={{
-                  flexShrink: 0, width: "24px", height: "24px", borderRadius: "6px",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: commentInput.trim() ? "var(--accent-brand)" : "rgba(255,255,255,0.04)",
-                  border: "none", cursor: commentInput.trim() ? "pointer" : "default",
-                  color: commentInput.trim() ? "white" : "rgba(255,255,255,0.3)",
-                }}
-              ><Send style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
             </div>
           </div>
         );
@@ -1553,43 +1530,18 @@ export function TextContent({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <input
-              type="text"
-              placeholder="Add your thoughts..."
+            <CommentInput
               value={commentInput}
-              autoFocus
-              onChange={(e) => setCommentInput(e.target.value)}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter" && commentInput.trim() && onAddComment) {
+              onChange={setCommentInput}
+              onSubmit={() => {
+                if (onAddComment) {
                   onAddComment(addingCommentPara, commentInput.trim());
                   setCommentInput("");
                   setAddingCommentPara(null);
                 }
-                if (e.key === "Escape") { setAddingCommentPara(null); setCommentInput(""); }
               }}
-              style={{
-                flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)",
-                borderRadius: "6px", padding: "5px 8px", fontSize: "11px", outline: "none",
-                color: "rgba(255,255,255,0.8)",
-              }}
+              onCancel={() => { setAddingCommentPara(null); setCommentInput(""); }}
             />
-            <button
-              onClick={() => {
-                if (commentInput.trim() && onAddComment) {
-                  onAddComment(addingCommentPara, commentInput.trim());
-                  setCommentInput("");
-                  setAddingCommentPara(null);
-                }
-              }}
-              style={{
-                flexShrink: 0, width: "24px", height: "24px", borderRadius: "6px",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: commentInput.trim() ? "var(--accent-brand)" : "rgba(255,255,255,0.04)",
-                border: "none", cursor: commentInput.trim() ? "pointer" : "default",
-                color: commentInput.trim() ? "white" : "rgba(255,255,255,0.3)",
-              }}
-            ><Send style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
           </div>
         );
       })()}

@@ -1,7 +1,6 @@
 /* ── AI Quote Enrichment ─────────────────────────────────── */
 
-import { chatWithPreset } from "./openrouter";
-import { parseOverrides, PRESET_OVERRIDES_KEY } from "./ai-presets";
+import { aiText } from "./ai-client";
 
 export interface QuoteEnrichment {
   speaker: string;
@@ -13,7 +12,6 @@ export interface QuoteEnrichment {
  * Does NOT modify the original text.
  */
 export async function enrichQuote(
-  apiKey: string,
   quoteText: string,
   context: {
     chapterTitle: string;
@@ -21,12 +19,6 @@ export async function enrichQuote(
     surroundingText?: string;
   }
 ): Promise<QuoteEnrichment> {
-  const overrides = parseOverrides(
-    typeof window !== "undefined"
-      ? localStorage.getItem(PRESET_OVERRIDES_KEY) ?? "{}"
-      : "{}"
-  );
-
   const systemPrompt = `You are a literary analyst. Given a quote from a book, identify:
 1. The speaker (if it's dialogue or inner thought — use "narrator" for narration/description, or the character's name)
 2. The kind: one of "dialogue", "inner_thought", "narration", "description", "quote"
@@ -49,18 +41,15 @@ Quote to analyze:
 "${quoteText}"`;
 
   try {
-    const response = await chatWithPreset(
-      apiKey,
-      "quick",
-      [
+    const raw = await aiText({
+      preset: "quick",
+      messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      overrides,
-      { max_tokens: 80 }
-    );
+      maxTokens: 80,
+    });
 
-    const raw = response.choices[0]?.message?.content?.trim() ?? "";
     // Find first { in case of preamble
     const start = raw.indexOf("{");
     if (start === -1) throw new Error("No JSON in response");

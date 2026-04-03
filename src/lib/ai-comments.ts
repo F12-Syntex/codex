@@ -1,6 +1,6 @@
 /* ── AI Inline Comments ─────────────────────────────────── */
 
-import { chatWithPreset } from "./openrouter";
+import { aiText, AIError } from "./ai-client";
 
 export interface InlineComment {
   paraIndex: number;
@@ -23,10 +23,8 @@ export async function generateAIComments(
   chapterTitle: string,
   chapterIndex: number,
   isAborted: () => boolean,
+  signal?: AbortSignal,
 ): Promise<InlineComment[]> {
-  const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-  if (!apiKey) throw new Error("No API key");
-
   // Build numbered paragraph text for the AI
   const numbered = chapterText
     .map((p, i) => `[${i}] ${p}`)
@@ -71,21 +69,19 @@ Where "p" is the paragraph number from the [N] markers and "c" is your comment.`
 
   if (isAborted()) return [];
 
-  const response = await chatWithPreset(
-    apiKey,
-    "quick",
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-  );
-
-  if (isAborted()) return [];
-
-  const raw = response.choices?.[0]?.message?.content?.trim() ?? "";
-
-  // Parse JSON response
   try {
+    const raw = await aiText({
+      preset: "quick",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      signal,
+    });
+
+    if (isAborted()) return [];
+
+    // Parse JSON response
     // Strip markdown code fences if present
     let cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
     // Strip surrounding quotes if the AI wrapped the JSON in a string
@@ -108,8 +104,9 @@ Where "p" is the paragraph number from the [N] markers and "c" is your comment.`
         author: "ai" as const,
       }))
       .filter((c) => c.text.length > 0);
-  } catch {
-    console.error("[ai-comments] Failed to parse AI response:", raw);
+  } catch (err) {
+    if (err instanceof AIError && err.code === "aborted") return [];
+    console.error("[ai-comments] Failed:", err);
     return [];
   }
 }

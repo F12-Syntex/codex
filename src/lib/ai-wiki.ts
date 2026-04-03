@@ -1,6 +1,6 @@
 /* ── AI Wiki — DB-backed Core Logic (v2: Entity Resolution + Quality Gates) ── */
 
-import { chatWithPreset } from "./openrouter";
+import { aiText, AIError } from "./ai-client";
 import { loadOverrides } from "./ai-presets";
 import {
   WIKI_SYSTEM_PROMPT,
@@ -502,9 +502,6 @@ export async function generateWikiForChapter(
   const api = window.electronAPI;
   if (!api) return;
 
-  const apiKey = await api.getSetting("openrouterApiKey");
-  if (!apiKey) throw new Error("No API key configured");
-
   // Skip chapters with embedded images or excessive size
   if (chapterText.includes("data:image/") || chapterText.includes("base64,") || chapterText.length > 500_000) {
     console.warn(`Skipping wiki analysis for chapter ${chapterIndex}: contains images or too large`);
@@ -533,20 +530,16 @@ export async function generateWikiForChapter(
   const userPrompt = buildWikiUserPrompt(chapterIndex, chapterText, bookTitle, context);
   const overrides = await loadOverrides();
 
-  const response = await chatWithPreset(
-    apiKey,
-    "quick",
-    [
+  const content = await aiText({
+    preset: "quick",
+    messages: [
       { role: "system", content: WIKI_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
     overrides,
-  );
+  });
 
   if (isAborted()) return;
-
-  const content = response.choices?.[0]?.message?.content?.trim();
-  if (!content) return;
 
   const parsed = parseWikiResponse(content);
   if (!parsed) return;
@@ -579,9 +572,6 @@ export async function generateWikiForChapterBatch(
   const api = window.electronAPI;
   if (!api) return [];
 
-  const apiKey = await api.getSetting("openrouterApiKey");
-  if (!apiKey) throw new Error("No API key configured");
-
   await api.wikiUpsertMeta(filePath, bookTitle);
 
   const firstIndex = chapters[0].index;
@@ -589,20 +579,16 @@ export async function generateWikiForChapterBatch(
   const userPrompt = buildWikiBatchUserPrompt(chapters, bookTitle, context);
   const overrides = await loadOverrides();
 
-  const response = await chatWithPreset(
-    apiKey,
-    "quick",
-    [
+  const content = await aiText({
+    preset: "quick",
+    messages: [
       { role: "system", content: WIKI_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },
     ],
     overrides,
-  );
+  });
 
   if (isAborted()) return [];
-
-  const content = response.choices?.[0]?.message?.content?.trim();
-  if (!content) return [];
 
   const parsed = parseWikiResponse(content);
   if (!parsed) return [];

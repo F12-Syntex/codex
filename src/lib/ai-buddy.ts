@@ -1,6 +1,6 @@
 /* ── AI Buddy — Chat about the book with wiki context ── */
 
-import { chatWithPreset, type OpenRouterMessage } from "./openrouter";
+import { aiText, type AIMessage } from "./ai-client";
 import { loadOverrides } from "./ai-presets";
 
 export interface BuddyMessage {
@@ -512,14 +512,11 @@ export async function sendBuddyMessage(
   readChapter: ChapterReader,
   onProgress?: BuddyProgressCallback,
 ): Promise<[string, WikiAction[], BuddyPlan | null]> {
-  const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-  if (!apiKey) throw new Error("OpenRouter API key not set");
-
   const systemPrompt = buildBuddySystemPrompt(bookTitle, currentChapter, totalChapters, wikiContext);
   const overrides = await loadOverrides();
 
   const recentHistory = history.slice(-20);
-  const messages: OpenRouterMessage[] = [
+  const messages: AIMessage[] = [
     { role: "system", content: systemPrompt },
     ...recentHistory.map((m) => ({
       role: m.role as "user" | "assistant",
@@ -532,8 +529,7 @@ export async function sendBuddyMessage(
   let accumulatedHtml = "";
 
   for (let i = 0; i < maxIterations; i++) {
-    const response = await chatWithPreset(apiKey, "quick", messages, overrides);
-    const raw = stripCodeFences(response.choices?.[0]?.message?.content?.trim() ?? "");
+    const raw = stripCodeFences(await aiText({ preset: "quick", messages, overrides }));
     const parsed = parseResponse(raw);
 
     accumulatedHtml += (accumulatedHtml ? "\n" : "") + parsed.html;
@@ -586,9 +582,6 @@ export async function executePlanStep(
   previousResults: string[],
   readChapter: ChapterReader,
 ): Promise<[string, WikiAction[]]> {
-  const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-  if (!apiKey) throw new Error("OpenRouter API key not set");
-
   const step = plan.steps[stepIndex];
   if (!step) throw new Error(`Step ${stepIndex} not found`);
 
@@ -620,13 +613,12 @@ export async function executePlanStep(
 
   stepContext += `Respond with HTML as usual.`;
 
-  const messages: OpenRouterMessage[] = [
+  const messages: AIMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: stepContext },
   ];
 
-  const response = await chatWithPreset(apiKey, "quick", messages, overrides);
-  const raw = stripCodeFences(response.choices?.[0]?.message?.content?.trim() ?? "");
+  const raw = stripCodeFences(await aiText({ preset: "quick", messages, overrides }));
   const parsed = parseResponse(raw);
 
   return [parsed.html, parsed.wikiActions];

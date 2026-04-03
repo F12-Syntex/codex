@@ -64,7 +64,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
     setRegeneratingRule(componentClass);
     try {
       const allUpdates = await regenerateRule(
-        apiKey, componentClass, formattedChapters, bookContent, bookTitle,
+        componentClass, formattedChapters, bookContent, bookTitle,
         instruction || undefined,
       );
       if (!allUpdates) return;

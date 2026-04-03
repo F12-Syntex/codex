@@ -8,9 +8,9 @@
  */
 
 import type { BookChapter } from "@/app/reader/lib/types";
-import type { OpenRouterMessage } from "./openrouter";
-import { chatWithPreset } from "./openrouter";
+import { aiText, type AIMessage } from "./ai-client";
 import { loadOverrides } from "./ai-presets";
+import type { PresetOverrides } from "./ai-presets";
 import type { StyleDictionary } from "./ai-style-dictionary";
 import {
   extractRulesFromFormatted, mergeRules, buildStyleContext, saveDictionary,
@@ -190,7 +190,7 @@ export function buildFormattingPrompt(
   _chunkOffset: number = 0,
   styleContext: string = "",
   wikiContext: string = "",
-): OpenRouterMessage[] {
+): AIMessage[] {
   const indexed: Record<number, string> = {};
   for (let i = 0; i < paragraphs.length; i++) {
     indexed[i] = paragraphs[i];
@@ -280,24 +280,24 @@ export function parseFormattingResponse(
 /* ── Single chunk processing ────────────────────────────────── */
 
 async function formatChunk(
-  apiKey: string,
-  overrides: Record<string, { model: string }>,
+  overrides: PresetOverrides,
   paragraphs: string[],
   bookTitle: string,
   chunkOffset: number = 0,
   styleContext: string = "",
   wikiContext: string = "",
+  signal?: AbortSignal,
 ): Promise<string[] | null> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const messages = buildFormattingPrompt(paragraphs, bookTitle, chunkOffset, styleContext, wikiContext);
-      const response = await chatWithPreset(apiKey, "format", messages, overrides);
-
-      const content = response.choices?.[0]?.message?.content;
-      if (!content) {
-        console.warn(`AI formatting: empty response (attempt ${attempt + 1}/${MAX_RETRIES})`);
-        continue;
-      }
+      const content = await aiText({
+        preset: "format",
+        messages,
+        overrides,
+        signal,
+        retries: 1, // We handle retries here for parse failures
+      });
 
       const result = parseFormattingResponse(content, paragraphs.length, paragraphs);
       if (result) return result;
@@ -323,12 +323,12 @@ export interface FormatResult {
  * Handles chunking for long chapters and parallel processing.
  */
 export async function formatChapterContent(
-  apiKey: string,
   chapter: BookChapter,
   bookTitle: string,
   onAbortCheck?: () => boolean,
   existingDictionary?: StyleDictionary | null,
   filePath?: string,
+  signal?: AbortSignal,
 ): Promise<FormatResult | null> {
   const { htmlParagraphs } = chapter;
   if (htmlParagraphs.length === 0) {
@@ -366,7 +366,7 @@ export async function formatChapterContent(
   let formatted: string[] | null;
 
   if (htmlParagraphs.length <= CHUNK_SIZE + 10) {
-    formatted = await formatChunk(apiKey, overrides, htmlParagraphs, bookTitle, 0, styleContext, wikiContext);
+    formatted = await formatChunk(overrides, htmlParagraphs, bookTitle, 0, styleContext, wikiContext, signal);
   } else {
     const chunks: { start: number; paragraphs: string[] }[] = [];
     for (let start = 0; start < htmlParagraphs.length; start += CHUNK_SIZE) {
@@ -380,7 +380,7 @@ export async function formatChapterContent(
 
       const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
       const batchResults = await Promise.all(
-        batchChunks.map((c) => formatChunk(apiKey, overrides, c.paragraphs, bookTitle, c.start, styleContext, wikiContext)),
+        batchChunks.map((c) => formatChunk(overrides, c.paragraphs, bookTitle, c.start, styleContext, wikiContext, signal)),
       );
 
       for (let j = 0; j < batchResults.length; j++) {
@@ -421,7 +421,6 @@ export async function formatChapterContent(
  * Regenerate a component across ALL chapters with fresh creative treatment.
  */
 export async function regenerateRule(
-  apiKey: string,
   componentClass: string,
   formattedChapters: Record<string, string[]>,
   bookContent: { chapters: { htmlParagraphs: string[] }[] },
@@ -465,7 +464,7 @@ Creative freedom:
       regenPrompt += `\n\nUSER REQUEST: ${userInstruction}`;
     }
 
-    const messages: OpenRouterMessage[] = [
+    const messages: AIMessage[] = [
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
@@ -474,9 +473,11 @@ Creative freedom:
     ];
 
     try {
-      const response = await chatWithPreset(apiKey, "format-regen", messages, overrides);
-
-      const content = response.choices?.[0]?.message?.content;
+      const content = await aiText({
+        preset: "format-regen",
+        messages,
+        overrides,
+      });
       if (!content) continue;
 
       const result = parseFormattingResponse(content, originalSubset.length, originalSubset);
