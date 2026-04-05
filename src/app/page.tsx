@@ -381,12 +381,16 @@ export default function Home() {
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
+    // Optimization: Use Intl.Collator for case-insensitive string comparisons.
+    // This avoids calling .toLowerCase() on every comparison in the sort loop,
+    // which prevents O(N log N) string allocations and reduces GC pressure.
+    const collator = new Intl.Collator(undefined, { sensitivity: "base" });
     items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      // LibraryItem fields are strings, but we fallback to empty string just in case
+      const aVal = a[sortField] || "";
+      const bVal = b[sortField] || "";
+      const cmp = collator.compare(aVal, bVal);
+      return sortDir === "asc" ? cmp : -cmp;
     });
     return items;
   }, [rawItems, formatFilter, sortField, sortDir]);
