@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-17 - [Initial Learning]
+**Learning:** Using `.toLowerCase()` inside `Array.prototype.sort()` callbacks for case-insensitive sorting allocates temporary strings $O(N \log N)$ times, leading to unnecessary garbage collection overhead and slower performance.
+**Action:** Always instantiate `new Intl.Collator(undefined, { sensitivity: 'base' })` outside the sort callback and use `collator.compare(a, b)` inside to handle case-insensitive string comparisons efficiently.
