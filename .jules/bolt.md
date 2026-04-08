@@ -2,6 +2,14 @@
 **Learning:** Understanding React performance patterns in this Electron app
 **Action:** Found multiple areas where \`useMemo\` and \`useCallback\` are heavily used.
 
+## 2025-02-18 - [Rendering Bottleneck in TextContent]
+**Learning:** Missing memoization of heavy DOM arrays that depend on frequently changing props can tank framerates. In `TextContent`, `paragraphsJSX` was mapping over hundreds of paragraphs every render. Since `TextContent` receives `ttsActiveWordIndex` which changes ~5 times a second, this forced the entire paragraph tree to rebuild constantly.
+**Action:** Always wrap expensive `.map()` array renders in `useMemo` when they sit inside a component that receives fast-changing props. Use functional state updates (`prev => ...`) in callbacks to avoid adding unnecessary dependencies to the `useMemo` array.
+
+## 2025-03-25 - [O(N log N) String Allocation in Sorts]
+**Learning:** Calling `.toLowerCase()` inside an array `sort()` comparator creates $O(N \log N)$ new string allocations, causing heavy garbage collection pressure when sorting large datasets (like the main library view).
+**Action:** Always use `Intl.Collator(undefined, { sensitivity: 'base' })` when implementing case-insensitive string comparisons in sorting functions instead of converting strings to lowercase dynamically.
+
 ## 2025-02-17 - [Initial Learning]
 **Learning:** BookCard runs an expensive color extraction logic repeatedly on image load (`extractDominantColor`). This iterates over image pixels every time a cover is loaded.
 **Action:** Since BookCard is memoized, we should make sure that this extraction function doesn't cause unnecessary bottlenecks, or we can look for other bottlenecks.
