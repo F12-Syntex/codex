@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2026-04-08 - [Use Collator for Sorting]
+**Learning:** JavaScript Performance Rule: When implementing sorting algorithms, prefer using `Intl.Collator` (e.g., `new Intl.Collator(undefined, { sensitivity: 'base' })`) for case-insensitive string comparisons instead of calling `.toLowerCase()` within the comparator to minimize garbage collection (GC) pressure and avoid O(N log N) string allocations.
+**Action:** Replaced `.toLowerCase()` with `Intl.Collator` inside the useMemo sort function in `src/app/page.tsx`.
