@@ -67,7 +67,11 @@ export default function Home() {
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setIsDev(window.electronAPI?.isDev ?? false);
+    // Avoid synchronous setState in effect
+    const timer = setTimeout(() => {
+      setIsDev(window.electronAPI?.isDev ?? false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   // ── Load data from database on mount ──────────────
@@ -373,20 +377,18 @@ export default function Home() {
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
-  const rawItems = data[activeView] ?? [];
+  const rawItems = data[activeView];
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
-    let items = [...rawItems];
+    let items = [...(rawItems ?? [])];
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
     items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      const cmp = collator.compare(a[sortField], b[sortField]);
+      return sortDir === "asc" ? cmp : -cmp;
     });
     return items;
   }, [rawItems, formatFilter, sortField, sortDir]);

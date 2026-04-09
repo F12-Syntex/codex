@@ -15,15 +15,28 @@ interface SearchOverlayProps {
 interface SearchResult {
   section: string;
   item: MockItem;
+  // Pre-calculated lowercase strings for fast filtering on every keystroke
+  titleLow: string;
+  authorLow: string;
 }
 
 function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResult[] {
   const results: SearchResult[] = [];
   for (const items of Object.values(bookData)) {
-    if (items) items.forEach((item) => results.push({ section: "Books", item }));
+    if (items) items.forEach((item) => results.push({
+      section: "Books",
+      item,
+      titleLow: item.title.toLowerCase(),
+      authorLow: item.author.toLowerCase()
+    }));
   }
   for (const items of Object.values(comicData)) {
-    if (items) items.forEach((item) => results.push({ section: "Comics", item }));
+    if (items) items.forEach((item) => results.push({
+      section: "Comics",
+      item,
+      titleLow: item.title.toLowerCase(),
+      authorLow: item.author.toLowerCase()
+    }));
   }
   const seen = new Set<string>();
   return results.filter((r) => {
@@ -59,12 +72,13 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
+    // Use pre-calculated lowercase strings instead of allocating new ones on every keystroke
     return allItems.filter(
       (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
+        r.titleLow.includes(q) ||
+        r.authorLow.includes(q)
     );
-  }, [query]);
+  }, [query, allItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
