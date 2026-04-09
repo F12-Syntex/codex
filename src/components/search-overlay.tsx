@@ -15,15 +15,31 @@ interface SearchOverlayProps {
 interface SearchResult {
   section: string;
   item: MockItem;
+  lowerTitle: string;
+  lowerAuthor: string;
 }
 
 function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResult[] {
   const results: SearchResult[] = [];
   for (const items of Object.values(bookData)) {
-    if (items) items.forEach((item) => results.push({ section: "Books", item }));
+    if (items) {
+      items.forEach((item) => results.push({
+        section: "Books",
+        item,
+        lowerTitle: item.title.toLowerCase(),
+        lowerAuthor: item.author.toLowerCase()
+      }));
+    }
   }
   for (const items of Object.values(comicData)) {
-    if (items) items.forEach((item) => results.push({ section: "Comics", item }));
+    if (items) {
+      items.forEach((item) => results.push({
+        section: "Comics",
+        item,
+        lowerTitle: item.title.toLowerCase(),
+        lowerAuthor: item.author.toLowerCase()
+      }));
+    }
   }
   const seen = new Set<string>();
   return results.filter((r) => {
@@ -33,9 +49,9 @@ function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResul
   });
 }
 
-function highlightMatch(text: string, query: string) {
+function highlightMatch(text: string, query: string, lowerText: string, lowerQuery: string) {
   if (!query.trim()) return text;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  const idx = lowerText.indexOf(lowerQuery);
   if (idx === -1) return text;
   return (
     <>
@@ -61,10 +77,10 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
     const q = query.toLowerCase();
     return allItems.filter(
       (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
+        r.lowerTitle.includes(q) ||
+        r.lowerAuthor.includes(q)
     );
-  }, [query]);
+  }, [query, allItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
@@ -117,6 +133,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
   let flatIndex = 0;
   const hasResults = filtered.length > 0;
   const hasQuery = query.trim().length > 0;
+  const lowerQuery = query.toLowerCase();
 
   return createPortal(
     <div
@@ -203,11 +220,11 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                             {/* Text */}
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-white/80">
-                                {highlightMatch(r.item.title, query)}
+                                {highlightMatch(r.item.title, query, r.lowerTitle, lowerQuery)}
                               </p>
                               <div className="mt-0.5 flex items-center gap-2">
                                 <p className="truncate text-xs text-white/30">
-                                  {highlightMatch(r.item.author, query)}
+                                  {highlightMatch(r.item.author, query, r.lowerAuthor, lowerQuery)}
                                 </p>
                                 <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[2px] text-xs font-semibold uppercase tracking-wide text-white/30">
                                   {r.item.format}
