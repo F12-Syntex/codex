@@ -762,17 +762,19 @@ export function mergeWikiEntries(filePath: string, sourceId: string, targetId: s
     }
 
     // Add source name + aliases as aliases of target
-    db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, source.name);
+    const insertAlias = db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)");
+    insertAlias.run(filePath, targetId, source.name);
     for (const alias of aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, alias);
+      insertAlias.run(filePath, targetId, alias);
     }
 
     // Move details
     db.prepare("UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ?").run(targetId, filePath, sourceId);
 
     // Move appearances (ignore duplicates)
+    const insertAppearance = db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)");
     for (const ch of appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, targetId, ch);
+      insertAppearance.run(filePath, targetId, ch);
     }
 
     // Move relationships — repoint source_id/target_id references
