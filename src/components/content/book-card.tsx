@@ -17,8 +17,16 @@ interface BookCardProps {
   progress?: number; // 0-1
 }
 
+// Cache for dominant colors to avoid expensive synchronous canvas processing on remounts
+const dominantColorCache = new Map<string, string>();
+
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
 function extractDominantColor(img: HTMLImageElement): string {
+  // If the image is loaded from a specific URL, check the cache
+  if (img.src && dominantColorCache.has(img.src)) {
+    return dominantColorCache.get(img.src)!;
+  }
+
   const canvas = document.createElement("canvas");
   const size = 32; // downsample for speed
   canvas.width = size;
@@ -50,8 +58,15 @@ function extractDominantColor(img: HTMLImageElement): string {
     }
   }
 
-  if (count === 0) return "rgb(80,80,80)";
-  return `rgb(${Math.round(r / count)},${Math.round(g / count)},${Math.round(b / count)})`;
+  const result = count === 0
+    ? "rgb(80,80,80)"
+    : `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`;
+
+  if (img.src) {
+    dominantColorCache.set(img.src, result);
+  }
+
+  return result;
 }
 
 export const BookCard = memo(function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress }: BookCardProps) {
