@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-18 - [Optimizing String Case Conversions in Search and Sorting]
+**Learning:** Calling `.toLowerCase()` inside tight loops, like React render functions or nested iterators, puts significant pressure on the Garbage Collector due to generating large amounts of discardable string objects. In `src/app/page.tsx` sorting, `items.sort()` called `.toLowerCase()` multiple times on the same strings per re-render. In `src/components/search-overlay.tsx`, `.toLowerCase()` was evaluated inside the array filter function for every item during every keystroke.
+**Action:** Use `Intl.Collator` for sorting strings in a case-insensitive manner to prevent redundant lowercase object allocations. In the case of searching large arrays, pre-compute the `.toLowerCase()` values of the properties once at creation time, preserving CPU cycles and preventing GC overhead on active typing inputs.

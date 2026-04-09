@@ -381,12 +381,11 @@ export default function Home() {
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
     items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      return sortDir === "asc"
+        ? collator.compare(a[sortField], b[sortField])
+        : collator.compare(b[sortField], a[sortField]);
     });
     return items;
   }, [rawItems, formatFilter, sortField, sortDir]);
