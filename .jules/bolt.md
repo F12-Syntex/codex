@@ -635,3 +635,11 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-17 - [DOM Re-render Bottleneck]
+**Learning:** In highly dynamic components like `TextContent` where fast-changing props (like `ttsActiveWordIndex` changing ~5 times/second) trigger re-renders, the entire DOM tree is rebuilt if not strictly memoized. `paragraphsJSX` mapped over 500+ items every render!
+**Action:** Always wrap heavy DOM array generation in `useMemo`. When state setters are used inside the memoized array (like setting an expanded comment index), use functional state updates (`prev => ...`) to avoid adding the state variable to the dependency array, preventing unnecessary invalidations of the memo cache.
+
+## 2025-02-17 - [O(N log N) String Allocation in Sorting]
+**Learning:** During list sorting, `.toLowerCase()` on string properties inside the comparator causes large string allocations and GC pressure, particularly when there are a large number of items. This can slow down UI interactions when sort states change.
+**Action:** Use `Intl.Collator` instance (e.g., `new Intl.Collator(undefined, { sensitivity: 'base' })`) to perform case-insensitive string comparisons. By creating the collator instance outside the comparator, string allocations and GC pressure are minimized.

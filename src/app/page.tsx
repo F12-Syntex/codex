@@ -381,12 +381,15 @@ export default function Home() {
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
+
+    // ⚡ Bolt: Use Intl.Collator for sorting to prevent O(N log N) string allocations
+    // from repeated .toLowerCase() calls inside the comparator, reducing GC pressure.
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
     items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      const aVal = a[sortField];
+      const bVal = b[sortField];
+      const result = collator.compare(aVal, bVal);
+      return sortDir === "asc" ? result : -result;
     });
     return items;
   }, [rawItems, formatFilter, sortField, sortDir]);
