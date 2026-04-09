@@ -373,20 +373,24 @@ export default function Home() {
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
-  const rawItems = data[activeView] ?? [];
+  const rawItems = data[activeView];
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
-    let items = [...rawItems];
+    // Fallback to empty array inside useMemo to avoid breaking memoization
+    // on every render when data[activeView] is undefined
+    let items = [...(rawItems ?? [])];
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
+
+    // Use Intl.Collator for case-insensitive string comparison
+    // to avoid O(N log N) string allocations from .toLowerCase()
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
+    const multiplier = sortDir === "asc" ? 1 : -1;
+
     items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      return collator.compare(a[sortField], b[sortField]) * multiplier;
     });
     return items;
   }, [rawItems, formatFilter, sortField, sortDir]);
