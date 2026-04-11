@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## $(date +%Y-%m-%d) - Prevent O(N log N) String Allocations in Sorting
+**Learning:** Using `.toLowerCase()` inside a `.sort()` comparator creates new strings for every comparison step, leading to unnecessary $O(N \log N)$ allocations and high Garbage Collection pressure.
+**Action:** Replace inline `.toLowerCase()` calls in array sorting comparators with `Intl.Collator(undefined, { sensitivity: 'base' })`. Instantiate the collator outside the sort loop to reuse it efficiently.
