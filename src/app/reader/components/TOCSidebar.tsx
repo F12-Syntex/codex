@@ -71,23 +71,33 @@ export function TOCSidebar({
   // Reset limit when search changes so results appear immediately
   useEffect(() => { setRenderLimit(searchQuery ? Infinity : 60); }, [searchQuery]);
 
+  // Precompute searchable text to avoid .toLowerCase() on every keystroke
+  const mappedChapters = useMemo(() => {
+    return chapters.map((ch, i) => {
+      const displayTitle = enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title;
+      return {
+        ch, i, displayTitle, lowerTitle: displayTitle.toLowerCase()
+      };
+    });
+  }, [chapters, enrichedNames, enrichEnabled]);
+
+  const mappedBookmarks = useMemo(() => {
+    return bookmarks.map((bm) => ({ ...bm, lowerLabel: bm.label.toLowerCase() }));
+  }, [bookmarks]);
+
   // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
-    const mapped = chapters.map((ch, i) => ({
-      ch, i,
-      displayTitle: enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title,
-    }));
-    if (!searchQuery.trim()) return mapped;
+    if (!searchQuery.trim()) return mappedChapters;
     const q = searchQuery.toLowerCase();
-    return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
-  }, [chapters, searchQuery, enrichedNames, enrichEnabled]);
+    return mappedChapters.filter(({ lowerTitle }) => lowerTitle.includes(q));
+  }, [mappedChapters, searchQuery]);
 
   // Filter bookmarks by search
   const filteredBookmarks = useMemo(() => {
     if (!searchQuery.trim()) return bookmarks;
     const q = searchQuery.toLowerCase();
-    return bookmarks.filter((bm) => bm.label.toLowerCase().includes(q));
-  }, [bookmarks, searchQuery]);
+    return mappedBookmarks.filter((bm) => bm.lowerLabel.includes(q));
+  }, [mappedBookmarks, bookmarks, searchQuery]);
 
   // Click outside to close (ignore clicks on header toolbar buttons)
   useEffect(() => {
