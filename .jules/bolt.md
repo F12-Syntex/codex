@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-18 - [TOCSidebar UI lag optimization]
+**Learning:** Calling `.toLowerCase()` inside array filters that run on every keystroke (e.g. `items.filter(item => item.title.toLowerCase().includes(query))`) creates unnecessary garbage collection pressure and can cause UI lag with large arrays.
+**Action:** Pre-compute lowercased searchable strings on the item objects during initialization (in a separate `useMemo` that doesn't depend on the search query) to minimize garbage collection and string allocations on every keystroke.
