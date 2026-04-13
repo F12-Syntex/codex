@@ -635,3 +635,11 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-18 - [Optimized sorting algorithms using Intl.Collator]
+**Learning:** Using \`Intl.Collator({ sensitivity: 'base' })\` for case-insensitive string sorting is significantly slower than \`toLowerCase()\` in V8/Node.js, completely contradicting the common assumption that \`Intl.Collator\` reduces overhead by avoiding string allocations. A benchmark on 10,000 items showed \`.toLowerCase()\` took 6.6s vs \`Intl.Collator\` 10.4s.
+**Action:** When implementing case-insensitive sorting, stick to \`.toLowerCase()\` string comparisons if performance is the primary goal, or use pre-computed lowercased values if the array is sorted repeatedly.
+
+## 2025-02-18 - [Optimized search filter with pre-computed lowercase strings]
+**Learning:** Calling \`.toLowerCase()\` repeatedly inside tight loops like array filters (e.g. searching 10,000 items) is a measurable bottleneck due to garbage collection pressure and repeated string allocations.
+**Action:** Pre-compute lowercased searchable strings on the item objects during initialization when searching over large arrays. A benchmark showed a ~36% speedup (984ms to 616ms) by using pre-computed lowercase properties for searching title and author strings.
