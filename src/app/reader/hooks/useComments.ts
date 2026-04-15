@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { generateAIComments, type InlineComment } from "@/lib/ai-comments";
 import type { BookChapter } from "../lib/types";
 
+const EMPTY_ARRAY: any[] = [];
+
 function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
   const totalLen = chapter.htmlParagraphs.reduce((sum, p) => sum + p.length, 0);
   if (totalLen > 500_000) return true;
@@ -77,7 +79,7 @@ export function useComments(
       if (commentAbortRef.current) return;
 
       setChapterComments((prev) => {
-        const existing = prev[chapterIndex] ?? [];
+        const existing = prev[chapterIndex] ?? EMPTY_ARRAY;
         // Keep user comments, replace AI comments
         const userComments = existing.filter((c) => c.author === "user");
         const updated = { ...prev, [chapterIndex]: [...userComments, ...result] };
@@ -103,7 +105,7 @@ export function useComments(
   const addUserComment = useCallback((paraIndex: number, text: string) => {
     const comment: InlineComment = { paraIndex, text, author: "user" };
     setChapterComments((prev) => {
-      const existing = prev[currentChapter] ?? [];
+      const existing = prev[currentChapter] ?? EMPTY_ARRAY;
       const updated = { ...prev, [currentChapter]: [...existing, comment] };
       window.electronAPI?.setSetting(`chapterComments:${filePath}`, JSON.stringify(updated));
       return updated;
@@ -112,7 +114,7 @@ export function useComments(
 
   const deleteUserComment = useCallback((paraIndex: number, author: "ai" | "user", text: string) => {
     setChapterComments((prev) => {
-      const existing = prev[currentChapter] ?? [];
+      const existing = prev[currentChapter] ?? EMPTY_ARRAY;
       const idx = existing.findIndex((c) => c.paraIndex === paraIndex && c.author === author && c.text === text);
       if (idx === -1) return prev;
       const updated = { ...prev, [currentChapter]: existing.filter((_, i) => i !== idx) };
