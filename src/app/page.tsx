@@ -23,6 +23,8 @@ import { groupByView, libraryItemToMockItem, type LibraryData, type MockItem } f
 import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
 import { BookDetailsModal } from "@/components/content/book-details-modal";
 
+const EMPTY_ARRAY: any[] = [];
+
 const viewLabelMap: Record<NavView, string> = {
   bookshelf: "Bookshelf",
   "read-later": "Read Later",
@@ -373,7 +375,7 @@ export default function Home() {
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
-  const rawItems = data[activeView] ?? [];
+  const rawItems = data[activeView] ?? EMPTY_ARRAY;
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
