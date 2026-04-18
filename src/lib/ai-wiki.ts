@@ -972,9 +972,9 @@ async function writeResponseToDB(
 
   // ── Arc updates ──
   if (response.arc_updates) {
+    const existingArcs = await api.wikiGetAllArcs(filePath);
     for (const arcUpdate of response.arc_updates) {
       if (!arcUpdate.arc_id) continue;
-      const existingArcs = await api.wikiGetAllArcs(filePath);
       const arc = existingArcs.find(a => a.id === arcUpdate.arc_id);
       if (!arc) continue;
 

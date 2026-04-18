@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-19 - N+1 IPC Bottlenecks and SQLite Overheads
+**Learning:** In Electron architectures with asynchronous IPC calls between renderer and main processes, calling IPC methods within a loop (N+1 queries) results in significant sequential round-trip latency. Furthermore, redundantly compiling SQLite queries (`db.prepare()`) inside loops in the main process adds measurable overhead to batch operations.
+**Action:** When performing bulk updates, always hoist `db.prepare()` statements outside of loops. If batching IPC calls is not feasible, lift the IPC call fetching aggregate data outside the loop to eliminate N+1 latency.
