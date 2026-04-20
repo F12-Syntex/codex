@@ -15,15 +15,27 @@ interface SearchOverlayProps {
 interface SearchResult {
   section: string;
   item: MockItem;
+  searchTitle: string;
+  searchAuthor: string;
 }
 
 function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResult[] {
   const results: SearchResult[] = [];
   for (const items of Object.values(bookData)) {
-    if (items) items.forEach((item) => results.push({ section: "Books", item }));
+    if (items) items.forEach((item) => results.push({
+      section: "Books",
+      item,
+      searchTitle: item.title.toLowerCase(),
+      searchAuthor: item.author.toLowerCase()
+    }));
   }
   for (const items of Object.values(comicData)) {
-    if (items) items.forEach((item) => results.push({ section: "Comics", item }));
+    if (items) items.forEach((item) => results.push({
+      section: "Comics",
+      item,
+      searchTitle: item.title.toLowerCase(),
+      searchAuthor: item.author.toLowerCase()
+    }));
   }
   const seen = new Set<string>();
   return results.filter((r) => {
@@ -33,9 +45,9 @@ function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResul
   });
 }
 
-function highlightMatch(text: string, query: string) {
+function highlightMatch(text: string, query: string, textLower?: string, queryLower?: string) {
   if (!query.trim()) return text;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  const idx = (textLower || text.toLowerCase()).indexOf(queryLower || query.toLowerCase());
   if (idx === -1) return text;
   return (
     <>
@@ -54,17 +66,17 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
+  const queryLower = useMemo(() => query.toLowerCase(), [query]);
   const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
-    const q = query.toLowerCase();
     return allItems.filter(
       (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
+        r.searchTitle.includes(queryLower) ||
+        r.searchAuthor.includes(queryLower)
     );
-  }, [query]);
+  }, [query, queryLower, allItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
@@ -203,11 +215,11 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                             {/* Text */}
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-white/80">
-                                {highlightMatch(r.item.title, query)}
+                                {highlightMatch(r.item.title, query, r.searchTitle, queryLower)}
                               </p>
                               <div className="mt-0.5 flex items-center gap-2">
                                 <p className="truncate text-xs text-white/30">
-                                  {highlightMatch(r.item.author, query)}
+                                  {highlightMatch(r.item.author, query, r.searchAuthor, queryLower)}
                                 </p>
                                 <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[2px] text-xs font-semibold uppercase tracking-wide text-white/30">
                                   {r.item.format}
