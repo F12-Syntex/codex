@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-04-21 - Prevent React state setters from cascading re-renders in TextContent.tsx
+**Learning:** In `src/app/reader/components/TextContent.tsx`, React state setters (like `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput`) were used in ways that could capture stale values if they weren't in dependency arrays, or cause unnecessary re-renders if they were. By using functional state updates (`prev => ...`) in callbacks, we can omit them from dependency arrays while keeping logic correct, preventing severe framerate drops from heavy DOM arrays like `paragraphsJSX`.
+**Action:** Use functional state updates (`prev => ...`) in event handlers to avoid adding state variables as dependencies to `useMemo` and `useCallback`, maintaining stable references and avoiding cascading re-renders.
