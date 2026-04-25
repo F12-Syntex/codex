@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-19 - Extracted db.prepare calls from loops in database merges
+**Learning:** In `better-sqlite3`, calling `db.prepare()` inside a loop incurs significant repeated parsing and compilation overhead. Even when wrapped in a transaction, the statement preparation overhead dominates for larger N values.
+**Action:** Always extract `db.prepare()` to the top level of the function or outside loops (unless the loop itself creates dynamic statement shapes, like different table names).
