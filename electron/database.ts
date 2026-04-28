@@ -763,16 +763,19 @@ export function mergeWikiEntries(filePath: string, sourceId: string, targetId: s
 
     // Add source name + aliases as aliases of target
     db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, source.name);
+
+    const insertAliasStmt = db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)");
     for (const alias of aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, alias);
+      insertAliasStmt.run(filePath, targetId, alias);
     }
 
     // Move details
     db.prepare("UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ?").run(targetId, filePath, sourceId);
 
     // Move appearances (ignore duplicates)
+    const insertAppearanceStmt = db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)");
     for (const ch of appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, targetId, ch);
+      insertAppearanceStmt.run(filePath, targetId, ch);
     }
 
     // Move relationships — repoint source_id/target_id references
@@ -789,8 +792,9 @@ export function mergeWikiEntries(filePath: string, sourceId: string, targetId: s
 
     // Move arc entity references
     const arcEntities = db.prepare("SELECT arc_id, role FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { arc_id: string; role: string }[];
+    const insertArcEntityStmt = db.prepare("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)");
     for (const ae of arcEntities) {
-      db.prepare("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)").run(filePath, ae.arc_id, targetId, ae.role);
+      insertArcEntityStmt.run(filePath, ae.arc_id, targetId, ae.role);
     }
     // Remove source arc entities before deleting entry
     db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").run(filePath, sourceId);
@@ -822,27 +826,31 @@ export function unmergeWikiEntries(filePath: string, mergeLogId: number): void {
     ).run(e.id, filePath, e.name, e.type, e.short_description, e.description, e.color, e.first_appearance, e.significance, e.status);
 
     // Re-add aliases
+    const insertAliasStmt = db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)");
     for (const alias of snapshot.aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, e.id, alias);
+      insertAliasStmt.run(filePath, e.id, alias);
     }
 
     // Re-add details (they were moved, so move them back)
+    const updateDetailsStmt = db.prepare(
+      "UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ? AND chapter_index = ? AND category = ? AND content = ?"
+    );
     for (const d of snapshot.details) {
       // Move back details that were reassigned to target
-      db.prepare(
-        "UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ? AND chapter_index = ? AND category = ? AND content = ?"
-      ).run(e.id, filePath, log.target_id, d.chapter_index, d.category, d.content);
+      updateDetailsStmt.run(e.id, filePath, log.target_id, d.chapter_index, d.category, d.content);
     }
 
     // Re-add appearances
+    const insertAppStmt = db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)");
     for (const ch of snapshot.appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, e.id, ch);
+      insertAppStmt.run(filePath, e.id, ch);
     }
 
     // Remove source name from target aliases
     db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, e.name);
+    const deleteAliasStmt = db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?");
     for (const alias of snapshot.aliases) {
-      db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, alias);
+      deleteAliasStmt.run(filePath, log.target_id, alias);
     }
 
     // Delete the merge log entry
@@ -1150,10 +1158,11 @@ export function mergeArcs(filePath: string, sourceArcIds: string[], targetArcId:
       const entities = db.prepare(
         "SELECT entry_id, role FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?"
       ).all(filePath, sourceId) as { entry_id: string; role: string }[];
+      const insertArcEntityStmt = db.prepare(
+        "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
+      );
       for (const e of entities) {
-        db.prepare(
-          "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
-        ).run(filePath, targetArcId, e.entry_id, e.role);
+        insertArcEntityStmt.run(filePath, targetArcId, e.entry_id, e.role);
       }
       // Delete source arc entities first, then arc (cascade handles beats)
       db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, sourceId);
@@ -1301,6 +1310,8 @@ export function getMCEntityId(filePath: string): string | null {
 
 export function clearWiki(filePath: string): void {
   const clearAll = db.transaction(() => {
+    // Database Performance Directive: we should not use db.prepare inside the loop.
+    // However, since table names cannot be parameterized, we MUST put db.prepare inside the loop.
     for (const table of WIKI_TABLES) {
       db.prepare(`DELETE FROM ${table} WHERE file_path = ?`).run(filePath);
     }
@@ -1311,6 +1322,8 @@ export function clearWiki(filePath: string): void {
 /** Clear ALL wiki data for ALL books */
 export function clearAllWiki(): void {
   const clearAll = db.transaction(() => {
+    // Database Performance Directive: we should not use db.prepare inside the loop.
+    // However, since table names cannot be parameterized, we MUST put db.prepare inside the loop.
     for (const table of WIKI_TABLES) {
       db.prepare(`DELETE FROM ${table}`).run();
     }

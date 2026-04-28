@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-04-28 - Optimize Database bulk inserts and N+1 queries
+**Learning:** In SQLite, compiling statements inside loops (via db.prepare) adds measurable overhead and can be a silent bottleneck during bulk database inserts/updates, even within transactions.
+**Action:** Moved db.prepare statements outside loops for batch operations in electron/database.ts, specifically for wiki details, wiki aliases, appearances, arc entities, relationships, etc.
