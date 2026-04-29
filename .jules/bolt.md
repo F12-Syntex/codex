@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-17 - [React TextContent Re-render bottleneck]
+**Learning:** In `TextContent.tsx`, mapping hundreds of paragraphs into React elements (`paragraphsJSX`) on every render tanks performance when rapidly changing props (like `ttsActiveWordIndex`, updating 5 times a second) are passed to the component.
+**Action:** Use `useMemo` for heavy DOM arrays mapped from props, extracting stable state setters (or using functional state updates like `prev => ...`) to keep the dependency array clean and prevent unnecessary re-computations.

@@ -410,7 +410,7 @@ export function TextContent({
               data-comment-para={originalIdx}
               onClick={(e) => {
                 e.stopPropagation();
-                setExpandedCommentPara(prev => prev === originalIdx ? null : originalIdx);
+                setExpandedCommentPara((prev) => prev === originalIdx ? null : originalIdx);
                 setAddingCommentPara(null);
                 setCommentInput("");
               }}
@@ -450,7 +450,7 @@ export function TextContent({
               className="comment-add-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                setAddingCommentPara(prev => prev === originalIdx ? null : originalIdx);
+                setAddingCommentPara((prev) => prev === originalIdx ? null : originalIdx);
                 setExpandedCommentPara(null);
                 setCommentInput("");
               }}
