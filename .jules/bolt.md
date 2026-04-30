@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2026-04-30 - Pre-computing .toLowerCase() with the Schwartzian Transform in React hooks
+**Learning:** When sorting or filtering arrays based on transformed values (like a case-insensitive string match), calling `.toLowerCase()` inside the `useMemo` filtering/sorting loops leads to redundant operations and unnecessary garbage collection on every re-render or keystroke. However, simply moving the mapping to the same `useMemo` defeats the purpose because the expensive mapping will still run on every keystroke if the `searchQuery` is in the dependency array.
+**Action:** Use the Schwartzian transform pattern by isolating the mapping step into its own `useMemo` block with stable dependencies (e.g., the original `items` list). Then, use a second `useMemo` dependent on the `searchQuery` to filter the pre-computed mapped items. This ensures the mapping only runs when the base list changes, reducing (N \log N)$ operations to (N)$ and preventing UI lag.
