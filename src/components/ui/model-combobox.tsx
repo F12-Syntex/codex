@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Search } from "lucide-react";
 import { fetchModels, type OpenRouterModel } from "@/lib/openrouter";
@@ -56,13 +56,21 @@ export function ModelCombobox({
     }
   }, [open]);
 
-  const filtered = search.trim()
-    ? models.filter(
-        (m) =>
-          m.id.toLowerCase().includes(search.toLowerCase()) ||
-          m.name.toLowerCase().includes(search.toLowerCase()),
-      )
-    : models;
+  const mappedModels = useMemo(() => {
+    return models.map((m) => ({
+      ...m,
+      idLower: m.id.toLowerCase(),
+      nameLower: m.name.toLowerCase(),
+    }));
+  }, [models]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return mappedModels;
+    const q = search.toLowerCase();
+    return mappedModels.filter(
+      (m) => m.idLower.includes(q) || m.nameLower.includes(q)
+    );
+  }, [search, mappedModels]);
 
   // Cap visible results for performance
   const visible = filtered.slice(0, 80);

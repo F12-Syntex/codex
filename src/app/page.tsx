@@ -377,18 +377,24 @@ export default function Home() {
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
-    let items = [...rawItems];
+    let items = rawItems;
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
-    items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+
+    // Pre-compute lowercased sort values to avoid calling .toLowerCase() inside sort
+    const mapped = items.map((item) => ({
+      item,
+      sortVal: item[sortField].toLowerCase(),
+    }));
+
+    mapped.sort((a, b) => {
+      if (a.sortVal < b.sortVal) return sortDir === "asc" ? -1 : 1;
+      if (a.sortVal > b.sortVal) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-    return items;
+
+    return mapped.map((m) => m.item);
   }, [rawItems, formatFilter, sortField, sortDir]);
 
   /** Toggle selection of an item (ctrl+click / shift+click) */
