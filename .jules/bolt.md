@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-02-18 - [Fix React Hook Dependency]
+**Learning:** `search-overlay.tsx` was missing `allItems` in the `filtered` dependency array, which was causing stale data and triggering ESLint warnings. Additionally, `.toLowerCase()` was being called on every search keystroke for every item.
+**Action:** Always verify `eslint` rules and implement `searchStr` pre-computation in a separate `useMemo` that does not depend on fast-changing UI states (like `query`) to avoid recalculating invariants.
