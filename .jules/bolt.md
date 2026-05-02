@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-05-02 - Array sorting string transformations performance
+**Learning:** Performing expensive string transformation operations like `.toLowerCase()` inside sort comparators (such as sorting `rawItems` based on `.toLowerCase()`) runs repeatedly, causing O(N log N) overhead, memory bloat, and garbage collection pressure in JS applications, especially when dealing with lists/arrays. Precomputing `searchString` values inside loops with null byte boundaries prevents cross-boundary positive hits while minimizing overhead.
+**Action:** When filtering or sorting large lists inside `useMemo` hooks, pre-compute `.toLowerCase()` strings into an object mapped wrapper or property on the original array elements *before* looping/sorting/filtering to map the operations from O(N log N) down to O(N).
