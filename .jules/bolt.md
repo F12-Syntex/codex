@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-02-12 - Prevent multiple string lowercasing inside React useMemo loops
+**Learning:** Performing expensive string lowercasing operations inside a looping filter, specifically tied to user input strokes in search fields, creates immense lag. O(N) operations inside a fast-executing React keystroke render cycle are devastating.
+**Action:** Always pre-compute and map strings (e.g., lowercasing and combining `title` and `author`) into a single string *before* applying runtime filters. This transforms an O(N * 2) lowercasing loop penalty into an up-front map, heavily optimizing key-stroke search performance. In `src/components/search-overlay.tsx`, we safely separated combined strings with a null-byte (`\0`) to stop cross-boundary matches.
