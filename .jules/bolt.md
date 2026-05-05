@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-05-18 - ShortcutsModal O(N*M) grouping optimization
+**Learning:** React re-renders in tight components like `ShortcutsModal` can suffer from hidden `O(N*M)` complexity when looping over categories and filtering a global array (`SHORTCUT_REGISTRY.filter(...)`) for every category on every render.
+**Action:** When categorizing arrays for UI rendering, prefer building an `O(N)` hash map grouping in a `useMemo` block. Iterate over `Object.entries(groups)` to render, which eliminates redundant array traversals on subsequent renders while maintaining readability.

@@ -463,8 +463,6 @@ function ThemeModal({
 
 /* ── Shortcuts modal ─────────────────────────────────────── */
 function ShortcutsModal({ onClose }: { onClose: () => void }) {
-  // ⚡ Bolt Optimization: Replace O(N*M) nested loop (Set map + array filter)
-  // with O(N) hash map grouping to reduce unnecessary calculations on re-renders.
   const groupedShortcuts = useMemo(() => {
     const groups: Record<string, typeof SHORTCUT_REGISTRY> = {};
     for (const s of SHORTCUT_REGISTRY) {
