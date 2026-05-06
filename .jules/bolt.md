@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-05-06 - Pre-group Categorized Lists for Performance
+**Learning:** `ShortcutsModal` contained a nested loop (`SHORTCUT_REGISTRY.filter((s) => s.category === cat).map(...)`) causing O(N*M) complexity when rendering grouped lists.
+**Action:** Use `useMemo` to group the array by category once (O(N) time) before mapping over the groups and items, avoiding redundant filtering and complying with React performance rules.
