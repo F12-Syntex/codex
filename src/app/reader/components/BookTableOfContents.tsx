@@ -38,19 +38,23 @@ export function BookTableOfContents({
 
   // Use enriched names when available
   const entries = useMemo(() => {
-    return toc.map((entry) => ({
-      ...entry,
-      displayLabel: enrichEnabled && enrichedNames[entry.chapterIndex]
+    return toc.map((entry) => {
+      const displayLabel = enrichEnabled && enrichedNames[entry.chapterIndex]
         ? enrichedNames[entry.chapterIndex]
-        : entry.label,
-    }));
+        : entry.label;
+      return {
+        ...entry,
+        displayLabel,
+        _searchStr: displayLabel.toLowerCase(),
+      };
+    });
   }, [toc, enrichedNames, enrichEnabled]);
 
   // Filter by search
   const filtered = useMemo(() => {
     if (!search.trim()) return entries;
     const q = search.toLowerCase();
-    return entries.filter((e) => e.displayLabel.toLowerCase().includes(q));
+    return entries.filter((e) => e._searchStr.includes(q));
   }, [entries, search]);
 
   // Focus search on Ctrl+F

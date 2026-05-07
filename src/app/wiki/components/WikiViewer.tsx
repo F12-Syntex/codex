@@ -208,15 +208,22 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     return map;
   }, [entries]);
 
+  const searchableEntries = useMemo(() => {
+    return entries.map(e => ({
+      ...e,
+      _searchStr: `${e.name}\0${e.short_description}`.toLowerCase()
+    }));
+  }, [entries]);
+
   // Filtered entries for homepage
   const filteredEntries = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    return entries.filter((e) => {
+    return searchableEntries.filter((e) => {
       if (filterType !== "all" && e.type !== filterType) return false;
-      if (query && !e.name.toLowerCase().includes(query) && !e.short_description.toLowerCase().includes(query)) return false;
+      if (query && !e._searchStr.includes(query)) return false;
       return true;
     });
-  }, [entries, searchQuery, filterType]);
+  }, [searchableEntries, searchQuery, filterType]);
 
   const groupedFiltered = useMemo(() => {
     const groups: Partial<Record<WikiEntryType, EntryListItem[]>> = {};
@@ -778,13 +785,20 @@ function EntryPage({
     return () => document.removeEventListener("mousedown", handler);
   }, [showMergePicker]);
 
+  const searchableMergeTargets = useMemo(() => {
+    return allEntries.map(e => ({
+      ...e,
+      _searchStr: e.name.toLowerCase()
+    }));
+  }, [allEntries]);
+
   const mergeTargets = useMemo(() => {
     const q = mergeSearch.toLowerCase().trim();
-    return allEntries
+    return searchableMergeTargets
       .filter((e) => e.id !== entry.id && e.type === entry.type)
-      .filter((e) => !q || e.name.toLowerCase().includes(q))
+      .filter((e) => !q || e._searchStr.includes(q))
       .slice(0, 10);
-  }, [allEntries, entry.id, entry.type, mergeSearch]);
+  }, [searchableMergeTargets, entry.id, entry.type, mergeSearch]);
   const meta = TYPE_META[entry.type];
 
   // Split details: active (relevance >= 2, not superseded) vs archived
