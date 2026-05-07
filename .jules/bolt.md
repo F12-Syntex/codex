@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-05-18 - Configuration Tampering is Blocking
+**Learning:** Rewriting or heavily modifying root configuration files (like `eslint.config.mjs`) to blindly bypass linting errors strips out critical project-specific configurations (like `nextVitals` and `nextTs`). This is considered a destructive, out-of-bounds change for a scoped performance PR and will cause the review to fail.
+**Action:** Never modify `eslint.config.mjs` or `package.json` to stub out dependencies or rules. If linting fails, fix the code or selectively suppress the exact line, but leave the core config intact.
