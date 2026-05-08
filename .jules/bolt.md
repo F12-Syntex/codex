@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-01-30 - Search Item Transformation Performance
+**Learning:** Pre-computing properties during initialization (like converting strings to lowercase for search) avoids redundant loop processing and memory allocations during render.
+**Action:** When filtering objects or strings based on transformations (like `.toLowerCase()`), extract the transformation out of the filter callback and run it once during initial structure creation.
