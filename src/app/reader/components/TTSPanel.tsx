@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward, Search } from "lucide-react";
 import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
@@ -71,6 +71,16 @@ export function TTSPanel({
 
   const voice = voices.find((v) => v.shortName === selectedVoice);
   const voiceLabel = voice ? voice.shortName.split("-").pop()?.replace("Neural", "") ?? voice.shortName : "Select voice";
+
+  const filteredVoices = useMemo(() => {
+    if (!voiceSearch.trim()) return voices;
+    const q = voiceSearch.toLowerCase();
+    return voices.filter((v) =>
+      v.shortName.toLowerCase().includes(q) ||
+      v.locale.toLowerCase().includes(q) ||
+      v.gender.toLowerCase().includes(q)
+    );
+  }, [voices, voiceSearch]);
 
   const isActive = state.status !== "idle";
   const isPlaying = state.status === "playing";
@@ -202,12 +212,7 @@ export function TTSPanel({
                 />
               </div>
               <div className="max-h-[220px] overflow-y-auto p-1">
-                {voices
-                  .filter((v) => {
-                    if (!voiceSearch) return true;
-                    const q = voiceSearch.toLowerCase();
-                    return v.shortName.toLowerCase().includes(q) || v.locale.toLowerCase().includes(q) || v.gender.toLowerCase().includes(q);
-                  })
+                {filteredVoices
                   .map((v) => {
                     const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
                     return (
