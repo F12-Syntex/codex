@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-18 - [Optimization] Pre-compute LinkedText Map
+
+**Learning:** Re-computing the `nameMap` (mapping entry names and lowercased entry names, and sorting by length) in every `LinkedText` component is O(N log N) + O(N * M) and heavily impacts rendering performance since `LinkedText` is rendered multiple times (for `shortDescription`, `description`, and every item detail) inside `EntryPage`. Passing down a shared pre-computed `searchNameMap` generated in `EntryPage` vastly reduces repetitive overhead.
+**Action:** Always pre-compute heavy string mappings and sort structures higher up the tree and pass them down as props when multiple children perform the same logic on shared data.
