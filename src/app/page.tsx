@@ -373,23 +373,25 @@ export default function Home() {
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
-  const rawItems = data[activeView] ?? [];
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
-    let items = [...rawItems];
+    const rawItems = data[activeView] ?? [];
+    let items = rawItems;
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
-    items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+
+    // Schwartzian transform for O(N) lowercasing instead of O(N log N) inside sort
+    return items.map((item) => ({
+      item,
+      sortVal: item[sortField].toLowerCase()
+    })).sort((a, b) => {
+      if (a.sortVal < b.sortVal) return sortDir === "asc" ? -1 : 1;
+      if (a.sortVal > b.sortVal) return sortDir === "asc" ? 1 : -1;
       return 0;
-    });
-    return items;
-  }, [rawItems, formatFilter, sortField, sortDir]);
+    }).map((mapped) => mapped.item);
+  }, [data, activeView, formatFilter, sortField, sortDir]);
 
   /** Toggle selection of an item (ctrl+click / shift+click) */
   const handleToggleSelect = useCallback((id: number, shiftKey: boolean) => {
