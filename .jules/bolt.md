@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-18 - Hoist Expensive List Transformations to Parent Components
+**Learning:** In React, computing derived data (like transforming, lowercasing, and sorting an array) inside a deeply nested component that is rendered multiple times (like `LinkedText` inside `WikiViewer`) causes severe redundant work, resulting in O(N log N) latency per instance on every render cycle.
+**Action:** When child components require the same derived data structure, hoist the computation to the parent, memoize it with `useMemo`, and pass it down via props. Apply the specific filtering (like skipping self-referencing links) during loop iteration in the child instead of relying on early returns.
