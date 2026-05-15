@@ -208,6 +208,18 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     return map;
   }, [entries]);
 
+  // Performance Optimization: Hoist the expensive `nameMap` computation (O(N) lowercasing + O(N log N) sorting)
+  // out of the `LinkedText` component, which is rendered multiple times per page.
+  // Pre-computing and sorting the array here using `useMemo` avoids redundant work on every render cycle.
+  const sortedNameMap = useMemo(() => {
+    const nameMap: { name: string; lower: string; id: string; type: WikiEntryType }[] = [];
+    for (const e of entries) {
+      if (e.name.length >= 2) nameMap.push({ name: e.name, lower: e.name.toLowerCase(), id: e.id, type: e.type });
+    }
+    nameMap.sort((a, b) => b.name.length - a.name.length);
+    return nameMap;
+  }, [entries]);
+
   // Filtered entries for homepage
   const filteredEntries = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -300,6 +312,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               <EntryPage
                 entry={selectedEntry}
                 allEntries={entries}
+                sortedNameMap={sortedNameMap}
                 resolvedNames={resolvedNames}
                 onNavigate={navigateTo}
                 onBack={goBack}
@@ -753,10 +766,11 @@ function HomePage({
    ══════════════════════════════════════════════════════════ */
 
 function EntryPage({
-  entry, allEntries, resolvedNames, onNavigate, onBack, onMerge, canGoBack, chapterLabels,
+  entry, allEntries, sortedNameMap, resolvedNames, onNavigate, onBack, onMerge, canGoBack, chapterLabels,
 }: {
   entry: WikiEntry;
   allEntries: EntryListItem[];
+  sortedNameMap: { name: string; lower: string; id: string; type: WikiEntryType }[];
   resolvedNames: Map<string, { name: string; type: WikiEntryType }>;
   onNavigate: (id: string) => void;
   onBack: () => void;
@@ -934,7 +948,7 @@ function EntryPage({
 
       {/* Short description */}
       <p className="mb-6 text-sm leading-relaxed text-white/60">
-        <LinkedText text={entry.shortDescription} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+        <LinkedText text={entry.shortDescription} sortedNameMap={sortedNameMap} currentEntryId={entry.id} onNavigate={onNavigate} />
       </p>
 
       <div className="h-px bg-white/[0.06]" />
@@ -947,7 +961,7 @@ function EntryPage({
           {entry.description && (
             <ArticleSection title="Overview">
               <p className="text-sm leading-relaxed text-white/55 whitespace-pre-wrap">
-                <LinkedText text={entry.description} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+                <LinkedText text={entry.description} sortedNameMap={sortedNameMap} currentEntryId={entry.id} onNavigate={onNavigate} />
               </p>
             </ArticleSection>
           )}
@@ -962,7 +976,7 @@ function EntryPage({
                       {fmtCh(item.chapterIndex, chapterLabels)}
                     </span>
                     <p className="flex-1 text-xs leading-relaxed text-white/55">
-                      <LinkedText text={item.content} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+                      <LinkedText text={item.content} sortedNameMap={sortedNameMap} currentEntryId={entry.id} onNavigate={onNavigate} />
                       <SourcePreview sourceText={item.sourceText} chapterIndex={item.chapterIndex} chapterLabels={chapterLabels} />
                     </p>
                   </div>
@@ -1248,25 +1262,17 @@ function MoodBadge({ mood }: { mood: string }) {
 
 function LinkedText({
   text,
-  entries,
+  sortedNameMap,
   currentEntryId,
   onNavigate,
 }: {
   text: string;
-  entries: EntryListItem[];
+  sortedNameMap: { name: string; lower: string; id: string; type: WikiEntryType }[];
   currentEntryId?: string;
   onNavigate: (id: string) => void;
 }) {
   const segments = useMemo(() => {
-    if (!text || entries.length === 0) return [{ text, entityId: null as string | null }];
-
-    // Build sorted list of (name/alias → entryId), longest first for greedy matching
-    const nameMap: { name: string; lower: string; id: string; type: WikiEntryType }[] = [];
-    for (const e of entries) {
-      if (e.id === currentEntryId) continue; // Don't link self
-      if (e.name.length >= 2) nameMap.push({ name: e.name, lower: e.name.toLowerCase(), id: e.id, type: e.type });
-    }
-    nameMap.sort((a, b) => b.name.length - a.name.length);
+    if (!text || sortedNameMap.length === 0) return [{ text, entityId: null as string | null }];
 
     // Scan text for matches
     const result: { text: string; entityId: string | null; entityType?: WikiEntryType }[] = [];
@@ -1276,7 +1282,8 @@ function LinkedText({
 
     // First pass: find all non-overlapping matches (longest first)
     const matches: { start: number; end: number; id: string; type: WikiEntryType }[] = [];
-    for (const entry of nameMap) {
+    for (const entry of sortedNameMap) {
+      if (entry.id === currentEntryId) continue; // Don't link self
       let searchFrom = 0;
       while (searchFrom < lower.length) {
         const idx = lower.indexOf(entry.lower, searchFrom);
@@ -1316,7 +1323,7 @@ function LinkedText({
     }
 
     return result;
-  }, [text, entries, currentEntryId]);
+  }, [text, sortedNameMap, currentEntryId]);
 
   return (
     <>
