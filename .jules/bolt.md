@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-05-16 - Schwartzian Transform & Null Byte Separators
+**Learning:** Extracting string manipulations (like `.toLowerCase()`) out of `.sort()` loops using a Schwartzian transform reduces complexity from O(N log N) to O(N). When pre-computing concatenated string values for search filtering, using a null byte (`\0`) prevents erroneous boundary matches.
+**Action:** Always pre-compute and memoize transformed strings required for searching and sorting list items to prevent excessive CPU cycles and GC pressure during user interaction.
