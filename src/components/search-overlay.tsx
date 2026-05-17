@@ -15,15 +15,16 @@ interface SearchOverlayProps {
 interface SearchResult {
   section: string;
   item: MockItem;
+  _searchString?: string;
 }
 
 function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResult[] {
   const results: SearchResult[] = [];
   for (const items of Object.values(bookData)) {
-    if (items) items.forEach((item) => results.push({ section: "Books", item }));
+    if (items) items.forEach((item) => results.push({ section: "Books", item, _searchString: `${item.title}\0${item.author}`.toLowerCase() }));
   }
   for (const items of Object.values(comicData)) {
-    if (items) items.forEach((item) => results.push({ section: "Comics", item }));
+    if (items) items.forEach((item) => results.push({ section: "Comics", item, _searchString: `${item.title}\0${item.author}`.toLowerCase() }));
   }
   const seen = new Set<string>();
   return results.filter((r) => {
@@ -33,9 +34,10 @@ function getAllItems(bookData: LibraryData, comicData: LibraryData): SearchResul
   });
 }
 
-function highlightMatch(text: string, query: string) {
+function highlightMatch(text: string, query: string, lowerQuery?: string) {
   if (!query.trim()) return text;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  const matchQuery = lowerQuery || query.toLowerCase();
+  const idx = text.toLowerCase().indexOf(matchQuery);
   if (idx === -1) return text;
   return (
     <>
@@ -60,11 +62,9 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
     if (!query.trim()) return [];
     const q = query.toLowerCase();
     return allItems.filter(
-      (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
+      (r) => r._searchString?.includes(q)
     );
-  }, [query]);
+  }, [query, allItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
@@ -111,6 +111,8 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
     },
     [onClose, filtered.length]
   );
+
+  const lowerQuery = useMemo(() => query.toLowerCase(), [query]);
 
   if (!open) return null;
 
@@ -203,11 +205,11 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
                             {/* Text */}
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-white/80">
-                                {highlightMatch(r.item.title, query)}
+                                {highlightMatch(r.item.title, query, lowerQuery)}
                               </p>
                               <div className="mt-0.5 flex items-center gap-2">
                                 <p className="truncate text-xs text-white/30">
-                                  {highlightMatch(r.item.author, query)}
+                                  {highlightMatch(r.item.author, query, lowerQuery)}
                                 </p>
                                 <span className="shrink-0 rounded-lg bg-white/[0.06] px-1.5 py-[2px] text-xs font-semibold uppercase tracking-wide text-white/30">
                                   {r.item.format}
