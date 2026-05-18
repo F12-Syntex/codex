@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-05-18 - Pre-compute Searchable Strings Outside of React Component
+**Learning:** In the SearchOverlay component, dynamically mapping complex structures in a useMemo with string interpolations like `${title}\0${author}` and filtering them synchronously inside a useMemo on every keystroke causes unnecessary performance overhead in React, especially for large datasets. Pre-computing searchable string forms before filtering improves rendering performance during active filtering.
+**Action:** When filtering objects based on complex strings inside a React component, pre-compute the concatenated search strings inside the map or transformation step outside the tight filtering loop.
