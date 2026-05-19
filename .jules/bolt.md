@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2026-05-19 - [Database Statement Cache]
+**Learning:** Calling \`db.prepare\` repeatedly inside iterations or across multiple tables creates redundant SQL compilation overhead. Also, caching prepared statements in a global map requires clearing that cache when the database connection is re-initialized (e.g., in \`initDatabase\`).
+**Action:** Extract \`db.prepare\` calls outside of loops, and use a \`getStatement\` helper with a \`stmtCache.clear()\` inside \`initDatabase\` to safely reuse prepared statements across frequent queries.
