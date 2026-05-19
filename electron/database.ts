@@ -18,9 +18,22 @@ export interface LibraryItem {
 
 let db: Database.Database;
 
+// ── Statement Cache ──────────────────────────────
+const stmtCache = new Map<string, Database.Statement>();
+function getStatement(sql: string): Database.Statement {
+  let stmt = stmtCache.get(sql);
+  if (!stmt) {
+    stmt = db.prepare(sql);
+    stmtCache.set(sql, stmt);
+  }
+  return stmt;
+}
+
+
 export function initDatabase(): void {
   const dbPath = path.join(app.getPath("userData"), "codex.db");
   db = new Database(dbPath);
+  stmtCache.clear();
 
   // Enable WAL mode for better concurrent read performance
   db.pragma("journal_mode = WAL");
@@ -763,16 +776,18 @@ export function mergeWikiEntries(filePath: string, sourceId: string, targetId: s
 
     // Add source name + aliases as aliases of target
     db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, source.name);
+    const insertAliasStmtTarget = getStatement("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)");
     for (const alias of aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, alias);
+      insertAliasStmtTarget.run(filePath, targetId, alias);
     }
 
     // Move details
     db.prepare("UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ?").run(targetId, filePath, sourceId);
 
     // Move appearances (ignore duplicates)
+    const insertAppearanceStmtTarget = getStatement("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)");
     for (const ch of appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, targetId, ch);
+      insertAppearanceStmtTarget.run(filePath, targetId, ch);
     }
 
     // Move relationships — repoint source_id/target_id references
@@ -789,8 +804,9 @@ export function mergeWikiEntries(filePath: string, sourceId: string, targetId: s
 
     // Move arc entity references
     const arcEntities = db.prepare("SELECT arc_id, role FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { arc_id: string; role: string }[];
+    const insertArcEntityStmtTarget = getStatement("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)");
     for (const ae of arcEntities) {
-      db.prepare("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)").run(filePath, ae.arc_id, targetId, ae.role);
+      insertArcEntityStmtTarget.run(filePath, ae.arc_id, targetId, ae.role);
     }
     // Remove source arc entities before deleting entry
     db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").run(filePath, sourceId);
@@ -822,27 +838,28 @@ export function unmergeWikiEntries(filePath: string, mergeLogId: number): void {
     ).run(e.id, filePath, e.name, e.type, e.short_description, e.description, e.color, e.first_appearance, e.significance, e.status);
 
     // Re-add aliases
+    const insertAliasStmt = getStatement("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)");
     for (const alias of snapshot.aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, e.id, alias);
+      insertAliasStmt.run(filePath, e.id, alias);
     }
 
     // Re-add details (they were moved, so move them back)
+    const updateDetailsStmt = getStatement("UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ? AND chapter_index = ? AND category = ? AND content = ?");
     for (const d of snapshot.details) {
-      // Move back details that were reassigned to target
-      db.prepare(
-        "UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ? AND chapter_index = ? AND category = ? AND content = ?"
-      ).run(e.id, filePath, log.target_id, d.chapter_index, d.category, d.content);
+      updateDetailsStmt.run(e.id, filePath, log.target_id, d.chapter_index, d.category, d.content);
     }
 
     // Re-add appearances
+    const insertAppearanceStmt = getStatement("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)");
     for (const ch of snapshot.appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, e.id, ch);
+      insertAppearanceStmt.run(filePath, e.id, ch);
     }
 
     // Remove source name from target aliases
     db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, e.name);
+    const deleteAliasStmt = getStatement("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?");
     for (const alias of snapshot.aliases) {
-      db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, alias);
+      deleteAliasStmt.run(filePath, log.target_id, alias);
     }
 
     // Delete the merge log entry
@@ -1134,30 +1151,29 @@ export function mergeArcs(filePath: string, sourceArcIds: string[], targetArcId:
     ).get(filePath, targetArcId);
     if (!target) return;
 
+    const verifySourceArcStmt = getStatement("SELECT id FROM wiki_arcs WHERE file_path = ? AND id = ?");
+    const updateArcBeatsStmt = getStatement("UPDATE wiki_arc_beats SET arc_id = ? WHERE file_path = ? AND arc_id = ?");
+    const getArcEntitiesStmt = getStatement("SELECT entry_id, role FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?");
+    const insertArcEntityStmt = getStatement("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)");
+    const deleteArcEntitiesStmt = getStatement("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?");
+    const deleteArcStmt = getStatement("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?");
+
     for (const sourceId of sourceArcIds) {
       if (sourceId === targetArcId) continue;
       // Verify source arc exists
-      const source = db.prepare(
-        "SELECT id FROM wiki_arcs WHERE file_path = ? AND id = ?"
-      ).get(filePath, sourceId);
+      const source = verifySourceArcStmt.get(filePath, sourceId);
       if (!source) continue;
 
       // Move beats to target arc
-      db.prepare(
-        "UPDATE wiki_arc_beats SET arc_id = ? WHERE file_path = ? AND arc_id = ?"
-      ).run(targetArcId, filePath, sourceId);
+      updateArcBeatsStmt.run(targetArcId, filePath, sourceId);
       // Move entities to target arc (ignore duplicates)
-      const entities = db.prepare(
-        "SELECT entry_id, role FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?"
-      ).all(filePath, sourceId) as { entry_id: string; role: string }[];
+      const entities = getArcEntitiesStmt.all(filePath, sourceId) as { entry_id: string; role: string }[];
       for (const e of entities) {
-        db.prepare(
-          "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
-        ).run(filePath, targetArcId, e.entry_id, e.role);
+        insertArcEntityStmt.run(filePath, targetArcId, e.entry_id, e.role);
       }
       // Delete source arc entities first, then arc (cascade handles beats)
-      db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, sourceId);
-      db.prepare("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?").run(filePath, sourceId);
+      deleteArcEntitiesStmt.run(filePath, sourceId);
+      deleteArcStmt.run(filePath, sourceId);
     }
   });
   merge();
@@ -1236,11 +1252,11 @@ export function getRecentEntities(filePath: string, lastNChapters: number, curre
 
 export function clearChapterWikiData(filePath: string, chapterIndex: number): void {
   const tx = db.transaction(() => {
-    db.prepare("DELETE FROM wiki_details WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_appearances WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_arc_beats WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_chapter_summaries WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_processed WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    getStatement("DELETE FROM wiki_details WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    getStatement("DELETE FROM wiki_appearances WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    getStatement("DELETE FROM wiki_arc_beats WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    getStatement("DELETE FROM wiki_chapter_summaries WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
+    getStatement("DELETE FROM wiki_processed WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
   });
   tx();
 }
@@ -1302,7 +1318,7 @@ export function getMCEntityId(filePath: string): string | null {
 export function clearWiki(filePath: string): void {
   const clearAll = db.transaction(() => {
     for (const table of WIKI_TABLES) {
-      db.prepare(`DELETE FROM ${table} WHERE file_path = ?`).run(filePath);
+      getStatement(`DELETE FROM ${table} WHERE file_path = ?`).run(filePath);
     }
   });
   clearAll();
@@ -1312,10 +1328,10 @@ export function clearWiki(filePath: string): void {
 export function clearAllWiki(): void {
   const clearAll = db.transaction(() => {
     for (const table of WIKI_TABLES) {
-      db.prepare(`DELETE FROM ${table}`).run();
+      getStatement(`DELETE FROM ${table}`).run();
     }
     // Also clear merge log
-    db.prepare("DELETE FROM wiki_merge_log").run();
+    getStatement("DELETE FROM wiki_merge_log").run();
   });
   clearAll();
 }
