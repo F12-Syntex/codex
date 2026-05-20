@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-20 - [Pre-grouping arrays before mapping]
+**Learning:** [Avoid O(N*M) nested \`.filter()\` calls inside a \`.map()\` loop in React components during render]
+**Action:** [Pre-group the data into a Record or Map using \`useMemo\` and then iterate over the groups. This transforms O(N^2) complexity to O(N)]
