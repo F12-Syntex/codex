@@ -63,21 +63,26 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
     return Array.from(books).sort();
   }, [quotes]);
 
+  // Performance optimization: Pre-compute a single lowercased string for search
+  // to avoid redundant string allocations and `.toLowerCase()` calls on every keystroke.
+  const searchableQuotes = useMemo(() => {
+    return quotes.map((q) => ({
+      ...q,
+      _searchString: `${q.text}\0${q.speaker}\0${q.chapterTitle}\0${q.bookTitle}`.toLowerCase()
+    }));
+  }, [quotes]);
+
   const filtered = useMemo(() => {
-    return quotes.filter((q) => {
+    return searchableQuotes.filter((q) => {
       if (filterKind !== "all" && q.kind !== filterKind) return false;
       if (filterBook !== "all" && q.bookTitle !== filterBook) return false;
       if (search.trim()) {
         const s = search.toLowerCase();
-        const matchText = q.text.toLowerCase().includes(s);
-        const matchSpeaker = q.speaker.toLowerCase().includes(s);
-        const matchChapter = q.chapterTitle.toLowerCase().includes(s);
-        const matchBook = q.bookTitle.toLowerCase().includes(s);
-        if (!matchText && !matchSpeaker && !matchChapter && !matchBook) return false;
+        if (!q._searchString.includes(s)) return false;
       }
       return true;
     });
-  }, [quotes, filterKind, filterBook, search]);
+  }, [searchableQuotes, filterKind, filterBook, search]);
 
   const handleDelete = async (id: number) => {
     const api = window.electronAPI;
