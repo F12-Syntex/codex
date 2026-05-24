@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-05-24 - JavaScript Performance Optimization: Schwartzian Transform for Case-Insensitive Sorts
+**Learning:** When transforming arrays using methods that return a new array (like `.map()` or `.filter()`), preceding them with an unnecessary shallow copy (e.g., `[...rawItems]`) creates a redundant O(N) memory allocation. Furthermore, when implementing case-insensitive sorting algorithms, using the Schwartzian transform pattern by pre-computing transformed values into a mapped array before running `.sort()` reduces string operations (like `.toLowerCase()`) from O(N log N) to O(N), which provides significant performance improvements for large arrays.
+**Action:** Remove redundant shallow copies before array filter/map chains, and use the Schwartzian transform (`.map` -> `.sort` -> `.map`) whenever sorting items based on a derived/transformed value.
