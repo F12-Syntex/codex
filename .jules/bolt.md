@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-05-25 - Component specific optimization: Hoisting static computation out of child components
+**Learning:** The `LinkedText` component was re-calculating a sorted `nameMap` derived from `allEntries` inside its own `useMemo` block. Because the parent component `EntryPage` maps over multiple items and renders multiple `LinkedText` components, it forced redundant `O(N log N)` sorts per page render.
+**Action:** Hoist the static array map logic to the parent component level (e.g. `EntryPage`) using `useMemo` and pass the pre-computed map structure down as a prop directly to child components instead.
