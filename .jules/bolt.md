@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-05-30 - [Precomputing Search Strings in Filters]
+**Learning:** In client-side filtering logic, running `.toLowerCase()` inside a tight `.filter()` loop on every keystroke adds significant CPU overhead and garbage collection pressure, especially for large datasets.
+**Action:** Pre-compute concatenated, lowercased search strings during the initial data transformation phase and store them alongside the data items. Use a null byte separator (`\0`) when concatenating multiple fields (e.g. title and author) to prevent false-positive matches across boundaries.
