@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-06-04 - Pre-calculate string lowercasing for search blocks
+**Learning:** Pre-computing lowercased, concatenated strings for search fields via useMemo helps avoid invoking .toLowerCase() on multiple fields for every item in the list on every keystroke, improving performance from O(N*M) per keystroke to O(N). Separating the fields with `\0` is a bulletproof way to prevent cross-boundary matches.
+**Action:** When filtering a large list, use useMemo to create a parallel array of searchStrings derived from the items using `\0` as a separator.
