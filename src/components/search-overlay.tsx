@@ -56,15 +56,17 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
   const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
+  const allItemsSearchStrings = useMemo(() => {
+    return allItems.map((r) =>
+      `${r.item.title}\0${r.item.author}`.toLowerCase()
+    );
+  }, [allItems]);
+
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return allItems.filter(
-      (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
-    );
-  }, [query]);
+    return allItems.filter((r, i) => allItemsSearchStrings[i].includes(q));
+  }, [query, allItems, allItemsSearchStrings]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
