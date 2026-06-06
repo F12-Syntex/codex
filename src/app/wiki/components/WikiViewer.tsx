@@ -208,15 +208,20 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     return map;
   }, [entries]);
 
+  // Pre-compute lowercase search strings to avoid recalculating on each keystroke
+  const searchStrings = useMemo(() => {
+    return entries.map((e) => `${e.name}\0${e.short_description}`.toLowerCase());
+  }, [entries]);
+
   // Filtered entries for homepage
   const filteredEntries = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    return entries.filter((e) => {
+    return entries.filter((e, i) => {
       if (filterType !== "all" && e.type !== filterType) return false;
-      if (query && !e.name.toLowerCase().includes(query) && !e.short_description.toLowerCase().includes(query)) return false;
+      if (query && !searchStrings[i].includes(query)) return false;
       return true;
     });
-  }, [entries, searchQuery, filterType]);
+  }, [entries, searchStrings, searchQuery, filterType]);
 
   const groupedFiltered = useMemo(() => {
     const groups: Partial<Record<WikiEntryType, EntryListItem[]>> = {};
