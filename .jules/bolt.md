@@ -635,3 +635,10 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-06-06 - React hook dependencies setter functions
+**Learning:** React state setters (e.g., `setExpandedCommentPara`) are guaranteed stable across renders, so omitting them from `useMemo` dependency arrays does not break functionality, but allows reducing array checks.
+**Action:** Omit them to keep dependency arrays clean.
+
+## 2024-06-06 - React Memory Performance Rule applied to list filtering
+**Learning:** In large React list components (like QuotesView, WikiViewer, and SearchOverlay), when filtering items based on user search queries, performing inline string concatenations and `.toLowerCase()` calls on every item within the `.filter()` loop causes severe O(N*M) operations on each keystroke.
+**Action:** Always pre-compute and memoize parallel `searchStrings` arrays, isolating the costly lowercase/concatenation operations into a separate `useMemo` that only re-runs when the source data changes, not when the user types.
