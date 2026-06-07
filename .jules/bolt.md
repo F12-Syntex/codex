@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-06-07 - N+1 IPC Calls in Batch Entity Processing
+**Learning:** In Electron applications with React frontends, executing IPC calls inside loops (like fetching aliases or relationships for each entity individually) causes significant N+1 overhead and serialization bottlenecks. Batch fetching strategies, while sometimes requiring `electronAPI` extensions or fallbacks if the feature is not globally supported yet, are crucial for performance.
+**Action:** Always pre-fetch aggregations outside loops using provided `*All*` APIs (`wikiGetAllAliases`, `wikiGetAllRelationships`, etc.) and construct a local map or dictionary for fast O(1) loop lookups, reducing IPC overhead from O(N) to O(1).
