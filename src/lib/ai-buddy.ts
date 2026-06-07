@@ -336,21 +336,59 @@ export async function buildBuddyWikiContext(
   const api = window.electronAPI;
   if (!api) return "";
 
-  const [entries, summaries, arcs] = await Promise.all([
+  const [entries, summaries, arcs, allAliases, allRels] = await Promise.all([
     api.wikiGetEntries(filePath),
     api.wikiGetChapterSummaries(filePath, 0, maxChapter),
     api.wikiGetActiveArcs(filePath),
+    api.wikiGetAllAliases ? api.wikiGetAllAliases(filePath) : Promise.resolve([]),
+    api.wikiGetAllRelationships ? api.wikiGetAllRelationships(filePath) : Promise.resolve([]),
   ]);
 
   if (entries.length === 0) return "";
 
   const sections: string[] = [];
 
+  // Group aliases by entry_id
+  const aliasesByEntry = new Map<string, string[]>();
+  if (allAliases.length > 0) {
+    for (const a of allAliases) {
+      if (a.alias && a.alias.trim()) {
+        const list = aliasesByEntry.get(a.entry_id) ?? [];
+        list.push(a.alias);
+        aliasesByEntry.set(a.entry_id, list);
+      }
+    }
+  }
+
+  // Group relationships by entry_id (source or target)
+  const relsByEntry = new Map<string, { source_id: string; target_id: string; relation: string; since_chapter: number }[]>();
+  if (allRels.length > 0) {
+    for (const r of allRels) {
+      if (r.since_chapter <= maxChapter) {
+        const srcList = relsByEntry.get(r.source_id) ?? [];
+        srcList.push(r);
+        relsByEntry.set(r.source_id, srcList);
+
+        const tgtList = relsByEntry.get(r.target_id) ?? [];
+        tgtList.push(r);
+        relsByEntry.set(r.target_id, tgtList);
+      }
+    }
+  }
+
   const entityLines: string[] = [];
   for (const e of entries) {
     if (e.first_appearance > maxChapter) continue;
-    const aliases = await api.wikiGetAliases(filePath, e.id);
-    const rels = await api.wikiGetRelationships(filePath, e.id, maxChapter);
+
+    // Fallback to individual API call if batch fetch is not available (e.g. older electron version)
+    const aliases = api.wikiGetAllAliases
+      ? (aliasesByEntry.get(e.id) ?? [])
+      : await api.wikiGetAliases(filePath, e.id);
+
+    const rels = api.wikiGetAllRelationships
+      ? (relsByEntry.get(e.id) ?? [])
+      : await api.wikiGetRelationships(filePath, e.id, maxChapter);
+
     const aliasStr = aliases.length > 0 ? ` (aka ${aliases.join(", ")})` : "";
     let line = `- [${e.type}] ${e.name}${aliasStr} (id: ${e.id}, significance: ${e.significance}, status: ${e.status}): ${e.short_description}`;
     if (rels.length > 0) {
