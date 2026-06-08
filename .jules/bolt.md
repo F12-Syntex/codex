@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2026-06-08 - Optimize O(N*M) shortcut filtering in Dock rendering
+**Learning:** In React components that render categorized lists, nested array operations (like `.filter()` inside a `.map()` loop over categories) can cause O(N*M) algorithmic complexity on every render. If N is large, this is a significant bottleneck.
+**Action:** Pre-group categorized items into a hash map or `Record` using a `useMemo` hook. This reduces the rendering complexity to O(N) by eliminating the nested loop and guarantees fast O(1) lookups during the render phase.

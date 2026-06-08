@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Palette,
   Search,
@@ -463,7 +463,16 @@ function ThemeModal({
 
 /* ── Shortcuts modal ─────────────────────────────────────── */
 function ShortcutsModal({ onClose }: { onClose: () => void }) {
-  const categories = [...new Set(SHORTCUT_REGISTRY.map((s) => s.category))];
+  // Pre-group shortcuts by category to avoid O(N*M) nested filtering
+  const groupedShortcuts = useMemo(() => {
+    return SHORTCUT_REGISTRY.reduce((acc, s) => {
+      if (!acc[s.category]) acc[s.category] = [];
+      acc[s.category].push(s);
+      return acc;
+    }, {} as Record<string, typeof SHORTCUT_REGISTRY>);
+  }, []);
+
+  const categories = Object.keys(groupedShortcuts);
 
   return (
     <ModalShell title="Shortcuts" onClose={onClose}>
@@ -472,7 +481,7 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
           <div key={cat}>
             <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-white/20">{cat}</p>
             <div className="flex flex-col gap-0.5">
-              {SHORTCUT_REGISTRY.filter((s) => s.category === cat).map((s) => (
+              {groupedShortcuts[cat].map((s) => (
                 <div key={s.id} className="flex items-center justify-between py-1">
                   <span className="text-sm text-white/50">{s.label}</span>
                   <kbd className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-xs text-white/30">
