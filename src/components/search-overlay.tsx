@@ -56,15 +56,18 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
   const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
+  // Performance optimization: Pre-compute parallel searchable strings (title + null byte + author).
+  // This avoids running .toLowerCase() repeatedly on every keystroke in the filter loop.
+  const searchStrings = useMemo(() => {
+    return allItems.map((r) => `${r.item.title}\0${r.item.author}`.toLowerCase());
+  }, [allItems]);
+
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return allItems.filter(
-      (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
-    );
-  }, [query]);
+    // Use loop index to filter allItems against the pre-computed strings
+    return allItems.filter((_, i) => searchStrings[i].includes(q));
+  }, [allItems, searchStrings, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
