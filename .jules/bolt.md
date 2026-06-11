@@ -633,5 +633,6 @@ Let's double check if we can cleanly implement this.
 Perfect. The useMemo is correctly set up.
 Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
-Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
-Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-06-11 - JavaScript Performance Rule: Sorting with Schwartzian Transform
+**Learning:** The Schwartzian transform pre-computes transformed sort values into a mapped array before sorting, reducing operations from O(N log N) to O(N). Additionally, it returns a new array, eliminating the need to create a redundant shallow copy using the spread operator (e.g. `[...array]`) prior to mapping.
+**Action:** When sorting arrays using a `.sort()` comparator that requires deriving values (like `.toLowerCase()`), first map the array to include the original items and computed sort keys, sort the mapped array, and map back to original items.
