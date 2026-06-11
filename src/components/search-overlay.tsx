@@ -64,7 +64,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
         r.item.title.toLowerCase().includes(q) ||
         r.item.author.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [allItems, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
