@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## $(date +%Y-%m-%d) - Pre-computed lowercase mapping inside useMemo
+**Learning:** Pre-computing derived searchable fields (e.g., `toLowerCase()`) over a large dataset using `.map()` inside a `useMemo` loop effectively reduces O(N) recalculations on every keystroke compared to computing those lowercased strings dynamically inside a filter hook.
+**Action:** When filtering a large array on text input, isolate expensive transformations (like `.toLowerCase()`) and string combinations into an independent `useMemo` dependency decoupled from the user's keystroke `searchQuery`, then filter against the pre-calculated strings array by index.
