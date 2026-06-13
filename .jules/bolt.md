@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-18 - Avoid O(N) inline object generation for search filtering lists
+**Learning:** In React list rendering using nested components or hooks with search logic across thousands of elements, combining iteration over an object array and inline `.toLowerCase()` string computations causes significant unnecessary CPU allocations when filtering by query on each keystroke.
+**Action:** When filtering objects using text query matching, hoist out the object-to-string projection into a parallel primitive array via a separate `useMemo` that does not depend on the search query. Filter the primitive array and then use its indices to select the original objects in the final list filter.
