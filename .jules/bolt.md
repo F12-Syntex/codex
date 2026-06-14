@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2026-06-14 - Array map string joining inside useMemo filter
+**Learning:** Pre-computing concatenated, searchable strings array significantly improves filter performance. `items.map(x => ...)` instead of inline.
+**Action:** Hoist searchable strings generation into its own `useMemo` and loop over indices.

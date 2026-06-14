@@ -63,21 +63,22 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
     return Array.from(books).sort();
   }, [quotes]);
 
+  // Pre-compute searchable strings to avoid O(N*M) string allocations on every keystroke
+  const searchStrings = useMemo(() => {
+    return quotes.map((q) =>
+      `${q.text}\0${q.speaker}\0${q.chapterTitle}\0${q.bookTitle}`.toLowerCase()
+    );
+  }, [quotes]);
+
   const filtered = useMemo(() => {
-    return quotes.filter((q) => {
+    const s = search.trim().toLowerCase();
+    return quotes.filter((q, i) => {
       if (filterKind !== "all" && q.kind !== filterKind) return false;
       if (filterBook !== "all" && q.bookTitle !== filterBook) return false;
-      if (search.trim()) {
-        const s = search.toLowerCase();
-        const matchText = q.text.toLowerCase().includes(s);
-        const matchSpeaker = q.speaker.toLowerCase().includes(s);
-        const matchChapter = q.chapterTitle.toLowerCase().includes(s);
-        const matchBook = q.bookTitle.toLowerCase().includes(s);
-        if (!matchText && !matchSpeaker && !matchChapter && !matchBook) return false;
-      }
+      if (s && !searchStrings[i].includes(s)) return false;
       return true;
     });
-  }, [quotes, filterKind, filterBook, search]);
+  }, [quotes, filterKind, filterBook, search, searchStrings]);
 
   const handleDelete = async (id: number) => {
     const api = window.electronAPI;
