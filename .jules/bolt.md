@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-06-15 - Case-insensitive array sorting optimization
+**Learning:** Calling `.toLowerCase()` inside an `Array.prototype.sort()` comparator causes an $O(N \log N)$ number of string conversion operations, creating a hidden performance bottleneck for large data sets.
+**Action:** Utilize the Schwartzian transform (map-sort-map) to pre-compute transformed values (e.g., lowercased strings) before sorting. This reduces the transformation overhead to $O(N)$ and inherently provides a shallow copy, preventing unintended mutations of the original array.
