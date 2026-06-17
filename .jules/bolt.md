@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-18 - Pre-computing searchable strings for lists
+**Learning:** When searching through an array of objects by matching properties against a query string, pre-computing a parallel array of lowercase search strings avoids redundant N `.toLowerCase()` object property accesses and object copying on every keystroke. Using a non-printable separator like a null byte (`\0`) prevents search queries from matching across the boundary of properties.
+**Action:** Apply this parallel array primitive strings + index filtering pattern for high performance React list searches.
