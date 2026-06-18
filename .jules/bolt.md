@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-02-13 - [Hoist Expensive Operations in React Hook Loops]
+**Learning:** React components containing filter loops on large arrays inside `useMemo` can suffer from performance bottlenecks if loop-invariant strings are computed within the loop (e.g. recalculating `.toLowerCase()` on complex fields continuously). Recomputing this mapping on every keystroke forces repeated heap allocations and string traversals.
+**Action:** Isolate these expensive mapping transformations into a separate parallel primitive array (e.g., `searchStrings`) using its own `useMemo` hooked to the `data` array directly. Filter the initial data source by retrieving pre-computed search strings by index. Use a null byte separator (`\0`) when concatenating multiple fields for search indexing to prevent boundary collisions.
