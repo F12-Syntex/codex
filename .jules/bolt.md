@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-19 - Isolate Pre-Computation from Filtering in React Lists
+**Learning:** When using React's `useMemo` to filter dynamically searched lists, combining expensive pre-computation (e.g. string concatenation, `.toLowerCase()`, mapping) with the filtering logic itself in a single `useMemo` causes the expensive part to re-run on every keystroke (since it depends on the search string).
+**Action:** Extract the expensive list pre-computation into its own `useMemo` block that only depends on the source data. Reference this memoized, pre-computed structure inside the second `useMemo` responsible for the actual list filtering which depends on the rapid-updating search query. This shifts the complexity for searching down to O(1) string access per item in the filter loop.
