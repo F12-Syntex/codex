@@ -71,6 +71,14 @@ export function TOCSidebar({
   // Reset limit when search changes so results appear immediately
   useEffect(() => { setRenderLimit(searchQuery ? Infinity : 60); }, [searchQuery]);
 
+  // Pre-compute chapter strings for search
+  const chapterSearchStrings = useMemo(() => {
+    return chapters.map((ch, i) => {
+      const displayTitle = enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title;
+      return displayTitle.toLowerCase();
+    });
+  }, [chapters, enrichedNames, enrichEnabled]);
+
   // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
     const mapped = chapters.map((ch, i) => ({
@@ -79,8 +87,8 @@ export function TOCSidebar({
     }));
     if (!searchQuery.trim()) return mapped;
     const q = searchQuery.toLowerCase();
-    return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
-  }, [chapters, searchQuery, enrichedNames, enrichEnabled]);
+    return mapped.filter((_, i) => chapterSearchStrings[i].includes(q));
+  }, [chapters, searchQuery, enrichedNames, enrichEnabled, chapterSearchStrings]);
 
   // Filter bookmarks by search
   const filteredBookmarks = useMemo(() => {

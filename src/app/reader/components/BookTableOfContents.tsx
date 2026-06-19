@@ -46,12 +46,17 @@ export function BookTableOfContents({
     }));
   }, [toc, enrichedNames, enrichEnabled]);
 
+  // Pre-compute searchable strings for TOC entries
+  const searchStrings = useMemo(() => {
+    return entries.map(e => e.displayLabel.toLowerCase());
+  }, [entries]);
+
   // Filter by search
   const filtered = useMemo(() => {
     if (!search.trim()) return entries;
     const q = search.toLowerCase();
-    return entries.filter((e) => e.displayLabel.toLowerCase().includes(q));
-  }, [entries, search]);
+    return entries.filter((_, i) => searchStrings[i].includes(q));
+  }, [entries, search, searchStrings]);
 
   // Focus search on Ctrl+F
   useEffect(() => {
