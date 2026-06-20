@@ -208,15 +208,28 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     return map;
   }, [entries]);
 
+  const groupedEntries = useMemo(() => {
+    const groups: Partial<Record<WikiEntryType, EntryListItem[]>> = {};
+    for (const e of entries) {
+      if (!groups[e.type]) groups[e.type] = [];
+      groups[e.type]!.push(e);
+    }
+    return groups;
+  }, [entries]);
+
+  const searchStrings = useMemo(() => {
+    return entries.map(e => `${e.name}\0${e.short_description}`.toLowerCase());
+  }, [entries]);
+
   // Filtered entries for homepage
   const filteredEntries = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    return entries.filter((e) => {
+    return entries.filter((e, i) => {
       if (filterType !== "all" && e.type !== filterType) return false;
-      if (query && !e.name.toLowerCase().includes(query) && !e.short_description.toLowerCase().includes(query)) return false;
+      if (query && !searchStrings[i].includes(query)) return false;
       return true;
     });
-  }, [entries, searchQuery, filterType]);
+  }, [entries, searchQuery, filterType, searchStrings]);
 
   const groupedFiltered = useMemo(() => {
     const groups: Partial<Record<WikiEntryType, EntryListItem[]>> = {};
@@ -318,6 +331,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
               <HomePage
                 bookTitle={bookTitle}
                 entries={entries}
+                groupedEntries={groupedEntries}
                 filteredEntries={filteredEntries}
                 groupedFiltered={groupedFiltered}
                 arcs={arcs}
@@ -526,11 +540,12 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
    ══════════════════════════════════════════════════════════ */
 
 function HomePage({
-  bookTitle, entries, filteredEntries, groupedFiltered, arcs, chapterSummaries,
+  bookTitle, entries, groupedEntries, filteredEntries, groupedFiltered, arcs, chapterSummaries,
   processedCount, mergeLog, searchQuery, filterType, onSearchChange, onFilterChange, onEntryClick, onUnmerge, chapterLabels,
 }: {
   bookTitle: string;
   entries: EntryListItem[];
+  groupedEntries: Partial<Record<WikiEntryType, EntryListItem[]>>;
   filteredEntries: EntryListItem[];
   groupedFiltered: Partial<Record<WikiEntryType, EntryListItem[]>>;
   arcs: WikiArc[];
@@ -545,8 +560,13 @@ function HomePage({
   onUnmerge: (mergeLogId: number) => void;
   chapterLabels: ChapterLabels;
 }) {
-  const mainCharacters = entries.filter((e) => e.type === "character" && e.significance >= 3).slice(0, 6);
-  const recentEntries = [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);
+  const mainCharacters = useMemo(() => {
+    return (groupedEntries["character"] || []).filter((e) => e.significance >= 3).slice(0, 6);
+  }, [groupedEntries]);
+
+  const recentEntries = useMemo(() => {
+    return [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);
+  }, [entries]);
 
   return (
     <div className="mx-auto w-full max-w-[900px] px-4 py-6 sm:px-6">
@@ -577,7 +597,7 @@ function HomePage({
         <div className="mt-2 flex flex-wrap gap-1">
           <FilterChip label="All" count={entries.length} active={filterType === "all"} onClick={() => onFilterChange("all")} />
           {TYPE_ORDER.map((type) => {
-            const count = entries.filter((e) => e.type === type).length;
+            const count = groupedEntries[type]?.length || 0;
             if (count === 0) return null;
             return <FilterChip key={type} label={TYPE_META[type].plural} count={count} active={filterType === type} onClick={() => onFilterChange(type)} icon={TYPE_META[type].icon} color={TYPE_META[type].color} />;
           })}
@@ -687,7 +707,7 @@ function HomePage({
 
           {/* All entries by type */}
           {TYPE_ORDER.map((type) => {
-            const items = entries.filter((e) => e.type === type);
+            const items = groupedEntries[type] || [];
             if (items.length === 0) return null;
             const meta = TYPE_META[type];
             // Skip characters if already shown in spotlight
