@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Palette,
   Search,
@@ -463,16 +463,27 @@ function ThemeModal({
 
 /* ── Shortcuts modal ─────────────────────────────────────── */
 function ShortcutsModal({ onClose }: { onClose: () => void }) {
-  const categories = [...new Set(SHORTCUT_REGISTRY.map((s) => s.category))];
+  // ⚡ Bolt Performance Optimization:
+  // Pre-grouping the static SHORTCUT_REGISTRY into a Map prevents an O(N*M) performance penalty
+  // that occurs when calling .filter() repeatedly inside the .map() render loop.
+  const groupedShortcuts = useMemo(() => {
+    const map = new Map<string, typeof SHORTCUT_REGISTRY>();
+    for (const s of SHORTCUT_REGISTRY) {
+      const arr = map.get(s.category) || [];
+      arr.push(s);
+      map.set(s.category, arr);
+    }
+    return map;
+  }, []);
 
   return (
     <ModalShell title="Shortcuts" onClose={onClose}>
       <div className="flex h-[400px] flex-col gap-3 overflow-y-auto p-4">
-        {categories.map((cat) => (
+        {Array.from(groupedShortcuts.entries()).map(([cat, shortcuts]) => (
           <div key={cat}>
             <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-white/20">{cat}</p>
             <div className="flex flex-col gap-0.5">
-              {SHORTCUT_REGISTRY.filter((s) => s.category === cat).map((s) => (
+              {shortcuts.map((s) => (
                 <div key={s.id} className="flex items-center justify-between py-1">
                   <span className="text-sm text-white/50">{s.label}</span>
                   <kbd className="rounded-lg bg-white/[0.06] px-2 py-0.5 text-xs text-white/30">

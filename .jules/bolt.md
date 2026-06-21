@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-05-18 - [Optimizing List Categorization in React]
+**Learning:** [When rendering lists categorized by a key (e.g., shortcuts by category, search results by section), using nested N*M loops or `.filter()` inside `.map()` creates an O(N^2) or O(N*M) performance bottleneck. V8 executes these poorly as list size grows.]
+**Action:** [Pre-group the data into a Record, Map, or array of tuples using `useMemo` in a single pass O(N), and then iterate over the pre-grouped data during render to achieve O(N) rendering.]
