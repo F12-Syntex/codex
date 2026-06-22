@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-06-22 - Pre-computing complex string fields for search
+**Learning:** In React components with search overlays, using `allItems.filter(...)` inside a `useMemo` that evaluates multiple `toLowerCase()` and `includes()` calls on object properties dynamically (e.g., `item.title.toLowerCase().includes(q)`) leads to redundant O(N * M) string allocations and checks on every keystroke.
+**Action:** When filtering objects by text query, compute searchable string structures outside of the filtering `useMemo` or using parallel string arrays to ensure the `query` updates do not continuously re-evaluate the full mapping phase. Also, when relying on an external prop/memo for filtering, ensure `eslint-plugin-react-hooks` constraints are met by including it in the dependency array to satisfy linting without sacrificing performance.
