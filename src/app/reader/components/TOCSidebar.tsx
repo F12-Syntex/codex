@@ -203,7 +203,7 @@ export function TOCSidebar({
           filteredChapters.length === 0 ? (
             <p className={`py-8 text-center text-xs ${theme.muted}`}>No chapters found</p>
           ) : (
-            filteredChapters.slice(0, renderLimit).map(({ ch, i, displayTitle }) => {
+            filteredChapters.slice(0, renderLimit).map(({ i, displayTitle }) => {
               const canEnrich = enrichEnabled;
               const isEnriching = enrichingChapter === i;
 
