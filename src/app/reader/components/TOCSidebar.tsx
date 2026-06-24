@@ -71,23 +71,32 @@ export function TOCSidebar({
   // Reset limit when search changes so results appear immediately
   useEffect(() => { setRenderLimit(searchQuery ? Infinity : 60); }, [searchQuery]);
 
-  // Filter chapters by search (use enriched name only when enabled)
+  // Pre-compute chapter entries and lowercased search strings independently of search query
+  const chapterEntries = useMemo(() => {
+    return chapters.map((ch, i) => {
+      const displayTitle = enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title;
+      return { ch, i, displayTitle, searchStr: displayTitle.toLowerCase() };
+    });
+  }, [chapters, enrichedNames, enrichEnabled]);
+
+  // Filter chapters by search
   const filteredChapters = useMemo(() => {
-    const mapped = chapters.map((ch, i) => ({
-      ch, i,
-      displayTitle: enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title,
-    }));
-    if (!searchQuery.trim()) return mapped;
-    const q = searchQuery.toLowerCase();
-    return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
-  }, [chapters, searchQuery, enrichedNames, enrichEnabled]);
+    if (!searchQuery.trim()) return chapterEntries;
+    const q = searchQuery.trim().toLowerCase();
+    return chapterEntries.filter((entry) => entry.searchStr.includes(q));
+  }, [chapterEntries, searchQuery]);
+
+  // Pre-compute lowercased bookmark search strings independently of search query
+  const bookmarkSearchStrings = useMemo(() => {
+    return bookmarks.map((bm) => bm.label.toLowerCase());
+  }, [bookmarks]);
 
   // Filter bookmarks by search
   const filteredBookmarks = useMemo(() => {
     if (!searchQuery.trim()) return bookmarks;
-    const q = searchQuery.toLowerCase();
-    return bookmarks.filter((bm) => bm.label.toLowerCase().includes(q));
-  }, [bookmarks, searchQuery]);
+    const q = searchQuery.trim().toLowerCase();
+    return bookmarks.filter((bm, i) => bookmarkSearchStrings[i].includes(q));
+  }, [bookmarks, bookmarkSearchStrings, searchQuery]);
 
   // Click outside to close (ignore clicks on header toolbar buttons)
   useEffect(() => {
@@ -203,7 +212,7 @@ export function TOCSidebar({
           filteredChapters.length === 0 ? (
             <p className={`py-8 text-center text-xs ${theme.muted}`}>No chapters found</p>
           ) : (
-            filteredChapters.slice(0, renderLimit).map(({ ch, i, displayTitle }) => {
+            filteredChapters.slice(0, renderLimit).map(({ i, displayTitle }) => {
               const canEnrich = enrichEnabled;
               const isEnriching = enrichingChapter === i;
 
