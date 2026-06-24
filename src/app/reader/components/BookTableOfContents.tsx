@@ -46,12 +46,17 @@ export function BookTableOfContents({
     }));
   }, [toc, enrichedNames, enrichEnabled]);
 
+  // Pre-compute lowercased labels independent of search query
+  const searchStrings = useMemo(() => {
+    return entries.map((e) => e.displayLabel.toLowerCase());
+  }, [entries]);
+
   // Filter by search
   const filtered = useMemo(() => {
     if (!search.trim()) return entries;
-    const q = search.toLowerCase();
-    return entries.filter((e) => e.displayLabel.toLowerCase().includes(q));
-  }, [entries, search]);
+    const q = search.trim().toLowerCase();
+    return entries.filter((e, i) => searchStrings[i].includes(q));
+  }, [entries, searchStrings, search]);
 
   // Focus search on Ctrl+F
   useEffect(() => {
