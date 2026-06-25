@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2025-03-09 - O(N log N) work inside child component loop optimization
+**Learning:** In React, when mapping or filtering large arrays during render, or mapping over a list of children that all require the same computationally expensive derived data structure, doing it inside the child component leads to duplicated work and huge performance bottlenecks. Specifically, in `LinkedText` used extensively within `EntryPage` of `WikiViewer`, an O(N log N) sorting operation on the same array of objects (`allEntries`) was being done independently inside each `LinkedText` call, multiplied by the number of times `LinkedText` is rendered for that page.
+**Action:** Always hoist shared expensive computations to the parent component, memoize them using `useMemo`, and pass the pre-computed value down as a prop. This converts an O(K * N log N) complex render to O(N log N) + O(K * N) operations, leading to significant performance gains on lists of children.
