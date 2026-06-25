@@ -778,6 +778,28 @@ function EntryPage({
     return () => document.removeEventListener("mousedown", handler);
   }, [showMergePicker]);
 
+  const nameMap = useMemo(() => {
+    const map: { name: string; lower: string; id: string; type: WikiEntryType }[] = [];
+    for (const e of allEntries) {
+      if (e.name.length >= 2) {
+        map.push({ name: e.name, lower: e.name.toLowerCase(), id: e.id, type: e.type });
+      }
+    }
+    map.sort((a, b) => b.name.length - a.name.length);
+    return map;
+  }, [allEntries]);
+
+  const nameMap = useMemo(() => {
+    const map: { name: string; lower: string; id: string; type: WikiEntryType }[] = [];
+    for (const e of allEntries) {
+      if (e.name.length >= 2) {
+        map.push({ name: e.name, lower: e.name.toLowerCase(), id: e.id, type: e.type });
+      }
+    }
+    map.sort((a, b) => b.name.length - a.name.length);
+    return map;
+  }, [allEntries]);
+
   const mergeTargets = useMemo(() => {
     const q = mergeSearch.toLowerCase().trim();
     return allEntries
@@ -934,7 +956,7 @@ function EntryPage({
 
       {/* Short description */}
       <p className="mb-6 text-sm leading-relaxed text-white/60">
-        <LinkedText text={entry.shortDescription} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+        <LinkedText text={entry.shortDescription} nameMap={nameMap} currentEntryId={entry.id} onNavigate={onNavigate} />
       </p>
 
       <div className="h-px bg-white/[0.06]" />
@@ -947,7 +969,7 @@ function EntryPage({
           {entry.description && (
             <ArticleSection title="Overview">
               <p className="text-sm leading-relaxed text-white/55 whitespace-pre-wrap">
-                <LinkedText text={entry.description} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+                <LinkedText text={entry.description} nameMap={nameMap} currentEntryId={entry.id} onNavigate={onNavigate} />
               </p>
             </ArticleSection>
           )}
@@ -962,7 +984,7 @@ function EntryPage({
                       {fmtCh(item.chapterIndex, chapterLabels)}
                     </span>
                     <p className="flex-1 text-xs leading-relaxed text-white/55">
-                      <LinkedText text={item.content} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
+                      <LinkedText text={item.content} nameMap={nameMap} currentEntryId={entry.id} onNavigate={onNavigate} />
                       <SourcePreview sourceText={item.sourceText} chapterIndex={item.chapterIndex} chapterLabels={chapterLabels} />
                     </p>
                   </div>
@@ -1248,25 +1270,17 @@ function MoodBadge({ mood }: { mood: string }) {
 
 function LinkedText({
   text,
-  entries,
+  nameMap,
   currentEntryId,
   onNavigate,
 }: {
   text: string;
-  entries: EntryListItem[];
+  nameMap: { name: string; lower: string; id: string; type: WikiEntryType }[];
   currentEntryId?: string;
   onNavigate: (id: string) => void;
 }) {
   const segments = useMemo(() => {
-    if (!text || entries.length === 0) return [{ text, entityId: null as string | null }];
-
-    // Build sorted list of (name/alias → entryId), longest first for greedy matching
-    const nameMap: { name: string; lower: string; id: string; type: WikiEntryType }[] = [];
-    for (const e of entries) {
-      if (e.id === currentEntryId) continue; // Don't link self
-      if (e.name.length >= 2) nameMap.push({ name: e.name, lower: e.name.toLowerCase(), id: e.id, type: e.type });
-    }
-    nameMap.sort((a, b) => b.name.length - a.name.length);
+    if (!text || nameMap.length === 0) return [{ text, entityId: null as string | null }];
 
     // Scan text for matches
     const result: { text: string; entityId: string | null; entityType?: WikiEntryType }[] = [];
@@ -1277,6 +1291,7 @@ function LinkedText({
     // First pass: find all non-overlapping matches (longest first)
     const matches: { start: number; end: number; id: string; type: WikiEntryType }[] = [];
     for (const entry of nameMap) {
+      if (entry.id === currentEntryId) continue; // Don't link self
       let searchFrom = 0;
       while (searchFrom < lower.length) {
         const idx = lower.indexOf(entry.lower, searchFrom);
