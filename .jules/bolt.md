@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-11-20 - Memoizing Search String Concatenation Separators
+**Learning:** Pre-computing complex search strings across objects avoids repeated string concatenation and lowercasing inside filtering functions on every keystroke, but naively concatenating properties (like title and author) can result in cross-boundary false positive matches (e.g., searching for a single string that partially matches the end of the title and the beginning of the author).
+**Action:** Use a non-printable character like a null byte (`\0`) to separate properties when pre-computing compound search strings in memory to ensure search term boundaries are respected. Additionally, structure these pre-computations as a parallel array mapped from the original object list to prevent redundant cloning of the entire object graph, which avoids massive GC pauses on large library lists.
