@@ -56,15 +56,18 @@ export function SearchOverlay({ open, onClose, bookData, comicData }: SearchOver
 
   const allItems = useMemo(() => getAllItems(bookData, comicData), [bookData, comicData]);
 
+  // ⚡ Bolt Optimization: Pre-compute lowercased search strings with a null-byte separator.
+  // Why: Avoids calling .toLowerCase() twice per item on every keystroke during filtering.
+  // Impact: Reduces operations from O(N * K) to O(N) where N is items and K is keystrokes, improving search responsiveness.
+  const searchStrings = useMemo(() => {
+    return allItems.map((r) => `${r.item.title}\0${r.item.author}`.toLowerCase());
+  }, [allItems]);
+
   const filtered = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return allItems.filter(
-      (r) =>
-        r.item.title.toLowerCase().includes(q) ||
-        r.item.author.toLowerCase().includes(q)
-    );
-  }, [query]);
+    return allItems.filter((_, i) => searchStrings[i].includes(q));
+  }, [query, allItems, searchStrings]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
