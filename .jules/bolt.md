@@ -635,3 +635,7 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+
+## 2024-05-18 - [Hoist Redundant O(N log N) Computations from Repeated Render Loops]
+**Learning:** In React components that render lists or details (e.g. `LinkedText` used inside `EntryPage`), computing an expensive derived map based on a large global list (like sorting thousands of wiki entries by name length) inside each child's `useMemo` is highly inefficient and creates an O(N log N) bottleneck *per child* when the dependency `entries` is large.
+**Action:** Hoist the expensive derived structure computation (`computedNameMap`) to the parent component (`WikiViewer`), memoize it there, and pass it down as a prop. This shifts the complexity from O(M * N log N) down to O(N log N) + O(M * N), where N is total entries and M is the number of child component instances.
