@@ -377,18 +377,24 @@ export default function Home() {
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
-    let items = [...rawItems];
+    let items = rawItems;
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
-    items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
+
+    // Schwartzian transform for O(n) sorting string prep + avoid redundant shallow copy
+    const mapped = items.map((item, index) => ({
+      index,
+      val: String(item[sortField] ?? "").toLowerCase()
+    }));
+    mapped.sort((a, b) => {
+      const aVal = a.val;
+      const bVal = b.val;
       if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
       if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-    return items;
+    return mapped.map(el => items[el.index]);
   }, [rawItems, formatFilter, sortField, sortDir]);
 
   /** Toggle selection of an item (ctrl+click / shift+click) */
