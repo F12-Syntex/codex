@@ -635,3 +635,10 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-02-17 - [Performance Optimization: React Memoization for TTS Highlight Renders]
+**Learning:** `TextContent` in the reader view re-rendered its entire `paragraphsJSX` list of 500+ paragraph nodes every time `ttsActiveWordIndex` changed (which happens 5+ times a second during text-to-speech). Since TTS highlights are handled out-of-band using absolutely positioned DOM elements, re-rendering the whole paragraph array was entirely unnecessary and severely tanked framerate.
+**Action:** Wrappe the large mapping function `filteredHtml.map` inside a `useMemo` with only the required dependencies (`filteredHtml`, `ttsParagraphIndex`, etc.). By using functional state updates inside callbacks (e.g. `setExpandedCommentPara(prev => ...)`), we avoided pulling rapidly changing or user interaction state into the dependency array, completely halting the N-per-second DOM thrashing.
+
+## 2025-02-17 - [Performance Optimization: Schwartzian Transform for Library Sorting]
+**Learning:** In `src/app/page.tsx`, sorting the `rawItems` repeatedly called `.toLowerCase()` inside the sort comparator. For arrays of a few thousand books, an `O(N log N)` sort meant `toLowerCase()` was executing tens of thousands of times per re-render. Additionally, the code used an unnecessary shallow copy `[...rawItems]` before `filter()` and `sort()`.
+**Action:** Implemented the Schwartzian transform by pre-computing `.toLowerCase()` into a temporary array along with original indices. Sorting this temporary array reduced `.toLowerCase()` calls from `O(N log N)` to strictly `O(N)`, and inherently mapped back to a new array without needing an initial shallow copy.
