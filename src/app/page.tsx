@@ -373,22 +373,28 @@ export default function Home() {
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
-  const rawItems = data[activeView] ?? [];
+  const rawItems = data[activeView];
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
-    let items = [...rawItems];
+    let items = rawItems ?? [];
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
     }
-    items.sort((a, b) => {
-      const aVal = a[sortField].toLowerCase();
-      const bVal = b[sortField].toLowerCase();
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-    return items;
+
+    // Use Schwartzian transform for O(N) case-insensitive mapping
+    return items
+      .map((item, index) => ({
+        item,
+        sortVal: String(item[sortField]).toLowerCase(),
+        index,
+      }))
+      .sort((a, b) => {
+        if (a.sortVal < b.sortVal) return sortDir === "asc" ? -1 : 1;
+        if (a.sortVal > b.sortVal) return sortDir === "asc" ? 1 : -1;
+        return a.index - b.index; // Stable sort fallback
+      })
+      .map(({ item }) => item);
   }, [rawItems, formatFilter, sortField, sortDir]);
 
   /** Toggle selection of an item (ctrl+click / shift+click) */
