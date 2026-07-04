@@ -4,7 +4,7 @@
 interface Highlight extends Set<AbstractRange> {
   priority: number;
   type: "highlight" | "spelling-error" | "grammar-error";
-  new (...ranges: AbstractRange[]): Highlight;
+
 }
 
 declare const Highlight: {
@@ -12,7 +12,7 @@ declare const Highlight: {
   new (...ranges: AbstractRange[]): Highlight;
 };
 
-interface HighlightRegistry extends Map<string, Highlight> {}
+type HighlightRegistry = Map<string, Highlight>;
 
 declare namespace CSS {
   const highlights: HighlightRegistry;

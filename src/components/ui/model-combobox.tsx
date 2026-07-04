@@ -51,7 +51,7 @@ export function ModelCombobox({
   // Focus search input when opening
   useEffect(() => {
     if (open) {
-      setSearch("");
+        setSearch("");
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
