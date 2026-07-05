@@ -89,6 +89,7 @@ function ProxiedImage({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDataUrl(null);
     setFailed(false);
     if (!src) { setFailed(true); return; }

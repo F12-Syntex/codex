@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-05-17 - React Performance Rule
+**Learning:** React Hook Dependency Isolation Rule: When pre-computing searchable strings or formatted values for lists, ensure the mapping/pre-computation logic is isolated in a separate `useMemo` from the filtering logic. If both are combined in a single `useMemo` that depends on dynamic values like a user's `searchQuery`, the expensive pre-computation will incorrectly run on every keystroke, defeating the optimization.
+**Action:** When creating pre-computed strings for faster searching (e.g. parallel arrays), always split into two `useMemo` hooks: one for mapping the items (depending only on the items list) and one for filtering (depending on both the items and the search query).
