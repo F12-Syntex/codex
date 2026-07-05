@@ -29,6 +29,7 @@ export function ModelCombobox({
   // Fetch models on first open
   useEffect(() => {
     if (!open || models.length > 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetchModels()
       .then(setModels)
@@ -51,6 +52,7 @@ export function ModelCombobox({
   // Focus search input when opening
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearch("");
       setTimeout(() => inputRef.current?.focus(), 0);
     }
