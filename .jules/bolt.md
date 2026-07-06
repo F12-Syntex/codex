@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-07-06 - O(N*M) Loop Elimination with useMemo
+**Learning:** React functional components with nested `.filter()` calls inside `.map()` loops cause unexpected O(N*M) time complexity on every render, which is easily overlooked when the underlying arrays are static registries (like `SHORTCUT_REGISTRY`). Grouping categories on every render without `useMemo` wastes cycles.
+**Action:** Always pre-calculate and group related categorizations using a `Map` wrapped in a `useMemo` with an empty dependency array for static registries, ensuring an O(N) single-pass setup.
