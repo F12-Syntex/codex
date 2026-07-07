@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2025-02-17 - [Search Filter Optimization]
+**Learning:** `SearchOverlay` computed `.toLowerCase()` on the `title` and `author` of every item on every keystroke, which creates heavy garbage collection churn and slows down responsiveness on large libraries. By using a parallel array for `searchStrings`, we hoist string allocation/transformation out of the per-keystroke render cycle.
+**Action:** Extract expensive transformations like `.toLowerCase()` out of inner `.filter()` loops and memoize them in a parallel array based on the original data dependencies.
