@@ -635,3 +635,6 @@ Is there anything else? We have to update `.jules/bolt.md` with the learning.
 
 Oh! `paragraphsJSX` also needs `setExpandedCommentPara`, `setAddingCommentPara`, `setCommentInput` - wait, React state setters are guaranteed stable across renders by React, so we don't need to put them in the dependency array (and eslint plugin react-hooks doesn't complain if they are omitted).
 Let's apply the diff to `src/app/reader/components/TextContent.tsx`.
+## 2024-07-08 - UseImageIconInsteadOfImage
+**Learning:** `lucide-react`'s `Image` export shadows the native DOM `Image` constructor or conflicts with linters like `jsx-a11y/alt-text`, triggering warnings erroneously when used as an icon.
+**Action:** Use the `ImageIcon` export from `lucide-react` instead of `Image` to prevent these warnings.
