@@ -2,13 +2,19 @@ import AdmZip from "adm-zip";
 import path from "path";
 import fs from "fs";
 import pdfParse from "pdf-parse";
+import { sanitizeHtml as sanitizeAllowlist, plainTextToHtml } from "./shared/pipeline/sanitize";
+import { toBookContentV2 } from "./shared/pipeline/source";
+import type { BookContentV2 } from "./shared/pipeline/types";
 
 export interface BookChapter {
   title: string;
   /** Plain text paragraphs (for TTS) */
   paragraphs: string[];
-  /** Raw HTML paragraphs (for native rendering with drop caps, etc.) */
+  /** Sanitized HTML paragraphs (for native rendering with drop caps, etc.). For image books
+   *  (CBZ) these are bare data URIs. */
   htmlParagraphs: string[];
+  /** Spine href (EPUB) the chapter came from; basis of the stable ChapterId. Optional, additive. */
+  sourceKey?: string;
 }
 
 export interface TocEntry {
@@ -53,18 +59,21 @@ function bufferToDataUri(buffer: Buffer, filePath: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
-/** Sanitize HTML for safe rendering — neutralize links, remove unresolved images */
+/** Sanitize EPUB HTML for rendering in a privileged window (S0-1): allowlist tags/attributes,
+ *  no scripts, event handlers, styles, iframes, `javascript:` or non-image `data:` URLs. Links
+ *  become spans, unresolved images and leftover SVG are removed. See shared/pipeline/sanitize.ts. */
 function sanitizeHtml(raw: string): string {
-  return raw
-    // Convert <a href="...">text</a> to just <span>text</span> (neutralize navigation)
-    .replace(/<a\s[^>]*>/gi, "<span>")
-    .replace(/<\/a>/gi, "</span>")
-    // Keep <img> with data: URIs, remove ones with unresolved internal paths
-    .replace(/<img\s+[^>]*src=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
-    // Remove <image> (SVG) tags with internal paths
-    .replace(/<image\s+[^>]*(?:href|xlink:href)=["'](?!data:)[^"']*["'][^>]*\/?>/gi, "")
-    // Remove <svg> blocks entirely (often used for decorative elements referencing internal files)
-    .replace(/<svg[\s\S]*?<\/svg>/gi, "");
+  return sanitizeAllowlist(raw, "book");
+}
+
+/** Escape plain text into a paragraph (never interpolate raw text into HTML). */
+function textPara(text: string): string {
+  return plainTextToHtml(text);
+}
+
+/** A one-paragraph chapter for errors and notices (text escaped). */
+function noticeChapter(title: string, message: string): BookChapter {
+  return { title, paragraphs: [message], htmlParagraphs: [textPara(message)] };
 }
 
 /** Strip HTML tags and decode common entities */
@@ -257,7 +266,7 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
         const text = stripHtml(part).trim();
         if (!text && !/<img\b/i.test(part)) continue;
         splitPlain.push(text || "[image]");
-        splitHtml.push(`<p>${part}</p>`);
+        splitHtml.push(sanitizeHtml(`<p>${part}</p>`));
       }
       continue;
     }
@@ -270,7 +279,7 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
       if (nlParts.length > 1) {
         for (const part of nlParts) {
           splitPlain.push(part);
-          splitHtml.push(`<p>${part}</p>`);
+          splitHtml.push(textPara(part));
         }
         continue;
       }
@@ -281,7 +290,7 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
       for (const s of sentences) {
         if (buf.length > 0 && buf.length + s.length > 500) {
           splitPlain.push(buf);
-          splitHtml.push(`<p>${buf}</p>`);
+          splitHtml.push(textPara(buf));
           buf = s;
         } else {
           buf += (buf ? " " : "") + s;
@@ -289,14 +298,14 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
       }
       if (buf) {
         splitPlain.push(buf);
-        splitHtml.push(`<p>${buf}</p>`);
+        splitHtml.push(textPara(buf));
       }
       continue;
     }
 
-    // 3. Normal paragraph — keep as-is
+    // 3. Normal paragraph — keep as-is (re-sanitized so each block is balanced on its own)
     splitPlain.push(p);
-    splitHtml.push(h);
+    splitHtml.push(sanitizeHtml(h));
   }
 
   return { plain: splitPlain, html: splitHtml };
@@ -480,14 +489,14 @@ function parseEpubChapters(filePath: string): BookContent {
   const containerEntry = zip.getEntry("META-INF/container.xml");
   if (!containerEntry) {
     console.error(`[book-parser] Missing META-INF/container.xml`);
-    return { chapters: [{ title: "Error", paragraphs: ["Could not read EPUB: missing container.xml"], htmlParagraphs: ["<p>Could not read EPUB: missing container.xml</p>"] }], isImageBook: false, toc: [] };
+    return { chapters: [noticeChapter("Error", "Could not read EPUB: missing container.xml")], isImageBook: false, toc: [] };
   }
 
   const containerXml = containerEntry.getData().toString("utf-8");
   const rootfileMatch = containerXml.match(/full-path=["']([^"']+)["']/);
   if (!rootfileMatch) {
     console.error(`[book-parser] No rootfile full-path in container.xml`);
-    return { chapters: [{ title: "Error", paragraphs: ["Could not find OPF file in EPUB"], htmlParagraphs: ["<p>Could not find OPF file in EPUB</p>"] }], isImageBook: false, toc: [] };
+    return { chapters: [noticeChapter("Error", "Could not find OPF file in EPUB")], isImageBook: false, toc: [] };
   }
 
   const opfPath = rootfileMatch[1];
@@ -496,7 +505,7 @@ function parseEpubChapters(filePath: string): BookContent {
   const opfEntry = getZipEntry(zip, opfPath);
   if (!opfEntry) {
     console.error(`[book-parser] OPF entry not found in ZIP: "${opfPath}"`);
-    return { chapters: [{ title: "Error", paragraphs: ["Could not read OPF file"], htmlParagraphs: ["<p>Could not read OPF file</p>"] }], isImageBook: false, toc: [] };
+    return { chapters: [noticeChapter("Error", "Could not read OPF file")], isImageBook: false, toc: [] };
   }
 
   const opfXml = opfEntry.getData().toString("utf-8");
@@ -529,7 +538,7 @@ function parseEpubChapters(filePath: string): BookContent {
 
   if (spineIds.length === 0) {
     console.error(`[book-parser] No spine items found`);
-    return { chapters: [{ title: "Error", paragraphs: ["No chapters found in EPUB spine"], htmlParagraphs: ["<p>No chapters found in EPUB spine</p>"] }], isImageBook: false, toc: [] };
+    return { chapters: [noticeChapter("Error", "No chapters found in EPUB spine")], isImageBook: false, toc: [] };
   }
 
   // 4. Parse NCX / NAV for chapter names (the "skeleton")
@@ -575,11 +584,11 @@ function parseEpubChapters(filePath: string): BookContent {
     if (isTocItem(entryPath, title)) continue;
     if (isTocItem(decodedHref, extractedTitle)) continue;
 
-    chapters.push({ title, paragraphs: plain, htmlParagraphs: html });
+    chapters.push({ title, paragraphs: plain, htmlParagraphs: html, sourceKey: entryPath });
   }
 
   if (chapters.length === 0) {
-    return { chapters: [{ title: "Empty", paragraphs: ["This EPUB has no readable text content."], htmlParagraphs: ["<p>This EPUB has no readable text content.</p>"] }], isImageBook: false, toc: [] };
+    return { chapters: [noticeChapter("Empty", "This EPUB has no readable text content.")], isImageBook: false, toc: [] };
   }
 
   // Build TOC: try skeleton first, then fall back to chapter titles
@@ -589,7 +598,8 @@ function parseEpubChapters(filePath: string): BookContent {
   const tocChapter: BookChapter = {
     title: "Table of Contents",
     paragraphs: toc.map((e) => e.label),
-    htmlParagraphs: toc.map((e) => `<p>${e.label}</p>`),
+    htmlParagraphs: toc.map((e) => textPara(e.label)),
+    sourceKey: "#toc",
   };
   chapters.unshift(tocChapter);
 
@@ -650,7 +660,7 @@ function parseCbzPages(filePath: string): BookContent {
     .sort((a, b) => a.entryName.localeCompare(b.entryName));
 
   if (entries.length === 0) {
-    return { chapters: [{ title: "Empty", paragraphs: ["No images found in CBZ archive."], htmlParagraphs: ["<p>No images found in CBZ archive.</p>"] }], isImageBook: false, toc: [] };
+    return { chapters: [noticeChapter("Empty", "No images found in CBZ archive.")], isImageBook: false, toc: [] };
   }
 
   // Group all pages into a single "chapter" for simplicity, or one chapter per ~20 pages
@@ -710,16 +720,12 @@ export async function parsePdfContent(filePath: string): Promise<BookContent> {
     return {
       title: `Page ${i + 1}`,
       paragraphs: paragraphs.length > 0 ? paragraphs : [""],
-      htmlParagraphs: paragraphs.length > 0 ? paragraphs.map((p) => `<p>${p}</p>`) : ["<p></p>"],
+      htmlParagraphs: paragraphs.length > 0 ? paragraphs.map((p) => textPara(p)) : ["<p></p>"],
     };
   });
 
   if (chapters.length === 0) {
-    chapters.push({
-      title: "Page 1",
-      paragraphs: ["This PDF contains no extractable text (it may be a scanned image PDF)."],
-      htmlParagraphs: ["<p>This PDF contains no extractable text (it may be a scanned image PDF).</p>"],
-    });
+    chapters.push(noticeChapter("Page 1", "This PDF contains no extractable text (it may be a scanned image PDF)."));
   }
 
   const toc: TocEntry[] = chapters.map((ch, i) => ({ label: ch.title, chapterIndex: i }));
@@ -748,11 +754,7 @@ export function parseBookContent(filePath: string, format: string): BookContent 
       default:
         console.error(`[book-parser] Unsupported format: "${format}"`);
         result = {
-          chapters: [{
-            title: "Unsupported Format",
-            paragraphs: [`The format "${format}" is not yet supported for reading.`],
-            htmlParagraphs: [`<p>The format "${format}" is not yet supported for reading.</p>`],
-          }],
+          chapters: [noticeChapter("Unsupported Format", `The format "${format}" is not yet supported for reading.`)],
           isImageBook: false,
           toc: [],
         };
@@ -767,13 +769,20 @@ export function parseBookContent(filePath: string, format: string): BookContent 
   } catch (err) {
     console.error(`[book-parser] EXCEPTION parsing "${filePath}":`, err);
     return {
-      chapters: [{
-        title: "Error",
-        paragraphs: [`Failed to parse book: ${err instanceof Error ? err.message : String(err)}`],
-        htmlParagraphs: [`<p>Failed to parse book: ${err instanceof Error ? err.message : String(err)}</p>`],
-      }],
+      chapters: [noticeChapter("Error", `Failed to parse book: ${err instanceof Error ? err.message : String(err)}`)],
       isImageBook: false,
       toc: [],
     };
   }
+}
+
+/**
+ * Parse any supported format into `BookContentV2`: the same chapters and paragraphs as the
+ * legacy `BookContent` (kept as `paragraphs` / `htmlParagraphs` mirrors, same indices), plus
+ * stable ChapterIds/ParaIds, paragraph kinds, visible text and `sourceHash`. Used by the main-side
+ * content cache (`electron/book/content-cache.ts`) behind `book:content`.
+ */
+export async function parseBookContentV2(filePath: string, format: string): Promise<BookContentV2> {
+  const legacy = format.toUpperCase() === "PDF" ? await parsePdfContent(filePath) : parseBookContent(filePath, format);
+  return toBookContentV2(filePath, legacy);
 }
