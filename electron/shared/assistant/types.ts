@@ -47,6 +47,8 @@ export interface Citation {
   chapterIndex: number;
   /** e.g. "Ch 12 ¶4". */
   label: string;
+  /** Additive (WS-E Phase 1): the cited paragraph's text (≤ 280 chars) for hover previews. */
+  snippet?: string;
 }
 
 export interface WikiProposal {
@@ -73,3 +75,6 @@ export interface AssistantMessage {
 
 /** Tools available to `assistant.turn`, executed in main and always clamped to the frontier. */
 export type AssistantToolName = "search_book" | "read_passage" | "get_entity" | "list_summaries" | "propose_wiki_edits";
+
+// ── Additive (WS-E Phase 1): task I/O, simulate branches, vocabulary deck ───
+export * from "./tasks";
