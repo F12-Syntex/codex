@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Minus, Square, X, Copy, ZoomIn, ZoomOut } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
+import { WindowControls } from "@/components/window-controls";
 
 interface WindowHeaderProps {
   icon: React.ReactNode;
@@ -20,8 +21,11 @@ const MAX_ZOOM = 150;
 const ZOOM_STEP = 10;
 const DEFAULT_ZOOM = 100;
 
+const zoomButton =
+  "app-no-drag pressable focus-ring inline-flex size-6 items-center justify-center rounded-full text-label-secondary hover:bg-fill-secondary hover:text-label disabled:pointer-events-none disabled:opacity-35";
+
+/** Chrome for secondary windows (wiki, buddy, style dictionary…). */
 export function WindowHeader({ icon, title, subtitle, zoomKey, zoom: controlledZoom, onZoomChange, children }: WindowHeaderProps) {
-  const [maximized, setMaximized] = useState(false);
   const [internalZoom, setInternalZoom] = useState(DEFAULT_ZOOM);
 
   const zoom = controlledZoom ?? internalZoom;
@@ -33,7 +37,6 @@ export function WindowHeader({ icon, title, subtitle, zoomKey, zoom: controlledZ
   }, [zoomKey, onZoomChange]);
 
   useEffect(() => {
-    window.electronAPI?.onMaximized(setMaximized);
     window.electronAPI?.getSetting(`zoom:${zoomKey}`).then((raw) => {
       if (raw) {
         const n = parseInt(raw, 10);
@@ -46,62 +49,50 @@ export function WindowHeader({ icon, title, subtitle, zoomKey, zoom: controlledZ
   }, [zoomKey, onZoomChange]);
 
   return (
-    <header className="flex h-10 shrink-0 items-center border-b border-white/[0.06] bg-[var(--bg-surface)]">
-      {/* Drag region + title */}
-      <div className="app-drag-region flex h-full flex-1 items-center gap-2 pl-3">
-        <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
+    <header className="glass-chrome app-drag-region relative z-20 flex h-11 shrink-0 select-none items-center border-b border-separator">
+      {/* Title */}
+      <div className="flex h-full min-w-0 flex-1 items-center gap-2.5 pl-4">
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm bg-brand/15 text-brand [&_svg]:size-3.5">
           {icon}
-        </div>
-        <span className="text-xs text-white/40">{title}</span>
-        {subtitle && <span className="text-xs text-white/25">{subtitle}</span>}
+        </span>
+        <span className="truncate text-sm font-semibold text-label">{title}</span>
+        {subtitle && (
+          <>
+            <span aria-hidden="true" className="h-3.5 w-px shrink-0 bg-separator-strong" />
+            <span className="truncate text-xs text-label-tertiary">{subtitle}</span>
+          </>
+        )}
         {children}
       </div>
 
-      {/* Zoom controls */}
-      <div className="no-drag flex items-center gap-0.5 pr-1">
+      {/* Zoom */}
+      <div className="app-no-drag mr-2 flex h-7 shrink-0 items-center gap-0.5 rounded-full bg-fill-tertiary px-0.5">
         <button
+          type="button"
           onClick={() => setZoom(zoom - ZOOM_STEP)}
           disabled={zoom <= MIN_ZOOM}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50 disabled:opacity-30 disabled:hover:bg-transparent"
+          className={zoomButton}
           title="Zoom out"
+          aria-label="Zoom out"
         >
-          <ZoomOut className="h-3 w-3" strokeWidth={1.5} />
+          <Minus className="size-3" strokeWidth={2} />
         </button>
-        <span className="w-8 text-center text-xs tabular-nums text-white/25">{zoom}%</span>
+        <span className="w-10 text-center text-2xs font-medium tabular-nums text-label-secondary">
+          {zoom}%
+        </span>
         <button
+          type="button"
           onClick={() => setZoom(zoom + ZOOM_STEP)}
           disabled={zoom >= MAX_ZOOM}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50 disabled:opacity-30 disabled:hover:bg-transparent"
+          className={zoomButton}
           title="Zoom in"
+          aria-label="Zoom in"
         >
-          <ZoomIn className="h-3 w-3" strokeWidth={1.5} />
+          <Plus className="size-3" strokeWidth={2} />
         </button>
       </div>
 
-      {/* Window controls */}
-      <div className="no-drag flex items-center">
-        <button
-          onClick={() => window.electronAPI?.minimize()}
-          className="flex h-10 w-10 items-center justify-center text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/60"
-        >
-          <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={() => window.electronAPI?.maximize()}
-          className="flex h-10 w-10 items-center justify-center text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/60"
-        >
-          {maximized
-            ? <Copy className="h-3 w-3" strokeWidth={1.5} />
-            : <Square className="h-3 w-3" strokeWidth={1.5} />
-          }
-        </button>
-        <button
-          onClick={() => window.electronAPI?.close()}
-          className="flex h-10 w-10 items-center justify-center text-white/30 transition-colors hover:bg-[#e81123]/80 hover:text-white"
-        >
-          <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-      </div>
+      <WindowControls />
     </header>
   );
 }

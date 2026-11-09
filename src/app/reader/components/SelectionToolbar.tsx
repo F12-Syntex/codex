@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Copy, BookOpen, Play, Check, Sparkles, Quote } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { ThemeClasses } from "../lib/types";
 
 interface SelectionToolbarProps {
@@ -19,7 +22,14 @@ interface ToolbarState {
   paraIndex: number;
 }
 
-export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onExplain, onSaveQuote }: SelectionToolbarProps) {
+/**
+ * Floating glass pill above the text selection (macOS-style).
+ * Motion + mousedown-preserves-selection adapted from 21st.dev
+ * "Selection Bubble Menu" (laziekiki, id 26926).
+ * `theme` is kept in the props contract; the pill is app-chrome glass, not paper.
+ */
+export function SelectionToolbar({ containerRef, onPlayFromParagraph, onExplain, onSaveQuote }: SelectionToolbarProps) {
+  const reduce = useReducedMotion();
   const [state, setState] = useState<ToolbarState | null>(null);
   const [copied, setCopied] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -150,7 +160,11 @@ export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onE
   };
 
   // Compute toolbar position, clamped to container bounds
-  const toolbarWidth = 192;
+  const primaryCount = 2 + (onPlayFromParagraph ? 1 : 0);
+  const aiCount = (onExplain ? 1 : 0) + (onSaveQuote ? 1 : 0);
+  // 32px buttons · 2px gaps · 4px padding each side · 9px divider
+  const btnCount = primaryCount + aiCount;
+  const toolbarWidth = btnCount * 32 + (btnCount - 1) * 2 + 8 + (aiCount > 0 ? 9 : 0);
   const containerWidth = containerRef.current?.clientWidth ?? 800;
   const clampedX = Math.max(toolbarWidth / 2 + 4, Math.min(state.x, containerWidth - toolbarWidth / 2 - 4));
 
@@ -165,64 +179,94 @@ export function SelectionToolbar({ theme, containerRef, onPlayFromParagraph, onE
         zIndex: 50,
       }}
     >
-      <div
-        className={`flex items-center gap-0.5 rounded-lg border p-1 backdrop-blur-xl ${theme.border} shadow-lg shadow-black/30`}
-        style={{ backgroundColor: "var(--bg-overlay)" }}
-      >
-        <ToolbarButton
-          icon={copied ? <Check className="h-3.5 w-3.5" strokeWidth={1.5} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />}
-          label={copied ? "Copied" : "Copy"}
-          onClick={handleCopy}
-          theme={theme}
-        />
-        <ToolbarButton
-          icon={<BookOpen className="h-3.5 w-3.5" strokeWidth={1.5} />}
-          label="Define"
-          onClick={handleDefine}
-          theme={theme}
-        />
-        {onPlayFromParagraph && (
+      <TooltipProvider delayDuration={350} skipDelayDuration={0}>
+        <motion.div
+          role="toolbar"
+          aria-label="Selection actions"
+          className="glass flex items-center gap-0.5 rounded-full p-1 text-label"
+          initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.92, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+          transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 520, damping: 30, mass: 0.6 }}
+          style={{ transformOrigin: "50% 100%" }}
+          // Keep the text selection alive while pressing a button (21st "Selection Bubble Menu" pattern)
+          onMouseDown={(e) => e.preventDefault()}
+        >
           <ToolbarButton
-            icon={<Play className="h-3.5 w-3.5" strokeWidth={1.5} />}
-            label="Read"
-            onClick={handlePlay}
-            theme={theme}
+            label={copied ? "Copied" : "Copy"}
+            onClick={handleCopy}
+            active={copied}
+            icon={
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                  key={copied ? "check" : "copy"}
+                  className="inline-flex"
+                  initial={{ opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.6 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                >
+                  {copied
+                    ? <Check className="size-4 text-success" strokeWidth={2.25} />
+                    : <Copy className="size-4" strokeWidth={1.75} />}
+                </motion.span>
+              </AnimatePresence>
+            }
           />
-        )}
-        {onExplain && (
           <ToolbarButton
-            icon={<Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />}
-            label="Explain"
-            onClick={handleExplain}
-            theme={theme}
+            icon={<BookOpen className="size-4" strokeWidth={1.75} />}
+            label="Define"
+            onClick={handleDefine}
           />
-        )}
-        {onSaveQuote && (
-          <ToolbarButton
-            icon={<Quote className="h-3.5 w-3.5" strokeWidth={1.5} />}
-            label="Quote"
-            onClick={handleSaveQuote}
-            theme={theme}
-          />
-        )}
-      </div>
+          {onPlayFromParagraph && (
+            <ToolbarButton
+              icon={<Play className="size-4" strokeWidth={1.75} />}
+              label="Read aloud from here"
+              onClick={handlePlay}
+            />
+          )}
+          {aiCount > 0 && <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-separator-strong" />}
+          {onExplain && (
+            <ToolbarButton
+              icon={<Sparkles className="size-4 text-brand" strokeWidth={1.75} />}
+              label="Explain with AI"
+              onClick={handleExplain}
+            />
+          )}
+          {onSaveQuote && (
+            <ToolbarButton
+              icon={<Quote className="size-4" strokeWidth={1.75} />}
+              label="Save quote"
+              onClick={handleSaveQuote}
+            />
+          )}
+        </motion.div>
+      </TooltipProvider>
     </div>
   );
 }
 
-function ToolbarButton({ icon, label, onClick, theme }: {
+function ToolbarButton({ icon, label, onClick, active }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
-  theme: ThemeClasses;
+  active?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors ${theme.btn}`}
-    >
-      {icon}
-      <span className="text-xs">{label}</span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          onClick={onClick}
+          className={cn(
+            "focus-ring pressable inline-flex size-8 shrink-0 items-center justify-center rounded-full text-label-secondary transition-colors duration-150 hover:bg-fill-tertiary hover:text-label",
+            active && "bg-fill-tertiary text-label",
+          )}
+        >
+          {icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>{label}</TooltipContent>
+    </Tooltip>
   );
 }

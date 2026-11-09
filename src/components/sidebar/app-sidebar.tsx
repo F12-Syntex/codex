@@ -10,8 +10,12 @@ import {
   Gift,
   Download,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { Plus } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Badge } from "@/components/ui/badge";
 import type { LibraryData } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -66,72 +70,58 @@ const bottomNavItems = [
   { id: "settings" as const, label: "Settings", icon: Settings },
 ];
 
-/* ── Nav button ─────────────────────────────────────────── */
+/* ── Nav row ────────────────────────────────────────────
+   macOS source-list row. The selection is a single shared-layout pill that
+   slides between rows (layoutId), adapted from 21st.dev "Animated Sidebar"
+   (unlumen, id 21517) — its spring active indicator, re-cut as a filled
+   macOS selection with an accent-tinted icon.                              */
 
-function NavButton({
+const SELECTION_SPRING = { type: "spring", bounce: 0.18, duration: 0.42 } as const;
+
+function NavRow({
   active,
   icon: Icon,
   label,
   count,
-  compact,
+  selectionId,
   onClick,
 }: {
   active: boolean;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
   count?: number;
-  compact?: boolean;
+  selectionId: string;
   onClick: () => void;
 }) {
+  const reduce = useReducedMotion();
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2.5 transition-colors",
-        compact ? "py-[6px]" : "py-[7px]",
-        active
-          ? "bg-white/[0.07] text-white/80"
-          : "text-white/30 hover:bg-white/[0.04] hover:text-white/50"
+        "group/row focus-ring relative flex h-8 w-full shrink-0 items-center gap-2.5 rounded-md px-2.5 text-left transition-colors duration-150",
+        active ? "text-label" : "text-label-secondary hover:bg-fill-quaternary hover:text-label",
       )}
     >
-      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-      <span className="flex-1 text-left text-sm">{label}</span>
+      {active && (
+        <motion.span
+          layoutId={selectionId}
+          transition={reduce ? { duration: 0 } : SELECTION_SPRING}
+          className="absolute inset-0 rounded-md bg-fill-secondary"
+        />
+      )}
+      <Icon
+        className={cn(
+          "relative size-4 shrink-0 transition-colors duration-150",
+          active ? "text-brand" : "text-label-tertiary group-hover/row:text-label-secondary",
+        )}
+        strokeWidth={1.75}
+      />
+      <span className={cn("relative flex-1 truncate text-sm", active && "font-medium")}>{label}</span>
       {count !== undefined && count > 0 && (
-        <span
-          className={cn(
-            "text-xs tabular-nums",
-            active ? "text-white/25" : "text-white/[0.10]"
-          )}
-        >
-          {count}
-        </span>
+        <span className="relative text-2xs tabular-nums text-label-tertiary">{count}</span>
       )}
-    </button>
-  );
-}
-
-/* ── Section tab ────────────────────────────────────────── */
-
-function SectionTab({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-white/[0.08] text-white/70"
-          : "text-white/20 hover:bg-white/[0.04] hover:text-white/40"
-      )}
-    >
-      {label}
     </button>
   );
 }
@@ -170,10 +160,12 @@ export function AppSidebar({
   activeView,
   onViewChange,
   data,
+  onImport,
   isDev,
 }: AppSidebarProps) {
   const navItems = sectionNavItems[activeSection];
   const updateVersion = useUpdateAvailable();
+  const selectionId = useId();
 
   const totalItems = Object.values(data).reduce(
     (sum, arr) => sum + (arr?.length ?? 0),
@@ -181,77 +173,83 @@ export function AppSidebar({
   );
 
   return (
-    <div className="flex h-full flex-col bg-[var(--bg-surface)]">
-      {/* ── Section tabs ─────────────────────────── */}
-      <div className="px-2 pt-3 pb-1">
-        <div className="flex gap-0.5">
-          {sections.map((s) => (
-            <SectionTab
-              key={s.id}
-              active={activeSection === s.id}
-              label={s.label}
-              onClick={() => onSectionChange(s.id)}
-            />
-          ))}
-        </div>
+    <aside className="glass-thin grain relative flex h-full flex-col overflow-hidden rounded-2xl">
+      {/* ── Section switcher ─────────────────────── */}
+      <div className="shrink-0 px-2 pt-2">
+        <SegmentedControl
+          fill
+          value={activeSection}
+          onValueChange={onSectionChange}
+          options={sections.map((s) => ({ value: s.id, label: s.label }))}
+          aria-label="Library section"
+        />
       </div>
 
       {/* ── Collection nav ───────────────────────── */}
-      <ScrollArea className="min-h-0 flex-1 px-2 pt-2">
-        <div className="flex flex-col gap-px">
+      <ScrollArea className="min-h-0 flex-1">
+        <nav aria-label="Collections" className="flex flex-col gap-0.5 px-2 pb-2">
+          <div className="flex items-center justify-between px-2.5 pt-4 pb-1.5">
+            <h2 className="text-section">Library</h2>
+            <span className="text-2xs tabular-nums text-label-tertiary">
+              {totalItems} item{totalItems !== 1 ? "s" : ""}
+            </span>
+          </div>
           {navItems.map((item) => (
-            <NavButton
+            <NavRow
               key={item.id}
               active={activeView === item.id}
               icon={item.icon}
               label={item.label}
               count={data[item.id]?.length ?? 0}
+              selectionId={selectionId}
               onClick={() => onViewChange(item.id)}
             />
           ))}
-        </div>
+        </nav>
       </ScrollArea>
 
-      {/* ── Bottom pinned nav ────────────────────── */}
-      <div className="flex flex-col gap-px px-2 pb-2">
-        <div className="mx-2.5 mb-1.5 h-px bg-white/[0.04]" />
+      {/* ── Footer ───────────────────────────────── */}
+      <div className="flex shrink-0 flex-col gap-0.5 border-t border-separator p-2">
+        <button
+          type="button"
+          onClick={onImport}
+          className="focus-ring pressable mb-1.5 flex h-8 w-full items-center gap-2.5 rounded-md bg-brand px-2.5 text-sm font-medium text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)] hover:brightness-110"
+        >
+          <Plus className="size-4 shrink-0" strokeWidth={2} />
+          <span className="flex-1 text-left">Import</span>
+        </button>
+
+        {updateVersion && (
+          <button
+            type="button"
+            onClick={() => onViewChange("changelog")}
+            className="focus-ring flex h-8 w-full items-center gap-2.5 rounded-md bg-brand/10 px-2.5 text-brand transition-colors duration-150 hover:bg-brand/15"
+          >
+            <Download className="size-4 shrink-0" strokeWidth={1.75} />
+            <span className="flex-1 truncate text-left text-sm font-medium">Update available</span>
+            <Badge variant="accent">v{updateVersion}</Badge>
+          </button>
+        )}
         {isDev && (
-          <NavButton
+          <NavRow
             active={activeView === "installer"}
             icon={Download}
             label="Installer"
-            compact
+            selectionId={selectionId}
             onClick={() => onViewChange("installer")}
           />
         )}
-        {updateVersion && (
-          <button
-            onClick={() => onViewChange("changelog")}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[6px] text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/10"
-          >
-            <Download className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-            <span className="flex-1 text-left text-sm">Update available</span>
-            <span className="rounded-full bg-[var(--accent-brand)] px-1.5 py-0.5 text-[10px] font-medium text-white/90 tabular-nums">
-              v{updateVersion}
-            </span>
-          </button>
-        )}
         {bottomNavItems.map((item) => (
-          <NavButton
+          <NavRow
             key={item.id}
             active={activeView === item.id}
             icon={item.icon}
             label={item.label}
-            compact
+            selectionId={selectionId}
             onClick={() => onViewChange(item.id)}
           />
         ))}
-        <div className="mt-1 px-2.5">
-          <span className="text-xs text-white/[0.10]">
-            {totalItems} item{totalItems !== 1 ? "s" : ""}
-          </span>
-        </div>
       </div>
-    </div>
+    </aside>
   );
 }

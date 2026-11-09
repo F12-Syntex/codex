@@ -44,7 +44,7 @@ const fontFamilyMap: Record<string, string> = {
   geist: "var(--font-geist-sans)",
   inter: "'Inter', sans-serif",
   mono: "var(--font-geist-mono)",
-  system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  system: "var(--font-ui)",
 };
 
 export default function Home() {

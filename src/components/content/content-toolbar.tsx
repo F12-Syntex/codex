@@ -5,23 +5,26 @@ import {
   List,
   LayoutList,
   Layers,
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
   Plus,
-  SlidersHorizontal,
+  Search,
+  ListFilter,
   Check,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { NumberTicker } from "@/components/ui/number-ticker";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { BookFormat } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
@@ -41,13 +44,15 @@ interface ContentToolbarProps {
   formatFilter: FormatFilter;
   onFormatFilterChange: (f: FormatFilter) => void;
   onImport: () => void;
+  /** Opens global search. Falls back to the registered Ctrl+K shortcut. */
+  onSearch?: () => void;
 }
 
 const viewModes: { id: ViewMode; icon: typeof List; tip: string }[] = [
-  { id: "list", icon: List, tip: "List" },
   { id: "grid", icon: LayoutGrid, tip: "Grid" },
+  { id: "list", icon: List, tip: "List" },
   { id: "detail", icon: LayoutList, tip: "Detail" },
-  { id: "group", icon: Layers, tip: "Group" },
+  { id: "group", icon: Layers, tip: "Group by author" },
 ];
 
 const sortOptions: { field: SortField; label: string }[] = [
@@ -57,6 +62,15 @@ const sortOptions: { field: SortField; label: string }[] = [
 ];
 
 const formatOptions: FormatFilter[] = ["all", "EPUB", "PDF", "CBZ", "CBR", "MOBI"];
+
+/** Compact toolbar pill — 32px tall, rounded-full (conventions §6). */
+const pillClass =
+  "focus-ring pressable inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors duration-150 [&_svg]:size-3.5 [&_svg]:shrink-0";
+
+function openSearch() {
+  // The search overlay listens for the registered Ctrl+K shortcut on window.
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
+}
 
 export function ContentToolbar({
   viewMode,
@@ -69,119 +83,135 @@ export function ContentToolbar({
   formatFilter,
   onFormatFilterChange,
   onImport,
+  onSearch,
 }: ContentToolbarProps) {
+  const activeSort = sortOptions.find((o) => o.field === sortField);
+  const filtered = formatFilter !== "all";
+
   return (
-    <div className="flex items-center gap-3 border-b border-white/[0.04] px-4 py-2">
-      <h1 className="text-sm font-semibold">{viewLabel}</h1>
-      <span className="text-xs text-white/30">{itemCount}</span>
-
-      <div className="flex-1" />
-
-      {/* Sort */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:text-foreground data-[state=open]:bg-white/[0.06] data-[state=open]:text-foreground"
-          >
-            <ArrowUpDown className="h-3.5 w-3.5" />
-            Sort
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="min-w-[140px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]"
-        >
-          {sortOptions.map((opt) => {
-            const active = sortField === opt.field;
-            return (
-              <DropdownMenuItem
-                key={opt.field}
-                onClick={() => {
-                  if (active) {
-                    onSortChange(opt.field, sortDir === "asc" ? "desc" : "asc");
-                  } else {
-                    onSortChange(opt.field, "asc");
-                  }
-                }}
-                className="gap-2 text-sm text-white/60"
-              >
-                <Check className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-0")} />
-                {opt.label}
-                {active && (
-                  <span className="ml-auto text-xs text-white/25">
-                    {sortDir === "asc" ? "A→Z" : "Z→A"}
-                  </span>
-                )}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Filter */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            className={cn(
-              "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition-colors data-[state=open]:bg-white/[0.06] data-[state=open]:text-foreground",
-              formatFilter !== "all"
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            {formatFilter === "all" ? "Filter" : formatFilter}
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="min-w-[140px] rounded-lg border-white/[0.08] bg-[var(--bg-overlay)]"
-        >
-          {formatOptions.map((f) => {
-            const active = formatFilter === f;
-            return (
-              <DropdownMenuItem
-                key={f}
-                onClick={() => onFormatFilterChange(f)}
-                className="gap-2 text-sm text-white/60"
-              >
-                <Check className={cn("h-3 w-3 shrink-0", active ? "opacity-100" : "opacity-0")} />
-                {f === "all" ? "All formats" : f}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* View toggle */}
-      <div className="flex gap-0.5 rounded-lg bg-[var(--bg-inset)] p-0.5">
-        {viewModes.map((v) => (
-          <Tooltip key={v.id} delayDuration={300}>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => onViewModeChange(v.id)}
-                className={cn(
-                  "rounded-lg p-1.5 transition-all",
-                  viewMode === v.id
-                    ? "bg-[var(--bg-elevated)] text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <v.icon className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">{v.tip}</TooltipContent>
-          </Tooltip>
-        ))}
+    <header className="flex shrink-0 items-center gap-6 px-8 pt-6 pb-4">
+      {/* Title + count */}
+      <div className="flex min-w-0 flex-1 items-baseline gap-3">
+        <h1 className="text-large-title truncate text-label">{viewLabel}</h1>
+        <span className="shrink-0 text-sm text-label-tertiary tabular-nums">
+          <NumberTicker value={itemCount} /> {itemCount === 1 ? "item" : "items"}
+        </span>
       </div>
 
-      <button
-        onClick={onImport}
-        className="flex h-7 items-center gap-1.5 rounded-lg bg-white/[0.08] px-3 text-xs font-medium text-foreground transition-colors hover:bg-white/[0.12]"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Import
-      </button>
-    </div>
+      {/* Control cluster */}
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Search pill */}
+        <button
+          type="button"
+          onClick={onSearch ?? openSearch}
+          className={cn(
+            pillClass,
+            "w-44 bg-fill-tertiary pr-1.5 pl-3 text-label-tertiary hover:bg-fill-secondary hover:text-label-secondary",
+          )}
+        >
+          <Search strokeWidth={2} />
+          <span className="flex-1 text-left font-normal">Search</span>
+          <Kbd>Ctrl K</Kbd>
+        </button>
+
+        {/* Format filter */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Filter by format"
+              className={cn(
+                pillClass,
+                filtered
+                  ? "bg-brand/15 text-brand hover:bg-brand/20"
+                  : "text-label-secondary hover:bg-fill-tertiary hover:text-label data-[state=open]:bg-fill-tertiary data-[state=open]:text-label",
+              )}
+            >
+              <ListFilter strokeWidth={2} />
+              {filtered ? formatFilter : "Filter"}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            <DropdownMenuLabel>Format</DropdownMenuLabel>
+            {formatOptions.map((f) => {
+              const active = formatFilter === f;
+              return (
+                <DropdownMenuItem key={f} onClick={() => onFormatFilterChange(f)}>
+                  <Check className={cn("size-4", active ? "opacity-100" : "opacity-0")} strokeWidth={2} />
+                  {f === "all" ? "All formats" : f}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Sort */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Sort"
+              className={cn(
+                pillClass,
+                "text-label-secondary hover:bg-fill-tertiary hover:text-label data-[state=open]:bg-fill-tertiary data-[state=open]:text-label",
+              )}
+            >
+              <ArrowUpDown strokeWidth={2} />
+              {activeSort?.label ?? "Sort"}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-44">
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            {sortOptions.map((opt) => {
+              const active = sortField === opt.field;
+              const DirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
+              return (
+                <DropdownMenuItem
+                  key={opt.field}
+                  onClick={() => {
+                    if (active) {
+                      onSortChange(opt.field, sortDir === "asc" ? "desc" : "asc");
+                    } else {
+                      onSortChange(opt.field, "asc");
+                    }
+                  }}
+                >
+                  <Check className={cn("size-4", active ? "opacity-100" : "opacity-0")} strokeWidth={2} />
+                  <span className="flex-1">{opt.label}</span>
+                  {active && <DirIcon className="size-4 opacity-60" strokeWidth={2} />}
+                </DropdownMenuItem>
+              );
+            })}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onSortChange(sortField, sortDir === "asc" ? "desc" : "asc")}
+            >
+              <ArrowUpDown className="size-4" strokeWidth={2} />
+              {sortDir === "asc" ? "Ascending (A→Z)" : "Descending (Z→A)"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div aria-hidden className="mx-1 h-5 w-px bg-separator" />
+
+        {/* View mode */}
+        <SegmentedControl
+          aria-label="View mode"
+          value={viewMode}
+          onValueChange={onViewModeChange}
+          options={viewModes.map((v) => ({
+            value: v.id,
+            title: v.tip,
+            icon: <v.icon strokeWidth={2} />,
+          }))}
+        />
+
+        {/* Primary action */}
+        <Button size="sm" onClick={onImport} className="ml-1 rounded-md">
+          <Plus strokeWidth={2.25} />
+          Import
+        </Button>
+      </div>
+    </header>
   );
 }

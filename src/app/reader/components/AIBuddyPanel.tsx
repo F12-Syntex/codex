@@ -5,6 +5,8 @@ import { X, Sparkles, ExternalLink } from "lucide-react";
 import type { ThemeClasses } from "../lib/types";
 import type { BuddyMessage, ChapterReader } from "@/lib/ai-buddy";
 import { AIChat } from "@/components/ai-chat";
+import { motion, useReducedMotion } from "motion/react";
+import { Badge } from "@/components/ui/badge";
 
 interface AIBuddyPanelProps {
   theme: ThemeClasses;
@@ -21,9 +23,10 @@ interface AIBuddyPanelProps {
 }
 
 export function AIBuddyPanel({
-  theme, filePath, bookTitle, currentChapter, totalChapters,
+  filePath, bookTitle, currentChapter, totalChapters,
   wikiEntryCount, readChapter, onEntityClick, onClose, onDetach, onWikiUpdated,
 }: AIBuddyPanelProps) {
+  const reduce = useReducedMotion();
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
 
   // Load persisted messages on mount
@@ -42,34 +45,51 @@ export function AIBuddyPanel({
   }, [filePath]);
 
   return (
-    <div
-      className="absolute bottom-full right-0 z-50 mb-3 flex flex-col overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/40 backdrop-blur-xl"
+    <motion.div
+      className="glass absolute bottom-full right-0 z-50 mb-3 flex flex-col overflow-hidden rounded-2xl text-label"
       style={{
         width: "min(540px, calc(100vw - 1.5rem))",
         height: "min(640px, calc(100vh - 140px))",
+        transformOrigin: "100% 100%",
       }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.94, filter: "blur(6px)" }}
+      animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+      transition={reduce ? { duration: 0.15 } : { type: "spring", stiffness: 420, damping: 32, mass: 0.85 }}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          <span className="text-xs font-medium text-white/50">Buddy</span>
+      <div className="flex h-13 shrink-0 items-center gap-2.5 border-b border-separator pr-3 pl-4">
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
+          <Sparkles className="size-3.5" strokeWidth={2} />
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="font-display text-base font-semibold text-label">Buddy</span>
           {wikiEntryCount > 0 && (
-            <span className="text-xs text-white/15">&middot; {wikiEntryCount} wiki entries</span>
+            <Badge variant="outline" className="tabular-nums">
+              {wikiEntryCount} wiki {wikiEntryCount === 1 ? "entry" : "entries"}
+            </Badge>
           )}
         </div>
-        <div className="flex items-center gap-0.5">
-          <button onClick={onDetach} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40" title="Open in separate window">
-            <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onDetach}
+            title="Open in separate window"
+            aria-label="Open in separate window"
+            className="focus-ring pressable inline-flex size-7 items-center justify-center rounded-full text-label-tertiary transition-colors hover:bg-fill-tertiary hover:text-label"
+          >
+            <ExternalLink className="size-3.5" strokeWidth={1.75} />
           </button>
-          <button onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 transition-colors hover:bg-white/[0.04] hover:text-white/40">
-            <X className="h-3 w-3" strokeWidth={1.5} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="focus-ring pressable inline-flex size-7 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
+          >
+            <X className="size-3.5" strokeWidth={2.25} />
           </button>
         </div>
       </div>
-
-      <div className="h-px bg-white/[0.04]" />
 
       <AIChat
         filePath={filePath}
@@ -85,6 +105,6 @@ export function AIBuddyPanel({
         variant="panel"
         maxWidth="500px"
       />
-    </div>
+    </motion.div>
   );
 }

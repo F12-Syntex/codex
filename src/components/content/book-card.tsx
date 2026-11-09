@@ -2,8 +2,12 @@
 
 import { useState, useRef, useCallback, memo } from "react";
 import { Check } from "lucide-react";
+import { Tilt } from "@/components/ui/tilt";
+import { Badge } from "@/components/ui/badge";
+import { ProgressRing } from "@/components/ui/progress-ring";
 import type { BookFormat } from "@/lib/mock-data";
 import type { CoverStyle } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 
 interface BookCardProps {
   title: string;
@@ -16,6 +20,21 @@ interface BookCardProps {
   selected?: boolean;
   progress?: number; // 0-1
 }
+
+/** Cover radius per theme: rounded → cards radius, sharp → tiny chip radius. */
+export function coverRadius(coverStyle: CoverStyle) {
+  return coverStyle === "rounded" ? "rounded-lg" : "rounded-xs";
+}
+
+/**
+ * Spine shading on the left edge of a cover — the binding crease of a real
+ * book. Adapted from 21st.dev "Book" (designali-in, id 1758) `book-bind-bg`.
+ * Literal colours are allowed: it's an overlay drawn on top of cover art.
+ */
+export const SPINE_STYLE: React.CSSProperties = {
+  background:
+    "linear-gradient(90deg, rgb(0 0 0 / 0.22) 0%, rgb(255 255 255 / 0.10) 2.5%, rgb(0 0 0 / 0.10) 5%, rgb(255 255 255 / 0.04) 8%, transparent 14%)",
+};
 
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
 function extractDominantColor(img: HTMLImageElement): string {
@@ -55,7 +74,7 @@ function extractDominantColor(img: HTMLImageElement): string {
 }
 
 export const BookCard = memo(function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress }: BookCardProps) {
-  const radius = coverStyle === "rounded" ? "rounded-lg" : "rounded-none";
+  const radius = coverRadius(coverStyle);
   const [glowColor, setGlowColor] = useState<string>(gradient);
   const extracted = useRef(false);
 
@@ -70,61 +89,77 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
     }
   }, []);
 
+  const hasProgress = progress != null && progress > 0;
+  const pct = hasProgress ? Math.min(Math.round(progress * 100), 100) : 0;
+  const showMeta = showFormatBadge || hasProgress;
+
   return (
-    <div className="group flex flex-col gap-2.5">
-      <div className="relative">
+    <div className="group/card flex flex-col">
+      {/* Cover — sits directly on the canvas, lifts and tilts toward the pointer */}
+      <div className="relative transition-transform duration-300 ease-apple group-hover/card:-translate-y-1">
+        {/* Ambient glow in the cover's own colour */}
         <div
-          className={`absolute inset-x-2 -bottom-2 h-6 ${radius} opacity-0 blur-xl transition-opacity duration-300 group-hover:opacity-60`}
+          aria-hidden
+          className="pointer-events-none absolute inset-x-3 -bottom-1 h-10 rounded-full opacity-0 blur-2xl transition-opacity duration-300 ease-apple group-hover/card:opacity-50"
           style={{ background: glowColor }}
         />
 
         <div
-          className={`relative aspect-[2/3] overflow-hidden border-0 ${radius} transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:scale-[1.02] ${selected ? "ring-2 ring-[var(--accent-brand)] ring-offset-1 ring-offset-transparent" : "outline-none"}`}
+          className={cn(
+            "relative transition-shadow duration-200",
+            radius,
+            selected && "ring-2 ring-brand ring-offset-2 ring-offset-canvas",
+          )}
         >
-          {cover ? (
-            <img
-              src={cover}
-              alt={title}
-              className="absolute inset-0 h-full w-full object-cover"
-              style={{ imageRendering: "auto" }}
-              loading="lazy"
-              onLoad={handleImageLoad}
-            />
-          ) : (
-            <div className="absolute inset-0" style={{ background: gradient }} />
-          )}
+          <Tilt maxTilt={5} glare className={radius}>
+            <div className={cn("relative aspect-[2/3] overflow-hidden bg-fill-tertiary shadow-cover", radius)}>
+              {cover ? (
+                <img
+                  src={cover}
+                  alt={title}
+                  draggable={false}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  style={{ imageRendering: "auto" }}
+                  loading="lazy"
+                  onLoad={handleImageLoad}
+                />
+              ) : (
+                <div className="absolute inset-0" style={{ background: gradient }} />
+              )}
 
-          {showFormatBadge && !selected && (
-            <div className="absolute bottom-1.5 right-1.5 rounded-lg bg-black/60 px-1.5 py-[3px] text-xs font-semibold uppercase leading-none tracking-wide text-white/80 backdrop-blur-md">
-              {format}
+              {/* Spine crease + hairline edge */}
+              <div aria-hidden className="pointer-events-none absolute inset-0" style={SPINE_STYLE} />
+              <div aria-hidden className={cn("pointer-events-none absolute inset-0 hairline", radius)} />
+
+              {/* Selection tint */}
+              {selected && <div aria-hidden className="absolute inset-0 bg-brand/15" />}
             </div>
-          )}
+          </Tilt>
 
-          {/* Selection indicator */}
+          {/* Selection check */}
           {selected && (
-            <>
-              <div className="absolute inset-0 bg-[var(--accent-brand)] opacity-20" />
-              <div className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-brand)] shadow-sm">
-                <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
-              </div>
-            </>
-          )}
-
-          {/* Reading progress bar */}
-          {progress != null && progress > 0 && (
-            <div className="absolute inset-x-0 bottom-0 h-[3px] bg-black/40">
-              <div
-                className="h-full bg-[var(--accent-brand)] transition-all duration-500"
-                style={{ width: `${Math.min(progress * 100, 100)}%` }}
-              />
+            <div className="absolute -top-1.5 -right-1.5 z-20 flex size-5 animate-pop-in items-center justify-center rounded-full bg-brand text-brand-fg shadow-sm ring-2 ring-canvas">
+              <Check className="size-3" strokeWidth={3} />
             </div>
           )}
         </div>
       </div>
 
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium leading-tight">{title}</p>
-        <p className="mt-0.5 truncate text-xs text-white/40">{author}</p>
+      {/* Caption — aligned to the cover's left edge */}
+      <div className="mt-3 min-w-0">
+        <p className="text-headline line-clamp-2 text-label" title={title}>{title}</p>
+        <p className="mt-0.5 truncate text-xs text-label-secondary" title={author}>{author}</p>
+        {showMeta && (
+          <div className="mt-1.5 flex h-5 items-center gap-1.5">
+            {showFormatBadge && <Badge>{format}</Badge>}
+            {hasProgress && (
+              <span className="ml-auto inline-flex items-center gap-1 text-2xs text-label-tertiary tabular-nums">
+                <ProgressRing value={progress} size={14} stroke={2} aria-label={`${pct}% read`} />
+                {pct}%
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

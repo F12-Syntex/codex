@@ -1,6 +1,10 @@
-/* ── CommentInput — Reusable inline comment input with send button ── */
+/* ── CommentInput — Reusable inline comment input with send button ──
+ * Compact composer (adapted from 21st.dev "Prompt Input", tinkerers-labs id 31882):
+ * inset field + round accent send button that wakes up when there is text.
+ * Lives inside a glass-thick popover, so it uses fills, not glass. */
 
-import { Send } from "lucide-react";
+import { ArrowUp } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CommentInputProps {
   value: string;
@@ -13,10 +17,10 @@ export function CommentInput({ value, onChange, onSubmit, onCancel }: CommentInp
   const hasText = value.trim().length > 0;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+    <div className="flex h-8 w-full min-w-0 flex-1 items-center gap-1 rounded-md bg-fill-tertiary pl-2.5 pr-1 transition-shadow duration-150 focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent-brand)_45%,transparent)]">
       <input
         type="text"
-        placeholder="Add your thoughts..."
+        placeholder="Add your thoughts…"
         value={value}
         autoFocus
         onChange={(e) => onChange(e.target.value)}
@@ -25,22 +29,22 @@ export function CommentInput({ value, onChange, onSubmit, onCancel }: CommentInp
           if (e.key === "Enter" && hasText) onSubmit();
           if (e.key === "Escape") onCancel();
         }}
-        style={{
-          flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: "6px", padding: "5px 8px", fontSize: "11px", outline: "none",
-          color: "rgba(255,255,255,0.8)",
-        }}
+        className="h-full min-w-0 flex-1 bg-transparent text-xs text-label outline-none placeholder:text-label-tertiary"
       />
       <button
+        type="button"
+        aria-label="Add comment"
         onClick={() => { if (hasText) onSubmit(); }}
-        style={{
-          flexShrink: 0, width: "24px", height: "24px", borderRadius: "6px",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: hasText ? "var(--accent-brand)" : "rgba(255,255,255,0.04)",
-          border: "none", cursor: hasText ? "pointer" : "default",
-          color: hasText ? "white" : "rgba(255,255,255,0.3)",
-        }}
-      ><Send style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
+        disabled={!hasText}
+        className={cn(
+          "focus-ring pressable inline-flex size-6 shrink-0 items-center justify-center rounded-full transition-colors duration-150",
+          hasText
+            ? "bg-brand text-brand-fg shadow-xs"
+            : "cursor-default bg-fill-tertiary text-label-quaternary",
+        )}
+      >
+        <ArrowUp className="size-3.5" strokeWidth={2.25} />
+      </button>
     </div>
   );
 }
