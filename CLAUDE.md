@@ -35,7 +35,7 @@ On every commit, increment the version in `package.json` following SemVer:
 - **minor** (0.1.0 → 0.2.0): new features, new components, significant UI additions
 - **major** (0.1.0 → 1.0.0): breaking changes, full rewrites, major architectural shifts
 
-Also update the version badge in `src/components/title-bar.tsx` to match.
+Also update `APP_VERSION` in `src/lib/version.ts` (drives the version badge) to match.
 
 ## Stack
 
