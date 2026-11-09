@@ -14,6 +14,8 @@
  * No `electron` import: `fetch` and the key getter are injected (testable under `node --test`).
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- provider JSON is untyped; every field is checked at use */
+
 import type { ChatMessage, ModelInfo, TaskId, ToolCall, ToolSpec, Usage } from "../shared/ai/types";
 import { AIError, isAbortError } from "./errors";
 

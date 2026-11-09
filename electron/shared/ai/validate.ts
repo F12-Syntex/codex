@@ -37,6 +37,7 @@ export interface Schema<T> {
 
 export type Infer<S> = S extends Schema<infer T> ? T : never;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous member schemas
 type Shape = Record<string, Schema<any>>;
 type OptionalKeys<S extends Shape> = { [K in keyof S]: S[K]["isOptional"] extends true ? K : never }[keyof S];
 type RequiredKeys<S extends Shape> = Exclude<keyof S, OptionalKeys<S>>;
@@ -273,6 +274,7 @@ export const s = {
   },
 
   /** First member that parses wins. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous member schemas
   union<T extends Schema<any>[]>(...members: T): Schema<Infer<T[number]>> {
     return make<Infer<T[number]>>(
       "union",

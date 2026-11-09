@@ -40,7 +40,9 @@ function onPrefs(listener: PrefsListener): () => void {
 /** Coalesce bursts of events into one refresh. */
 function useCoalesced(fn: () => void, delayMs = 120): () => void {
   const fnRef = useRef(fn);
-  fnRef.current = fn;
+  useEffect(() => {
+    fnRef.current = fn;
+  });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
@@ -52,6 +54,19 @@ function useCoalesced(fn: () => void, delayMs = 120): () => void {
       fnRef.current();
     }, delayMs);
   }, [delayMs]);
+}
+
+/** State tagged with the key it belongs to: switching key reads as `null` with no reset effect. */
+function useKeyedState<T>(key: string | null): [T | null, (v: T | null | ((prev: T | null) => T | null)) => void] {
+  const [state, setState] = useState<{ key: string | null; value: T | null }>({ key, value: null });
+  const value = state.key === key ? state.value : null;
+  const set = useCallback((v: T | null | ((prev: T | null) => T | null)) => {
+    setState((cur) => {
+      const prev = cur.key === key ? cur.value : null;
+      return { key, value: typeof v === "function" ? (v as (p: T | null) => T | null)(prev) : v };
+    });
+  }, [key]);
+  return [value, set];
 }
 
 function errorMessage(err: unknown): string {
@@ -68,11 +83,10 @@ export interface BookAIPrefsState {
 }
 
 export function useBookAIPrefs(filePath: string | null | undefined): BookAIPrefsState {
-  const [prefs, setState] = useState<BookAIPrefs | null>(null);
+  const [prefs, setState] = useKeyedState<BookAIPrefs>(filePath ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setState(null);
     if (!filePath || !hasRpc()) return;
     let alive = true;
     chaptersRpc.getPrefs(filePath).then(
@@ -86,7 +100,7 @@ export function useBookAIPrefs(filePath: string | null | undefined): BookAIPrefs
       alive = false;
       off();
     };
-  }, [filePath]);
+  }, [filePath, setState]);
 
   const setPrefs = useCallback(async (patch: Partial<BookAIPrefs>) => {
     if (!filePath) return null;
@@ -102,7 +116,7 @@ export function useBookAIPrefs(filePath: string | null | undefined): BookAIPrefs
       chaptersRpc.getPrefs(filePath).then((p) => publishPrefs(filePath, p), () => {});
       return null;
     }
-  }, [filePath]);
+  }, [filePath, setState]);
 
   return { prefs, setPrefs, error };
 }
@@ -140,9 +154,11 @@ export function useChapterArtifacts(
   opts: UseChapterArtifactsOptions = {},
 ): ChapterArtifactsState {
   const { ensure = false, totalChapters } = opts;
-  const [artifacts, setArtifacts] = useState<ChapterArtifacts | null>(null);
-  const [status, setStatus] = useState<ChapterStatus | null>(null);
-  const [loading, setLoading] = useState(false);
+  const chapterKey = filePath ? `${filePath}\u0000${chapterIndex}` : null;
+  const [artifacts, setArtifacts] = useKeyedState<ChapterArtifacts>(chapterKey);
+  const [status, setStatus] = useKeyedState<ChapterStatus>(chapterKey);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = !!chapterKey && loadedKey !== chapterKey;
   const [error, setError] = useState<string | null>(null);
   const { prefs } = useBookAIPrefs(filePath);
   const seq = useRef(0);
@@ -162,18 +178,14 @@ export function useChapterArtifacts(
     } catch (err) {
       if (mine === seq.current) setError(errorMessage(err));
     } finally {
-      if (mine === seq.current) setLoading(false);
+      if (mine === seq.current) setLoadedKey(`${filePath}\u0000${chapterIndex}`);
     }
-  }, [filePath, chapterIndex]);
+  }, [filePath, chapterIndex, setArtifacts, setStatus]);
 
-  // Initial load and chapter change.
+  // Initial load and chapter change (the keyed state already reads null for the new chapter).
   useEffect(() => {
-    setArtifacts(null);
-    setStatus(null);
-    if (!filePath) return;
-    setLoading(true);
     void load("both");
-  }, [filePath, chapterIndex, load]);
+  }, [load]);
 
   // Navigation ensure (+ prefetch), re-run when prefs change. Deduped in main (one job per kind).
   const prefsKey = prefs ? JSON.stringify(prefs) : "";
@@ -192,7 +204,7 @@ export function useChapterArtifacts(
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ensure, filePath, chapterIndex, prefsKey, totalChapters]);
+  }, [ensure, filePath, chapterIndex, prefsKey, totalChapters, setStatus]);
 
   // Prefs changed (e.g. formatting toggled): the set of served layers changed.
   useEffect(() => {
@@ -225,7 +237,7 @@ export function useChapterArtifacts(
     } catch (err) {
       setError(errorMessage(err));
     }
-  }, [filePath, chapterIndex]);
+  }, [filePath, chapterIndex, setStatus]);
 
   const clear = useCallback(async (kind: ChapterKind) => {
     if (!filePath) return;
@@ -250,7 +262,7 @@ export interface BookAIStatusState {
 }
 
 export function useBookAIStatus(filePath: string | null | undefined): BookAIStatusState {
-  const [status, setStatus] = useState<BookAIStatus | null>(null);
+  const [status, setStatus] = useKeyedState<BookAIStatus>(filePath ?? null);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
 
@@ -266,14 +278,19 @@ export function useBookAIStatus(filePath: string | null | undefined): BookAIStat
     } catch (err) {
       if (mine === seq.current) setError(errorMessage(err));
     }
-  }, [filePath]);
+  }, [filePath, setStatus]);
 
   const refresh = useCoalesced(() => void load(), 400);
 
   useEffect(() => {
-    setStatus(null);
-    void load();
     if (!filePath) return;
+    if (hasRpc()) {
+      const mine = ++seq.current;
+      chaptersRpc.status(filePath).then(
+        (st) => mine === seq.current && setStatus(st),
+        (err) => mine === seq.current && setError(errorMessage(err)),
+      );
+    }
     const offs = [
       onAIEvent("artifact", (e) => e.filePath === filePath && refresh()),
       onAIEvent("job", (e) => e.scope?.filePath === filePath && (e.state === "running" || e.state === "done" || e.state === "error" || e.state === "cancelled") && refresh()),
@@ -281,7 +298,7 @@ export function useBookAIStatus(filePath: string | null | undefined): BookAIStat
       onPrefs((fp) => fp === filePath && refresh()),
     ];
     return () => offs.forEach((off) => off());
-  }, [filePath, load, refresh]);
+  }, [filePath, setStatus, refresh]);
 
   return { status, error, refresh };
 }
@@ -301,12 +318,11 @@ export interface BulkRunState {
 }
 
 export function useBulkRun(filePath: string | null | undefined): BulkRunState {
-  const [status, setStatus] = useState<BulkStatus | null>(null);
+  const [status, setStatus] = useKeyedState<BulkStatus>(filePath ?? null);
   const [dismissedRun, setDismissedRun] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setStatus(null);
     if (!filePath || !hasRpc()) return;
     let alive = true;
     bulkRpc.status(filePath).then((s) => alive && setStatus(s), () => {});
@@ -317,7 +333,7 @@ export function useBulkRun(filePath: string | null | undefined): BulkRunState {
       alive = false;
       off();
     };
-  }, [filePath]);
+  }, [filePath, setStatus]);
 
   const start = useCallback(async (req: Omit<BulkRequest, "filePath">) => {
     if (!filePath) return null;
@@ -331,7 +347,7 @@ export function useBulkRun(filePath: string | null | undefined): BulkRunState {
       setError(errorMessage(err));
       return null;
     }
-  }, [filePath]);
+  }, [filePath, setStatus]);
 
   const cancel = useCallback(async () => {
     if (!status || status.state !== "running") return;

@@ -383,6 +383,7 @@ export interface FakeSchedulerOptions {
   registry?: TaskRegistry;
   settings?: Partial<AISettings>;
   /** Auto-complete jobs of these tasks (async, after submit returns). Throw an AIError to fail. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- lets tests type the input param freely
   handlers?: Partial<Record<TaskId, (input: any, spec: JobSpec) => unknown | Promise<unknown>>>;
   /** Jobs start "running" right away (default true); false keeps them "queued" until `start()`. */
   autoStart?: boolean;

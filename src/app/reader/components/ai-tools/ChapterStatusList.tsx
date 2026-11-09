@@ -146,11 +146,9 @@ function StatusRow({
       </span>
       {actionable && (
         <div className="hidden shrink-0 items-center gap-1 group-hover:flex group-focus-within:flex">
-          {state !== "skipped" && (
-            <RowButton onClick={onRetry} label={`Redo ${meta.short.toLowerCase()} for this chapter`}>
-              <RotateCw className="size-3" strokeWidth={2} />
-            </RowButton>
-          )}
+          <RowButton onClick={onRetry} label={`Redo ${meta.short.toLowerCase()} for this chapter`}>
+            <RotateCw className="size-3" strokeWidth={2} />
+          </RowButton>
           {hasData && (
             <RowButton onClick={clear} label={confirm ? "Click again to clear" : `Clear ${meta.short.toLowerCase()} for this chapter`} danger={confirm}>
               {confirm ? <span className="px-1 text-2xs font-medium">Clear?</span> : <Trash2 className="size-3" strokeWidth={2} />}

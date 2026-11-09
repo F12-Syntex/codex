@@ -10,8 +10,8 @@ import type { AreaContext, InvokeEventLike, RegistryDeps, RpcHandler } from "./c
 import { registerAI } from "../ai/ipc";
 import { registerChapters } from "../ai/chapters-ipc";
 import { registerBook } from "../book/ipc";
-import { registerKnowledge } from "../knowledge/ipc";
-import { registerAssistant } from "../assistant/ipc";
+import { getKnowledgeService, registerKnowledge } from "../knowledge/ipc";
+import { configureAssistant, registerAssistant } from "../assistant/ipc";
 
 export type { AreaContext, RegistryDeps } from "./context";
 
@@ -55,6 +55,9 @@ export function registerAll(deps: RegistryDeps): AreaContext {
   registerBook(ctx);
   registerKnowledge(ctx);
   registerAssistant(ctx);
+  // Assistant wiki-edit proposals apply through the knowledge service (transactional, undoable).
+  const knowledge = getKnowledgeService();
+  if (knowledge) configureAssistant({ applyEdits: (filePath, edits) => knowledge.applyEdits(filePath, edits) });
   registered = ctx;
   return ctx;
 }

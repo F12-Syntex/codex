@@ -57,6 +57,7 @@ export interface KeyContext {
   scope?: JobScope;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the registry holds heterogeneous tasks
 export interface TaskDefinition<I = any, O = any> {
   id: TaskId;
   /** Bump → old cache entries (and artifacts recording `taskVersion`) become stale. */

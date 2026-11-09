@@ -142,18 +142,14 @@ let modelsCache: { at: number; models: ModelInfo[] } | null = null;
 /** OpenRouter catalog via main (`ai:models`, cached 24 h there; 10 min here). */
 export function useAIModels(enabled = true): { models: ModelInfo[]; loading: boolean; error: string | null; refresh(): void } {
   const [models, setModels] = useState<ModelInfo[]>(modelsCache?.models ?? []);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  // Which request generation has settled; loading = the current one hasn't.
+  const [settled, setSettled] = useState(() => (modelsCache && Date.now() - modelsCache.at < 10 * 60_000 ? 0 : -1));
 
   useEffect(() => {
-    if (!enabled || !hasRpc()) return;
-    if (nonce === 0 && modelsCache && Date.now() - modelsCache.at < 10 * 60_000) {
-      setModels(modelsCache.models);
-      return;
-    }
+    if (!enabled || !hasRpc() || settled === nonce) return;
     let live = true;
-    setLoading(true);
     ai.models()
       .then((list) => {
         modelsCache = { at: Date.now(), models: list };
@@ -163,12 +159,13 @@ export function useAIModels(enabled = true): { models: ModelInfo[]; loading: boo
         }
       })
       .catch((err) => live && setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => live && setLoading(false));
+      .finally(() => live && setSettled(nonce));
     return () => {
       live = false;
     };
-  }, [enabled, nonce]);
+  }, [enabled, nonce, settled]);
 
+  const loading = enabled && typeof window !== "undefined" && hasRpc() && settled !== nonce;
   return { models, loading, error, refresh: () => setNonce((n) => n + 1) };
 }
 
