@@ -219,9 +219,9 @@ export function markdownToPlainText(src: string): string {
   return parseMarkdown(src)
     .map((b) => {
       switch (b.t) {
-        case "p": case "h": return inlineText(b.c);
-        case "list": return b.items.map((it) => `• ${inlineText(it)}`).join("\n");
-        case "quote": return b.c.map((x) => (x.t === "p" || x.t === "h" ? inlineText(x.c) : "")).join("\n");
+        case "p": case "h": return inlineText(b.c).trim();
+        case "list": return b.items.map((it) => `• ${inlineText(it).trim()}`).join("\n");
+        case "quote": return b.c.map((x) => (x.t === "p" || x.t === "h" ? inlineText(x.c).trim() : "")).join("\n");
         case "code": return b.v;
       }
     })

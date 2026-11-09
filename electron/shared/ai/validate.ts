@@ -97,9 +97,10 @@ export const s = {
     return make<number>(
       "number",
       (v, path) => {
-        let n = v;
-        if (typeof n === "string" && opts.coerce && n.trim() !== "" && Number.isFinite(Number(n))) n = Number(n);
-        if (typeof n !== "number" || !Number.isFinite(n)) return fail(path, `expected number, got ${typeName(v)}`);
+        let raw = v;
+        if (typeof raw === "string" && opts.coerce && raw.trim() !== "" && Number.isFinite(Number(raw))) raw = Number(raw);
+        if (typeof raw !== "number" || !Number.isFinite(raw)) return fail(path, `expected number, got ${typeName(v)}`);
+        let n: number = raw;
         if (opts.int && !Number.isInteger(n)) {
           if (opts.coerce) n = Math.round(n);
           else return fail(path, "expected integer");

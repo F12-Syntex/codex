@@ -121,6 +121,8 @@ interface BulkRun {
   cancelled: boolean;
   durations: number[];
   remaining: number;
+  /** Settles when every worker has returned. */
+  finished: Promise<void>;
 }
 
 const TASK_OF: Record<Exclude<ChapterKind, "knowledge">, TaskId> = {
@@ -382,7 +384,9 @@ export class ChapterOrchestrator {
 
     if (req.priority <= Priority.Visible && !req.group) this.cancelDistantPrefetch(req.filePath, req.chapterIndex);
 
-    const requested = (req.kinds ?? enabledKinds(prefs)).filter((k) => isEnabled(prefs, k));
+    const asked = req.kinds ?? enabledKinds(prefs);
+    // Dependency order (rewrite before format), whatever order the caller used.
+    const requested = CHAPTER_KINDS.filter((k) => asked.includes(k) && isEnabled(prefs, k));
     const want = new Set<ChapterKind>(requested);
     for (const kind of requested) this.ensureKind(req, ch, kind, prefs, idx);
     // A rewrite that is (re)running invalidates the format layer built on it: re-queue format too.
@@ -404,7 +408,8 @@ export class ChapterOrchestrator {
       // Format is ready only relative to the current rewrite; a rewrite being re-run makes it stale.
       if (!(kind === "format" && this.inflight.has(this.key(req.filePath, ch.id, "rewrite")))) return null;
     }
-    if (state === "error" && !req.refresh && req.priority >= Priority.Prefetch) return null;
+    // Prefetch never re-hammers a chapter that just failed; navigation and bulk do retry.
+    if (state === "error" && !req.refresh && req.priority === Priority.Prefetch) return null;
     return this.start(req.filePath, ch, kind, prefs, req.priority, req.group, !!req.refresh);
   }
 
@@ -455,7 +460,7 @@ export class ChapterOrchestrator {
   private start(filePath: string, ch: SourceChapter, kind: ChapterKind, prefs: BookAIPrefs, priority: Priority, group: string | undefined, refresh: boolean): Entry {
     const e = this.newEntry(filePath, ch, kind, priority, group, refresh);
     switch (kind) {
-      case "title": return this.launch(e, () => this.runTitles(filePath, [{ ch, entry: e }]));
+      case "title": return this.launch(e, async () => (await this.runTitleBatch(filePath, [{ ch, entry: e }])).get(e) ?? "error");
       case "rewrite": return this.launch(e, () => this.runRewrite(e, ch, prefs.rewrite as RewriteMode));
       case "format": return this.launch(e, () => this.runFormat(e, ch));
       case "comments": return this.launch(e, () => this.runComments(e, ch));
@@ -499,8 +504,6 @@ export class ChapterOrchestrator {
       cache: live.some((e) => e.refresh) ? "refresh" : "use",
     });
     for (const e of live) this.mapJob(ticket.jobId, e);
-    // A job deduped onto a higher-priority one, or an entry bumped meanwhile: keep them in line.
-    if (live.some((e) => e.aborted)) this.deps.scheduler.cancel({ jobId: ticket.jobId });
     return this.deps.scheduler.result<O>(ticket.jobId);
   }
 
@@ -540,7 +543,9 @@ export class ChapterOrchestrator {
     return this.opts.bookTitle(filePath);
   }
 
-  private async runTitles(filePath: string, items: { ch: SourceChapter; entry: Entry }[]): Promise<Outcome> {
+  /** One job for a batch of chapters; per-entry outcomes. */
+  private async runTitleBatch(filePath: string, items: { ch: SourceChapter; entry: Entry }[]): Promise<Map<Entry, Outcome>> {
+    const res = new Map<Entry, Outcome>();
     const input: TitleInput = {
       book: this.bookTitle(filePath),
       chapters: items.map(({ ch }) => ({
@@ -552,14 +557,16 @@ export class ChapterOrchestrator {
     const entries = items.map((i) => i.entry);
     const r = await this.submit<TitleInput, TitleOutput>(entries, "chapter.title", input, items[0].ch);
     const out = this.settle(entries, r);
-    if (typeof out === "string") return out;
-    let missing = 0;
+    if (typeof out === "string") {
+      for (const e of entries) res.set(e, e.aborted ? "cancelled" : out);
+      return res;
+    }
     for (const { ch, entry } of items) {
-      if (entry.aborted) continue;
+      if (entry.aborted) { res.set(entry, "cancelled"); continue; }
       const raw = out.titles[ch.id];
       if (!raw) {
-        missing++;
         this.recordError(entry, { code: "validation", message: "The model returned no title for this chapter", retryable: true });
+        res.set(entry, "error");
         continue;
       }
       const title = formatRenamedTitle(ch.title, raw);
@@ -568,8 +575,10 @@ export class ChapterOrchestrator {
         sourceHash: ch.sourceHash, baseHash: "", taskVersion: TITLE_TASK_VERSION, model: modelOf(r!),
         artifactHash: hashOf(title), data: { title, raw }, createdAt: this.now(),
       });
+      this.errors.delete(entry.key);
+      res.set(entry, "done");
     }
-    return items.length === 1 && missing === 1 ? "error" : "done";
+    return res;
   }
 
   private async runRewrite(e: Entry, ch: SourceChapter, mode: RewriteMode): Promise<Outcome> {
@@ -627,7 +636,9 @@ export class ChapterOrchestrator {
         for (const g of e.groups) dep.groups.add(g);
       }
       if (dep) {
-        e.deps.push(dep);
+        if (!e.deps.includes(dep)) e.deps.push(dep);
+        if (e.pinned) this.join(dep, e.priority);
+        for (const g of e.groups) this.join(dep, e.priority, g);
         await dep.promise;
       }
       if (e.aborted) return "cancelled";
@@ -705,8 +716,8 @@ export class ChapterOrchestrator {
     const group = e.pinned ? undefined : [...e.groups][0];
     const ticket = port.ingest(e.filePath, ch.index, e.priority, group);
     this.mapJob(ticket.jobId, e);
-    const r = await this.deps.scheduler.result(ticket.jobId);
-    const out = this.settle([e], r);
+    const r = await this.deps.scheduler.result<object>(ticket.jobId);
+    const out = this.settle([e], r.state === "done" ? { ...r, output: r.output ?? {} } : r);
     return typeof out === "string" ? out : "done";
   }
 
@@ -824,7 +835,7 @@ export class ChapterOrchestrator {
 
     const run: BulkRun = {
       status: { runId, filePath: req.filePath, state: "running", perKind: emptyPerKind(), active: [], startedAt: this.now() },
-      group, cancelled: false, durations: [], remaining: 0,
+      group, cancelled: false, durations: [], remaining: 0, finished: Promise.resolve(),
     };
     this.runs.set(runId, run);
     this.lastRunByBook.set(req.filePath, runId);
@@ -873,15 +884,11 @@ export class ChapterOrchestrator {
           }
         }
         if (entries.length > 0) {
-          const batch = this.runTitles(req.filePath, entries);
+          const batch = this.runTitleBatch(req.filePath, entries);
           for (const { entry } of entries) {
-            this.launch(entry, async () => {
-              await batch;
-              return this.recentError(req.filePath, entry.chapterId, "title") ? "error" : entry.aborted ? "cancelled" : "done";
-            });
+            this.launch(entry, async () => (await batch).get(entry) ?? "error");
             waits.push(entry.promise);
           }
-          await batch.catch(() => "error");
         }
         outcomes = await Promise.all(waits);
       } else {
@@ -890,7 +897,13 @@ export class ChapterOrchestrator {
           { filePath: req.filePath, chapterIndex: ch.index, priority: Priority.Background, group },
           ch, item.kind, prefs, this.metaIndex(req.filePath),
         );
-        outcomes = [e ? await e.promise : "skipped"];
+        if (e) {
+          outcomes = [await e.promise];
+        } else {
+          // Nothing to queue: became ready meanwhile (e.g. via navigation), or is not eligible.
+          const st = this.kindState(req.filePath, ch, item.kind, prefs, this.metaIndex(req.filePath));
+          outcomes = [st === "ready" ? "done" : st === "skipped" || st === "off" ? "skipped" : "error"];
+        }
       }
       if (run.cancelled) return;
       const pk = run.status.perKind[item.kind];
@@ -908,7 +921,7 @@ export class ChapterOrchestrator {
     const worker = async () => {
       while (!run.cancelled && next < items.length) await runItem(items[next++]);
     };
-    void Promise.all(Array.from({ length: Math.min(this.opts.bulkWindow, items.length) }, worker)).then(() => {
+    run.finished = Promise.all(Array.from({ length: Math.min(this.opts.bulkWindow, items.length) }, worker)).then(() => {
       if (run.cancelled) return;
       const pks = Object.values(run.status.perKind);
       const failed = pks.reduce((n, p) => n + p.failed, 0);
@@ -936,7 +949,7 @@ export class ChapterOrchestrator {
   async waitForRun(runId: string): Promise<BulkStatus | null> {
     const run = this.runs.get(runId);
     if (!run) return null;
-    while (run.status.state === "running" && !run.cancelled) await new Promise((r) => setTimeout(r, 1));
+    if (!run.cancelled) await run.finished;
     return this.snapshotRun(run);
   }
 

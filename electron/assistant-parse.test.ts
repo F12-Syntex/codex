@@ -143,7 +143,7 @@ test("thread store: dangling streams become errors", async () => {
 });
 
 test("titleFromText clips on a word boundary", () => {
-  assert.equal(titleFromText("a ".repeat(40)), `${"a ".repeat(23).trim()}…`);
+  assert.equal(titleFromText("a ".repeat(40)), `${"a ".repeat(24).trim()}…`);
 });
 
 test("branch store: ParaRef anchors, ordered segments, delete", async () => {
@@ -165,7 +165,7 @@ test("branch store: ParaRef anchors, ordered segments, delete", async () => {
 test("simulate: story/choices parsed into safe paragraphs", () => {
   const r = parseBranchResponse(`<story>\nShe *ran*.\n\n<img src=x onerror=alert(1)>The door <b>slammed</b> & stuck.\n</story>\n<choices>\n<choice label="Hide">She hides.</choice>\n<choice label="Fight <x>">She fights.</choice>\n</choices>`);
   assert.deepEqual(r.paragraphs, ["<p>She <em>ran</em>.</p>", "<p>The door <strong>slammed</strong> &amp; stuck.</p>"]);
-  assert.deepEqual(r.choices.map((c) => c.label), ["Hide"]);
+  assert.deepEqual(r.choices.map((c) => c.label), ["Hide", "Fight"], "tags stripped from labels");
   assert.equal(toSafeParagraphs("<script>x</script>ok")[0], "<p>xok</p>");
 });
 

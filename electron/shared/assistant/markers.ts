@@ -97,10 +97,10 @@ export function parseAssistantText(raw: string, resolver: MarkerResolver): Parse
     return `[${clean}](entity:${id.trim()})`;
   });
 
-  // Remove dropped-cite placeholders with the whitespace that preceded them ("claim [[cite]]." → "claim.").
-  text = text.replace(/[ \t]*\u0002/g, "");
   // Any malformed marker left over must not reach the user.
-  text = text.replace(ANY_MARKER_RE, "");
+  text = text.replace(ANY_MARKER_RE, "\u0002");
+  // Remove placeholders with the whitespace that preceded them ("claim [[cite]]." → "claim.").
+  text = text.replace(/[ \t]*\u0002/g, "");
 
   return { markdown: text.trim(), citations, entityLinks, dropped: { cites: droppedCites, entities: droppedEntities } };
 }

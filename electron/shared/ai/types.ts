@@ -255,9 +255,11 @@ export interface EnsureRequest {
   filePath: string;
   chapterIndex: number;
   priority: Priority;
-  /** Default: the kinds enabled in the book's prefs. */
+  /** Default: the kinds enabled in the book's prefs. `[]` queues nothing (pure status read). */
   kinds?: ChapterKind[];
   group?: string;
+  /** Re-run `kinds` for THIS chapter even when ready, skipping the AI cache read (↻). Additive (WS-D, Phase 1). */
+  refresh?: boolean;
 }
 
 export interface ChapterStatus {
