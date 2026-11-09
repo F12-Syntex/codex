@@ -33,7 +33,7 @@ export function ListIcon({ tint = "accent", children, className }: { tint?: List
   return (
     <span
       className={cn(
-        "inline-flex size-6 shrink-0 items-center justify-center rounded-[7px] text-white shadow-xs [&_svg]:size-3.5 [&_svg]:stroke-[2.25]",
+        "inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-white shadow-xs [&_svg]:size-3.5 [&_svg]:stroke-[2.25]",
         ICON_TINTS[tint],
         className,
       )}
