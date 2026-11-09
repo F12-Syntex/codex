@@ -1,33 +1,10 @@
 /**
- * Small text helpers for WS-E tasks (main side, pure).
- *
- * `parseJsonObject` is a deliberately small structured-output reader (fences, preamble, trailing
- * prose). WS-A's `shared/ai/json.ts` (full repair + salvage) supersedes it once published; the
- * call sites only need "object or AIError('parse')".
+ * Small text helpers for WS-E tasks (main side, pure). Structured output goes through WS-A's
+ * `ctx.completeJson` (loose parse + one re-ask); these only normalise strings and html.
  */
 
-import { AIError } from "../ai/errors";
-
-export function parseJsonObject(raw: string): Record<string, unknown> {
-  let s = raw.trim();
-  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(s);
-  if (fence) s = fence[1].trim();
-  const start = s.indexOf("{");
-  const end = s.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new AIError("parse", "The model did not return a JSON object", { issues: ["no JSON object found"] });
-  const body = s.slice(start, end + 1);
-  try {
-    const v = JSON.parse(body) as unknown;
-    if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("not an object");
-    return v as Record<string, unknown>;
-  } catch (err) {
-    // One cheap repair: trailing commas.
-    try {
-      const v = JSON.parse(body.replace(/,\s*([}\]])/g, "$1")) as unknown;
-      if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
-    } catch { /* fall through */ }
-    throw new AIError("parse", "The model returned malformed JSON", { issues: [err instanceof Error ? err.message : String(err)] });
-  }
+export function isObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
 export function str(v: unknown, max = 2000): string | undefined {

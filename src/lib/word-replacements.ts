@@ -1,3 +1,5 @@
+import { CULTIVATION_TERMS, LEXICON_PRESETS } from "@shared/pipeline/lexicon-presets";
+
 export interface WordReplacement {
   from: string;
   to: string;
@@ -5,39 +7,61 @@ export interface WordReplacement {
 
 const SETTINGS_KEY = "wordReplacements";
 
+/**
+ * Default replacements: NONE. (Owner decision: the old built-in list — god → Ascendant and
+ * friends — was applied to every book and couldn't be removed. It is now the opt-in
+ * "Cultivation terms" preset below.) Kept as a function for existing callers.
+ */
 export function getDefaultReplacements(): WordReplacement[] {
-  return [
-    { from: "goddesses", to: "Ascendants" },
-    { from: "goddess", to: "Ascendant" },
-    { from: "godhood", to: "Apotheosis" },
-    { from: "godlike", to: "transcendent" },
-    { from: "godly", to: "ascendant" },
-    { from: "gods", to: "Ascendants" },
-    { from: "god", to: "Ascendant" },
-    { from: "demigods", to: "lesser Ascendants" },
-    { from: "demigod", to: "lesser Ascendant" },
-    { from: "deities", to: "Ascendant entities" },
-    { from: "deity", to: "Ascendant entity" },
-    { from: "divinity", to: "celestial essence" },
-  ];
+  return [];
 }
 
+export interface WordReplacementPreset {
+  id: string;
+  name: string;
+  description: string;
+  replacements: WordReplacement[];
+}
+
+/** Optional presets the user can apply from Settings → Reading. */
+export const WORD_REPLACEMENT_PRESETS: readonly WordReplacementPreset[] = LEXICON_PRESETS.map((p) => ({
+  id: p.id,
+  name: p.name,
+  description: p.description,
+  replacements: p.entries.map((e) => ({ from: e.from, to: e.to })),
+}));
+
+/** Id of the preset holding the former defaults. */
+export const CULTIVATION_PRESET_ID = CULTIVATION_TERMS.id;
+
+/**
+ * Merge a preset into the user's list: appends the preset's words the user doesn't already have
+ * (case-insensitive by `from`); the user's own entries always win. Returns a new list to save.
+ */
+export function applyReplacementPreset(current: WordReplacement[], presetId: string): WordReplacement[] {
+  const preset = WORD_REPLACEMENT_PRESETS.find((p) => p.id === presetId);
+  if (!preset) return [...current];
+  const have = new Set(current.filter((r) => r.from.trim()).map((r) => r.from.trim().toLowerCase()));
+  return [...current, ...preset.replacements.filter((r) => !have.has(r.from.toLowerCase())).map((r) => ({ ...r }))];
+}
+
+/**
+ * The user's saved list, exactly as saved (no hidden defaults merged in). Blank rows and legacy
+ * "removed default" tombstones (`to: ""`) are skipped. Users who never saved a list get [].
+ */
 export async function loadReplacements(): Promise<WordReplacement[]> {
-  const defaults = getDefaultReplacements();
   const api = typeof window !== "undefined" ? window.electronAPI : undefined;
-  if (!api?.getSetting) return defaults;
+  if (!api?.getSetting) return [];
   const raw = await api.getSetting(SETTINGS_KEY);
-  if (!raw) return defaults;
+  if (!raw) return [];
   try {
-    const saved = JSON.parse(raw) as WordReplacement[];
-    // Merge: defaults are always present, saved entries override/extend by 'from' key.
-    // Setting 'to' to empty string removes a default entry.
-    const byKey = new Map<string, WordReplacement>();
-    for (const r of defaults) byKey.set(r.from.toLowerCase(), r);
-    for (const r of saved) if (r.from) byKey.set(r.from.toLowerCase(), r);
-    return [...byKey.values()].filter(r => r.to);
+    const saved = JSON.parse(raw) as unknown;
+    if (!Array.isArray(saved)) return [];
+    return saved.filter(
+      (r): r is WordReplacement => !!r && typeof r.from === "string" && typeof r.to === "string" && !!r.from.trim() && !!r.to,
+    );
   } catch {
-    return defaults;
+    return [];
   }
 }
 

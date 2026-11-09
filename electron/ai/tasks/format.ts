@@ -5,18 +5,20 @@
  * Every accepted paragraph goes through, in order:
  *  1. speaker-badge normalisation: `<span class="ai-fmt-dialogue-*">Name</span>` is kept (and marked
  *     `data-tts-skip`) only when directly followed by an opening quote; otherwise it is unwrapped;
- *  2. the `ai-format` sanitizer (WS-C's `sanitizeHtml(…, "ai-format")` once wired with
- *     `setFormatSanitizer`; a conservative built-in allowlist until then);
+ *  2. WS-C's sanitizer (`sanitizeHtml(…, "ai-format")`);
  *  3. text preservation: visible text (badges excluded) vs the base text of the paragraph and
  *     everything merged into it must have similarity ≥ 0.97, else the paragraph (and its merges)
  *     keep their originals.
  * Merges must point at an EARLIER key of the same chunk that is itself kept as html.
  */
 
-import type { FormatEntry, ParaId, SanitizeHtmlFn } from "../../shared/pipeline/types";
+import type { FormatEntry, ParaId } from "../../shared/pipeline/types";
+import { sanitizeHtml } from "../../shared/pipeline/sanitize";
 import { FORMAT_CHUNK_CHARS, buildFormatMessages, type FormatSpeaker } from "../prompts/format";
-import { chunkBySize, hashOf, parseJsonObject, textSimilarity, visibleText } from "../prompts/util";
-import { isCancellation, isTruncation, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
+import { chunkBySize, hashOf, textSimilarity, visibleText } from "../prompts/util";
+import {
+  isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
+} from "./chapter-task";
 
 export const FORMAT_TASK_VERSION = 1;
 export const TEXT_PRESERVATION_MIN = 0.97;
@@ -51,85 +53,16 @@ export interface FormatOutput {
   stats: FormatStats;
 }
 
-// ── Sanitizer ───────────────────────────────────────────────────────────────
+// ── Sanitizer (WS-C) ────────────────────────────────────────────────────────
 
-const ALLOWED_TAGS = new Set([
-  "p", "div", "span", "em", "strong", "i", "b", "br", "hr", "ul", "ol", "li", "table", "thead", "tbody",
-  "tr", "td", "th", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "img", "small", "sup", "sub",
-]);
-const DROP_WITH_CONTENT = new Set([
-  "script", "style", "iframe", "object", "embed", "noscript", "template", "svg", "math", "form",
-  "textarea", "select", "button", "title", "head", "frame", "frameset", "applet", "audio", "video",
-]);
-const VOID = new Set(["br", "hr", "img"]);
+/** AI markup through WS-C's allowlist (`ai-format` policy: ai-fmt-* classes, data-tts-skip, data:image). */
+export function sanitizeFormatted(html: string): string {
+  return sanitizeHtml(html, "ai-format");
+}
 
 function attr(attrs: string, name: string): string | null {
   const m = attrs.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i"));
   return m ? (m[2] ?? m[3] ?? m[4] ?? "") : null;
-}
-
-/**
- * Conservative tokenizer-based allowlist for AI markup (fallback until WS-C's sanitizer is wired).
- * Keeps allowlisted tags with only `class` (ai-fmt-* tokens), `data-tts-skip`, and `img[src^=data:image/]`.
- */
-export function basicSanitizeAiFormat(html: string): string {
-  const out: string[] = [];
-  let dropDepth = 0;
-  let dropTag = "";
-  const re = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)|</g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) {
-    const [token, slash, rawTag, attrs = "", text] = m;
-    if (text !== undefined || token === "<") {
-      if (dropDepth === 0) out.push((text ?? "<").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-      continue;
-    }
-    if (!rawTag) continue; // comment
-    const tag = rawTag.toLowerCase();
-    if (dropDepth > 0) {
-      if (tag === dropTag) dropDepth += slash ? -1 : token.endsWith("/>") ? 0 : 1;
-      continue;
-    }
-    if (DROP_WITH_CONTENT.has(tag)) {
-      if (!slash && !token.endsWith("/>")) {
-        dropDepth = 1;
-        dropTag = tag;
-      }
-      continue;
-    }
-    if (!ALLOWED_TAGS.has(tag)) continue;
-    if (slash) {
-      if (!VOID.has(tag)) out.push(`</${tag}>`);
-      continue;
-    }
-    let a = "";
-    const cls = attr(attrs, "class");
-    if (cls) {
-      const kept = cls.split(/\s+/).filter((c) => /^ai-fmt-[a-z0-9-]+$/i.test(c));
-      if (kept.length) a += ` class="${kept.join(" ")}"`;
-    }
-    if (/(^|\s)data-tts-skip(\s|=|$)/i.test(attrs)) a += " data-tts-skip";
-    if (tag === "img") {
-      const src = attr(attrs, "src");
-      if (!src || !/^data:image\/(png|jpe?g|gif|webp|avif);/i.test(src.trim())) continue;
-      a += ` src="${src.trim().replace(/"/g, "&quot;")}"`;
-      const alt = attr(attrs, "alt");
-      if (alt) a += ` alt="${alt.replace(/"/g, "&quot;").replace(/</g, "&lt;")}"`;
-    }
-    out.push(`<${tag}${a}>`);
-  }
-  return out.join("");
-}
-
-let sanitizer: SanitizeHtmlFn | null = null;
-
-/** Wire WS-C's `sanitizeHtml` (Phase 2). Until then `basicSanitizeAiFormat` is used. */
-export function setFormatSanitizer(fn: SanitizeHtmlFn | null): void {
-  sanitizer = fn;
-}
-
-export function sanitizeFormatted(html: string): string {
-  return sanitizer ? sanitizer(html, "ai-format") : basicSanitizeAiFormat(html);
 }
 
 // ── Speaker badges ──────────────────────────────────────────────────────────
@@ -188,17 +121,22 @@ async function formatChunk(
   const payload: Record<string, string> = {};
   chunk.forEach((p, i) => (payload[aliases[i]] = p.html));
 
-  let text: string;
+  let raw: Record<string, unknown>;
   try {
-    const completion = await ctx.complete({
+    const { value } = await ctx.completeJson({
       role: "format",
       messages: buildFormatMessages({ book: input.book, paras: payload, speakers: input.speakers, styleRules: input.styleRules }),
-      json: { mode: "object" },
       temperature: 0.3,
+      check: (v) => (objectField(v, "paras") ? undefined : ['Expected {"paras": {...}}']),
     });
-    text = completion.text;
+    raw = objectField(value, "paras")!;
   } catch (err) {
-    if (isCancellation(err, ctx.signal) || !isTruncation(err)) throw err;
+    if (isCancellation(err, ctx.signal)) throw err;
+    if (isUnusableReply(err)) {
+      ctx.log("warn", "format: unusable reply; chunk left unformatted");
+      return {};
+    }
+    if (!isTruncation(err)) throw err;
     if (chunk.length === 1) return {};
     stats.splits++;
     const mid = Math.ceil(chunk.length / 2);
@@ -208,14 +146,6 @@ async function formatChunk(
     };
   }
 
-  const parsed = parseJsonObject(text);
-  const raw = parsed && typeof parsed.paras === "object" && parsed.paras !== null && !Array.isArray(parsed.paras)
-    ? (parsed.paras as Record<string, unknown>)
-    : null;
-  if (!raw) {
-    ctx.log("warn", "format: unparseable reply; chunk left unformatted");
-    return {};
-  }
   return mapFormatReply(chunk, raw, byAlias, stats);
 }
 

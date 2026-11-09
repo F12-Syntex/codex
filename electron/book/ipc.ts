@@ -14,6 +14,7 @@ import type { AreaContext } from "../ipc/context";
 import { configureBookContentCache, type ContentCacheDeps } from "./content-cache";
 import { LexiconStore, settingsKV } from "./lexicon-store";
 import { getReadMarks, setReadMark } from "./read-marks";
+import { peekAIRuntime } from "../ai/runtime";
 
 let lexiconStore: LexiconStore | null = null;
 
@@ -36,6 +37,8 @@ export function registerBook(ctx: AreaContext, opts?: { parse?: ContentCacheDeps
     (require("../book-parser") as typeof import("../book-parser")).parseBookContentV2
   );
   const cache = configureBookContentCache({ parse, lookupFormat });
+  // TaskContext.books for every AI task (registerAI runs first in registerAll; null in unit tests).
+  peekAIRuntime()?.provideServices({ books: cache });
 
   lexiconStore = new LexiconStore(settingsKV(ctx.db), (lex) => ctx.broadcast("ai:event", { type: "lexicon", version: lex.version }));
   const lexicon = lexiconStore;

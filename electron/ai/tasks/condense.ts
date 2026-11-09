@@ -15,10 +15,10 @@
 
 import type { ParaId, RewriteEntry, RewriteMode, SourceParaKind } from "../../shared/pipeline/types";
 import { RETENTION, RETENTION_MIN_WORDS, REWRITE_CHUNK_CHARS, buildRewriteMessages } from "../prompts/condense";
+import { chunkBySize, escapeHtml, hashOf, isDialogueOnly, quotedSegments, wordCount } from "../prompts/util";
 import {
-  chunkBySize, escapeHtml, hashOf, isDialogueOnly, parseJsonObject, quotedSegments, wordCount,
-} from "../prompts/util";
-import { isCancellation, isTruncation, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
+  isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
+} from "./chapter-task";
 
 export const REWRITE_TASK_VERSION = 1;
 
@@ -74,17 +74,36 @@ async function rewriteChunk(
   const payload: Record<string, string> = {};
   chunk.forEach((p, i) => (payload[aliases[i]] = p.text));
 
-  let text: string;
+  const keyIssues = (v: unknown): string[] => {
+    const paras = objectField(v, "paras");
+    if (!paras) return ['Expected {"paras": {...}}'];
+    const got = Object.keys(paras);
+    const missing = aliases.filter((a) => !Object.prototype.hasOwnProperty.call(paras, a));
+    const extra = got.filter((k) => !aliases.includes(k));
+    const issues: string[] = [];
+    if (missing.length) issues.push(`Missing keys: ${missing.join(", ")}`);
+    if (extra.length) issues.push(`Unexpected keys: ${extra.join(", ")}`);
+    return issues;
+  };
+
+  let out: Record<string, unknown>;
   try {
-    const completion = await ctx.complete({
+    const { value } = await ctx.completeJson({
       role: "rewrite",
       messages: buildRewriteMessages(input.mode, input.book, payload),
-      json: { mode: "object" },
       temperature: input.mode === "polish" ? 0.2 : 0.4,
+      check: keyIssues,
     });
-    text = completion.text;
+    out = objectField(value, "paras")!;
   } catch (err) {
-    if (isCancellation(err, ctx.signal) || !isTruncation(err)) throw err;
+    if (isCancellation(err, ctx.signal)) throw err;
+    if (isUnusableReply(err)) {
+      // Keys still differ (or no JSON) after the one re-ask: keep originals for this chunk.
+      ctx.log("warn", "rewrite: reply keys differ from input; keeping originals for this chunk", { chunk: aliases.length });
+      stats.rejectedChunks++;
+      return keep();
+    }
+    if (!isTruncation(err)) throw err;
     if (chunk.length === 1) {
       ctx.log("warn", "rewrite: single paragraph still truncated; keeping original", { paraId: chunk[0].id });
       return keep();
@@ -94,17 +113,6 @@ async function rewriteChunk(
     const left = await rewriteChunk(input, chunk.slice(0, mid), ctx, stats);
     const right = await rewriteChunk(input, chunk.slice(mid), ctx, stats);
     return { ...left, ...right };
-  }
-
-  const parsed = parseJsonObject(text);
-  const out = parsed && typeof parsed.paras === "object" && parsed.paras !== null && !Array.isArray(parsed.paras)
-    ? (parsed.paras as Record<string, unknown>)
-    : null;
-  const keys = out ? Object.keys(out) : [];
-  if (!out || keys.length !== aliases.length || !aliases.every((a) => Object.prototype.hasOwnProperty.call(out, a))) {
-    ctx.log("warn", "rewrite: reply keys differ from input; keeping originals for this chunk", { expected: aliases.length, got: keys.length });
-    stats.rejectedChunks++;
-    return keep();
   }
 
   // Proposed outcome per paragraph (before the chunk-level ratio check).

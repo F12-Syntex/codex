@@ -19,7 +19,7 @@
 import type { AISettings, BookAIPrefs, ModelRole, PublicAISettings } from "../shared/ai/types";
 import { MODEL_ROLES } from "../shared/ai/types";
 import type { SqlDb } from "../db/sql";
-import { DEFAULT_MODELS } from "./models";
+import { DEFAULT_MODELS } from "../shared/ai/models";
 
 export const AI_SETTINGS_KEY = "ai:settings:v1";
 export const AI_SECRET_KEY = "ai:key:v1";

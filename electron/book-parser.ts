@@ -200,7 +200,7 @@ function extractParagraphs(xhtml: string, zip?: AdmZip, chapterDir?: string): { 
   const html: string[] = [];
 
   // 1. Convert SVG <image> blocks to <img> tags
-  let processed = zip && chapterDir != null
+  const processed = zip && chapterDir != null
     ? preprocessSvgImages(xhtml, zip, chapterDir)
     : xhtml;
 
@@ -514,7 +514,7 @@ function parseEpubChapters(filePath: string): BookContent {
   const manifest = parseManifest(opfXml);
 
   // 3. Get spine order (handles single or double quotes)
-  let spineIds = parseSpine(opfXml);
+  const spineIds = parseSpine(opfXml);
 
   console.log(`[book-parser] Initial spine parse: ${spineIds.length} ids, manifest: ${manifest.size} items`);
   // Fallback: if spine is empty, use all XHTML/HTML items from manifest in insertion order

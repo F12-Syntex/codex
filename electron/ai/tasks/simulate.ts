@@ -14,7 +14,7 @@ import type { BranchChoice, BranchContinueInput, BranchContinueResult } from "..
 import type { EntitySnapshot, Frontier } from "../../shared/knowledge/types";
 import type { SourceChapter } from "../../shared/pipeline/types";
 import { AIError } from "../errors";
-import type { TaskContextLike, TaskDefinitionLike } from "../../assistant/contracts";
+import type { TaskContext, TaskDefinition } from "../../assistant/contracts";
 import { BookView, defaultLabeler, type ChapterLabeler } from "../../assistant/book-view";
 import { clip, decodeEntities, htmlToText, toSafeParagraphs } from "../../assistant/text";
 
@@ -97,7 +97,7 @@ export interface SimulateDeps {
   labeler?: ChapterLabeler;
 }
 
-export function createSimulateTask(deps: SimulateDeps = {}): TaskDefinitionLike<BranchContinueInput, BranchContinueResult> {
+export function createSimulateTask(deps: SimulateDeps = {}): TaskDefinition<BranchContinueInput, BranchContinueResult> {
   return {
     id: "branch.continue",
     version: SIMULATE_VERSION,
@@ -106,8 +106,10 @@ export function createSimulateTask(deps: SimulateDeps = {}): TaskDefinitionLike<
     maxTokens: 5000,
     cacheable: false,
     key: (input) => `${input.ref.chapterId}|${input.ref.paraId}|${input.history.length}|${input.direction}`,
+    fakeResponse: () =>
+      `<story>\nThe scene shifts, just slightly, onto a path the book never took.\n\nThis is an offline demo continuation.\n</story>\n<choices>\n<choice label="Press on">Keep going down this path.</choice>\n<choice label="Turn back">Return to the original story.</choice>\n<choice label="Wait">See what the others do.</choice>\n</choices>`,
     validate: (v): v is BranchContinueResult => !!v && Array.isArray((v as BranchContinueResult).paragraphs),
-    async run(input, ctx: TaskContextLike): Promise<BranchContinueResult> {
+    async run(input, ctx: TaskContext): Promise<BranchContinueResult> {
       const direction = input.direction?.trim();
       if (!direction) throw new AIError("bad_request", "Describe what should happen", { retryable: false });
 

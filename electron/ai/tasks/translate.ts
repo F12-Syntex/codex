@@ -6,8 +6,8 @@
 import type { TranslateInput, TranslateResult } from "../../shared/assistant/types";
 import { hashOf } from "../../shared/ai/hash";
 import { AIError } from "../errors";
-import type { TaskContextLike, TaskDefinitionLike } from "../../assistant/contracts";
-import { clip, langOf, languageName, parseJsonObject, str } from "../../assistant/text";
+import type { TaskContext, TaskDefinition } from "../../assistant/contracts";
+import { clip, isObject, langOf, languageName, str } from "../../assistant/text";
 
 export const TRANSLATE_VERSION = 1;
 const MAX_TEXT = 2000;
@@ -19,7 +19,7 @@ export function isTranslateResult(v: unknown): v is TranslateResult {
   return !!o && typeof o === "object" && typeof o.lang === "string" && typeof o.text === "string";
 }
 
-export function createTranslateTask(): TaskDefinitionLike<TranslateInput, TranslateResult> {
+export function createTranslateTask(): TaskDefinition<TranslateInput, TranslateResult> {
   return {
     id: "selection.translate",
     version: TRANSLATE_VERSION,
@@ -30,7 +30,8 @@ export function createTranslateTask(): TaskDefinitionLike<TranslateInput, Transl
     key: (input, ctx) =>
       hashOf(input.text.replace(/\s+/g, " ").trim(), (input.sentence ?? "").replace(/\s+/g, " ").trim(), lang(input, ctx.settings?.targetLanguage)),
     validate: isTranslateResult,
-    async run(input, ctx: TaskContextLike): Promise<TranslateResult> {
+    fakeResponse: () => JSON.stringify({ text: "(offline demo translation)", sourceLang: "en" }),
+    async run(input, ctx: TaskContext): Promise<TranslateResult> {
       const text = input.text?.trim();
       if (!text) throw new AIError("bad_request", "Nothing to translate", { retryable: false });
       if (text.length > MAX_TEXT) throw new AIError("bad_request", `Select at most ${MAX_TEXT} characters to translate`, { retryable: false });
@@ -45,14 +46,13 @@ export function createTranslateTask(): TaskDefinitionLike<TranslateInput, Transl
         input.sentence && input.sentence.trim() !== text ? `Surrounding sentence (for context only): "${clip(input.sentence, 800)}"` : "",
         input.bookTitle ? `Book: ${input.bookTitle}` : "",
       ].filter(Boolean).join("\n");
-      const c = await ctx.complete({
+      const { value: raw } = await ctx.completeJson<Record<string, unknown>>({
         role: "fast",
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
-        json: { mode: "object" },
         temperature: 0.2,
         maxTokens: 1200,
+        check: (v) => (isObject(v) && str(v.text) ? undefined : ["\"text\" (the translation) is missing"]),
       });
-      const raw = parseJsonObject(c.text);
       const out = str(raw.text, MAX_TEXT * 2);
       if (!out) throw new AIError("validation", "Translation is missing", { issues: ["text is empty"] });
       const result: TranslateResult = { lang: target, text: out };

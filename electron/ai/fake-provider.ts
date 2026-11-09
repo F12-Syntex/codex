@@ -264,7 +264,10 @@ function lastJsonIn(text: string): string | undefined {
 }
 
 /** `CODEX_AI_PROVIDER=fake` → a FakeProvider configured from `CODEX_AI_FAKE`; otherwise null. */
-export function fakeProviderFromEnv(env: Record<string, string | undefined> = process.env): FakeProvider | null {
+export function fakeProviderFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  extra: Partial<FakeProviderOptions> = {},
+): FakeProvider | null {
   if ((env.CODEX_AI_PROVIDER ?? "").toLowerCase() !== "fake") return null;
   const cfg: Record<string, number> = {};
   for (const part of (env.CODEX_AI_FAKE ?? "").split(",")) {
@@ -276,5 +279,6 @@ export function fakeProviderFromEnv(env: Record<string, string | undefined> = pr
     latencyMs: cfg.latency ?? 250,
     retryAfterSec: cfg.retryAfter ?? 2,
     rates: { rateLimited: cfg["429"] ?? 0, server: cfg["500"] ?? 0, length: cfg.length ?? 0 },
+    ...extra,
   });
 }

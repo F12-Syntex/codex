@@ -56,7 +56,6 @@ const text = (max: number): AttrCheck => (v) => (v.length <= max ? v : v.slice(0
 
 function safeImageSrc(v: string): string | null {
   // Strip whitespace and control characters browsers ignore inside URLs, then allowlist.
-  // eslint-disable-next-line no-control-regex
   const compact = v.replace(/[\u0000- \u007f-\u009f]+/g, "");
   return DATA_IMAGE_RE.test(compact) ? compact : null;
 }
@@ -159,7 +158,6 @@ export const sanitizeHtml: SanitizeHtmlFn = (html, policyName = "book") => {
 
       case "text":
         if (t.rawText) break; // raw text of a dropped element (script/style/…)
-        // eslint-disable-next-line no-control-regex
         out += escapeText(decodeEntities(t.raw).replace(/\u0000/g, ""));
         break;
 

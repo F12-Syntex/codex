@@ -135,7 +135,10 @@ export function repairJson(text: string): RepairResult {
   let finished = false;
 
   const top = () => stack[stack.length - 1];
+  // Array items are atomic: no safe point while an object that is an array item is still open
+  // (a half-written batch item is dropped, while a top-level object keeps its complete pairs).
   const markSafe = () => {
+    for (let k = 1; k < stack.length; k++) if (stack[k].type === "{" && stack[k - 1].type === "[") return;
     safe = { len: out.length, frames: stack.map((f) => f.type) };
   };
   const valueDone = () => {

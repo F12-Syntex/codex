@@ -563,6 +563,10 @@ export function createFakeScheduler(opts: FakeSchedulerOptions = {}): FakeSchedu
       }
       return count;
     },
+    ownsInterest(jobId, owner) {
+      const j = all.get(jobId);
+      return !!j && !j.result && j.interests.some((i) => i.owner === owner);
+    },
     bump(jobId, priority) {
       const j = all.get(jobId);
       if (j && !j.result && priority < j.view.priority) j.view.priority = priority;

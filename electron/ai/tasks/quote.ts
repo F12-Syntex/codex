@@ -8,8 +8,8 @@ import type { QuoteClassifyInput, QuoteClassifyResult, QuoteKind } from "../../s
 import type { EntityIndexItem } from "../../shared/knowledge/types";
 import { hashOf } from "../../shared/ai/hash";
 import { AIError } from "../errors";
-import type { TaskContextLike, TaskDefinitionLike } from "../../assistant/contracts";
-import { clip, parseJsonObject } from "../../assistant/text";
+import type { TaskContext, TaskDefinition } from "../../assistant/contracts";
+import { clip, isObject } from "../../assistant/text";
 
 export const QUOTE_VERSION = 1;
 const KINDS: readonly QuoteKind[] = ["dialogue", "inner_thought", "narration", "description", "quote"];
@@ -27,7 +27,7 @@ export function resolveSpeaker(raw: unknown, index: EntityIndexItem[]): { speake
   return hit ? { speaker: hit.id, speakerName: hit.name } : { speaker: "unknown" };
 }
 
-export function createQuoteTask(): TaskDefinitionLike<QuoteClassifyInput, QuoteClassifyResult> {
+export function createQuoteTask(): TaskDefinition<QuoteClassifyInput, QuoteClassifyResult> {
   return {
     id: "quote.classify",
     version: QUOTE_VERSION,
@@ -36,9 +36,10 @@ export function createQuoteTask(): TaskDefinitionLike<QuoteClassifyInput, QuoteC
     maxTokens: 120,
     cacheable: true,
     key: (input) => hashOf(input.filePath, input.quote.trim(), (input.surrounding ?? "").slice(-1500)),
+    fakeResponse: () => JSON.stringify({ speaker: "unknown", kind: "quote" }),
     validate: (v): v is QuoteClassifyResult =>
       !!v && typeof (v as QuoteClassifyResult).speaker === "string" && KINDS.includes((v as QuoteClassifyResult).kind),
-    async run(input, ctx: TaskContextLike): Promise<QuoteClassifyResult> {
+    async run(input, ctx: TaskContext): Promise<QuoteClassifyResult> {
       const quote = input.quote?.trim();
       if (!quote) throw new AIError("bad_request", "Empty quote", { retryable: false });
       let index: EntityIndexItem[] = [];
@@ -62,14 +63,13 @@ export function createQuoteTask(): TaskDefinitionLike<QuoteClassifyInput, QuoteC
         `Quote: "${clip(quote, 1200)}"`,
       ].filter(Boolean).join("\n\n");
 
-      const c = await ctx.complete({
+      const { value: raw } = await ctx.completeJson<Record<string, unknown>>({
         role: "fast",
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
-        json: { mode: "object" },
         temperature: 0,
         maxTokens: 120,
+        check: (v) => (isObject(v) && typeof v.kind === "string" ? undefined : ["\"kind\" is missing"]),
       });
-      const raw = parseJsonObject(c.text);
       const kind = KINDS.includes(raw.kind as QuoteKind) ? (raw.kind as QuoteKind) : "quote";
       const who = resolveSpeaker(raw.speaker, index);
       // Narration has no character speaker.

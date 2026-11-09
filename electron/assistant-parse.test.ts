@@ -17,7 +17,7 @@ import { runMigrations } from "./db/migrate";
 import { assistantMigrations } from "./assistant/schema";
 import { BranchStore, ThreadStore, DEFAULT_THREAD_TITLE, titleFromText } from "./assistant/store";
 import { parseBranchResponse, extractVoiceLines } from "./ai/tasks/simulate";
-import { toSafeParagraphs, parseJsonObject } from "./assistant/text";
+import { toSafeParagraphs } from "./assistant/text";
 import { normalizeDefine } from "./ai/tasks/define";
 import { resolveSpeaker } from "./ai/tasks/quote";
 
@@ -176,7 +176,7 @@ test("simulate: voice lines come from paragraphs mentioning the character", () =
 
 test("define: proper nouns route to Who's-this; translation only for non-English targets", () => {
   assert.equal(normalizeDefine({ properNoun: true, lemma: "Mira" }, { term: "Mira", sentence: "" }, "en").properNoun, true);
-  const d = normalizeDefine(parseJsonObject('```json\n{"lemma":"gild","pos":"verb","ipa":"ɡɪld","inContext":"cover thinly in gold","general":"to coat with gold","translation":{"lang":"fr","text":"dorer"}}\n```'), { term: "gilded", sentence: "s" }, "fr");
+  const d = normalizeDefine({ lemma: "gild", pos: "verb", ipa: "ɡɪld", inContext: "cover thinly in gold", general: "to coat with gold", translation: { lang: "fr", text: "dorer" } }, { term: "gilded", sentence: "s" }, "fr");
   assert.equal(d.ipa, "/ɡɪld/");
   assert.deepEqual(d.translation, { lang: "fr", text: "dorer" });
   assert.equal(normalizeDefine({ lemma: "x", inContext: "y", general: "z", translation: { text: "t" } }, { term: "x", sentence: "" }, "en").translation, undefined);

@@ -6,8 +6,8 @@
 import type { DefineInput, DefineResult } from "../../shared/assistant/types";
 import { hashOf } from "../../shared/ai/hash";
 import { AIError } from "../errors";
-import type { TaskContextLike, TaskDefinitionLike } from "../../assistant/contracts";
-import { clip, isEnglish, langOf, languageName, parseJsonObject, str } from "../../assistant/text";
+import type { TaskContext, TaskDefinition } from "../../assistant/contracts";
+import { clip, isEnglish, isObject, langOf, languageName, str } from "../../assistant/text";
 
 export const DEFINE_VERSION = 1;
 
@@ -60,7 +60,7 @@ export function isDefineResult(v: unknown): v is DefineResult {
   return !!o && typeof o === "object" && typeof o.lemma === "string" && typeof o.inContext === "string" && typeof o.general === "string";
 }
 
-export function createDefineTask(): TaskDefinitionLike<DefineInput, DefineResult> {
+export function createDefineTask(): TaskDefinition<DefineInput, DefineResult> {
   return {
     id: "selection.define",
     version: DEFINE_VERSION,
@@ -71,18 +71,19 @@ export function createDefineTask(): TaskDefinitionLike<DefineInput, DefineResult
     key: (input, ctx) =>
       hashOf(input.term.trim().toLowerCase(), input.sentence.replace(/\s+/g, " ").trim(), targetLang(input, ctx.settings?.targetLanguage)),
     validate: isDefineResult,
-    async run(input, ctx: TaskContextLike): Promise<DefineResult> {
+    fakeResponse: () => JSON.stringify({ lemma: "example", pos: "noun", inContext: "Offline demo definition.", general: "A demo definition from the fake provider." }),
+    async run(input, ctx: TaskContext): Promise<DefineResult> {
       if (!input.term?.trim()) throw new AIError("bad_request", "Nothing to define", { retryable: false });
       const lang = targetLang(input, ctx.settings?.targetLanguage);
       const { system, user } = buildDefinePrompt(input, lang);
-      const c = await ctx.complete({
+      const { value } = await ctx.completeJson<Record<string, unknown>>({
         role: "fast",
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
-        json: { mode: "object" },
         temperature: 0.2,
         maxTokens: 400,
+        check: (v) => (!isObject(v) ? ["expected a JSON object"] : v.properNoun === true || str(v.inContext) || str(v.general) ? undefined : ["inContext and general are both empty"]),
       });
-      return normalizeDefine(parseJsonObject(c.text), input, lang);
+      return normalizeDefine(value, input, lang);
     },
   };
 }

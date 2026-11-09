@@ -8,8 +8,10 @@
 
 import type { ChapterId } from "../../shared/pipeline/types";
 import { TITLE_BATCH_MAX, TITLE_PREVIEW_CHARS, buildTitleMessages, cleanTitle } from "../prompts/title";
-import { hashOf, parseJsonObject } from "../prompts/util";
-import { isCancellation, isTruncation, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
+import { hashOf } from "../prompts/util";
+import {
+  isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
+} from "./chapter-task";
 
 export const TITLE_TASK_VERSION = 1;
 
@@ -35,23 +37,22 @@ function alias(i: number): string {
 
 async function titleBatch(input: TitleInput, batch: TitleInput["chapters"], ctx: ChapterTaskContext): Promise<Record<ChapterId, string>> {
   const prompt = batch.map((c, i) => ({ key: alias(i), original: c.original, preview: c.preview.slice(0, TITLE_PREVIEW_CHARS) }));
-  let text: string;
+  let titles: Record<string, unknown>;
   try {
-    text = (await ctx.complete({
+    const { value } = await ctx.completeJson({
       role: "fast",
       messages: buildTitleMessages(input.book, prompt),
-      json: { mode: "object" },
       temperature: 0.7,
-    })).text;
+      check: (v) => (objectField(v, "titles") ? undefined : ['Expected {"titles": {...}}']),
+    });
+    titles = objectField(value, "titles")!;
   } catch (err) {
-    if (isCancellation(err, ctx.signal) || !isTruncation(err) || batch.length === 1) throw err;
+    if (isCancellation(err, ctx.signal)) throw err;
+    if (isUnusableReply(err)) return {}; // every chapter of the batch reports "no title"
+    if (!isTruncation(err) || batch.length === 1) throw err;
     const mid = Math.ceil(batch.length / 2);
     return { ...(await titleBatch(input, batch.slice(0, mid), ctx)), ...(await titleBatch(input, batch.slice(mid), ctx)) };
   }
-  const parsed = parseJsonObject(text);
-  const titles = parsed && typeof parsed.titles === "object" && parsed.titles !== null
-    ? (parsed.titles as Record<string, unknown>)
-    : parsed ?? {};
   const out: Record<ChapterId, string> = {};
   batch.forEach((c, i) => {
     const v = titles[alias(i)];

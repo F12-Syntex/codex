@@ -68,6 +68,10 @@ export interface ChapterPipeline {
   setOptions(patch: Partial<ChapterPipelineOptions>): void;
   /** Force a reload of one input (e.g. after `chapters:clear`). */
   refresh(what: "book" | "artifacts" | "entities" | "lexicon"): void;
+  /** Re-subscribe to `ai:event`s after `detach` (React StrictMode remounts); refreshes inputs. */
+  attach(): void;
+  /** Stop listening to `ai:event`s (the pipeline keeps its state and can `attach` again). */
+  detach(): void;
   /** Resolves once no load is in flight (tests, imperative callers). */
   idle(): Promise<void>;
   dispose(): void;
@@ -258,7 +262,7 @@ export function createChapterPipeline(sources: ChapterPipelineSources, initial?:
     );
   }
 
-  const unsubscribe = sources.subscribe?.((e) => {
+  const onEvent = (e: AIEvent) => {
     if (disposed) return;
     switch (e.type) {
       case "artifact":
@@ -272,7 +276,16 @@ export function createChapterPipeline(sources: ChapterPipelineSources, initial?:
         if (e.filePath === filePath) loadEntities();
         break;
     }
-  });
+  };
+  let unsubscribe: (() => void) | null = null;
+  const attach = () => {
+    if (!unsubscribe && !disposed) unsubscribe = sources.subscribe?.(onEvent) ?? null;
+  };
+  const detach = () => {
+    unsubscribe?.();
+    unsubscribe = null;
+  };
+  attach();
 
   loadLexicon();
 
@@ -317,10 +330,18 @@ export function createChapterPipeline(sources: ChapterPipelineSources, initial?:
     async idle() {
       while (inflight.size > 0) await Promise.allSettled(Array.from(inflight));
     },
+    attach() {
+      if (unsubscribe) return;
+      attach();
+      // Events may have been missed while detached: refresh the event-driven inputs.
+      if (filePath !== null) { loadArtifacts(); loadEntities(); }
+      loadLexicon();
+    },
+    detach,
     dispose() {
       disposed = true;
       listeners.clear();
-      unsubscribe?.();
+      detach();
     },
   };
 }

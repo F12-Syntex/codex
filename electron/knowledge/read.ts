@@ -249,9 +249,12 @@ export function arcsAt(db: SqlDb, filePath: string, f: Frontier): WikiArcItem[] 
     const arcBeats = beats.get(a.id) ?? [];
     // Status as of the frontier: an arc that ends later is still unfolding; if its latest
     // visible beat is a climax, say so.
+    // Arc status is not versioned: when it ended after the frontier, infer it from the latest
+    // visible beat instead of revealing the ending.
     let status = a.status;
     if (!ended && (status === "resolved" || status === "abandoned")) {
-      status = arcBeats.some((b) => b.type === "climax") ? "climax" : "active";
+      const last = arcBeats[arcBeats.length - 1]?.type;
+      status = last === "setup" ? "setup" : last === "climax" ? "climax" : "active";
     }
     return {
       id: a.id,

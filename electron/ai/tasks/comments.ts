@@ -9,8 +9,8 @@
 import type { AIComment } from "../../shared/ai/types";
 import type { ParaId } from "../../shared/pipeline/types";
 import { COMMENTS_CHUNK_CHARS, COMMENTS_MAX_PER_CHAPTER, buildCommentsMessages } from "../prompts/comments";
-import { chunkBySize, hashOf, parseJsonObject } from "../prompts/util";
-import { isCancellation, isTruncation, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
+import { chunkBySize, hashOf } from "../prompts/util";
+import { isCancellation, isTruncation, isUnusableReply, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
 
 export const COMMENTS_TASK_VERSION = 1;
 
@@ -31,20 +31,20 @@ export interface CommentsOutput {
 async function commentChunk(input: CommentsInput, chunk: CommentsInput["paras"], max: number, ctx: ChapterTaskContext): Promise<AIComment[]> {
   const payload: Record<string, string> = {};
   chunk.forEach((p, i) => (payload[String(i + 1)] = p.text));
-  let text: string;
+  let list: unknown[];
   try {
-    text = (await ctx.complete({
+    const { value } = await ctx.completeJson({
       role: "fast",
       messages: buildCommentsMessages({ book: input.book, chapterLabel: input.chapterLabel, persona: input.persona, max, paras: payload }),
-      json: { mode: "object" },
       temperature: 0.9,
-    })).text;
+    });
+    const c = value && typeof value === "object" ? (value as { comments?: unknown }).comments : undefined;
+    list = Array.isArray(c) ? c : [];
   } catch (err) {
-    if (isCancellation(err, ctx.signal) || !isTruncation(err)) throw err;
-    return []; // comments are optional; a truncated reply is simply dropped
+    if (isCancellation(err, ctx.signal)) throw err;
+    if (isTruncation(err) || isUnusableReply(err)) return []; // comments are optional
+    throw err;
   }
-  const parsed = parseJsonObject(text);
-  const list = Array.isArray(parsed?.comments) ? (parsed!.comments as unknown[]) : [];
   const out: AIComment[] = [];
   for (const item of list) {
     if (!item || typeof item !== "object") continue;

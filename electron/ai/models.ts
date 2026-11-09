@@ -12,28 +12,10 @@
  * client then avoids optional parameters (JSON is still requested in the prompt and parsed loosely).
  */
 
-import type { ModelInfo, ModelRole } from "../shared/ai/types";
+import type { ModelInfo } from "../shared/ai/types";
 import { OPENROUTER_BASE_URL, type ModelCapabilities } from "./client";
 
-export const DEFAULT_MODELS: Record<ModelRole, string> = {
-  fast: "google/gemini-2.5-flash-lite",
-  rewrite: "google/gemini-2.5-flash-lite",
-  format: "google/gemini-2.5-flash-lite",
-  analysis: "google/gemini-3.1-flash-lite",
-  chat: "google/gemini-3.1-flash-lite",
-  creative: "google/gemini-3.1-flash-lite",
-  web: "perplexity/sonar",
-};
-
-export const MODEL_ROLE_INFO: Record<ModelRole, { label: string; description: string }> = {
-  fast: { label: "Fast", description: "Titles, quick lookups, tagging" },
-  rewrite: { label: "Rewrite", description: "Polish and concise chapter rewrites" },
-  format: { label: "Format", description: "Chapter formatting and styles" },
-  analysis: { label: "Analysis", description: "Wiki knowledge, recaps, comments" },
-  chat: { label: "Chat", description: "The assistant, define and translate" },
-  creative: { label: "Creative", description: "Branch simulation and long-form writing" },
-  web: { label: "Web", description: "Book lookups that search the web" },
-};
+export { DEFAULT_MODELS, MODEL_ROLE_INFO } from "../shared/ai/models";
 
 export const MODELS_CACHE_KEY = "ai:models:v1";
 const TTL_MS = 24 * 60 * 60 * 1000;

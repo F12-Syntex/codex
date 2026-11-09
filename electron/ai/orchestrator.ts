@@ -189,6 +189,9 @@ function modelOf(r: JobResult): string {
 export class ChapterOrchestrator {
   private readonly inflight = new Map<string, Entry>();
   private readonly byJob = new Map<string, Set<Entry>>();
+  /** Latest non-terminal state per job: the scheduler may emit "running" inside `submit()`,
+   *  before the orchestrator has mapped the job to its entries. */
+  private readonly jobStates = new Map<string, "queued" | "running">();
   private readonly errors = new Map<string, { info: AIErrorInfo; at: number }>();
   private readonly runs = new Map<string, BulkRun>();
   private readonly lastRunByBook = new Map<string, string>();
@@ -382,7 +385,9 @@ export class ChapterOrchestrator {
     const prefs = this.deps.prefs.get(req.filePath);
     const idx = this.metaIndex(req.filePath);
 
-    if (req.priority <= Priority.Visible && !req.group) this.cancelDistantPrefetch(req.filePath, req.chapterIndex);
+    // Navigation (not a status read) that lands far from prefetched chapters drops that prefetch.
+    const statusOnly = req.kinds !== undefined && req.kinds.length === 0;
+    if (!statusOnly && req.priority <= Priority.Visible && !req.group) this.cancelDistantPrefetch(req.filePath, req.chapterIndex);
 
     const asked = req.kinds ?? enabledKinds(prefs);
     // Dependency order (rewrite before format), whatever order the caller used.
@@ -479,6 +484,8 @@ export class ChapterOrchestrator {
     if (!set) this.byJob.set(jobId, (set = new Set()));
     set.add(e);
     e.jobIds.add(jobId);
+    const st = this.jobStates.get(jobId);
+    if (st) e.state = st;
   }
 
   private unmapJob(jobId: string, e: Entry): void {
@@ -520,6 +527,8 @@ export class ChapterOrchestrator {
 
   private onSchedulerEvent(e: AIEvent): void {
     if (e.type !== "job") return;
+    if (e.state === "queued" || e.state === "running") this.jobStates.set(e.jobId, e.state);
+    else this.jobStates.delete(e.jobId);
     const entries = this.byJob.get(e.jobId);
     if (!entries) return;
     let changed = false;

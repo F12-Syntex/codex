@@ -191,6 +191,10 @@ export const s = {
         for (const [k, sch] of Object.entries(shape)) {
           const val = src[k];
           if (val === undefined || (val === null && sch.isOptional && sch.kind !== "nullable")) {
+            if (sch.kind === "default") {
+              out[k] = (sch.parse(undefined, `${path}.${k}`) as { value: unknown }).value;
+              continue;
+            }
             if (sch.isOptional) continue;
             issues.push({ path: `${path}.${k}`, message: "required" });
             failed = true;

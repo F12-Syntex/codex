@@ -214,7 +214,17 @@ export function mergeWikiEntries(db: SqlDb, filePath: string, sourceId: string, 
     const relationships = db.all("SELECT * FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?)", [filePath, sourceId, sourceId]);
     const appearances = db.all<{ chapter_index: number }>("SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ?", [filePath, sourceId]).map((r) => r.chapter_index);
 
-    const snapshot = JSON.stringify({ entry: source, aliases, details, relationships, appearances });
+    // Added in Phase 1 (older log rows lack them; unmerge treats them as optional): what the merge
+    // changes on the target, the source's arc roles and version history, for a faithful undo.
+    const arcEntitiesSnap = db.all("SELECT arc_id, role FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?", [filePath, sourceId]);
+    const versions = tableExists(db, "wiki_entry_versions")
+      ? db.all("SELECT * FROM wiki_entry_versions WHERE file_path = ? AND entry_id = ?", [filePath, sourceId])
+      : [];
+    const targetBefore = { description: target.description, significance: target.significance, first_appearance: target.first_appearance };
+    const targetAliases = db.all<{ alias: string }>("SELECT alias FROM wiki_aliases WHERE file_path = ? AND entry_id = ?", [filePath, targetId]).map((r) => r.alias);
+    const targetArcs = db.all<{ arc_id: string }>("SELECT arc_id FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?", [filePath, targetId]).map((r) => r.arc_id);
+    const targetAppearances = db.all<{ chapter_index: number }>("SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ?", [filePath, targetId]).map((r) => r.chapter_index);
+    const snapshot = JSON.stringify({ entry: source, aliases, details, relationships, appearances, arcEntities: arcEntitiesSnap, versions, targetBefore, targetAliases, targetArcs, targetAppearances });
 
     const logId = db.run(
       "INSERT INTO wiki_merge_log (file_path, source_id, target_id, source_name, target_name, source_snapshot) VALUES (?, ?, ?, ?, ?, ?)",
@@ -292,8 +302,14 @@ export function unmergeWikiEntries(db: SqlDb, filePath: string, mergeLogId: numb
       entry: WikiEntryRow;
       aliases: string[];
       details: { chapter_index: number; category: string; content: string; entry_id: string }[];
-      relationships: { source_id: string; target_id: string; relation: string; since_chapter: number; until_chapter: number | null; description: string }[];
+      relationships: { id?: number; source_id: string; target_id: string; relation: string; since_chapter: number; until_chapter: number | null; description: string }[];
       appearances: number[];
+      arcEntities?: { arc_id: string; role: string }[];
+      versions?: { chapter_index: number; short_description: string; status: string; significance: number }[];
+      targetBefore?: { description: string; significance: number; first_appearance: number };
+      targetAliases?: string[];
+      targetArcs?: string[];
+      targetAppearances?: number[];
     };
 
     // Re-create the source entry
@@ -316,15 +332,58 @@ export function unmergeWikiEntries(db: SqlDb, filePath: string, mergeLogId: numb
       );
     }
 
-    // Re-add appearances
+    // Re-add appearances (and drop the ones the merge copied onto the target, when known)
     for (const ch of snapshot.appearances) {
       db.run("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)", [filePath, e.id, ch]);
+      if (snapshot.targetAppearances && !snapshot.targetAppearances.includes(ch)) {
+        db.run("DELETE FROM wiki_appearances WHERE file_path = ? AND entry_id = ? AND chapter_index = ?", [filePath, log.target_id, ch]);
+      }
     }
 
-    // Remove source name from target aliases
-    db.run("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?", [filePath, log.target_id, e.name]);
-    for (const alias of snapshot.aliases) {
+    // Remove source name from target aliases (unless the target had them before the merge)
+    const keep = new Set(snapshot.targetAliases ?? []);
+    for (const alias of [e.name, ...snapshot.aliases]) {
+      if (keep.has(alias)) continue;
       db.run("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?", [filePath, log.target_id, alias]);
+    }
+
+    // Snapshots written since Phase 1 also restore relationships, arc roles, versions and the
+    // target fields the merge changed.
+    for (const r of snapshot.relationships) {
+      if (r.id == null) continue;
+      const exists = db.get("SELECT 1 FROM wiki_relationships WHERE id = ? AND file_path = ?", [r.id, filePath]);
+      if (exists) {
+        db.run("UPDATE wiki_relationships SET source_id = ?, target_id = ? WHERE id = ? AND file_path = ?", [r.source_id, r.target_id, r.id, filePath]);
+      } else if (
+        db.get("SELECT 1 FROM wiki_entries WHERE file_path = ? AND id = ?", [filePath, r.source_id]) &&
+        db.get("SELECT 1 FROM wiki_entries WHERE file_path = ? AND id = ?", [filePath, r.target_id])
+      ) {
+        db.run(
+          "INSERT INTO wiki_relationships (id, file_path, source_id, target_id, relation, since_chapter, until_chapter, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [r.id, filePath, r.source_id, r.target_id, r.relation, r.since_chapter, r.until_chapter, r.description ?? ""],
+        );
+      }
+    }
+    for (const ae of snapshot.arcEntities ?? []) {
+      if (db.get("SELECT 1 FROM wiki_arcs WHERE file_path = ? AND id = ?", [filePath, ae.arc_id])) {
+        db.run("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)", [filePath, ae.arc_id, e.id, ae.role]);
+        // The merge copied this role onto the target; drop it unless the target had it before.
+        if (snapshot.targetArcs && !snapshot.targetArcs.includes(ae.arc_id)) {
+          db.run("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ? AND entry_id = ?", [filePath, ae.arc_id, log.target_id]);
+        }
+      }
+    }
+    if (snapshot.versions && tableExists(db, "wiki_entry_versions")) {
+      for (const v of snapshot.versions) {
+        db.run(
+          "INSERT OR IGNORE INTO wiki_entry_versions (file_path, entry_id, chapter_index, short_description, status, significance) VALUES (?, ?, ?, ?, ?, ?)",
+          [filePath, e.id, v.chapter_index, v.short_description, v.status, v.significance],
+        );
+      }
+    }
+    if (snapshot.targetBefore) {
+      const t = snapshot.targetBefore;
+      db.run("UPDATE wiki_entries SET description = ?, significance = ?, first_appearance = ? WHERE file_path = ? AND id = ?", [t.description, t.significance, t.first_appearance, filePath, log.target_id]);
     }
 
     // Delete the merge log entry

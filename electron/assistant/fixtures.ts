@@ -1,20 +1,17 @@
 /**
- * Test fixtures for WS-E (assistant) unit tests: a tiny book, a frontier-gated fake
- * `KnowledgeReader`, a fake `BookContentReader`, a scripted `TaskContextLike` and a synchronous
- * fake scheduler. TESTS ONLY — never imported by production code.
- *
- * WS-A's `electron/ai/testing.ts` (fake scheduler + fake provider) supersedes the scheduler and
- * context fakes here once published; these stay minimal and structural.
+ * Test fixtures for WS-E (assistant) unit tests: a tiny book with readable paragraph ids, a
+ * frontier-GATED fake `KnowledgeReader` (WS-A's `fakeKnowledge` is ungated), and a scripted
+ * `TaskContext` built on WS-A's `createTaskContext` + `FakeProvider`. TESTS ONLY.
  */
 
-import type { AISettings, JobResult, JobSpec, JobTicket, CancelSelector, Usage } from "../shared/ai/types";
 import type {
   EntityIndexItem, EntitySnapshot, Frontier, KnowledgeContext, KnowledgeContextRequest, KnowledgeReader, SearchHit,
 } from "../shared/knowledge/types";
 import type { BookContentV2, SourceChapter } from "../shared/pipeline/types";
-import type { Completion } from "../ai/client";
-import { toAIError } from "../ai/errors";
-import type { BookContentReader, SchedulerLike, TaskCompleteRequest, TaskContextLike, TaskDefinitionLike } from "./contracts";
+import type { Completion, CompletionRequest, ModelCapabilities } from "../ai/client";
+import { FakeProvider } from "../ai/fake-provider";
+import { createTaskContext } from "../ai/testing";
+import type { BookContentReader } from "./contracts";
 
 export const FILE = "/books/test-book.epub";
 
@@ -103,88 +100,45 @@ export function fakeKnowledge(frontier: Frontier = FRONTIER, opts: FakeKnowledge
   return k;
 }
 
-export const SETTINGS: AISettings = {
-  version: 1,
-  models: { fast: "m-fast", rewrite: "m", format: "m", analysis: "m", chat: "m-chat", creative: "m-creative", web: "m-web" },
-  concurrency: 4, requestsPerMinute: 40, spoilerMode: "frontier", targetLanguage: "en", readAloud: "displayed",
-  defaults: { titles: false, rewrite: "off", formatting: false, knowledge: false, comments: false, recapOnReopen: false, prefetchNext: false },
-};
+export type ScriptStep = Partial<Completion> | ((req: CompletionRequest, i: number) => Partial<Completion>);
 
-export type ScriptStep = Partial<Completion> | ((req: TaskCompleteRequest, i: number) => Partial<Completion>);
-
-const USAGE: Usage = { model: "m-chat", promptTokens: 10, completionTokens: 5 };
-
-/** A TaskContext whose `complete()` replays `script` (the last step repeats). Streams `text` in two chunks. */
-export function scriptedContext(script: ScriptStep[], over: Partial<TaskContextLike> & { book?: BookContentV2; frontier?: Frontier } = {}) {
-  const requests: TaskCompleteRequest[] = [];
-  const deltas: string[] = [];
-  const logs: { level: string; msg: string }[] = [];
-  const controller = new AbortController();
-  const ctx: TaskContextLike = {
-    jobId: "job-1",
-    signal: controller.signal,
-    settings: SETTINGS,
-    model: "m-chat",
-    async complete(req) {
-      const i = requests.length;
-      requests.push(req);
-      const step = script[Math.min(i, script.length - 1)];
-      const c = typeof step === "function" ? step(req, i) : step;
-      const text = c.text ?? "";
-      if (req.stream && text) {
-        const mid = Math.ceil(text.length / 2);
-        req.stream(text.slice(0, mid));
-        req.stream(text.slice(mid));
-      }
-      return { text, toolCalls: c.toolCalls ?? [], finishReason: c.finishReason ?? (c.toolCalls?.length ? "tool_calls" : "stop"), usage: c.usage ?? USAGE, model: "m-chat" };
-    },
-    delta: (t) => deltas.push(t),
-    books: fakeBooks(over.book ?? makeBook()),
-    knowledge: fakeKnowledge(over.frontier ?? FRONTIER),
-    log: (level, msg) => logs.push({ level, msg }),
-    ...over,
-  };
-  return { ctx, requests, deltas, logs, controller };
+/**
+ * A real WS-A `TaskContext` (`createTaskContext`, production `completeJson`) backed by a
+ * `FakeProvider` that replays `script` (the last step repeats; a step may throw an `AIError`).
+ * Text replies are streamed by the provider when the request streams.
+ */
+export function scriptedContext(
+  script: ScriptStep[],
+  over: { book?: BookContentV2; frontier?: Frontier; knowledge?: KnowledgeReader; capabilities?: ModelCapabilities } = {},
+) {
+  const requests: CompletionRequest[] = [];
+  const provider = new FakeProvider({ respond: scriptedResponder(script, requests), streamChunk: 16 });
+  const t = createTaskContext({
+    task: "assistant.turn",
+    role: "chat",
+    provider,
+    stream: true,
+    ...(over.capabilities ? { capabilities: over.capabilities } : {}),
+    services: { books: fakeBooks(over.book ?? makeBook()), knowledge: over.knowledge ?? fakeKnowledge(over.frontier ?? FRONTIER) },
+  });
+  return { ...t, requests };
 }
 
-/** Runs submitted jobs immediately against `makeCtx()` with the given task definitions. */
-export function fakeScheduler(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  defs: TaskDefinitionLike<any, any>[],
-  makeCtx: () => TaskContextLike,
-): SchedulerLike & { submitted: JobSpec[]; cancelled: (CancelSelector | { owner: number })[] } {
-  const results = new Map<string, Promise<JobResult>>();
-  let n = 0;
-  const s = {
-    submitted: [] as JobSpec[],
-    cancelled: [] as (CancelSelector | { owner: number })[],
-    submit<I>(spec: JobSpec<I>): JobTicket {
-      s.submitted.push(spec as JobSpec);
-      const jobId = `job-${++n}`;
-      const def = defs.find((d) => d.id === spec.task);
-      const started = Date.now();
-      const p: Promise<JobResult> = (async () => {
-        if (!def) return { jobId, state: "error", error: { code: "bad_request", message: "no task", retryable: false }, usage: [], cached: false, durationMs: 0 };
-        try {
-          const output = await def.run(spec.input, { ...makeCtx(), jobId });
-          return { jobId, state: "done", output, usage: [], cached: false, durationMs: Date.now() - started };
-        } catch (err) {
-          const e = toAIError(err);
-          return { jobId, state: e.code === "cancelled" ? "cancelled" : "error", error: e.toInfo(), usage: [], cached: false, durationMs: Date.now() - started };
-        }
-      })();
-      results.set(jobId, p);
-      return { jobId, joined: false, cached: false };
-    },
-    result<O>(jobId: string): Promise<JobResult<O>> {
-      return (results.get(jobId) ?? Promise.reject(new Error("unknown job"))) as Promise<JobResult<O>>;
-    },
-    cancel(sel: CancelSelector | { owner: number }): number {
-      s.cancelled.push(sel);
-      return 0;
-    },
+export function scriptedResponder(script: ScriptStep[], requests: CompletionRequest[] = []) {
+  return (req: CompletionRequest): Completion => {
+    const i = requests.length;
+    requests.push(req);
+    const step = script[Math.min(i, script.length - 1)];
+    const c = typeof step === "function" ? step(req, i) : step;
+    const toolCalls = c.toolCalls ?? [];
+    return {
+      text: c.text ?? "",
+      toolCalls,
+      finishReason: c.finishReason ?? (toolCalls.length ? "tool_calls" : "stop"),
+      usage: c.usage ?? { model: req.model, promptTokens: 10, completionTokens: 5 },
+      model: req.model,
+    };
   };
-  return s;
 }
 
 export const toolCall = (name: string, args: unknown, id = `call_${name}`) => ({ id, name, arguments: JSON.stringify(args) });

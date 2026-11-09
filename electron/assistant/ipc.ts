@@ -1,17 +1,18 @@
 /**
  * Assistant (assistant:*) and vocabulary (vocab:*) RPC handlers (owner: WS-E).
  *
- * `registerAssistant(ctx)` is called by `electron/ipc/registry.ts`. It creates the service on
- * `ctx.db` and registers every channel. Channels that need the AI core reject with
- * `AssistantUnavailableError` until Phase 2 wiring calls:
+ * `registerAssistant(ctx)` is called by `electron/ipc/registry.ts` after `registerAI`. It creates
+ * the service on `ctx.db`, registers the WS-E tasks in WS-A's registry, takes WS-A's scheduler
+ * (`peekAIRuntime()`), and registers every channel. Proposals reject with
+ * `AssistantUnavailableError` until Phase 2 wiring provides WS-B's edits (and WS-C's labels):
  *
- *   configureAssistant({ scheduler, applyEdits, labeler });   // WS-A scheduler, WS-B edits, WS-C labels
- *   getAssistantService()?.registerTasks(taskRegistry);        // WS-A TaskRegistry
+ *   configureAssistant({ applyEdits: (filePath, edits) => knowledge.applyEdits(filePath, edits), labeler });
  *
  * No `electron` import: everything comes from `ctx`, so it is testable with fakes.
  */
 
 import type { AreaContext } from "../ipc/context";
+import { peekAIRuntime } from "../ai/runtime";
 import { AssistantService, type AssistantRuntime } from "./service";
 
 let service: AssistantService | null = null;
@@ -29,6 +30,16 @@ export function configureAssistant(runtime: AssistantRuntime): void {
 
 export function registerAssistant(ctx: AreaContext): AssistantService {
   const svc = new AssistantService(ctx.db);
+  // WS-A's runtime is created by registerAI, which runs first in registerAll.
+  const ai = peekAIRuntime();
+  if (ai) {
+    svc.configure({ scheduler: ai.scheduler });
+    try {
+      svc.registerTasks(ai.registry);
+    } catch (err) {
+      console.error("[assistant] task registration failed", err);
+    }
+  }
   if (pendingRuntime) svc.configure(pendingRuntime);
   pendingRuntime = null;
   service = svc;

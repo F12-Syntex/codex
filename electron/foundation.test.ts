@@ -188,13 +188,15 @@ test("registry: typed handle passes sender id, rejects unallowlisted/duplicate c
   db.close();
 });
 
-test("registerAll: Phase 0 stubs register nothing and a second call is a no-op", async () => {
+test("registerAll: registers each channel once and a second call is a no-op", async () => {
   const db = await openSqlJsDb();
   const { ipc, handlers } = fakeIpc();
   const a = registerAll({ db, ipcMain: ipc, getWindows: () => [] });
   const b = registerAll({ db, ipcMain: ipc, getWindows: () => [] });
   assert.equal(a, b);
-  assert.equal(handlers.size, 0);
+  const count = handlers.size;
+  registerAll({ db, ipcMain: ipc, getWindows: () => [] });
+  assert.equal(handlers.size, count);
   db.close();
 });
 

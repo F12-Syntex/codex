@@ -1,5 +1,6 @@
 /**
- * Main-side book content cache (owner: WS-C). Implements `BookContentReader` (AI_AUDIT §4.5 layer 0).
+ * Main-side book content cache (owner: WS-C). Implements `BookContentReader` from
+ * `electron/ai/registry.ts` (WS-A's TaskContext contract) — AI_AUDIT §4.5 layer 0.
  *
  * - Parses with `parseBookContentV2` (sanitized, ids, hashes); the format is resolved here
  *   (library row first, then the file extension), so secondary windows never guess it (S2-15).
@@ -11,7 +12,8 @@
 
 import fs from "fs";
 import path from "path";
-import type { BookContentReader, BookContentV2, SourceChapter } from "../shared/pipeline/types";
+import type { BookContentV2, SourceChapter } from "../shared/pipeline/types";
+import type { BookContentReader } from "../ai/registry";
 import { PARSER_VERSION } from "../shared/pipeline/ids";
 import { toSourceChapter } from "../shared/pipeline/source";
 

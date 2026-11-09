@@ -73,6 +73,9 @@ export function buildSpeech(baseHtml: string, lex: Lexicon | CompiledLexicon): {
   const domWords = wordsOf(disp);
   const spWords = wordsOf(sp);
   if (spWords.length === 0) return null;
+  // Trim the speech text (e.g. the space after a skipped speaker badge); offsets shift with it.
+  const lead = spWords[0].start;
+  const tail = spWords[spWords.length - 1].end;
 
   const dispOffset = (sOff: number): number => {
     for (const p of pieces) {
@@ -88,9 +91,9 @@ export function buildSpeech(baseHtml: string, lex: Lexicon | CompiledLexicon): {
   const tokens: SpeechToken[] = spWords.map((sw) => {
     const d = dispOffset(sw.start);
     while (w < domWords.length - 1 && domWords[w].end <= d) w++;
-    return { start: sw.start, end: sw.end, domWord: domWords.length > 0 ? w : -1 };
+    return { start: sw.start - lead, end: sw.end - lead, domWord: domWords.length > 0 ? w : -1 };
   });
-  return { text: sp, tokens };
+  return { text: sp.slice(lead, tail), tokens };
 }
 
 /**

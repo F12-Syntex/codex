@@ -2,9 +2,7 @@
  * Small pure helpers shared by the chapter prompts and tasks (owner: WS-D).
  *
  * PURE: no `electron`, Node or DOM imports.
- *
- * Reconcile in Phase 2: `parseJsonObject` should defer to WS-A's `shared/ai/json.ts` (structured
- * output parser + repair) once it lands; it is kept minimal here so WS-D compiles on its own.
+ * JSON parsing is WS-A's (`ctx.completeJson` → `shared/ai/json.ts`); hashing is `shared/ai/hash.ts`.
  */
 
 // ── Hashing (WS-A) ──────────────────────────────────────────────────────────
@@ -147,31 +145,4 @@ export function chunkBySize<T>(items: T[], size: (item: T) => number, maxChars: 
   }
   if (cur.length > 0) chunks.push(cur);
   return chunks;
-}
-
-// ── Structured output ───────────────────────────────────────────────────────
-
-/**
- * Parse the first JSON object in a model reply: strips code fences and preambles, then tries the
- * span from the first `{` to the last `}`. Returns null when nothing parses (callers keep originals).
- * Truncated replies are NOT repaired here: tasks split the chunk instead (AI_AUDIT S3-3).
- */
-export function parseJsonObject(text: string): Record<string, unknown> | null {
-  let s = text.trim();
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) s = fence[1].trim();
-  const tryParse = (t: string): Record<string, unknown> | null => {
-    try {
-      const v = JSON.parse(t) as unknown;
-      return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
-    } catch {
-      return null;
-    }
-  };
-  const direct = tryParse(s);
-  if (direct) return direct;
-  const start = s.indexOf("{");
-  const end = s.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  return tryParse(s.slice(start, end + 1));
 }

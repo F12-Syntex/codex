@@ -15,7 +15,7 @@ import type {
   BranchContinueResult, CreateBranchRequest, MessageBlock, SimBranch, SimSegment,
 } from "../shared/assistant/types";
 import type { SqlDb } from "../db/sql";
-import type { SchedulerLike, TaskDefinitionLike, TaskRegistryLike } from "./contracts";
+import type { SchedulerLike, TaskDefinition, TaskRegistryLike } from "./contracts";
 import { BranchStore, ThreadStore, systemClock, type StoreClock } from "./store";
 import { VocabStore } from "./vocab";
 import { toSafeParagraphs } from "./text";
@@ -76,7 +76,7 @@ export class AssistantService {
 
   /** Task definitions for WS-A's registry (call once; tasks close over this service's stores). */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  taskDefinitions(): TaskDefinitionLike<any, any>[] {
+  taskDefinitions(): TaskDefinition<any, any>[] {
     const labeler = this.runtime.labeler;
     return [
       createAssistantTurnTask({ store: this.threads, labeler }),

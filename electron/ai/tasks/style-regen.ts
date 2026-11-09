@@ -10,9 +10,11 @@
 
 import type { ChapterId, ParaId } from "../../shared/pipeline/types";
 import { buildRegenMessages } from "../prompts/format";
-import { hashOf, parseJsonObject } from "../prompts/util";
+import { hashOf } from "../prompts/util";
 import { cleanFormattedHtml, preservesText } from "./format";
-import { isCancellation, isTruncation, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
+import {
+  isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
+} from "./chapter-task";
 
 export const STYLE_REGEN_TASK_VERSION = 1;
 
@@ -48,21 +50,21 @@ async function regenChapter(input: StyleRegenInput, occ: StyleRegenOccurrence, c
     base[String(i + 1)] = (occ.base[id] ?? []).join("\n");
     previous[String(i + 1)] = occ.previous[id];
   });
-  let text: string;
+  let raw: Record<string, unknown>;
   try {
-    text = (await ctx.complete({
+    const { value } = await ctx.completeJson({
       role: "format",
       messages: buildRegenMessages({ book: input.book, component: input.component, instruction: input.instruction, base, previous, styleRules: input.styleRules }),
-      json: { mode: "object" },
       temperature: 0.9,
-    })).text;
+      check: (v) => (objectField(v, "paras") ? undefined : ['Expected {"paras": {...}}']),
+    });
+    raw = objectField(value, "paras")!;
   } catch (err) {
-    if (isCancellation(err, ctx.signal) || !isTruncation(err)) throw err;
-    ctx.log("warn", "style.regenerate: reply truncated; chapter skipped", { chapterId: occ.chapterId });
+    if (isCancellation(err, ctx.signal)) throw err;
+    if (!isTruncation(err) && !isUnusableReply(err)) throw err;
+    ctx.log("warn", "style.regenerate: unusable reply; chapter skipped", { chapterId: occ.chapterId });
     return {};
   }
-  const parsed = parseJsonObject(text);
-  const raw = parsed && typeof parsed.paras === "object" && parsed.paras !== null ? (parsed.paras as Record<string, unknown>) : {};
   const out: Record<ParaId, string> = {};
   for (const [key, value] of Object.entries(raw)) {
     const id = alias.get(key);

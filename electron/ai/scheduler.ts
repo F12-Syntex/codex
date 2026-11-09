@@ -113,6 +113,8 @@ export interface Scheduler {
   /** Returns the number of jobs actually cancelled (interest removal alone doesn't count). */
   cancel(sel: CancelSelector | OwnerSelector): number;
   bump(jobId: string, priority: Priority): void;
+  /** True if `owner` is one of the callers interested in an active job. */
+  ownsInterest?(jobId: string, owner: number): boolean;
   snapshot(): SchedulerSnapshot;
   onEvent(cb: (e: AIEvent) => void): () => void;
   setConcurrency(n: number): void;
@@ -728,6 +730,9 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
     result,
     cancel,
     bump,
+    ownsInterest(jobId, owner) {
+      return !!active.get(jobId)?.interests.some((i) => i.owner === owner);
+    },
     snapshot() {
       return {
         queued: queued.map(view),

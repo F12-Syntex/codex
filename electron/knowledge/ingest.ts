@@ -549,14 +549,20 @@ export class KnowledgeLane {
     if (joined) return joined as Promise<T>;
     const prev = this.tails.get(filePath) ?? Promise.resolve();
     const p = prev.then(fn, fn);
-    const tail = p.then(() => undefined, () => undefined);
+    // Settle bookkeeping is registered on `p` itself, before any caller can await it, so a
+    // request made after completion never joins a finished run.
+    const tail: Promise<void> = p.then(
+      () => this.settle(filePath, id, p, tail),
+      () => this.settle(filePath, id, p, tail),
+    );
     this.tails.set(filePath, tail);
     this.inflight.set(id, p);
-    void tail.then(() => {
-      if (this.inflight.get(id) === p) this.inflight.delete(id);
-      if (this.tails.get(filePath) === tail) this.tails.delete(filePath);
-    });
     return p;
+  }
+
+  private settle(filePath: string, id: string, p: Promise<unknown>, tail: Promise<void>): void {
+    if (this.inflight.get(id) === p) this.inflight.delete(id);
+    if (this.tails.get(filePath) === tail) this.tails.delete(filePath);
   }
 
   /** Number of keys queued or running (tests/diagnostics). */
@@ -621,6 +627,10 @@ async function ingestNow(deps: IngestDeps, req: IngestRequest): Promise<IngestRe
 
   const prev = getRun(db, filePath, chapter.id);
   if (prev && (prev.status === "done" || prev.status === "skipped") && prev.task_version >= KNOWLEDGE_TASK_VERSION && !req.force) {
+    return { ...base, status: "unchanged" };
+  }
+  // Processed by the legacy renderer path (no run row): keep it unless forced.
+  if (!prev && !req.force && db.get("SELECT 1 FROM wiki_processed WHERE file_path = ? AND chapter_index = ?", [filePath, ch])) {
     return { ...base, status: "unchanged" };
   }
 

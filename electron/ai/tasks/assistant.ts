@@ -22,7 +22,7 @@ import { quickAction } from "../../shared/assistant/quick-actions";
 import { markdownToPlainText } from "../../shared/assistant/markdown";
 import { AIError, toAIError } from "../errors";
 import type { Completion } from "../client";
-import type { TaskContextLike, TaskDefinitionLike } from "../../assistant/contracts";
+import type { TaskContext, TaskDefinition } from "../../assistant/contracts";
 import type { ThreadStore } from "../../assistant/store";
 import { BookView, defaultLabeler, type ChapterLabeler } from "../../assistant/book-view";
 import { AssistantTools } from "../../assistant/tools";
@@ -127,7 +127,7 @@ function isToolsUnsupported(err: unknown): boolean {
   return (e.code === "bad_request" || e.code === "model_unavailable") && /tool/i.test(e.message);
 }
 
-export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinitionLike<AssistantTurnInput, AssistantTurnOutput> {
+export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition<AssistantTurnInput, AssistantTurnOutput> {
   const labeler = deps.labeler ?? defaultLabeler;
 
   return {
@@ -139,8 +139,9 @@ export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition
     cacheable: false,
     lane: (spec) => `thread:${spec.input.threadId}`,
     key: (input) => `${input.threadId}|${input.messageId}`,
+    fakeResponse: () => "This is an offline demo answer: the assistant is running with the fake AI provider, so nothing was looked up.",
 
-    async run(input, ctx: TaskContextLike): Promise<AssistantTurnOutput> {
+    async run(input, ctx: TaskContext): Promise<AssistantTurnOutput> {
       const { store } = deps;
       const thread = store.getThread(input.threadId);
       if (!thread) throw new AIError("bad_request", "Thread not found", { retryable: false });
@@ -194,7 +195,8 @@ export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition
         const hint = quickAction(input.quickAction)?.hint;
         const bookTitle = input.bookTitle || "this book";
 
-        let toolsEnabled = view.available || !!knowledge;
+        // Tools need book text or knowledge, and a model that is not known to lack tool calling.
+        let toolsEnabled = (view.available || !!knowledge) && ctx.capabilities("chat")?.tools !== false;
         const system = () => buildSystemPrompt({ bookTitle, view, frontier, mode: thread.mode, context: contextParts.join("\n\n"), hint, toolsEnabled });
         const messages: ChatMessage[] = [
           { role: "system", content: system() },

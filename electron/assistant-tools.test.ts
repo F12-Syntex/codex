@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BookView } from "./assistant/book-view";
 import { AssistantTools, NOT_YET_READ, ASSISTANT_TOOL_NAMES } from "./assistant/tools";
-import { FILE, FRONTIER, fakeBooks, fakeKnowledge, fakeScheduler, makeBook, scriptedContext, toolCall } from "./assistant/fixtures";
+import { FILE, FRONTIER, fakeBooks, fakeKnowledge, makeBook, scriptedContext, scriptedResponder, toolCall } from "./assistant/fixtures";
+import { createTestRuntime, FakeProvider } from "./ai/testing";
 import { createAssistantTurnTask, MAX_TOOL_ROUNDS } from "./ai/tasks/assistant";
 import { STREAM_RESET } from "./shared/assistant/markers";
 import { openSqlJsDb } from "./db/sqljs";
@@ -275,15 +276,28 @@ test("service: send runs a turn in group thread:<id>; proposals apply only on co
   const script = [
     { toolCalls: [toolCall("propose_wiki_edits", { summary: "Rename.", edits: [{ op: "update", id: "mira", fields: { name: "Mira Vale" }, asOfChapter: "2" }] })] },
   ];
-  const sched = fakeScheduler(svc.taskDefinitions(), () => scriptedContext(script).ctx);
+  // WS-A's real scheduler + fake provider.
+  const rt = createTestRuntime({
+    tasks: svc.taskDefinitions(),
+    // Queued replies take precedence over the tasks' offline `fakeResponse` hooks.
+    provider: new FakeProvider().enqueue(scriptedResponder(script)),
+    services: { books: fakeBooks(makeBook()), knowledge: fakeKnowledge(FRONTIER) },
+  });
+  const submitted: { group?: string; priority: number; stream?: boolean }[] = [];
+  const sched = {
+    submit: ((spec, owner) => { submitted.push({ group: spec.group, priority: spec.priority, stream: spec.stream }); return rt.scheduler.submit(spec, owner); }) as typeof rt.scheduler.submit,
+    result: rt.scheduler.result.bind(rt.scheduler),
+    cancel: rt.scheduler.cancel.bind(rt.scheduler),
+  };
   svc.configure({ scheduler: sched, applyEdits: (_f, edits) => { applied.push(edits); return { applied: edits.length, failed: [], mergeLogIds: [] }; } });
 
   const thread = svc.createThread({ filePath: FILE, mode: "chat", seed: { selection: { ref: { filePath: FILE, chapterId: "c1", paraId: "p1_2" }, text: "the silver key" } } });
   const ticket = svc.send({ threadId: thread.id, text: "Her surname is Vale, fix the wiki." }, 7);
-  assert.equal(sched.submitted[0].group, `thread:${thread.id}`);
-  assert.equal(sched.submitted[0].priority, 0);
-  assert.equal(sched.submitted[0].stream, true);
-  await sched.result(ticket.jobId);
+  assert.equal(submitted[0].group, `thread:${thread.id}`);
+  assert.equal(submitted[0].priority, 0);
+  assert.equal(submitted[0].stream, true);
+  const result = await sched.result(ticket.jobId);
+  assert.equal(result.state, "done", JSON.stringify(result.error));
 
   const { messages } = svc.getThread(thread.id);
   assert.equal(messages.length, 2);

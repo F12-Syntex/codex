@@ -248,22 +248,5 @@ export type SanitizeHtmlFn = (html: string, policy?: SanitizePolicy) => string;
 /** `shared/pipeline/lexicon.ts`. Replaces in text nodes only. */
 export type ApplyLexiconFn = (html: string, lex: Lexicon, scope: "display" | "speech") => string;
 
-// ── Book content access (WS-C Phase 1, additive) ────────────────────────────
-
-/**
- * Read access to parsed, sanitized, id-assigned book content. Implemented in main by
- * `electron/book/content-cache.ts` (`getBookContentReader()`), LRU-cached by
- * filePath + mtime + parserVersion; the format is resolved in main. Async because PDF parsing is.
- *
- * Consumers: `TaskContext.books` (WS-A), knowledge ingest/search (WS-B), chapter tasks (WS-D),
- * assistant tools (WS-E). Tests use any object literal with these two methods.
- */
-export interface BookContentReader {
-  /** Whole book. Rejects if the file can't be read. */
-  getBook(filePath: string): Promise<BookContentV2>;
-  /** One chapter by 0-based index. Rejects with a RangeError when out of range. */
-  getChapter(filePath: string, chapterIndex: number): Promise<SourceChapter>;
-}
-
 /** Whether a stored layer could be applied to the current source (see `applyLayers`). */
 export type LayerState = "none" | "applied" | "stale" | "hidden";
