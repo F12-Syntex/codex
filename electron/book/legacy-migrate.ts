@@ -193,6 +193,21 @@ export function migrateBookLegacy(db: SqlDb, filePath: string, book: BookContent
   if (kv.get(flagKey)) return { ...report, skipped: true };
 
   const artifacts = tableExists(db, "chapter_artifacts") ? new SqlArtifactStore(db) : null;
+
+  // Legacy comments, bookmarks and read marks stored the ON-SCREEN paragraph index: while Concise
+  // was showing, that is an index into the condensed list (one entry per non-empty text source
+  // paragraph, the mapping `legacyRewriteLayer` uses), not into the source (QA-P2-9).
+  const condenseOn = json<unknown>(kv.get(`condenseEnabled:${filePath}`)) === true;
+  const condensedLists = condenseOn ? json<Record<string, unknown>>(kv.get(`condensedChapters:${filePath}`)) : null;
+  const displayedPara = (ch: SourceChapter, index: number): SourcePara | null => {
+    const list = condensedLists && typeof condensedLists === "object" ? condensedLists[String(ch.index)] : undefined;
+    if (Array.isArray(list) && Number.isInteger(index) && index >= 0) {
+      const sendable = ch.paras.filter(hasText);
+      if (list.length === sendable.length && index < sendable.length) return sendable[index];
+    }
+    return paraAtIndex(ch, index);
+  };
+
   const step = (name: string, fn: () => void) => {
     try {
       db.transaction(fn);
@@ -211,7 +226,7 @@ export function migrateBookLegacy(db: SqlDb, filePath: string, book: BookContent
       const ai: { paraId: ParaId; text: string }[] = [];
       for (const c of list) {
         if (!c || typeof c.text !== "string" || !c.text.trim()) continue;
-        const p = paraAtIndex(ch, Number(c.paraIndex));
+        const p = displayedPara(ch, Number(c.paraIndex));
         if (!p) continue;
         if (c.author === "user") {
           const dup = db.get(
@@ -268,7 +283,7 @@ export function migrateBookLegacy(db: SqlDb, filePath: string, book: BookContent
       const ch = chapterAt(book, r.chapterIndex);
       if (!ch) continue;
       if (db.get("SELECT 1 FROM para_anchors WHERE kind = 'bookmark' AND ref_id = ?", [String(r.id)])) continue;
-      const p = paraAtIndex(ch, Number(r.paragraphIndex));
+      const p = displayedPara(ch, Number(r.paragraphIndex));
       if (!p) continue;
       setAnchor(db, { kind: "bookmark", refId: String(r.id), filePath, chapterId: ch.id, paraId: p.id });
       report.bookmarks++;
@@ -283,7 +298,7 @@ export function migrateBookLegacy(db: SqlDb, filePath: string, book: BookContent
       const ch = chapterAt(book, idx);
       if (!ch || typeof paraIndex !== "number" || paraIndex < 0) continue;
       if (db.get("SELECT 1 FROM read_marks WHERE file_path = ? AND chapter_id = ?", [filePath, ch.id])) continue;
-      const p = paraAtIndex(ch, paraIndex);
+      const p = displayedPara(ch, paraIndex);
       if (!p) continue;
       setReadMark(db, filePath, ch.id, p.id);
       report.readMarks++;
@@ -444,9 +459,24 @@ export function migrateBookLegacy(db: SqlDb, filePath: string, book: BookContent
     report.prefs = true;
   });
 
-  kv.set(flagKey, JSON.stringify({ at: now(), errors: report.errors.length }));
+  // Mark the book done only when every step succeeded: each step is idempotent (comments dedupe by
+  // text, anchors/read marks/artifacts/style/prefs skip existing rows), so a failed step (e.g. a
+  // transient SQLITE_BUSY) is retried on the next open instead of stranding the user's data
+  // (QA-P2-5). A step that keeps failing stops being retried after MAX_MIGRATION_ATTEMPTS.
+  const attemptsKey = `${flagKey}:attempts`;
+  const attempts = (Number(kv.get(attemptsKey)) || 0) + 1;
+  if (report.errors.length === 0 || attempts >= MAX_MIGRATION_ATTEMPTS) {
+    kv.set(flagKey, JSON.stringify({ at: now(), errors: report.errors.length, attempts }));
+  } else {
+    try {
+      kv.set(attemptsKey, String(attempts));
+    } catch { /* retried next open either way */ }
+  }
   return report;
 }
+
+/** Failed migrations of one book are retried on later opens, at most this many times in total. */
+export const MAX_MIGRATION_ATTEMPTS = 5;
 
 /**
  * Legacy condensed text (one string per non-empty source text paragraph, empty = dropped) → a
@@ -522,7 +552,10 @@ export function ensureBookMigrated(filePath: string): Promise<void> {
       if (kvOf(r.db).get(LEGACY_MIGRATION_FLAG + filePath)) return;
       const book = await r.getBook(filePath);
       const rep = migrateBookLegacy(r.db, filePath, book, { getDefaults: r.getDefaults });
-      if (!rep.skipped && rep.errors.length > 0) console.warn("[book] legacy migration finished with errors", filePath, rep.errors);
+      if (!rep.skipped && rep.errors.length > 0) {
+        console.warn("[book] legacy migration finished with errors (retried next open)", filePath, rep.errors);
+        pending.delete(filePath);
+      }
     } catch (err) {
       // Unreadable book: nothing to anchor against. Try again next time it opens.
       pending.delete(filePath);

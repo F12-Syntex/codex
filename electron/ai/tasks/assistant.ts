@@ -27,6 +27,7 @@ import type { ThreadStore } from "../../assistant/store";
 import { BookView, defaultLabeler, type ChapterLabeler } from "../../assistant/book-view";
 import { AssistantTools } from "../../assistant/tools";
 import { clip } from "../../assistant/text";
+import { sourceSelection } from "../../assistant/source-text";
 
 export const MAX_TOOL_ROUNDS = 4;
 export const ASSISTANT_TURN_VERSION = 1;
@@ -105,18 +106,24 @@ function historyMessages(all: AssistantMessage[]): ChatMessage[] {
     }));
 }
 
+/** The selection as written in the book (the page shows display text: QA-P2-8). */
+function selectionSourceText(view: BookView, sel: { ref: { chapterId: string; paraId: string }; text: string }): string {
+  return sourceSelection(view.byId(sel.ref.chapterId), sel.ref, sel.text)?.text ?? sel.text;
+}
+
 async function selectionContext(view: BookView, sel: { ref: { chapterId: string; paraId: string }; text: string }): Promise<string> {
   const ch = view.byId(sel.ref.chapterId);
-  if (!ch) return `Selected text: "${clip(sel.text, 1200)}"`;
+  const text = selectionSourceText(view, sel);
+  if (!ch) return `Selected text: "${clip(text, 1200)}"`;
   const at = ch.paras.findIndex((p) => p.id === sel.ref.paraId);
-  if (at < 0) return `Selected text: "${clip(sel.text, 1200)}"`;
+  if (at < 0) return `Selected text: "${clip(text, 1200)}"`;
   const from = Math.max(0, at - SELECTION_CONTEXT_PARAS + 1);
   const lines: string[] = [];
   for (let i = from; i <= at; i++) {
     lines.push(`[[cite:${view.label(ch.index)}:${i + 1}]] ${clip(ch.paras[i].text.replace(/\s+/g, " "), 900)}`);
   }
   return [
-    `The user selected this text in Chapter ${view.label(ch.index)}, paragraph ${at + 1}: "${clip(sel.text, 1200)}"`,
+    `The user selected this text in Chapter ${view.label(ch.index)}, paragraph ${at + 1}: "${clip(text, 1200)}"`,
     "The passage up to the selection (nothing after it is known to the reader):",
     ...lines,
   ].join("\n");
@@ -170,6 +177,7 @@ export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition
         if (selection) view.openWindow(selection.ref);
         const focusEntityIds = lastUser.blocks.flatMap((b) => (b.type === "entity" ? [b.entityId] : []));
         const question = lastUser.blocks.map((b) => (b.type === "markdown" ? b.text : "")).join("\n").trim();
+        const selectionText = selection ? selectionSourceText(view, selection) : "";
 
         let knowledge: KnowledgeContext | null = null;
         try {
@@ -178,7 +186,7 @@ export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition
             frontier,
             purpose: PURPOSE[thread.mode],
             budgetChars: CONTEXT_BUDGET,
-            focusText: [question, selection?.text ?? ""].join("\n").slice(0, 4000),
+            focusText: [question, selectionText].join("\n").slice(0, 4000),
             ...(focusEntityIds.length ? { focusEntityIds } : {}),
           });
         } catch (err) {
@@ -201,7 +209,7 @@ export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition
         const messages: ChatMessage[] = [
           { role: "system", content: system() },
           ...historyMessages(history),
-          { role: "user", content: clip(question || selection?.text || "Explain this.", 4000) },
+          { role: "user", content: clip(question || selectionText || "Explain this.", 4000) },
         ];
 
         // ── Tool loop ─────────────────────────────────────────────────────

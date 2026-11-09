@@ -388,8 +388,9 @@ async function navigate(app: App, fp: string, i: number, total: number, sender =
 
 /**
  * One renderer window: the `ai:event` fan-out (MIRROR src/lib/ai/events.ts: one Set, insertion
- * order), the per-window lexicon store (MIRROR src/lib/book/lexicon.ts: `getLexicon(version?)` refetches when the cached copy is
- * older than an announced version; the store also refreshes from its own "lexicon" listener), and the
+ * order), the per-window lexicon store (MIRROR src/lib/book/lexicon.ts: `getLexicon(version?)`
+ * refetches when the cached copy is older than an announced version; the store also refreshes
+ * from its own "lexicon" listener), and the
  * pipeline sources of useChapterPipeline.ts:53-63.
  */
 class RendererWindow {
@@ -510,7 +511,7 @@ function ttsNextAfter(id: ParaId, sourceIndex: number, list: TTSItem[], ch: Rend
 // #0 Wiring: every channel the renderer calls has a handler in main
 // ════════════════════════════════════════════════════════════════════════════
 
-test("#0 every `rpc(\"<channel>\")` in src/ has a main handler after registerAll", { todo: "QA-P1-4 book:reveal (citation chips in the Buddy and Wiki windows) has no handler" }, async () => {
+test("#0 every `rpc(\"<channel>\")` in src/ has a main handler after registerAll", async () => {
   const app = await boot();
   const called = new Set<string>();
   const walk = (dir: string) => {
@@ -1458,21 +1459,33 @@ test("#12 PDF (odd extension, library says PDF) and CBZ read from the detached B
 // Findings from the code review, reduced to minimal reproductions
 // ════════════════════════════════════════════════════════════════════════════
 
-test("QA-P2-3 CODEX_AI_PROVIDER=fake (the matrix's manual mode) produces titles and real rewrites", { todo: "QA-P2-3 WS-D tasks define no fakeResponse: titles error, every concise chunk is rejected (ratio 1.0)" }, async () => {
-  const app = await boot({ prefs: { titles: true, rewrite: "concise", prefetchNext: false } });
-  const fp = app.addBook(storyChapters(2, "FK"));
+test("QA-P2-3 CODEX_AI_PROVIDER=fake (the matrix's manual mode) demos titles, concise, polish, format and comments", async () => {
+  const app = await boot({ prefs: { titles: true, rewrite: "concise", formatting: true, comments: true, prefetchNext: false } });
+  const chapters = storyChapters(2, "FK", 6);
+  chapters[0].paras[2] = "\"We walked very far,\" said Kael. The dunes kept turning under a pale sky.";
+  const fp = app.addBook(chapters);
   await navigate(app, fp, 0, 2);
   await app.idle();
   const st = await app.call("chapters:ensure", { filePath: fp, chapterIndex: 0, priority: Priority.Visible, kinds: [] });
-  assert.equal(st.kinds.title, "ready", `title: ${st.kinds.title}`);
+  for (const k of ["title", "rewrite", "format", "comments"] as ChapterKind[]) assert.equal(st.kinds[k], "ready", `${k}: ${st.kinds[k]}`);
   const arts = await app.call("chapters:artifacts", fp, 0);
   const src = (await app.call("book:content", fp)).chapters[0];
-  const changed = Object.entries(arts.rewrite?.paras ?? {}).filter(([id, e]) => "html" in e && e.html !== src.paras.find((p) => p.id === id)?.html);
-  assert.ok(changed.length > 0, "concise changed at least one paragraph");
+  const changed = (a: typeof arts) => Object.entries(a.rewrite?.paras ?? {}).filter(([id, e]) => "html" in e && e.html !== src.paras.find((p) => p.id === id)?.html);
+  assert.ok(changed(arts).length > 0, "concise changed at least one paragraph");
+  assert.ok(!changed(arts).some(([id]) => id === src.paras[2].id), "dialogue kept verbatim");
+  assert.ok(arts.title && arts.title.length > 0, "a title");
+  assert.ok(Object.values(arts.format?.paras ?? {}).some((e) => "html" in e && e.html.includes("ai-fmt-system-msg")), "a formatted paragraph");
+  assert.ok((arts.comments?.length ?? 0) > 0, "reader comments");
+  await app.call("chapters:prefs:set", fp, { rewrite: "polish" });
+  await navigate(app, fp, 0, 2);
+  await app.idle();
+  const polished = await app.call("chapters:artifacts", fp, 0);
+  assert.equal(polished.rewrite?.mode, "polish");
+  assert.ok(changed(polished).length > 0, "polish changed at least one paragraph");
   app.dispose();
 });
 
-test("QA-P2-4 LexiconStore: a change listener that reads the lexicon does not recurse", { todo: "QA-P2-4 publish() calls onChange before updating lastVersion" }, async () => {
+test("QA-P2-4 LexiconStore: a change listener that reads the lexicon does not recurse", async () => {
   const db = await openSqlJsDb();
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   const kv = { get: (k: string) => db.get<{ value: string }>("SELECT value FROM settings WHERE key = ?", [k])?.value ?? null, set: (k: string, v: string) => void db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [k, v]) };
@@ -1488,7 +1501,7 @@ test("QA-P2-4 LexiconStore: a change listener that reads the lexicon does not re
   assert.equal(calls, 1, "one change event per set()");
 });
 
-test("QA-P2-5 legacy book migration: a transient failure in one step is retried, user comments are not stranded", { todo: "QA-P2-5 the per-book flag is written even when a step failed" }, async () => {
+test("QA-P2-5 legacy book migration: a transient failure in one step is retried, user comments are not stranded", async () => {
   const db = await openSqlJsDb();
   db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   runMigrations(db, AREA_MIGRATIONS, silent);
@@ -1505,4 +1518,146 @@ test("QA-P2-5 legacy book migration: a transient failure in one step is retried,
   assert.equal(first.errors.length, 1, "the comments step failed once");
   migrateBookLegacy(flaky, fp, book); // next open of the book
   assert.equal(listAnnotations(db, fp).length, 1, "the user's comment was migrated on retry");
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Fix coverage beyond the original reproductions
+// ════════════════════════════════════════════════════════════════════════════
+
+test("QA-P1-1 fast flips: queued work for chapters the reader skipped past is dropped and never paid for", async () => {
+  const app = await boot({ prefs: { rewrite: "concise", prefetchNext: true } });
+  installModel(app);
+  const fp = app.addBook(storyChapters(12, "P11"));
+  app.fake.hold();
+  for (let c = 0; c < 10; c++) await navigate(app, fp, c, 12);
+  await flush(20);
+  const snap = app.rt.scheduler.snapshot();
+  const condenseAt = (jobs: typeof snap.queued) => new Set(jobs.filter((j) => j.task === "chapter.condense").map((j) => j.scope?.chapterIndex ?? -1));
+  const runningBefore = condenseAt(snap.running);
+  assert.deepEqual([...condenseAt(snap.queued)].filter((c) => !runningBefore.has(c)).sort((a, b) => a - b), [8, 9, 10].filter((c) => !runningBefore.has(c)),
+    "only the current chapter, its neighbour and the prefetch stay queued");
+  app.fake.release();
+  await app.idle();
+  const paid = new Set(callsBy(app, (j) => j.task === "chapter.condense").map((c) => app.jobInfo.get(c.meta!.jobId!)!.chapterIndex!));
+  for (const c of paid) assert.ok(runningBefore.has(c) || c >= 8, `chapter ${c} was skipped past but still reached the provider`);
+  const st = await app.call("chapters:ensure", { filePath: fp, chapterIndex: 9, priority: Priority.Visible, kinds: [] });
+  assert.equal(st.kinds.rewrite, "ready", "the current chapter finished");
+  // Coming back to a skipped chapter queues it again.
+  await navigate(app, fp, 4, 12);
+  await app.idle();
+  const back = await app.call("chapters:ensure", { filePath: fp, chapterIndex: 4, priority: Priority.Visible, kinds: [] });
+  assert.equal(back.kinds.rewrite, "ready", "a skipped chapter is served when the reader returns");
+  app.dispose();
+});
+
+test("QA-P1-4 book:reveal focuses the book's reader and sends the reveal to it only; with no reader open it opens one at the ref", async () => {
+  const { configureReaderOpener } = await import("./book/windows");
+  const app = await boot();
+  const fp = app.addBook(storyChapters(3, "P14"));
+  const other = app.addBook(storyChapters(2, "P14b"));
+  const reader = app.openWindow(8, fp);
+  const otherReader = app.openWindow(9, other);
+  const buddy = app.openWindow(7);
+  let focused = 0;
+  Object.assign(reader.win, { focus: () => void focused++, isMinimized: () => false });
+  const book = await app.callAs(7, "book:content", fp);
+  const ref = { filePath: fp, chapterId: book.chapters[2].id, paraId: book.chapters[2].paras[1].id };
+
+  await app.callAs(7, "book:reveal", fp, ref);
+  await flush(5);
+  assert.equal(focused, 1, "the reader window was focused");
+  const reveals = (w: FakeWin) => w.log.filter((e) => e.type === "reveal");
+  assert.deepEqual(reveals(reader), [{ type: "reveal", filePath: fp, ref }], "the reader got the reveal event");
+  assert.equal(reveals(buddy).length + reveals(otherReader).length + reveals(app.window(1)).length, 0, "no other window did");
+
+  // No reader for the book: main's reader-open path is used, carrying the ref.
+  const opened: { filePath: string; chapterId: string; paraId: string }[] = [];
+  configureReaderOpener((filePath, r) => void opened.push({ filePath, chapterId: r.chapterId, paraId: r.paraId }));
+  app.closeWindow(8);
+  await app.callAs(7, "book:reveal", fp, ref);
+  assert.deepEqual(opened, [{ filePath: fp, chapterId: ref.chapterId, paraId: ref.paraId }]);
+  await assert.rejects(app.callAs(7, "book:reveal", fp, { filePath: fp } as never), /chapterId/);
+  configureReaderOpener(null);
+  app.dispose();
+});
+
+test("QA-P2-14 cancelling a shared job withdraws only the caller's interest (orchestrator and same-window callers)", async () => {
+  const app = await boot({ prefs: { knowledge: true, prefetchNext: false } });
+  installModel(app, { knowledge: (ch) => godKnowledge(ch) });
+  const fp = app.addBook(GOD_BOOK);
+  app.openWindow(8, fp);
+  app.fake.hold();
+  await navigate(app, fp, 0, 2, 8);
+  await flush(20);
+  const job = () => [...app.rt.scheduler.snapshot().queued, ...app.rt.scheduler.snapshot().running].find((j) => j.task === "chapter.knowledge" && j.scope?.chapterIndex === 0);
+  assert.ok(job(), "the orchestrator queued knowledge for chapter 0");
+  // The wiki window asks for the same chapter: joins the orchestrator's job.
+  const t = await app.callAs(8, "knowledge:ingest", fp, 0, Priority.Visible);
+  assert.equal(t.joined, true);
+  // Knowledge turned off for the book: the orchestrator withdraws, the window's request survives.
+  await app.callAs(8, "chapters:prefs:set", fp, { knowledge: false });
+  await flush(10);
+  assert.ok(job(), "the job another caller joined keeps running");
+  // Two components of one window share the job: one cancel withdraws one of them.
+  const t2 = await app.callAs(8, "knowledge:ingest", fp, 0, Priority.Visible);
+  assert.equal(t2.jobId, t.jobId);
+  await app.callAs(8, "ai:cancel", { jobId: t.jobId });
+  assert.ok(job(), "the second component's interest keeps the job");
+  await app.callAs(8, "ai:cancel", { jobId: t.jobId });
+  await flush(5);
+  assert.equal(job(), undefined, "the last interest withdrawn cancels it");
+  app.fake.release();
+  await app.idle();
+  app.dispose();
+});
+
+test("QA-P2-8 quote.classify reasons about the source text, not the lexicon/rewrite text shown on the page", async () => {
+  const app = await boot();
+  const seen: string[] = [];
+  app.fake.respondTo("quote.classify", (req) => {
+    seen.push(req.messages.map((m) => m.content).join("\n"));
+    return JSON.stringify({ speaker: "narrator", kind: "narration" });
+  });
+  await app.call("lexicon:set", [{ from: "god", to: "Ascendant", scope: "both", match: "smart" }]);
+  const fp = app.addBook(GOD_BOOK);
+  app.openWindow(8, fp);
+  const ch = (await app.callAs(8, "book:content", fp)).chapters[0];
+  const ref = { filePath: fp, chapterId: ch.id, paraId: ch.paras[1].id };
+  // What SelectionToolbar sends: the page's (display) text.
+  const t = await app.callAs(8, "ai:submit", {
+    task: "quote.classify", priority: Priority.Interactive,
+    input: { filePath: fp, quote: "Every ascendant in the valley trembled", ref, surrounding: "Every ascendant in the valley trembled when he spoke." },
+  });
+  const r = await app.callAs(8, "ai:result", t.jobId);
+  assert.equal(r.state, "done");
+  assert.match(seen[0], /Quote: "Every god in the valley trembled"/, "the quote as written in the book");
+  assert.match(seen[0], /The God of War laughed at the gate\./, "context is the source text before the quote");
+  assert.doesNotMatch(seen[0], /ascendant/i, "no display text reaches the model");
+  app.dispose();
+});
+
+test("QA-P2-9 legacy comments, bookmarks and read marks saved while Concise was showing land on the right source paragraph", async () => {
+  const db = await openSqlJsDb();
+  db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER PRIMARY KEY, filePath TEXT, chapterIndex INTEGER, paragraphIndex INTEGER, label TEXT)");
+  runMigrations(db, AREA_MIGRATIONS, silent);
+  const fp = path.join(TMP, "legacy-concise.epub");
+  const book = toBookContentV2(fp, {
+    isImageBook: false, toc: [],
+    chapters: [{ title: "Chapter 1", paragraphs: ["One here.", "", "Two here.", "Three here."], htmlParagraphs: ["<p>One here.</p>", '<p><img src="x.png"></p>', "<p>Two here.</p>", "<p>Three here.</p>"] }],
+  });
+  const ch = book.chapters[0];
+  const set = (k: string, v: unknown) => db.run("INSERT INTO settings (key, value) VALUES (?, ?)", [k, JSON.stringify(v)]);
+  set(`condenseEnabled:${fp}`, true);
+  set(`condensedChapters:${fp}`, { 0: ["One.", "Two.", "Three."] }); // one entry per text paragraph
+  set(`chapterComments:${fp}`, { 0: [{ paraIndex: 2, text: "On three", author: "user" }] });
+  set(`ttsReadMarks:${fp}`, { 0: 1 });
+  db.run("INSERT INTO bookmarks (filePath, chapterIndex, paragraphIndex, label) VALUES (?, 0, 2, 'b')", [fp]);
+  const rep = migrateBookLegacy(db, fp, book);
+  assert.deepEqual(rep.errors, []);
+  assert.equal(listAnnotations(db, fp)[0].paraId, ch.paras[3].id, "comment: on-screen ¶2 of the condensed list = source ¶3");
+  const bm = db.get<{ para_id: string }>("SELECT para_id FROM para_anchors WHERE kind = 'bookmark'");
+  assert.equal(bm?.para_id, ch.paras[3].id, "bookmark");
+  const rm = db.get<{ para_id: string }>("SELECT para_id FROM read_marks WHERE file_path = ?", [fp]);
+  assert.equal(rm?.para_id, ch.paras[2].id, "read mark: on-screen ¶1 = source ¶2");
 });

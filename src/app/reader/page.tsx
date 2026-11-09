@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FONT_FAMILY_CSS, type ThemeConfig } from "@/lib/theme";
 import { Reader } from "./components/Reader";
@@ -85,6 +85,13 @@ function ReaderPage() {
   const author = searchParams.get("author") || "Unknown Author";
   const format = searchParams.get("format") || "EPUB";
   const filePath = searchParams.get("filePath") || "";
+  // Set by main when `book:reveal` opens the reader for a citation.
+  const revealChapterId = searchParams.get("revealChapterId");
+  const revealParaId = searchParams.get("revealParaId");
+  const initialReveal = useMemo(
+    () => (revealChapterId && revealParaId ? { chapterId: revealChapterId, paraId: revealParaId } : null),
+    [revealChapterId, revealParaId],
+  );
 
   return (
     <Reader
@@ -92,6 +99,7 @@ function ReaderPage() {
       format={format}
       title={title}
       author={author}
+      initialReveal={initialReveal}
     />
   );
 }

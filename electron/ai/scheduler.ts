@@ -115,6 +115,12 @@ export interface Scheduler {
   bump(jobId: string, priority: Priority): void;
   /** True if `owner` is one of the callers interested in an active job. */
   ownsInterest?(jobId: string, owner: number): boolean;
+  /**
+   * Withdraw ONE of `owner`'s interests in a job (each submit/join adds one), so two callers in
+   * one window that share a deduplicated job don't cancel each other (QA-P2-14). The job is
+   * cancelled when no interest is left. Returns 1 if that cancelled the job, else 0.
+   */
+  withdraw?(jobId: string, owner: number): number;
   snapshot(): SchedulerSnapshot;
   onEvent(cb: (e: AIEvent) => void): () => void;
   setConcurrency(n: number): void;
@@ -732,6 +738,16 @@ export function createScheduler(opts: SchedulerOptions): Scheduler {
     bump,
     ownsInterest(jobId, owner) {
       return !!active.get(jobId)?.interests.some((i) => i.owner === owner);
+    },
+    withdraw(jobId, owner) {
+      const job = active.get(jobId);
+      if (!job || job.result) return 0;
+      const at = job.interests.map((i) => i.owner).lastIndexOf(owner);
+      if (at < 0) return 0;
+      const target = job.interests[at];
+      const cancelled = dropInterests(job, (i) => i === target);
+      pump();
+      return cancelled ? 1 : 0;
     },
     snapshot() {
       return {

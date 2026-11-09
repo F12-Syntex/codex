@@ -96,8 +96,11 @@ export class LexiconStore {
   }
 
   private publish(lex: Lexicon): Lexicon {
-    if (this.lastVersion !== null && this.lastVersion !== lex.version) this.onChange?.(lex);
+    // Record the version BEFORE notifying: a listener that reads the lexicon re-enters publish()
+    // and must see no change (QA-P2-4).
+    const changed = this.lastVersion !== null && this.lastVersion !== lex.version;
     this.lastVersion = lex.version;
+    if (changed) this.onChange?.(lex);
     return lex;
   }
 }

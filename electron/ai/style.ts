@@ -11,6 +11,19 @@
 import type { SqlDb } from "../db/sql";
 import type { StyleDictionary, StyleRule } from "../shared/ai/types";
 import { fnv1a64 } from "./prompts/util";
+import { sanitizeHtml } from "../shared/pipeline/sanitize";
+
+const EXAMPLE_MAX = 300;
+
+/** A short example of the component: cut at a tag boundary, then re-sanitized so every open tag
+ *  is closed (the dictionary view renders it as HTML; QA-P2-15). */
+export function exampleOf(html: string): string {
+  if (html.length <= EXAMPLE_MAX) return html;
+  let cut = html.slice(0, EXAMPLE_MAX);
+  const lt = cut.lastIndexOf("<");
+  if (lt > cut.lastIndexOf(">")) cut = cut.slice(0, lt); // never end inside a tag
+  return sanitizeHtml(`${cut}…`, "ai-format");
+}
 
 // ── Class metadata ──────────────────────────────────────────────────────────
 
@@ -85,7 +98,7 @@ export function extractRules(formatted: string[]): StyleRule[] {
           id: `r${fnv1a64(cls).slice(0, 12)}`,
           pattern: CLASS_PATTERN[cls] ?? cls.replace("ai-fmt-", "").replace(/-/g, " "),
           component: cls,
-          exampleHtml: html.length > 300 ? `${html.slice(0, 300)}…` : html,
+          exampleHtml: exampleOf(html),
           category: CLASS_CATEGORY[cls] ?? inferCategory(cls),
         });
       }

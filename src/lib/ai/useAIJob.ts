@@ -126,6 +126,11 @@ export function useAIJob<I = unknown, O = unknown>(opts: UseAIJobOptions = {}): 
         void ai.cancel({ jobId: ticket.jobId }).catch(() => {});
         return null;
       }
+      // Unmounted while `submit` was pending: the unmount cleanup saw no job to cancel (QA-P2-6).
+      if (!mounted.current) {
+        if (cancelOnUnmount) void ai.cancel({ jobId: ticket.jobId }).catch(() => {});
+        return null;
+      }
       jobRef.current = ticket.jobId;
       setState({ ...IDLE, status: ticket.cached ? "done" : "queued", jobId: ticket.jobId, cached: ticket.cached, joined: ticket.joined });
       for (const e of early) if ("jobId" in e && e.jobId === ticket.jobId) apply(e);
@@ -143,7 +148,7 @@ export function useAIJob<I = unknown, O = unknown>(opts: UseAIJobOptions = {}): 
       }));
       return result;
     },
-    [apply, withdraw],
+    [apply, withdraw, cancelOnUnmount],
   );
 
   const cancel = useCallback(() => {

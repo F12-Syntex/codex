@@ -94,6 +94,8 @@ export function useSimulateBranch(filePath: string, chapter: RenderedChapter | n
   const [buffer, setBuffer] = React.useState("");
   const [error, setError] = React.useState<AIErrorInfo | null>(null);
   const jobRef = React.useRef<string | null>(null);
+  /** Deltas that arrive while `branch:continue` is pending (before the jobId is known). */
+  const earlyRef = React.useRef<{ jobId: string; text: string }[] | null>(null);
   const activeRef = React.useRef<SimBranch | null>(null);
   React.useEffect(() => {
     activeRef.current = active;
@@ -119,6 +121,7 @@ export function useSimulateBranch(filePath: string, chapter: RenderedChapter | n
     if (!hasRpc()) return;
     return onAIEvent("delta", (e) => {
       if (e.jobId === jobRef.current) setBuffer((b) => b + e.text);
+      else if (earlyRef.current && earlyRef.current.length < 500) earlyRef.current.push({ jobId: e.jobId, text: e.text });
     });
   }, []);
 
@@ -164,8 +167,21 @@ export function useSimulateBranch(filePath: string, chapter: RenderedChapter | n
     setBuffer("");
     setPending(true);
     try {
-      const ticket = await branchApi.continue(b.id, text.trim());
-      jobRef.current = ticket.jobId;
+      earlyRef.current = [];
+      let ticket: Awaited<ReturnType<typeof branchApi.continue>>;
+      try {
+        ticket = await branchApi.continue(b.id, text.trim());
+      } catch (err) {
+        earlyRef.current = null;
+        throw err;
+      }
+      // Keep the first streamed deltas that raced the ticket (QA-P2-13).
+      const early = earlyRef.current ?? [];
+      earlyRef.current = null;
+      const jobId = ticket.jobId;
+      jobRef.current = jobId;
+      const head = early.filter((d) => d.jobId === jobId).map((d) => d.text).join("");
+      if (head) setBuffer((buf) => head + buf);
       const r = await ai.result(ticket.jobId);
       if (r.state !== "done") {
         if (r.state === "error") setError(r.error ?? errInfo("The continuation failed"));

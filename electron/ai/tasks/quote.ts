@@ -10,6 +10,7 @@ import { hashOf } from "../../shared/ai/hash";
 import { AIError } from "../errors";
 import type { TaskContext, TaskDefinition } from "../../assistant/contracts";
 import { clip, isObject } from "../../assistant/text";
+import { sourceSelection } from "../../assistant/source-text";
 
 export const QUOTE_VERSION = 1;
 const KINDS: readonly QuoteKind[] = ["dialogue", "inner_thought", "narration", "description", "quote"];
@@ -40,8 +41,21 @@ export function createQuoteTask(): TaskDefinition<QuoteClassifyInput, QuoteClass
     validate: (v): v is QuoteClassifyResult =>
       !!v && typeof (v as QuoteClassifyResult).speaker === "string" && KINDS.includes((v as QuoteClassifyResult).kind),
     async run(input, ctx: TaskContext): Promise<QuoteClassifyResult> {
-      const quote = input.quote?.trim();
+      let quote = input.quote?.trim();
       if (!quote) throw new AIError("bad_request", "Empty quote", { retryable: false });
+      // The page shows display text (word replacements, rewrites): classify the book's own words
+      // and the source text before them; the selection is only a hint (QA-P2-8).
+      let surrounding = input.surrounding ?? "";
+      if (input.ref) {
+        try {
+          const book = await ctx.books.getBook(input.filePath);
+          const src = sourceSelection(book.chapters.find((c) => c.id === input.ref!.chapterId), input.ref, quote);
+          if (src) {
+            if (src.located) quote = src.text.trim() || quote;
+            surrounding = src.before;
+          }
+        } catch { /* book unreadable: classify the selection as shown */ }
+      }
       let index: EntityIndexItem[] = [];
       try {
         index = ctx.knowledge.getEntityIndex(input.filePath, ctx.knowledge.getFrontier(input.filePath)).filter((e) => e.type === "character");
@@ -59,7 +73,7 @@ export function createQuoteTask(): TaskDefinition<QuoteClassifyInput, QuoteClass
       const user = [
         input.bookTitle ? `Book: ${input.bookTitle}` : "",
         input.chapterTitle ? `Chapter: ${input.chapterTitle}` : "",
-        input.surrounding ? `Context before the quote:\n${clip(input.surrounding.slice(-1500), 1500)}` : "",
+        surrounding ? `Context before the quote:\n${clip(surrounding.slice(-1500), 1500)}` : "",
         `Quote: "${clip(quote, 1200)}"`,
       ].filter(Boolean).join("\n\n");
 

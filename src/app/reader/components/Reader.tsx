@@ -51,6 +51,7 @@ import { createSelectionActions, type SelectionPayload } from "@/lib/assistant/s
 import { useBookAIPrefs, useChapterArtifacts, useChapterTitles } from "@/lib/ai/chapters";
 import { useAISettings } from "@/lib/ai/useAISettings";
 import { hasRpc } from "@/lib/ai/rpc";
+import { onAIEvent } from "@/lib/ai/events";
 import { knowledge } from "@/lib/knowledge/bridge";
 import { useEntityIndex, useFrontier } from "@/lib/knowledge/useKnowledge";
 import { buildChapterLabels, fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
@@ -80,17 +81,21 @@ interface ReaderProps {
   format: string;
   title: string;
   author: string;
+  /** Open at this paragraph instead of the saved position (`book:reveal` with no reader open). */
+  initialReveal?: { chapterId: string; paraId: ParaId } | null;
 }
 
 const NO_ANNOTATIONS: Annotation[] = [];
 
-export function Reader({ filePath, title, author }: ReaderProps) {
+export function Reader({ filePath, title, author, initialReveal = null }: ReaderProps) {
   const [chapterLabels, setChapterLabels] = useState<ChapterLabels>({});
   const [currentChapter, setCurrentChapter] = useState(0);
   const [customFonts] = useState<CustomFont[]>([]);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  /** Chapter whose page count `totalPages` was measured for (-1 = not measured since the change). */
+  const [measuredChapter, setMeasuredChapter] = useState(-1);
   const [visibleRange, setVisibleRange] = useState<[number, number]>([0, 0]);
   const [showTOC, setShowTOC] = useState(false);
   const reduceMotion = useReducedMotion();
@@ -392,6 +397,11 @@ export function Reader({ filePath, title, author }: ReaderProps) {
     setReveal({ chapterIndex: target, paraId: ref.paraId });
   }, [chapters, currentChapter, handleChapterChange]);
 
+  // `book:reveal` from another window (citation chips in Buddy / Wiki): main focused this window.
+  useEffect(() => onAIEvent("reveal", (e) => {
+    if (e.filePath === filePath) navigateToRef(e.ref);
+  }), [filePath, navigateToRef]);
+
   const revealParaIndex = reveal && reveal.chapterIndex === currentChapter && chapter
     ? resolveAnchor(chapter, reveal.paraId)
     : null;
@@ -403,6 +413,11 @@ export function Reader({ filePath, title, author }: ReaderProps) {
   useEffect(() => {
     if (!book || !filePath || restoredRef.current) return;
     restoredRef.current = true;
+    if (initialReveal) {
+      // Opened by `book:reveal`: land on the cited paragraph, not the saved position.
+      navigateToRef(initialReveal);
+      return;
+    }
     window.electronAPI?.getSetting(progressKey).then((raw) => {
       if (!raw) return;
       try {
@@ -454,14 +469,19 @@ export function Reader({ filePath, title, author }: ReaderProps) {
       if (mp.chapter !== currentChapter) maxPageRef.current = { chapter: currentChapter, page: currentPage };
       else if (currentPage > mp.page) mp.page = currentPage;
       const seen = maxPageRef.current.page + 1;
-      const atChapterEnd = totalPages > 0 && (currentPage >= totalPages - 1 || (totalPages >= 10 && seen / totalPages >= 0.9));
+      // Only trust the page count once this chapter was measured: `totalPages` resets to 1 on a
+      // chapter change, and a hidden window (rAF suspended) never re-measures, so TTS
+      // auto-advance would otherwise report a just-started chapter as finished (QA-P2-10).
+      // (The book's own TOC page is not paginated: it is never measured.)
+      const measured = measuredChapter === currentChapter || isTOCChapter(rawChapterTitle);
+      const atChapterEnd = measured && totalPages > 0 && (currentPage >= totalPages - 1 || (totalPages >= 10 && seen / totalPages >= 0.9));
       const last = chapter.paras[visibleRange[1]];
       reportPosition({ chapterIndex: currentChapter, paraId: last?.id, atChapterEnd, via: navViaRef.current });
     }, 600);
     return () => clearTimeout(t);
-  }, [chapter, chapterId, currentChapter, currentPage, totalPages, visibleRange, speedReaderActive, reportPosition]);
+  }, [chapter, chapterId, currentChapter, currentPage, totalPages, measuredChapter, rawChapterTitle, visibleRange, speedReaderActive, reportPosition]);
 
-  useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
+  useEffect(() => window.electronAPI?.onMaximized(setMaximized), []);
 
   // Immersive mode
   useEffect(() => {
@@ -477,9 +497,12 @@ export function Reader({ filePath, title, author }: ReaderProps) {
     return () => { window.removeEventListener("mousemove", handler); if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current); };
   }, [settings.immersiveMode]);
 
-  // Called by TextContent when it measures the real page count
+  // Called by TextContent when it measures the real page count (of the chapter it shows).
+  const shownChapterRef = useRef(-1);
+  shownChapterRef.current = chapter ? currentChapter : -1;
   const handleMeasure = useCallback((measured: number) => {
     setTotalPages(measured);
+    setMeasuredChapter(shownChapterRef.current);
     if (pendingLastPageRef.current && measured > 1) {
       pendingLastPageRef.current = false;
       setCurrentPage(measured - 1);

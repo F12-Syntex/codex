@@ -163,17 +163,19 @@ export function useChapterArtifacts(
   const { prefs } = useBookAIPrefs(filePath);
   const seq = useRef(0);
 
-  const load = useCallback(async (what: "both" | "status" = "both") => {
+  // `artifacts`: the layers only. With `ensure`, the queueing ensure below returns the status, so
+  // a separate status-only ensure (O(book) in main) is not needed on load (QA-P2-11).
+  const load = useCallback(async (what: "both" | "status" | "artifacts" = "both") => {
     if (!filePath || chapterIndex < 0 || !hasRpc()) return;
     const mine = ++seq.current;
     try {
       const [a, s] = await Promise.all([
-        what === "both" ? chaptersRpc.artifacts(filePath, chapterIndex) : Promise.resolve(null),
-        chaptersRpc.ensure({ filePath, chapterIndex, priority: Priority.Visible, kinds: [] }),
+        what !== "status" ? chaptersRpc.artifacts(filePath, chapterIndex) : Promise.resolve(null),
+        what !== "artifacts" ? chaptersRpc.ensure({ filePath, chapterIndex, priority: Priority.Visible, kinds: [] }) : Promise.resolve(null),
       ]);
       if (mine !== seq.current) return; // a newer load (or chapter change) won
       if (a) setArtifacts(a);
-      setStatus(s);
+      if (s) setStatus(s);
       setError(null);
     } catch (err) {
       if (mine === seq.current) setError(errorMessage(err));
@@ -184,8 +186,14 @@ export function useChapterArtifacts(
 
   // Initial load and chapter change (the keyed state already reads null for the new chapter).
   useEffect(() => {
-    void load("both");
-  }, [load]);
+    void load(ensure ? "artifacts" : "both");
+  }, [load, ensure]);
+
+  // Read through a ref: the book's chapter count resolving must not re-run the ensure (QA-P2-11).
+  const totalRef = useRef(totalChapters);
+  useEffect(() => {
+    totalRef.current = totalChapters;
+  }, [totalChapters]);
 
   // Navigation ensure (+ prefetch), re-run when prefs change. Deduped in main (one job per kind).
   const prefsKey = prefs ? JSON.stringify(prefs) : "";
@@ -197,19 +205,24 @@ export function useChapterArtifacts(
       () => {},
     );
     const next = chapterIndex + 1;
-    if (prefs.prefetchNext && (totalChapters === undefined || next < totalChapters)) {
+    const total = totalRef.current;
+    if (prefs.prefetchNext && (total === undefined || next < total)) {
       chaptersRpc.ensure({ filePath, chapterIndex: next, priority: Priority.Prefetch, group: `prefetch:${filePath}` }).catch(() => {});
     }
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ensure, filePath, chapterIndex, prefsKey, totalChapters, setStatus]);
+  }, [ensure, filePath, chapterIndex, prefsKey, setStatus]);
 
-  // Prefs changed (e.g. formatting toggled): the set of served layers changed.
+  // Prefs changed (e.g. formatting toggled): the set of served layers changed. Only a real change:
+  // the first prefs load and chapter changes are covered by the load above.
+  const prevPrefsKey = useRef(prefsKey);
   useEffect(() => {
-    if (prefsKey) void load("both");
-  }, [prefsKey, load]);
+    const prev = prevPrefsKey.current;
+    prevPrefsKey.current = prefsKey;
+    if (prev && prefsKey && prev !== prefsKey) void load(ensure ? "artifacts" : "both");
+  }, [prefsKey, load, ensure]);
 
   const refreshBoth = useCoalesced(() => void load("both"));
   const refreshStatus = useCoalesced(() => void load("status"));

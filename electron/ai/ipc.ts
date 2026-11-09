@@ -151,10 +151,13 @@ export function registerAI(ctx: AreaContext, opts: RegisterAIOptions = {}): AIRu
     const s = sanitizeCancel(sel);
     if (!s) return 0;
     if ("jobId" in s) {
-      // A window cancelling a job it asked for only withdraws ITS interest, so a job another
-      // window joined keeps running. A job this window never asked for is cancelled outright.
+      // A caller cancelling a job it asked for only withdraws ITS interest (one per submit), so a
+      // job another window (or another component of this window) joined keeps running. A job
+      // this window never asked for is cancelled outright.
       if (rt.scheduler.ownsInterest?.(s.jobId, meta.senderId)) {
-        return rt.scheduler.cancel({ owner: meta.senderId, keep: (j) => j.jobId !== s.jobId });
+        return rt.scheduler.withdraw
+          ? rt.scheduler.withdraw(s.jobId, meta.senderId)
+          : rt.scheduler.cancel({ owner: meta.senderId, keep: (j) => j.jobId !== s.jobId });
       }
     }
     return rt.scheduler.cancel(s);

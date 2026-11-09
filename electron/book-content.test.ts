@@ -101,7 +101,7 @@ test("registerBook: book:content (real EPUB), read marks and lexicon RPC with br
   assert.deepEqual([...handlers.keys()].sort(), [
     "book:anchors:delete", "book:anchors:list", "book:anchors:set",
     "book:annotations:add", "book:annotations:delete", "book:annotations:list",
-    "book:content", "book:readMarks:get", "book:readMarks:set", "lexicon:get", "lexicon:set",
+    "book:content", "book:readMarks:get", "book:readMarks:set", "book:reveal", "lexicon:get", "lexicon:set",
   ]);
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-bc-"));

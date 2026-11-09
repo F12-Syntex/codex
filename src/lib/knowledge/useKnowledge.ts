@@ -40,6 +40,14 @@ export function frontierKey(f?: Frontier | null): string {
  * Fetch `fetcher()` for `filePath`, re-running when `deps` change or when a knowledge/frontier
  * event for the book arrives. `enabled: false` (or no filePath) leaves `data` null.
  */
+function queryKey(filePath: string | null | undefined, deps: readonly unknown[]): string {
+  try {
+    return JSON.stringify([filePath ?? null, ...deps]);
+  } catch {
+    return `${filePath ?? ""}\u0000${deps.map(String).join("\u0000")}`;
+  }
+}
+
 export function useKnowledgeQuery<T>(
   filePath: string | null | undefined,
   fetcher: () => Promise<T>,
@@ -47,7 +55,12 @@ export function useKnowledgeQuery<T>(
   opts: { enabled?: boolean; onFrontier?: boolean } = {},
 ): QueryState<T> {
   const enabled = opts.enabled !== false && !!filePath && hasRpc();
-  const [data, setData] = useState<T | null>(null);
+  // Data is keyed by (filePath, deps): a new key reads null at once instead of showing the previous
+  // entity/book until the new fetch resolves (QA-P2-12). A refresh (events) keeps the data.
+  const key = queryKey(filePath, deps);
+  const [state, setState] = useState<{ key: string; value: T | null }>({ key, value: null });
+  const data = state.key === key ? state.value : null;
+  const setData = useCallback((v: T | null) => setState({ key, value: v }), [key]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -80,7 +93,7 @@ export function useKnowledgeQuery<T>(
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, filePath, tick, ...deps]);
+  }, [enabled, filePath, tick, setData, ...deps]);
 
   useEffect(() => {
     if (!enabled) return;
