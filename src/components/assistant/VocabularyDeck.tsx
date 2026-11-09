@@ -155,7 +155,7 @@ export function VocabularyDeck({ open, onClose, filePath, scopeLabel }: Vocabula
     return () => window.removeEventListener("keydown", onKey);
   }, [open, view, card, revealed, grade]);
 
-  const previews = card && !turn?.drill ? previewIntervals(card.srs, now || Date.now()) : null;
+  const previews = card && !turn?.drill ? previewIntervals(card.srs, now) : null;
   const total = queue ? done + queue.length : 0;
   const subtitle = `${deck.stats.due} due · ${deck.stats.total} ${deck.stats.total === 1 ? "word" : "words"}${scopeLabel ? ` · ${scopeLabel}` : ""}`;
 
