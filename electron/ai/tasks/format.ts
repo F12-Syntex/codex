@@ -19,6 +19,7 @@ import { chunkBySize, hashOf, textSimilarity, visibleText } from "../prompts/uti
 import {
   isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
 } from "./chapter-task";
+import { fakeFormat } from "./fake-replies";
 
 export const FORMAT_TASK_VERSION = 1;
 export const TEXT_PRESERVATION_MIN = 0.97;
@@ -234,4 +235,6 @@ export const formatTask: ChapterTaskDefinition<FormatInput, FormatOutput> = {
   cacheable: true,
   key: (input) => hashOf("format", input.base, input.baseHash, input.speakers, input.styleRules),
   run: runFormat,
+  // Offline demo output under CODEX_AI_PROVIDER=fake (QA-P2-3).
+  fakeResponse: fakeFormat,
 };

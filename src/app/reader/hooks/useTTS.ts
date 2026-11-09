@@ -25,6 +25,9 @@ export interface TTSItem {
   index: number;
   text: string;
   tokens: SpeechToken[];
+  /** Source paragraphs this item's text covers (itself first): a merge host also speaks the
+   *  paragraphs merged into it, so playback must not continue into them after a variant swap. */
+  covers?: ParaId[];
 }
 
 interface UseTTSOptions {
@@ -193,19 +196,28 @@ export function useTTS({
     return isSpeakable(it.text) ? callTTSAPI(it.text) : Promise.resolve(null);
   }, [callTTSAPI]);
 
-  /** Where to continue after `id` finished: resolves through a variant swap. */
-  const nextAfter = useCallback((id: ParaId, sourceIndex: number): number => {
+  /**
+   * Where to continue after `id` finished: resolves through a variant swap. `covers` are the
+   * paragraphs the finished item spoke (a merge host's merged paragraphs): they are skipped even
+   * if the new variant shows them separately again (format switched off mid-paragraph, QA-P2-1).
+   */
+  const nextAfter = useCallback((id: ParaId, sourceIndex: number, covers?: readonly ParaId[]): number => {
     const list = itemsRef.current;
+    const spoken = new Set(covers ?? []);
+    const skipSpoken = (n: number): number => {
+      while (n >= 0 && spoken.has(list[n].id)) n = nextSpeakableIn(list, n + 1);
+      return n;
+    };
     let i = exactIndex(id, list);
-    if (i >= 0) return nextSpeakableIn(itemsRef.current, i + 1);
+    if (i >= 0) return skipSpoken(nextSpeakableIn(list, i + 1));
     i = resolveRef.current(id, list);
     if (i < 0) {
       // Unknown id: continue at the first item after the old position.
       const k = list.findIndex((it) => it.index > sourceIndex);
-      return k < 0 ? -1 : nextSpeakableIn(itemsRef.current, k);
+      return k < 0 ? -1 : skipSpoken(nextSpeakableIn(list, k));
     }
     // Dropped → the resolved paragraph hasn't been read yet; merged → its host already has.
-    return nextSpeakableIn(itemsRef.current, list[i].index > sourceIndex ? i : i + 1);
+    return skipSpoken(nextSpeakableIn(list, list[i].index > sourceIndex ? i : i + 1));
   }, []);
 
   const prefetch = useCallback((after: number) => {
@@ -228,7 +240,7 @@ export function useTTS({
       const result = await synthesize(it);
       if (session !== sessionRef.current) return;
       if (!result) {
-        const n = nextAfter(it.id, it.index);
+        const n = nextAfter(it.id, it.index, it.covers);
         if (n >= 0) return speak(n, session);
         throw new Error("synthesis failed");
       }
@@ -269,7 +281,7 @@ export function useTTS({
       }
       onParagraphDoneRef.current?.(it);
 
-      const n = nextAfter(it.id, it.index);
+      const n = nextAfter(it.id, it.index, it.covers);
       if (n >= 0) return speak(n, session);
       setState({ status: "idle", currentParagraph: it.index, currentParaId: null });
       setPlaying(null);

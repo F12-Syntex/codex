@@ -100,3 +100,38 @@ export function locateQuote(text: string, quote: string): { start: number; end: 
   }
   return null;
 }
+
+/** Minimum share of the quote's significant words a fuzzy match must contain (as `reanchorByQuote`). */
+export const FUZZY_QUOTE_MIN_OVERLAP = 0.6;
+
+/**
+ * Fallback for `locateQuote` when the quote was saved from another variant (a Concise/Polish
+ * rewrite) and no longer occurs verbatim (QA-P2-2): the span of `text` whose words best overlap
+ * the quote's significant words (> 2 letters, case-insensitive), if the overlap is ≥ 60%.
+ * The span is trimmed to start and end on quote words.
+ */
+export function locateQuoteFuzzy(text: string, quote: string): { start: number; end: number } | null {
+  const wordRe = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
+  const qWords = (quote.match(wordRe) ?? []).map((w) => w.toLowerCase());
+  const sig = new Set(qWords.filter((w) => w.length > 2));
+  if (sig.size < 3) return null;
+  const words: { w: string; start: number; end: number }[] = [];
+  for (const m of text.matchAll(wordRe)) words.push({ w: m[0].toLowerCase(), start: m.index, end: m.index + m[0].length });
+  if (words.length === 0) return null;
+
+  let best: { score: number; from: number; to: number } | null = null;
+  const maxLen = Math.ceil(qWords.length * 1.5) + 2;
+  for (let from = 0; from < words.length; from++) {
+    if (!sig.has(words[from].w)) continue; // spans start on a quote word
+    const seen = new Set<string>();
+    for (let to = from; to < words.length && to - from + 1 <= maxLen; to++) {
+      const w = words[to].w;
+      if (!sig.has(w)) continue;
+      seen.add(w);
+      const score = seen.size / sig.size;
+      if (!best || score > best.score || (score === best.score && to - from < best.to - best.from)) best = { score, from, to };
+    }
+  }
+  if (!best || best.score < FUZZY_QUOTE_MIN_OVERLAP) return null;
+  return { start: words[best.from].start, end: words[best.to].end };
+}

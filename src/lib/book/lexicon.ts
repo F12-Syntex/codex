@@ -20,6 +20,8 @@ import { onAIEvent } from "@/lib/ai/events";
 let current: Lexicon = EMPTY_LEXICON;
 let loaded: Promise<Lexicon> | null = null;
 let detach: (() => void) | null = null;
+/** Version a refetch is in flight for (dedupes the store's own listener and `getLexicon(v)`). */
+let fetchingFor: string | null = null;
 const listeners = new Set<() => void>();
 
 function publish(lex: Lexicon): Lexicon {
@@ -35,16 +37,32 @@ function fetchLexicon(): Promise<Lexicon> {
   return loaded;
 }
 
+/** Refetch once per announced version, whichever `lexicon` listener runs first. */
+function refreshFor(version: string): Promise<Lexicon> {
+  if (fetchingFor === version && loaded) return loaded;
+  fetchingFor = version;
+  const p = fetchLexicon();
+  void p.then(() => {
+    if (fetchingFor === version) fetchingFor = null;
+  });
+  return p;
+}
+
 function ensureAttached(): void {
   if (detach) return;
   detach = onAIEvent("lexicon", (e) => {
-    if (e.version !== current.version) void fetchLexicon();
+    if (e.version !== current.version) void refreshFor(e.version);
   });
 }
 
-/** The current lexicon (loads once per window). */
-export function getLexicon(): Promise<Lexicon> {
+/**
+ * The current lexicon (loads once per window). With `version` (from a `lexicon` event), never
+ * returns the cached copy when it is older: `ai:event` listeners run in subscription order, so a
+ * caller may ask before this store's own listener has refetched (QA-P1-3).
+ */
+export function getLexicon(version?: string): Promise<Lexicon> {
   ensureAttached();
+  if (version && version !== current.version) return refreshFor(version);
   return loaded ?? fetchLexicon();
 }
 

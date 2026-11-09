@@ -21,7 +21,9 @@ import { EMPTY_LEXICON } from "./lexicon";
 
 export interface ChapterPipelineSources {
   getBook(filePath: string): Promise<BookContentV2>;
-  getLexicon(): Promise<Lexicon>;
+  /** The current lexicon. With `version` (from a `lexicon` event), it must resolve to that version
+   *  or newer: a cached copy older than `version` is refetched (QA-P1-3). */
+  getLexicon(version?: string): Promise<Lexicon>;
   /** Optional until WS-D's `chapters:artifacts` exists; rejections are treated as "no layers". */
   getArtifacts?(filePath: string, chapterIndex: number): Promise<ChapterArtifacts | null>;
   /** Frontier-gated entities (`knowledge:entityIndex`); rejections are treated as "none". */
@@ -245,9 +247,9 @@ export function createChapterPipeline(sources: ChapterPipelineSources, initial?:
     );
   }
 
-  function loadLexicon(): void {
+  function loadLexicon(version?: string): void {
     const g = ++gen.lexicon;
-    track(sources.getLexicon()).then(
+    track(sources.getLexicon(version)).then(
       (lex) => {
         if (disposed || g !== gen.lexicon) return;
         if (!lexicon || lex.version !== lexicon.version) lexicon = lex;
@@ -269,7 +271,7 @@ export function createChapterPipeline(sources: ChapterPipelineSources, initial?:
         if (e.filePath === filePath && e.chapterIndex === chapterIndex) loadArtifacts();
         break;
       case "lexicon":
-        if (!lexicon || e.version !== lexicon.version) loadLexicon();
+        if (!lexicon || e.version !== lexicon.version) loadLexicon(e.version);
         break;
       case "knowledge":
       case "frontier":

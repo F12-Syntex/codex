@@ -222,7 +222,7 @@ export function Reader({ filePath, title, author }: ReaderProps) {
     ttsChapter.paras.forEach((p, i) => {
       if (p.hidden || !p.speech) return;
       if (branchHere && sim.truncateAt !== null && i > sim.truncateAt) return;
-      out.push({ id: p.id, index: i, text: p.speech.text, tokens: p.speech.tokens });
+      out.push({ id: p.id, index: i, text: p.speech.text, tokens: p.speech.tokens, covers: p.covers });
     });
     branchSegmentsHtml.forEach((h, k) => {
       const sp = buildSpeech(h, lexicon);

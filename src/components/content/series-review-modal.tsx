@@ -22,8 +22,10 @@ import { SPINE_STYLE } from "./book-card";
 interface SeriesReviewModalProps {
   open: boolean;
   onClose: () => void;
-  /** Books on the current shelf (detection scope + covers). */
+  /** Books on the current shelf (detection scope). */
   items: MockItem[];
+  /** Every library item, so volumes on other shelves still show their covers. */
+  library?: MockItem[];
   /** Called after groups were applied (e.g. switch the grid to the Series view). */
   onApplied?: (count: number) => void;
 }
@@ -45,13 +47,16 @@ function Thumb({ item, i }: { item: MockItem | undefined; i: number }) {
   );
 }
 
-export function SeriesReviewModal({ open, onClose, items, onApplied }: SeriesReviewModalProps) {
+export function SeriesReviewModal({ open, onClose, items, library, onApplied }: SeriesReviewModalProps) {
   const [suggestions, setSuggestions] = useState<SeriesSuggestion[] | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const byPath = useMemo(() => new Map(items.map((i) => [i.filePath, i])), [items]);
+  const byPath = useMemo(
+    () => new Map([...(library ?? []), ...items].map((i) => [i.filePath, i])),
+    [items, library],
+  );
   const scope = useMemo(() => items.map((i) => i.filePath), [items]);
 
   useEffect(() => {
@@ -120,7 +125,7 @@ export function SeriesReviewModal({ open, onClose, items, onApplied }: SeriesRev
       open={open}
       onClose={onClose}
       width={560}
-      title="Detect Series"
+      title="Detect series"
       subtitle="Volumes found by their titles and file names. Nothing changes until you group them."
       className="grain"
     >
@@ -156,8 +161,9 @@ export function SeriesReviewModal({ open, onClose, items, onApplied }: SeriesRev
                   >
                     {on && <Check className="size-3" strokeWidth={3} />}
                   </button>
-                  <span className="flex shrink-0 items-center">
-                    {g.volumes.slice(0, 4).map((v, i) => <Thumb key={v.filePath} item={byPath.get(v.filePath)} i={i} />)}
+                  {/* Fixed slot (two fanned thumbs), so every group's text starts at one x. */}
+                  <span className="flex w-11 shrink-0 items-center">
+                    {g.volumes.slice(0, 2).map((v, i) => <Thumb key={v.filePath} item={byPath.get(v.filePath)} i={i} />)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 truncate text-headline text-label">
@@ -165,7 +171,7 @@ export function SeriesReviewModal({ open, onClose, items, onApplied }: SeriesRev
                       {g.source === "ai" && <Sparkles className="size-3.5 shrink-0 text-brand" strokeWidth={1.75} aria-label="Suggested by AI" />}
                     </p>
                     <p className="truncate text-xs text-label-secondary tabular-nums">
-                      {g.volumes.length} volumes
+                      {g.volumes.length} {g.volumes.length === 1 ? "volume" : "volumes"}
                       {numbers.length > 0 && ` · Vol. ${numbers.join(", ")}`}
                     </p>
                   </div>
@@ -191,7 +197,7 @@ export function SeriesReviewModal({ open, onClose, items, onApplied }: SeriesRev
         </Button>
         <Button size="sm" onClick={apply} disabled={busy || suggestions === null || (selected.length === 0 && dismissed.size === 0)}>
           {busy && <Loader2 className="animate-spin" strokeWidth={1.75} />}
-          {selected.length > 0 ? `Group ${selected.length} Series` : "Save"}
+          {selected.length > 0 ? `Group ${selected.length} series` : "Save"}
         </Button>
       </GlassModal.Footer>
     </GlassModal>

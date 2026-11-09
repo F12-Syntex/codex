@@ -379,6 +379,11 @@ export default function Home() {
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
   const rawItems = useMemo(() => data[activeView] ?? [], [data, activeView]);
+  // Every shelf of both sections, so Detect series can show covers of volumes on other shelves.
+  const libraryItems = useMemo(
+    () => [...Object.values(bookData), ...Object.values(comicData)].flatMap((list) => list ?? []),
+    [bookData, comicData],
+  );
 
   /** Accepted genres on this shelf, most common first (the Filter menu's Genre section). */
   const genreOptions = useMemo(() => {
@@ -411,7 +416,8 @@ export default function Home() {
   }, [rawItems, formatFilter, activeGenre, overview, sortField, sortDir]);
 
   const tagProgress = tagRun.running && tagRun.run ? { done: tagRun.run.done + tagRun.run.failed, total: tagRun.run.total } : null;
-  const libraryAIAvailable = hasRpc();
+  // No hydration branch (conventions §13.12): `false` on the server and the first client render.
+  const libraryAIAvailable = useSyncExternalStore(noopSubscribe, hasRpc, () => false);
 
   /** Toggle selection of an item (ctrl+click / shift+click) */
   const handleToggleSelect = useCallback((id: number, shiftKey: boolean) => {
@@ -676,6 +682,7 @@ export default function Home() {
           open={seriesOpen}
           onClose={() => setSeriesOpen(false)}
           items={rawItems}
+          library={libraryItems}
           onApplied={(n) => { if (n > 0) setViewMode("series"); }}
         />
         {detailsItem && (

@@ -5,9 +5,9 @@
  * Scrim + glass-thick panel with a spring "sheet" entrance (motion).
  * Inspired by 21st.dev "Animated Dialog" (rmahammad) choreography.
  *
- * Built on Radix Dialog: focus is trapped inside the panel, the first
- * focusable element (or an `autoFocus` child) gets focus on open, focus
- * returns to the opener on close, and the rest of the page is inert to
+ * Built on Radix Dialog: focus is trapped inside the panel, the panel itself
+ * takes focus on open (no focus ring on ✕; Tab reaches the first control),
+ * focus returns to the opener on close, and the rest of the page is inert to
  * pointer and assistive tech. Motion runs through `forceMount` +
  * AnimatePresence so the exit animation still plays.
  *
@@ -57,6 +57,7 @@ function GlassModalRoot({
   children,
 }: GlassModalProps) {
   const reduce = useReducedMotion();
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
   return (
     <DialogPrimitive.Root
@@ -84,6 +85,14 @@ function GlassModalRoot({
                 aria-modal="true"
                 // No subtitle → no description; say so explicitly (Radix warns otherwise).
                 {...(subtitle ? {} : { "aria-describedby": undefined })}
+                // Focus the panel, not its first control: opening Details or Recap
+                // shouldn't paint a focus ring on ✕. An `autoFocus` child (e.g. a
+                // confirm button) has already taken focus by now and keeps it.
+                onOpenAutoFocus={(e) => {
+                  e.preventDefault();
+                  const panel = panelRef.current;
+                  if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+                }}
                 // Esc is the modal's alone: keep it from reaching window-level
                 // handlers (e.g. the reader's Esc chain, which closes the window).
                 onEscapeKeyDown={(e) => {
@@ -98,6 +107,8 @@ function GlassModalRoot({
                 }}
               >
                 <motion.div
+                  ref={panelRef}
+                  tabIndex={-1}
                   className={cn(
                     "glass-thick relative flex flex-col overflow-hidden rounded-2xl text-label outline-none",
                     className,

@@ -388,14 +388,15 @@ async function navigate(app: App, fp: string, i: number, total: number, sender =
 
 /**
  * One renderer window: the `ai:event` fan-out (MIRROR src/lib/ai/events.ts: one Set, insertion
- * order), the per-window lexicon store (MIRROR src/lib/book/lexicon.ts:20-49, `getLexicon` returns
- * the cached `loaded` promise; the store refreshes from its own "lexicon" listener), and the
+ * order), the per-window lexicon store (MIRROR src/lib/book/lexicon.ts: `getLexicon(version?)` refetches when the cached copy is
+ * older than an announced version; the store also refreshes from its own "lexicon" listener), and the
  * pipeline sources of useChapterPipeline.ts:53-63.
  */
 class RendererWindow {
   readonly listeners: Set<(e: AIEvent) => void>;
   private current: Lexicon = EMPTY_LEXICON;
   private loaded: Promise<Lexicon> | null = null;
+  private fetchingFor: string | null = null;
   private detach: (() => void) | null = null;
   readonly lexiconSubscribers = new Set<() => void>();
 
@@ -420,14 +421,24 @@ class RendererWindow {
     this.loaded = this.app.callAs(this.win.id, "lexicon:get").then((l) => this.publish(l), () => this.current);
     return this.loaded;
   }
+  private refreshFor(version: string): Promise<Lexicon> {
+    if (this.fetchingFor === version && this.loaded) return this.loaded;
+    this.fetchingFor = version;
+    const p = this.fetchLexicon();
+    void p.then(() => {
+      if (this.fetchingFor === version) this.fetchingFor = null;
+    });
+    return p;
+  }
   private ensureAttached(): void {
     if (this.detach) return;
     this.detach = this.onAnyAIEvent((e) => {
-      if (e.type === "lexicon" && e.version !== this.current.version) void this.fetchLexicon();
+      if (e.type === "lexicon" && e.version !== this.current.version) void this.refreshFor(e.version);
     });
   }
-  getLexicon(): Promise<Lexicon> {
+  getLexicon(version?: string): Promise<Lexicon> {
     this.ensureAttached();
+    if (version && version !== this.current.version) return this.refreshFor(version);
     return this.loaded ?? this.fetchLexicon();
   }
   /** `useLexicon()` snapshot (what MessageRenderer / EntityCard / RecapSheet render with). */
@@ -440,7 +451,7 @@ class RendererWindow {
     const id = this.win.id;
     return createChapterPipeline({
       getBook: (fp) => this.app.callAs(id, "book:content", fp),
-      getLexicon: () => this.getLexicon(),
+      getLexicon: (version) => this.getLexicon(version),
       getArtifacts: (fp, i) => this.app.callAs(id, "chapters:artifacts", fp, i),
       getEntities: async (fp) => toEntityMatchers(await this.app.callAs(id, "knowledge:entityIndex", fp)),
       subscribe: (l) => this.onAnyAIEvent(l),
@@ -461,13 +472,13 @@ async function readyChapter(p: ChapterPipeline): Promise<RenderedChapter> {
 
 // ── TTS mirror (useTTS.ts:196-209 nextAfter + Reader.tsx:226-233 resolveTTSIndex) ─────────
 
-interface TTSItem { id: ParaId; index: number; text: string; tokens: { start: number; end: number; domWord: number }[] }
+interface TTSItem { id: ParaId; index: number; text: string; tokens: { start: number; end: number; domWord: number }[]; covers?: ParaId[] }
 /** MIRROR Reader.tsx:219-230 ttsItems */
 function ttsItems(ch: RenderedChapter): TTSItem[] {
   const out: TTSItem[] = [];
   ch.paras.forEach((p, i) => {
     if (p.hidden || !p.speech) return;
-    out.push({ id: p.id, index: i, text: p.speech.text, tokens: p.speech.tokens });
+    out.push({ id: p.id, index: i, text: p.speech.text, tokens: p.speech.tokens, covers: p.covers });
   });
   return out;
 }
@@ -476,17 +487,23 @@ function nextSpeakableIn(list: TTSItem[], from: number): number {
   for (let i = Math.max(0, from); i < list.length; i++) if (isSpeakable(list[i].text)) return i;
   return -1;
 }
-/** MIRROR useTTS.ts nextAfter with Reader's resolveTTSIndex (resolveAnchor on the NEW chapter). */
-function ttsNextAfter(id: ParaId, sourceIndex: number, list: TTSItem[], ch: RenderedChapter): number {
+/** MIRROR useTTS.ts nextAfter with Reader's resolveTTSIndex (resolveAnchor on the NEW chapter);
+ *  `covers` = the finished item's covers (what it actually spoke). */
+function ttsNextAfter(id: ParaId, sourceIndex: number, list: TTSItem[], ch: RenderedChapter, covers?: readonly ParaId[]): number {
+  const spoken = new Set(covers ?? []);
+  const skipSpoken = (n: number): number => {
+    while (n >= 0 && spoken.has(list[n].id)) n = nextSpeakableIn(list, n + 1);
+    return n;
+  };
   let i = list.findIndex((it) => it.id === id);
-  if (i >= 0) return nextSpeakableIn(list, i + 1);
+  if (i >= 0) return skipSpoken(nextSpeakableIn(list, i + 1));
   const r = resolveAnchor(ch, id);
   i = r < 0 ? -1 : list.findIndex((it) => it.id === ch.paras[r].id);
   if (i < 0) {
     const k = list.findIndex((it) => it.index > sourceIndex);
-    return k < 0 ? -1 : nextSpeakableIn(list, k);
+    return k < 0 ? -1 : skipSpoken(nextSpeakableIn(list, k));
   }
-  return nextSpeakableIn(list, list[i].index > sourceIndex ? i : i + 1);
+  return skipSpoken(nextSpeakableIn(list, list[i].index > sourceIndex ? i : i + 1));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -537,7 +554,7 @@ test("#1a flip 10 chapters fast, all features on: ≤ concurrency in flight, one
   app.dispose();
 });
 
-test("#1b flip 10 chapters fast: the CURRENT chapter is served before chapters the reader skipped past", { todo: "QA-P1-1 navigation entries are pinned at Visible forever; FIFO serves skipped chapters first" }, async () => {
+test("#1b flip 10 chapters fast: the CURRENT chapter is served before chapters the reader skipped past", async () => {
   const app = await boot({ prefs: { rewrite: "concise", prefetchNext: true } });
   installModel(app);
   const fp = app.addBook(storyChapters(12, "M1b"));
@@ -628,7 +645,7 @@ test("#2a turning each feature on while reading: exactly one job per kind for th
   app.dispose();
 });
 
-test("#2b switching rewrite mode while the format job is in flight re-queues format for the NEW base", { todo: "QA-P1-2 setPrefs aborts only rewrite on a mode change; ensure joins the stale format entry" }, async () => {
+test("#2b switching rewrite mode while the format job is in flight re-queues format for the NEW base", async () => {
   const app = await boot({ prefs: { rewrite: "concise", formatting: true, prefetchNext: false } });
   installModel(app);
   const fp = app.addBook(storyChapters(4, "M2b"));
@@ -651,7 +668,7 @@ test("#2b switching rewrite mode while the format job is in flight re-queues for
   app.dispose();
 });
 
-test("#2c turning concise ON while a source-format job is in flight re-queues format on the rewrite", { todo: "QA-P1-2 (same root cause: format variant change is not treated as a new entry)" }, async () => {
+test("#2c turning concise ON while a source-format job is in flight re-queues format on the rewrite", async () => {
   const app = await boot({ prefs: { formatting: true, prefetchNext: false } });
   installModel(app);
   const fp = app.addBook(storyChapters(4, "M2c"));
@@ -816,14 +833,16 @@ test("#4 TTS: concise + format land mid-paragraph → playback continues at the 
   app.dispose();
 });
 
-test("#4b TTS: format switched OFF mid-paragraph while reading a merge host does not re-read the merged paragraph", { todo: "QA-P2-1 un-merge on variant swap: nextAfter finds the host by exact id and continues INTO the paragraph whose text was just spoken" }, async () => {
+test("#4b TTS: format switched OFF mid-paragraph while reading a merge host does not re-read the merged paragraph", async () => {
   const src = toBookContentV2("/x.epub", legacyBook([{ title: "C", paras: SIX }])).chapters[0];
   const ids = src.paras.map((p) => p.id);
   const fmt = { artifactHash: "f", base: "source" as const, baseHash: src.sourceHash, paras: { [ids[3]]: { html: `<p>${SIX[3]} ${SIX[4]}</p>` }, [ids[4]]: { mergedInto: ids[3] } } };
   const merged = buildChapter(src, { lexicon: EMPTY_LEXICON, format: fmt });
   const plain = buildChapter(src, { lexicon: EMPTY_LEXICON });
-  assert.ok(ttsItems(merged)[3].text.includes("whetstone"), "the spoken host contained ¶4's text");
-  const n = ttsNextAfter(ids[3], 3, ttsItems(plain), plain);
+  const spokenHost = ttsItems(merged)[3];
+  assert.ok(spokenHost.text.includes("whetstone"), "the spoken host contained ¶4's text");
+  // useTTS.speak passes the finished item's covers (Reader.tsx ttsItems carries `p.covers`).
+  const n = ttsNextAfter(ids[3], 3, ttsItems(plain), plain, spokenHost.covers);
   assert.equal(ttsItems(plain)[n].index, 5, `continues at ¶${ttsItems(plain)[n].index}; ¶4 was already spoken inside ¶3`);
 });
 
@@ -915,7 +934,7 @@ test("#5 comment, bookmark, read mark, branch and AI comment on ¶X stay on X (o
   app.dispose();
 });
 
-test("#5b a quote saved while Concise is on stays highlighted after Concise is switched off", { todo: "QA-P2-2 quote highlights are located by the selected (variant) text; the source paragraph does not contain it" }, async () => {
+test("#5b a quote saved while Concise is on stays highlighted after Concise is switched off", async () => {
   const { app, fp, reader, X, ref } = await anchorsSetup();
   await app.callAs(8, "chapters:prefs:set", fp, { rewrite: "concise" });
   await navigate(app, fp, 0, 1, 8);
@@ -1032,7 +1051,7 @@ test("#6a god→Ascendant: page, speed reader, TTS, entity highlight, title, AI 
   app.dispose();
 });
 
-test("#6b a word replacement saved while the reader is open reaches the page, TTS and titles (not only AI panels)", { todo: "QA-P1-3 pipeline's `ai:event` listener runs before the lexicon store's and re-reads the stale cached `loaded` promise" }, async () => {
+test("#6b a word replacement saved while the reader is open reaches the page, TTS and titles (not only AI panels)", async () => {
   const app = await boot({ prefs: { prefetchNext: false } });
   installModel(app);
   const fp = app.addBook(GOD_BOOK);

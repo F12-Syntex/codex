@@ -9,9 +9,15 @@
  *   priority (S2-1 double-fire, S2-2 prefetch never deduped).
  * - `format` waits for `rewrite` when rewrite ≠ off, and records the rewrite layer's artifactHash
  *   as `baseHash`; a mismatch makes the layer `stale` and the next ensure re-queues it (S1-8).
- * - Cancellation is per entry and per group. An entry joined by navigation (no group) is "pinned"
- *   and survives cancellation of the prefetch/bulk group that created it, so Stop cancels only
- *   the bulk group (S2-3) and a jump away cancels only stale prefetch.
+ * - Cancellation is per entry and per group. Navigation joins with its own `nav:<filePath>` group,
+ *   so Stop cancels only the bulk group (S2-3). A jump of more than one chapter drops queued
+ *   prefetch AND queued navigation work for the chapters left behind, so the current chapter is
+ *   served first and skipped chapters are never paid for (QA-P1-1). Only ↻ (`refresh`) pins an
+ *   entry against every group cancel.
+ * - An entry carries its variant (rewrite mode, format base). A rewrite-mode change aborts both
+ *   rewrite and format, and `ensure` never joins an entry built for another variant (QA-P1-2).
+ * - Aborting an entry withdraws only the orchestrator's interest in its job (`ORCHESTRATOR_OWNER`),
+ *   so a job another caller joined keeps running (QA-P2-14).
  * - Clear and ↻ are per chapter and per kind (S1-1). ↻ re-runs only that chapter (`refresh`).
  * - Bulk status is computed from entries and results, and reaches "done" (S2-5).
  */
@@ -37,15 +43,20 @@ import { TITLE_TASK_VERSION, type TitleInput, type TitleOutput } from "./tasks/t
 import { COMMENTS_TASK_VERSION, type CommentsInput, type CommentsOutput } from "./tasks/comments";
 import type { StyleRegenInput, StyleRegenOccurrence, StyleRegenOutput } from "./tasks/style-regen";
 import type { FormatSpeaker } from "./prompts/format";
+import type { OwnerSelector } from "./scheduler";
+
+/** Synthetic scheduler owner for chapter work: lets `abort` withdraw only the orchestrator's
+ *  interest in a job (QA-P2-14). Never a real webContents id, so window-close never matches it. */
+export const ORCHESTRATOR_OWNER = -1;
 
 // ── Ports (structural; satisfied by WS-A/B/C implementations) ───────────────
 
-/** The slice of WS-A's `Scheduler` (§4.4.3) the orchestrator uses. Jobs are submitted with no
- *  owner: chapter work belongs to the book, not to the window that asked. */
+/** The slice of WS-A's `Scheduler` (§4.4.3) the orchestrator uses. Jobs are submitted with the
+ *  synthetic `ORCHESTRATOR_OWNER`: chapter work belongs to the book, not to the window that asked. */
 export interface SchedulerPort {
-  submit<I>(spec: JobSpec<I>): JobTicket;
+  submit<I>(spec: JobSpec<I>, owner?: number): JobTicket;
   result<O>(jobId: string): Promise<JobResult<O>>;
-  cancel(sel: CancelSelector): number;
+  cancel(sel: CancelSelector | OwnerSelector): number;
   bump(jobId: string, priority: Priority): void;
   onEvent(cb: (e: AIEvent) => void): () => void;
 }
@@ -106,8 +117,10 @@ interface Entry {
   priority: Priority;
   /** Groups whose requests this entry serves. */
   groups: Set<string>;
-  /** Requested without a group (navigation / ↻): never cancelled by a group cancel. */
+  /** Requested by ↻ (`refresh`) or without any group: never cancelled by a group cancel. */
   pinned: boolean;
+  /** Rewrite mode (rewrite), `formatVariant(mode)` (format), "" otherwise. */
+  variant: string;
   aborted: boolean;
   refresh: boolean;
   jobIds: Set<string>;
@@ -148,6 +161,16 @@ export function enabledKinds(prefs: BookAIPrefs): ChapterKind[] {
   if (prefs.knowledge) out.push("knowledge");
   return out;
 }
+
+/** The artifact variant an entry of `kind` produces under `prefs`. */
+function variantOf(kind: ChapterKind, prefs: BookAIPrefs): string {
+  if (kind === "rewrite") return prefs.rewrite === "off" ? "" : prefs.rewrite;
+  if (kind === "format") return formatVariant(prefs.rewrite);
+  return "";
+}
+
+/** Navigation group: one per book, dropped for chapters the reader jumped away from. */
+export const navGroup = (filePath: string) => `nav:${filePath}`;
 
 function isEnabled(prefs: BookAIPrefs, kind: ChapterKind): boolean {
   switch (kind) {
@@ -224,7 +247,8 @@ export class ChapterOrchestrator {
     for (const e of [...this.inflight.values()]) {
       if (e.filePath !== filePath) continue;
       const turnedOff = isEnabled(before, e.kind) && !isEnabled(after, e.kind);
-      const modeChanged = e.kind === "rewrite" && before.rewrite !== after.rewrite;
+      // Format's base is the rewrite: a mode change makes both the rewrite and the format stale.
+      const modeChanged = (e.kind === "rewrite" || e.kind === "format") && before.rewrite !== after.rewrite;
       if (turnedOff || modeChanged) this.abort(e);
     }
     return after;
@@ -378,9 +402,12 @@ export class ChapterOrchestrator {
     const prefs = this.deps.prefs.get(req.filePath);
     const idx = this.metaIndex(req.filePath);
 
-    // Navigation (not a status read) that lands far from prefetched chapters drops that prefetch.
+    // Navigation (not a status read) that lands far from queued work drops that work (QA-P1-1).
     const statusOnly = req.kinds !== undefined && req.kinds.length === 0;
-    if (!statusOnly && req.priority <= Priority.Visible && !req.group) this.cancelDistantPrefetch(req.filePath, req.chapterIndex);
+    const navigation = !statusOnly && req.priority <= Priority.Visible && !req.group;
+    if (navigation) this.cancelDistantPrefetch(req.filePath, req.chapterIndex);
+    // Navigation joins under its own group (↻ stays pinned), so a later jump can drop it.
+    if (navigation && !req.refresh) req = { ...req, group: navGroup(req.filePath) };
 
     const asked = req.kinds ?? enabledKinds(prefs);
     // Dependency order (rewrite before format), whatever order the caller used.
@@ -395,7 +422,12 @@ export class ChapterOrchestrator {
   }
 
   private ensureKind(req: EnsureRequest, ch: SourceChapter, kind: ChapterKind, prefs: BookAIPrefs, idx: MetaIndex): Entry | null {
-    const existing = this.inflight.get(this.key(req.filePath, ch.id, kind));
+    let existing = this.inflight.get(this.key(req.filePath, ch.id, kind));
+    // Never join an entry built for another variant (e.g. format over the old rewrite mode).
+    if (existing && !existing.aborted && existing.variant !== variantOf(kind, prefs)) {
+      this.abort(existing);
+      existing = undefined;
+    }
     if (existing && !existing.aborted) {
       this.join(existing, req.priority, req.group);
       return existing;
@@ -421,10 +453,10 @@ export class ChapterOrchestrator {
     for (const d of e.deps) this.join(d, priority, group);
   }
 
-  private newEntry(filePath: string, ch: SourceChapter, kind: ChapterKind, priority: Priority, group: string | undefined, refresh: boolean): Entry {
+  private newEntry(filePath: string, ch: SourceChapter, kind: ChapterKind, priority: Priority, group: string | undefined, refresh: boolean, variant = ""): Entry {
     const e: Entry = {
       key: this.key(filePath, ch.id, kind),
-      filePath, chapterIndex: ch.index, chapterId: ch.id, kind,
+      filePath, chapterIndex: ch.index, chapterId: ch.id, kind, variant,
       state: "queued", priority, groups: new Set(group ? [group] : []), pinned: !group,
       aborted: false, refresh, jobIds: new Set(), deps: [],
       promise: Promise.resolve<Outcome>("cancelled"),
@@ -456,7 +488,7 @@ export class ChapterOrchestrator {
   }
 
   private start(filePath: string, ch: SourceChapter, kind: ChapterKind, prefs: BookAIPrefs, priority: Priority, group: string | undefined, refresh: boolean): Entry {
-    const e = this.newEntry(filePath, ch, kind, priority, group, refresh);
+    const e = this.newEntry(filePath, ch, kind, priority, group, refresh, variantOf(kind, prefs));
     switch (kind) {
       case "title": return this.launch(e, async () => (await this.runTitleBatch(filePath, [{ ch, entry: e }])).get(e) ?? "error");
       case "rewrite": return this.launch(e, () => this.runRewrite(e, ch, prefs.rewrite as RewriteMode));
@@ -502,7 +534,7 @@ export class ChapterOrchestrator {
       group,
       scope: { filePath: lead.filePath, chapterIndex: ch.index, chapterId: ch.id },
       cache: live.some((e) => e.refresh) ? "refresh" : "use",
-    });
+    }, ORCHESTRATOR_OWNER);
     for (const e of live) this.mapJob(ticket.jobId, e);
     return this.deps.scheduler.result<O>(ticket.jobId);
   }
@@ -729,9 +761,10 @@ export class ChapterOrchestrator {
     if (e.aborted) return;
     e.aborted = true;
     for (const id of e.jobIds) {
-      // Only cancel a shared job (title batch) when every entry on it is aborted.
+      // Only withdraw from a shared job (title batch) when every entry on it is aborted; withdraw
+      // only the orchestrator's interest, so a job another caller joined keeps running.
       const others = [...(this.byJob.get(id) ?? [])].filter((x) => x !== e && !x.aborted);
-      if (others.length === 0) this.deps.scheduler.cancel({ jobId: id });
+      if (others.length === 0) this.deps.scheduler.cancel({ owner: ORCHESTRATOR_OWNER, keep: (j) => j.jobId !== id });
     }
     if (this.inflight.get(e.key) === e) this.inflight.delete(e.key);
   }
@@ -750,16 +783,20 @@ export class ChapterOrchestrator {
     return n;
   }
 
-  /** Navigation moved more than one chapter away from a prefetched chapter: drop that prefetch. */
+  /**
+   * Navigation moved more than one chapter away: drop prefetch for the chapters left behind, and
+   * navigation work that has not started yet (QA-P1-1). Running work finishes (it is already paid
+   * for); bulk keeps its own group; memo and cache make a return visit cheap.
+   */
   private cancelDistantPrefetch(filePath: string, chapterIndex: number): void {
+    const nav = navGroup(filePath);
     for (const e of [...this.inflight.values()]) {
-      if (e.filePath !== filePath || e.pinned || Math.abs(e.chapterIndex - chapterIndex) <= 1) continue;
+      if (e.filePath !== filePath || e.pinned || e.aborted || Math.abs(e.chapterIndex - chapterIndex) <= 1) continue;
+      let dropped = false;
       for (const g of [...e.groups]) {
-        if (g.startsWith("prefetch:")) {
-          e.groups.delete(g);
-          if (e.groups.size === 0) this.abort(e);
-        }
+        if (g.startsWith("prefetch:") || (g === nav && e.state === "queued")) dropped = e.groups.delete(g) || dropped;
       }
+      if (dropped && e.groups.size === 0) this.abort(e);
     }
   }
 

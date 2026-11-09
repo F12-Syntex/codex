@@ -20,7 +20,7 @@ import type { KnowledgeReader } from "../shared/knowledge/types";
 import { SqlArtifactStore, SqlPrefsStore } from "./artifacts";
 import { SqlStyleStore } from "./style";
 import {
-  ChapterOrchestrator, type ChapterContentReader, type KnowledgePort, type OrchestratorOptions, type SchedulerPort,
+  ChapterOrchestrator, ORCHESTRATOR_OWNER, type ChapterContentReader, type KnowledgePort, type OrchestratorOptions, type SchedulerPort,
 } from "./orchestrator";
 import { peekAIRuntime } from "./runtime";
 import { titleTask } from "./tasks/title";
@@ -91,7 +91,7 @@ function defaultRuntime(ctx: AreaContext): ChapterRuntime | null {
         scope: { filePath, chapterIndex },
         priority,
         group,
-      });
+      }, ORCHESTRATOR_OWNER);
     },
   };
   /* eslint-enable @typescript-eslint/no-require-imports */

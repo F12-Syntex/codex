@@ -9,8 +9,8 @@
  * Everything goes through `useAISettings` (main is the source of truth; the key is write-only).
  */
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, Check, Loader2, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Loader2, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
 import type { AIHealthState, ModelRole, PublicAISettings, TaskId } from "@shared/ai/types";
 import { MODEL_ROLES } from "@shared/ai/types";
 import { DEFAULT_MODELS, MODEL_ROLE_INFO, TASK_LABELS } from "@shared/ai/models";
@@ -20,7 +20,13 @@ import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SecureInput } from "@/components/ui/secure-input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { NumberStepper } from "@/components/ui/number-stepper";
@@ -45,6 +51,29 @@ function formatTokens(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
   return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+/** "42 s", "3 min" — time left until a rate-limit pause lifts. */
+function formatCountdown(ms: number): string {
+  const s = Math.max(1, Math.ceil(ms / 1000));
+  return s < 90 ? `${s} s` : `${Math.round(s / 60)} min`;
+}
+
+/** Wall clock that ticks every second while `active`; `null` otherwise. */
+function useNow(active: boolean): number | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+      setNow(null);
+    };
+  }, [active]);
+  return active ? now : null;
 }
 
 const HEALTH_COPY: Record<Exclude<AIHealthState, "ok">, { title: string; body: string }> = {
@@ -143,7 +172,9 @@ function KeyGroup({
           : "Check that your key works";
 
   const banner = health !== "ok" ? HEALTH_COPY[health] : null;
-  const retryLabel = retryAt ? new Date(retryAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : null;
+  const now = useNow(health === "rate_limited" && !!retryAt);
+  const retryLabel =
+    retryAt && now !== null ? (retryAt - now > 0 ? `Resuming in ${formatCountdown(retryAt - now)}.` : "Resuming…") : null;
 
   return (
     <ListGroup title="OpenRouter" footer="Your key is encrypted with your system keychain and only ever sent to OpenRouter.">
@@ -154,7 +185,7 @@ function KeyGroup({
           label={banner.title}
           description={
             health === "rate_limited" && retryLabel
-              ? `${banner.body} Next try at ${retryLabel}.`
+              ? `${banner.body} ${retryLabel}`
               : health === "auth_failed" && healthMessage
                 ? `${banner.body} (${healthMessage})`
                 : banner.body
@@ -266,7 +297,7 @@ function ModelsGroup({ settings, update }: { settings: PublicAISettings; update:
                 </Button>
               )}
             </span>
-            <ModelCombobox value={value} onChange={(m) => setModel(role, m)} placeholder={DEFAULT_MODELS[role]} />
+            <ModelCombobox value={value} onChange={(m) => setModel(role, m)} placeholder={DEFAULT_MODELS[role]} models={models} />
           </ListRow>
         );
       })}
@@ -330,12 +361,86 @@ function LimitsGroup({ settings, update }: { settings: PublicAISettings; update:
 
 /* ── Reading ─────────────────────────────────────────────── */
 
-function ReadingGroup({ settings, update }: { settings: PublicAISettings; update: Update }) {
-  // Local draft while typing; null = show the saved value.
-  const [draft, setDraft] = useState<string | null>(null);
-  const lang = draft ?? settings.targetLanguage;
-  const langValid = /^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(lang.trim());
+/** Translation targets, by BCP-47 tag, named in their own language. */
+const LANGUAGES: { code: string; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "es", label: "Español" },
+  { code: "fr", label: "Français" },
+  { code: "de", label: "Deutsch" },
+  { code: "it", label: "Italiano" },
+  { code: "pt", label: "Português" },
+  { code: "pt-BR", label: "Português (Brasil)" },
+  { code: "nl", label: "Nederlands" },
+  { code: "sv", label: "Svenska" },
+  { code: "da", label: "Dansk" },
+  { code: "nb", label: "Norsk" },
+  { code: "fi", label: "Suomi" },
+  { code: "pl", label: "Polski" },
+  { code: "cs", label: "Čeština" },
+  { code: "el", label: "Ελληνικά" },
+  { code: "tr", label: "Türkçe" },
+  { code: "ru", label: "Русский" },
+  { code: "uk", label: "Українська" },
+  { code: "ar", label: "العربية" },
+  { code: "he", label: "עברית" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "id", label: "Bahasa Indonesia" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "th", label: "ไทย" },
+  { code: "ja", label: "日本語" },
+  { code: "ko", label: "한국어" },
+  { code: "zh-Hans", label: "简体中文" },
+  { code: "zh-Hant", label: "繁體中文" },
+];
 
+/**
+ * The option a stored tag selects: an exact match, else its base language ("en-US" → English), else
+ * the tag itself (kept as an extra option so a hand-set value isn't lost).
+ */
+function languageOption(tag: string): { code: string; label: string; extra: boolean } {
+  const exact = LANGUAGES.find((l) => l.code.toLowerCase() === tag.toLowerCase());
+  if (exact) return { ...exact, extra: false };
+  const base = LANGUAGES.find((l) => l.code === tag.split(/[-_]/)[0].toLowerCase());
+  if (base) return { ...base, extra: false };
+  return { code: tag, label: tag, extra: true };
+}
+
+function LanguageSelect({ value, onChange }: { value: string; onChange: (tag: string) => void }) {
+  const current = languageOption(value);
+  const selected = current.code;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Translate into"
+          className="pressable focus-ring flex h-8 w-56 items-center justify-between gap-2 rounded-full bg-fill-tertiary pr-2.5 pl-3.5 text-left text-xs text-label shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge)] hover:bg-fill-secondary data-[state=open]:bg-fill-secondary"
+        >
+          <span className="min-w-0 truncate">{current.label}</span>
+          <ChevronDown className="size-3.5 shrink-0 text-label-tertiary" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-80 w-56">
+        <DropdownMenuRadioGroup
+          value={selected}
+          onValueChange={(code) => {
+            // Picking the language already shown keeps a regional tag ("en-US").
+            if (code !== selected) onChange(code);
+          }}
+        >
+          {current.extra && <DropdownMenuRadioItem value={value}>{value}</DropdownMenuRadioItem>}
+          {LANGUAGES.map((l) => (
+            <DropdownMenuRadioItem key={l.code} value={l.code}>
+              {l.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ReadingGroup({ settings, update }: { settings: PublicAISettings; update: Update }) {
   return (
     <ListGroup title="While reading">
       <ListRow label="Spoiler protection" description="What the wiki, tooltips and assistant may reveal">
@@ -351,22 +456,8 @@ function ReadingGroup({ settings, update }: { settings: PublicAISettings; update
           aria-label="Spoiler protection"
         />
       </ListRow>
-      <ListRow label="Translate into" description="Language for Define and Translate, e.g. en, de, pt-BR">
-        <Input
-          value={lang}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            if (langValid && lang.trim() !== settings.targetLanguage) void update({ targetLanguage: lang.trim() });
-            setDraft(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          }}
-          aria-invalid={!langValid}
-          aria-label="Target language"
-          className="w-24 text-center"
-          spellCheck={false}
-        />
+      <ListRow label="Translate into" description="Language for Define and Translate">
+        <LanguageSelect value={settings.targetLanguage} onChange={(tag) => void update({ targetLanguage: tag })} />
       </ListRow>
       <ListRow label="Read aloud" description="Speak the rewritten text, or always the original">
         <SegmentedControl

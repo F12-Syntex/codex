@@ -6,9 +6,9 @@
  *   book:annotations:*     → user comments/highlights anchored by ParaRef (annotations table)
  *   book:anchors:*         → ParaRefs of rows kept in legacy tables (quotes, bookmarks)
  *   lexicon:get/set        → word replacements; `set` broadcasts {type:"lexicon", version}
+ *   book:reveal            → focus the book's reader and send it {type:"reveal", ref} (or open a
+ *                            reader at the ref): citation chips in the Buddy and Wiki windows
  *
- * `book:reveal` is not registered: citations and bookmarks are revealed inside the reader window
- * itself (Phase 2c), so no cross-window navigation event is needed yet.
  * Every read of user anchors first awaits the book's one-time legacy migration
  * (`legacy-migrate.ts`), so old index-anchored data is never shown un-migrated.
  * Do not import `electron` at the top level; take what you need from `ctx` or inject it.
@@ -21,6 +21,7 @@ import { LexiconStore, settingsKV } from "./lexicon-store";
 import { getReadMarks, setReadMark } from "./read-marks";
 import { addAnnotation, deleteAnchor, deleteAnnotation, listAnchors, listAnnotations, setAnchor } from "./anchors";
 import { configureLegacyMigration, ensureBookMigrated } from "./legacy-migrate";
+import { revealInReader } from "./windows";
 import { peekAIRuntime } from "../ai/runtime";
 
 let lexiconStore: LexiconStore | null = null;
@@ -83,6 +84,13 @@ export function registerBook(ctx: AreaContext, opts?: { parse?: ContentCacheDeps
   });
   ctx.handle("book:anchors:set", (_meta, a) => setAnchor(ctx.db, a));
   ctx.handle("book:anchors:delete", (_meta, kind, refId) => deleteAnchor(ctx.db, kind, refId));
+
+  ctx.handle("book:reveal", (_meta, filePath, ref) => {
+    if (typeof filePath !== "string" || !filePath) throw new Error("book:reveal: filePath required");
+    const r = (ref ?? {}) as { chapterId?: unknown; paraId?: unknown };
+    if (typeof r.chapterId !== "string" || typeof r.paraId !== "string") throw new Error("book:reveal: ref.chapterId and ref.paraId required");
+    revealInReader(filePath, { filePath, chapterId: r.chapterId, paraId: r.paraId });
+  });
 
   ctx.handle("lexicon:get", () => lexicon.get());
   ctx.handle("lexicon:set", (_meta, entries) => {

@@ -1,16 +1,34 @@
 /**
  * Which reader windows are open for which book (owner: WS-C after Phase 0).
  *
+ * `revealInReader` serves `book:reveal` (QA-P1-4): it focuses the reader showing the book and
+ * sends it a `{type:"reveal"}` event, or opens a reader at the cited paragraph when none is open.
+ *
  * Used for: owner-window job cancellation (keep Background bulk jobs alive while another window
  * of the same book is open), `book:reveal` (focus the reader for a file), and live frontier
  * lookups from secondary windows. Structural types only, so it is testable without Electron.
  */
 
+import type { AIEvent } from "../shared/ai/types";
+import type { ParaRef } from "../shared/pipeline/types";
+
 /** Subset of `BrowserWindow` this module needs. */
 export interface ReaderWindowLike {
   isDestroyed(): boolean;
-  webContents: { id: number };
+  webContents: { id: number; send?(channel: string, ...args: unknown[]): void };
   once(event: "closed", listener: () => void): unknown;
+  focus?(): void;
+  isMinimized?(): boolean;
+  restore?(): void;
+}
+
+/** Opens a reader window for `filePath` that lands on `reveal` once the book has loaded. */
+export type ReaderOpener = (filePath: string, reveal: ParaRef) => void;
+let readerOpener: ReaderOpener | null = null;
+
+/** main.ts provides its `reader:open` path here (tests inject a spy). */
+export function configureReaderOpener(opener: ReaderOpener | null): void {
+  readerOpener = opener;
 }
 
 interface Entry {
@@ -70,6 +88,27 @@ export function getReaderFilePath(webContentsId: number): string | undefined {
   return e && !e.win.isDestroyed() ? e.filePath : undefined;
 }
 
+/**
+ * Show `ref` in a reader of `filePath`: focus the most recently opened one and send it a reveal
+ * event (to that window only), or open a reader at `ref` when none is open.
+ */
+export function revealInReader(filePath: string, ref: ParaRef): "focused" | "opened" | "unavailable" {
+  const wins = getReaderWindows(filePath);
+  const win = wins[wins.length - 1];
+  if (win) {
+    try {
+      if (win.isMinimized?.()) win.restore?.();
+      win.focus?.();
+    } catch { /* focus is best effort */ }
+    const e: AIEvent = { type: "reveal", filePath, ref: { filePath, chapterId: ref.chapterId, paraId: ref.paraId } };
+    win.webContents.send?.("ai:event", e);
+    return "focused";
+  }
+  if (!readerOpener) return "unavailable";
+  readerOpener(filePath, { filePath, chapterId: ref.chapterId, paraId: ref.paraId });
+  return "opened";
+}
+
 /** True if any live reader window shows `filePath`, ignoring `exceptWebContentsId`. */
 export function isBookOpen(filePath: string, exceptWebContentsId?: number): boolean {
   for (const e of byWebContents.values()) {
@@ -83,4 +122,5 @@ export function isBookOpen(filePath: string, exceptWebContentsId?: number): bool
 export function _resetReaderWindowsForTests(): void {
   byWebContents.clear();
   lastClosedListeners.clear();
+  readerOpener = null;
 }

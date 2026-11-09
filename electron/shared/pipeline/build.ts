@@ -12,7 +12,7 @@ import type {
 } from "./types";
 import { applyLayers, isFormatFresh, isRewriteFresh, type LayerResult } from "./layers";
 import { applyLexicon, compileLexicon } from "./lexicon";
-import { compileEntities, locateQuote, matchEntities } from "./annotate";
+import { compileEntities, locateQuote, locateQuoteFuzzy, matchEntities } from "./annotate";
 import { decorate, entityWrapper, highlightWrapper, searchWrapper, type DecorRange } from "./decorate";
 import { walkText } from "./html";
 import { buildSpeech } from "./speech";
@@ -107,7 +107,9 @@ export const buildChapter: BuildChapterFn = (src, opts) => {
     }
     for (const { a, direct } of annByPara.get(i) ?? []) {
       if (a.kind === "highlight") {
-        const loc = locateQuote(map.text, a.quote);
+        // A quote saved from another variant (e.g. Concise) may not occur verbatim: fall back to
+        // the best word-overlap span of its host paragraph (QA-P2-2).
+        const loc = locateQuote(map.text, a.quote) ?? locateQuoteFuzzy(map.text, a.quote);
         if (loc) ranges.push({ ...loc, priority: PRIORITY.highlight, ...highlightWrapper(a.id, a.tone) });
       } else if (direct) {
         // explicit offsets are only meaningful on the para they were computed for

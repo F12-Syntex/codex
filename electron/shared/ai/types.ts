@@ -9,7 +9,7 @@
  */
 
 import type { Frontier } from "../knowledge/types";
-import type { ChapterId, FormatLayer, ParaId, RewriteLayer } from "../pipeline/types";
+import type { ChapterId, FormatLayer, ParaId, ParaRef, RewriteLayer } from "../pipeline/types";
 
 // ── Models, priorities, tasks ───────────────────────────────────────────────
 
@@ -386,7 +386,9 @@ export type AIEvent =
   | { type: "frontier"; filePath: string; frontier: Frontier }
   | { type: "settings"; settings: PublicAISettings }
   | { type: "lexicon"; version: string }
-  | { type: "health"; state: AIHealthState; retryAt?: number };
+  | { type: "health"; state: AIHealthState; retryAt?: number }
+  /** `book:reveal`: sent only to the reader window of `filePath` (citation chips in other windows). */
+  | { type: "reveal"; filePath: string; ref: ParaRef };
 
 export type AIEventType = AIEvent["type"];
 export type AIEventOf<T extends AIEventType> = Extract<AIEvent, { type: T }>;

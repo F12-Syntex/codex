@@ -270,7 +270,7 @@ function emptyStateFor(view: NavView, section: Section) {
 }
 
 /* ── Continue Reading — the hero ───────────────────────────
-   One in-progress book spans the content width; two or three share the row
+   One in-progress book gets a max-w-3xl card; two or three share the row
    (auto-fit). The card re-grades to its cover: a soft bloom in the cover's
    dominant colour sits behind it (21st.dev "Hero Carousel", crafterui,
    id 24752). */
@@ -331,6 +331,7 @@ function ContinueCard({
           <p className="mt-1 truncate text-sm text-label-secondary">{item.author}</p>
         </div>
 
+        {/* Resume sits beside the progress it continues, not across the card. */}
         <div className="mt-auto flex items-end gap-4 pt-4">
           <div className="w-full max-w-72 min-w-0 flex-1">
             <ProgressBar value={pct} />
@@ -340,7 +341,7 @@ function ContinueCard({
           </div>
           <Button
             size="sm"
-            className="ml-auto"
+            className="shrink-0"
             disabled={!onResume}
             onClick={(e) => {
               e.stopPropagation();
@@ -427,23 +428,29 @@ function GroupCard({
   author,
   coverStyle,
   unit = "books",
+  firstOnTop = false,
 }: {
   items: MockItem[];
   /** Group name (author or series). */
   author: string;
   coverStyle: CoverStyle;
   unit?: string;
+  /** Series: the first item (Vol. 1) is the front cover, later volumes fan out behind it. */
+  firstOnTop?: boolean;
 }) {
   const radius = coverRadius(coverStyle);
   const count = items.length;
-  const covers = items.slice(0, 3);
+  // Later layers stack on top, so reverse to put items[0] in front.
+  const covers = firstOnTop ? items.slice(0, 3).reverse() : items.slice(0, 3);
 
   const layers =
     covers.length === 1
       ? [{ r: 0, x: 0, s: 1, z: 1 }]
       : covers.length === 2
       ? [
-          { r: -5, x: -6, s: 0.96, z: 1 },
+          // Rotating -5° about the bottom swings the back cover's top ~16px left; x 16 cancels it,
+          // so the stack stays inside its cell instead of reaching into the gutter.
+          { r: -5, x: 16, s: 0.96, z: 1 },
           { r: 3, x: 4, s: 1, z: 2 },
         ]
       : [
@@ -497,13 +504,6 @@ function GroupCard({
             );
           })}
 
-          {/* Count */}
-          <span
-            className="glass absolute right-1.5 bottom-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-2xs font-semibold text-label tabular-nums"
-            style={{ zIndex: 10 }}
-          >
-            {count}
-          </span>
         </div>
       </div>
 
@@ -775,7 +775,13 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           {showShelf && (
             <section>
               <SectionHeader title="Continue Reading" />
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-4">
+              {/* One book: a readable card (max-w-3xl), not a 1,000px banner. */}
+              <div
+                className={cn(
+                  "grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-4",
+                  inProgress.length === 1 && "max-w-3xl",
+                )}
+              >
                 {inProgress.map((item, i) => (
                   <BlurFade key={item.id} {...fade(i)} className="h-full">
                     <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
@@ -970,7 +976,7 @@ function GroupView({
               <p className="text-headline text-label">Group volumes into series</p>
               <p className="truncate text-xs text-label-secondary">Codex reads titles and file names (and AI tags, if you ran them) to find volumes that belong together.</p>
             </div>
-            <Button size="sm" onClick={onDetectSeries}>Detect Series</Button>
+            <Button size="sm" onClick={onDetectSeries}>Detect series</Button>
           </div>
         )}
         <div className={COVER_GRID}>
@@ -984,7 +990,13 @@ function GroupView({
                   onClick={() => setExpandedGroup(name)}
                   className="focus-ring block w-full cursor-default rounded-lg text-left"
                 >
-                  <GroupCard items={groupItems} author={name} coverStyle={coverStyle} unit={bySeries ? (groupItems.length === 1 ? "volume" : "volumes") : "books"} />
+                  <GroupCard
+                    items={groupItems}
+                    author={name}
+                    coverStyle={coverStyle}
+                    unit={bySeries ? (groupItems.length === 1 ? "volume" : "volumes") : "books"}
+                    firstOnTop={bySeries}
+                  />
                 </button>
               </BlurFade>
             )

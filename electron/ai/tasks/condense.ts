@@ -19,6 +19,7 @@ import { chunkBySize, escapeHtml, hashOf, isDialogueOnly, quotedSegments, wordCo
 import {
   isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
 } from "./chapter-task";
+import { fakeRewrite } from "./fake-replies";
 
 export const REWRITE_TASK_VERSION = 1;
 
@@ -185,4 +186,6 @@ export const rewriteTask: ChapterTaskDefinition<RewriteInput, RewriteOutput> = {
   cacheable: true,
   key: (input) => hashOf("rewrite", input.mode, input.sourceHash, input.paras.length),
   run: runRewrite,
+  // Offline demo output under CODEX_AI_PROVIDER=fake (QA-P2-3).
+  fakeResponse: fakeRewrite,
 };

@@ -12,6 +12,7 @@ import {
   ListFilter,
   Check,
   Library,
+  MoreHorizontal,
   Sparkles,
   X,
 } from "lucide-react";
@@ -146,7 +147,7 @@ export function ContentToolbar({
                 "bg-brand/15 text-brand hover:bg-brand/20 hover:text-brand data-[state=open]:bg-brand/20 data-[state=open]:text-brand",
             )}
           >
-            {tagging ? <Sparkles className="animate-pulse" strokeWidth={2} /> : <ListFilter strokeWidth={2} />}
+            <ListFilter strokeWidth={2} />
             <span className="max-w-40 truncate">{filtered ? filterLabel : "Filter"}</span>
           </Button>
         </DropdownMenuTrigger>
@@ -175,33 +176,6 @@ export function ContentToolbar({
                   {g}
                 </DropdownMenuItem>
               ))}
-            </>
-          )}
-          {hasOrganize && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Organize</DropdownMenuLabel>
-              {onSuggestTags && (tagging ? (
-                <DropdownMenuItem onClick={() => onCancelTagging?.()}>
-                  <X className="size-4" strokeWidth={2} />
-                  <span className="flex-1">Stop tagging</span>
-                  <span className="text-2xs tabular-nums opacity-70">{tagProgress!.done}/{tagProgress!.total}</span>
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={onSuggestTags}>
-                  <Sparkles className="size-4" strokeWidth={1.75} />
-                  Suggest genres &amp; tags
-                </DropdownMenuItem>
-              ))}
-              {tagError && !tagging && (
-                <p role="status" className="max-w-56 px-2 pb-1 text-2xs leading-snug text-danger">{tagError}</p>
-              )}
-              {onDetectSeries && (
-                <DropdownMenuItem onClick={onDetectSeries}>
-                  <Library className="size-4" strokeWidth={1.75} />
-                  Detect series…
-                </DropdownMenuItem>
-              )}
             </>
           )}
         </DropdownMenuContent>
@@ -265,6 +239,46 @@ export function ContentToolbar({
           icon: <v.icon strokeWidth={2} />,
         }))}
       />
+
+      {/* Organize — library AI actions; a pulsing sparkle while tagging runs. */}
+      {hasOrganize && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={tagging ? `Organize: tagging ${tagProgress!.done} of ${tagProgress!.total}` : "Organize"}
+              title={tagging ? `Tagging ${tagProgress!.done}/${tagProgress!.total}` : "Organize"}
+              className={cn(tagging && "text-brand hover:text-brand")}
+            >
+              {tagging ? <Sparkles className="animate-pulse" strokeWidth={2} /> : <MoreHorizontal strokeWidth={2} />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-52">
+            {onSuggestTags && (tagging ? (
+              <DropdownMenuItem onClick={() => onCancelTagging?.()}>
+                <X className="size-4" strokeWidth={2} />
+                <span className="flex-1">Stop tagging</span>
+                <span className="text-2xs tabular-nums opacity-70">{tagProgress!.done}/{tagProgress!.total}</span>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={onSuggestTags}>
+                <Sparkles className="size-4" strokeWidth={1.75} />
+                Suggest genres &amp; tags
+              </DropdownMenuItem>
+            ))}
+            {tagError && !tagging && (
+              <p role="status" className="max-w-56 px-2.5 pb-1 text-2xs leading-snug text-danger">{tagError}</p>
+            )}
+            {onDetectSeries && (
+              <DropdownMenuItem onClick={onDetectSeries}>
+                <Library className="size-4" strokeWidth={1.75} />
+                Detect series…
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {/* Primary action */}
       <Button size="sm" onClick={onImport} className="ml-1">

@@ -165,19 +165,18 @@ function SourceDropdown({
 // ── Proxied image component ─────────────────────────────
 
 function ProxiedImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  // The settled result for one `src`; a result for an older `src` reads as still loading.
+  const [result, setResult] = useState<{ src: string; url: string | null } | null>(null);
+  const settled = result?.src === src ? result : null;
+  const dataUrl = settled?.url ?? null;
+  const failed = !src || (settled !== null && settled.url === null);
 
   useEffect(() => {
-    setDataUrl(null);
-    setFailed(false);
-    if (!src) { setFailed(true); return; }
+    if (!src) return;
     let cancelled = false;
     window.electronAPI?.installerProxyImage(src).then((url) => {
-      if (cancelled) return;
-      if (url) setDataUrl(url);
-      else setFailed(true);
-    }).catch(() => { if (!cancelled) setFailed(true); });
+      if (!cancelled) setResult({ src, url: url || null });
+    }).catch(() => { if (!cancelled) setResult({ src, url: null }); });
     return () => { cancelled = true; };
   }, [src]);
 

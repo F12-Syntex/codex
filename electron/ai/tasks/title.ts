@@ -12,6 +12,7 @@ import { hashOf } from "../prompts/util";
 import {
   isCancellation, isTruncation, isUnusableReply, objectField, type ChapterTaskContext, type ChapterTaskDefinition,
 } from "./chapter-task";
+import { fakeTitles } from "./fake-replies";
 
 export const TITLE_TASK_VERSION = 1;
 
@@ -86,4 +87,6 @@ export const titleTask: ChapterTaskDefinition<TitleInput, TitleOutput> = {
   cacheable: true,
   key: (input) => hashOf("title", input.book, input.chapters),
   run: runTitles,
+  // Offline demo output under CODEX_AI_PROVIDER=fake (QA-P2-3).
+  fakeResponse: fakeTitles,
 };

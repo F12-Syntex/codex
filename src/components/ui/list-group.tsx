@@ -100,7 +100,13 @@ export function ListRow({
         className,
       )}
     >
-      {icon && (iconTint ? <ListIcon tint={iconTint}>{icon}</ListIcon> : <span className="text-label-secondary [&_svg]:size-4">{icon}</span>)}
+      {/* Tinted or not, the icon takes the same 24px slot, so every label in a group starts at one x. */}
+      {icon &&
+        (iconTint ? (
+          <ListIcon tint={iconTint}>{icon}</ListIcon>
+        ) : (
+          <span className="inline-flex size-6 shrink-0 items-center justify-center text-label-secondary [&_svg]:size-4">{icon}</span>
+        ))}
       <div className="min-w-0 flex-1">
         <div className={cn("text-sm", destructive ? "text-danger" : "text-label")}>{label}</div>
         {description && <div className="mt-0.5 text-xs text-label-secondary">{description}</div>}

@@ -11,6 +11,7 @@ import type { ParaId } from "../../shared/pipeline/types";
 import { COMMENTS_CHUNK_CHARS, COMMENTS_MAX_PER_CHAPTER, buildCommentsMessages } from "../prompts/comments";
 import { chunkBySize, hashOf } from "../prompts/util";
 import { isCancellation, isTruncation, isUnusableReply, type ChapterTaskContext, type ChapterTaskDefinition } from "./chapter-task";
+import { fakeComments } from "./fake-replies";
 
 export const COMMENTS_TASK_VERSION = 1;
 
@@ -87,4 +88,6 @@ export const commentsTask: ChapterTaskDefinition<CommentsInput, CommentsOutput> 
   cacheable: true,
   key: (input) => hashOf("comments", input.chapterLabel, input.persona, input.max ?? COMMENTS_MAX_PER_CHAPTER, input.paras),
   run: runComments,
+  // Offline demo output under CODEX_AI_PROVIDER=fake (QA-P2-3).
+  fakeResponse: fakeComments,
 };

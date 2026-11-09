@@ -35,7 +35,7 @@ import { getDownloads, removeDownload, clearCompletedDownloads, getDownload } fr
 import { registerAll } from "./ipc/registry";
 import { getAIRuntime, peekAIRuntime } from "./ai/runtime";
 import { PROTECTED_SETTINGS, readLegacySetting, writeLegacySetting } from "./ai/legacy";
-import { trackReaderWindow } from "./book/windows";
+import { configureReaderOpener, trackReaderWindow } from "./book/windows";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
 
@@ -201,13 +201,19 @@ function createWindow() {
   });
 
   // ── Reader: open book in new window ──────────
-  ipcMain.handle("reader:open", (_event, bookInfo: { id: number; title: string; author: string; filePath: string; cover: string; format: string }) => {
+  type ReaderBookInfo = { id: number; title: string; author: string; filePath: string; cover: string; format: string };
+  const openReaderWindow = (bookInfo: ReaderBookInfo, reveal?: { chapterId: string; paraId: string }) => {
     const params = new URLSearchParams({
       title: bookInfo.title,
       author: bookInfo.author,
       format: bookInfo.format,
       filePath: bookInfo.filePath,
     });
+    // `book:reveal` with no reader open: the reader lands on the cited paragraph once loaded.
+    if (reveal) {
+      params.set("revealChapterId", reveal.chapterId);
+      params.set("revealParaId", reveal.paraId);
+    }
     const readerWin = createAppWindow("reader", params);
     trackReaderWindow(readerWin, bookInfo.filePath);
     // Persist last-open reader so it can be restored on next launch
@@ -215,6 +221,25 @@ function createWindow() {
     readerWin.on("closed", () => {
       setSetting("lastReader", "");
     });
+  };
+  ipcMain.handle("reader:open", (_event, bookInfo: ReaderBookInfo) => {
+    openReaderWindow(bookInfo);
+  });
+  configureReaderOpener((filePath, ref) => {
+    let row: { id: number; title: string; author: string; cover: string | null; format: string } | undefined;
+    try {
+      row = getDb().get("SELECT id, title, author, cover, format FROM items WHERE filePath = ?", [filePath]);
+    } catch { /* items table unavailable */ }
+    if (!row && !fs.existsSync(filePath)) return;
+    const fallbackTitle = path.basename(filePath).replace(/\.[^.]+$/, "");
+    openReaderWindow({
+      id: row?.id ?? 0,
+      title: row?.title || fallbackTitle,
+      author: row?.author ?? "",
+      cover: row?.cover ?? "",
+      format: row?.format ?? "",
+      filePath,
+    }, ref);
   });
 
   // ── Style Dictionary: open in new window ─────────
