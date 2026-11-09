@@ -49,9 +49,7 @@ const base =
 export function WindowControls({ className }: { className?: string }) {
   const [maximized, setMaximized] = useState(false);
 
-  useEffect(() => {
-    window.electronAPI?.onMaximized(setMaximized);
-  }, []);
+  useEffect(() => window.electronAPI?.onMaximized(setMaximized), []);
 
   return (
     <div className={cn("app-no-drag flex h-full shrink-0 items-stretch", className)}>
