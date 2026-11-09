@@ -547,7 +547,9 @@ export default function Home() {
           <InkCanvas className="absolute inset-0" />
         ) : null}
 
-        <ResizablePanelGroup orientation="horizontal" className="relative z-10 h-full overflow-hidden">
+        {/* No z-index here: a stacking context would cut every glass surface inside off from the
+            backdrop. Later positioned siblings already paint above the absolute canvas. */}
+        <ResizablePanelGroup orientation="horizontal" className="relative h-full overflow-hidden">
           {!sidebarCollapsed && (
             <>
               <ResizablePanel
