@@ -3,7 +3,8 @@
 /**
  * WindowControls — refined Windows/Linux caption buttons for the frameless
  * Electron window. 46px wide, full chrome height, quiet fill on hover,
- * danger fill on close. Shared by the main TitleBar and secondary WindowHeader.
+ * danger fill on close. The one implementation: used by the main TitleBar, the secondary-window
+ * WindowChrome and the reader header.
  */
 
 import { useEffect, useState } from "react";

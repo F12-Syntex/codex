@@ -117,8 +117,6 @@ export interface AIWikiResponse {
 }
 
 
-export type AIWikiResponseParsed = AIWikiResponse;
-
 export function parseWikiResponse(raw: string): AIWikiResponse | null {
   let cleaned = raw;
 
@@ -217,7 +215,7 @@ function validateWikiResponse(parsed: AIWikiResponse): AIWikiResponse {
   return parsed;
 }
 
-function getChapterDataFromResponse(response: AIWikiResponse, fallbackChapterIndex: number): AIWikiChapterData[] {
+export function getChapterDataFromResponse(response: AIWikiResponse, fallbackChapterIndex: number): AIWikiChapterData[] {
   if (response.batch && response.batch.length > 0) return response.batch;
   return [{
     chapter_index: fallbackChapterIndex,
@@ -227,6 +225,8 @@ function getChapterDataFromResponse(response: AIWikiResponse, fallbackChapterInd
     arc_amendments: response.arc_amendments ?? [],
     new_entries: response.new_entries ?? [],
     updates: response.updates ?? [],
+    entity_merges: (response as { entity_merges?: AIEntityMerge[] }).entity_merges ?? [],
+    mc_stats: (response as { mc_stats?: AIMCStat[] }).mc_stats,
   }];
 }
 

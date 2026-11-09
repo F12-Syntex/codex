@@ -192,7 +192,7 @@ export function createAssistantTurnTask(deps: AssistantTurnDeps): TaskDefinition
         const contextParts = [knowledge?.text ?? ""];
         if (selection) contextParts.push(await selectionContext(view, selection));
         const hint = quickAction(input.quickAction)?.hint;
-        const bookTitle = input.bookTitle || thread.title;
+        const bookTitle = input.bookTitle || "this book";
 
         let toolsEnabled = view.available || !!knowledge;
         const system = () => buildSystemPrompt({ bookTitle, view, frontier, mode: thread.mode, context: contextParts.join("\n\n"), hint, toolsEnabled });

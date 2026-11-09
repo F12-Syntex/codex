@@ -24,7 +24,10 @@ import type {
   ReadingPosition, RecapStatus, SearchHit, WikiEdit, WikiSnapshot,
 } from "./knowledge/types";
 import type { BookContentV2, ChapterId, Lexicon, LexiconEntry, ParaId, ParaRef } from "./pipeline/types";
-import type { AssistantMessage, AssistantMode, AssistantSeed, AssistantThread } from "./assistant/types";
+import type {
+  AssistantMessage, AssistantMode, AssistantSeed, AssistantThread, CreateBranchRequest, NewVocabItem, SimBranch, SimSegment,
+  VocabFilter, VocabGrade, VocabItem, VocabStats,
+} from "./assistant/types";
 
 export type { CancelSelector } from "./ai/types";
 
@@ -108,6 +111,24 @@ export interface RpcMap {
   "assistant:send": (req: { threadId: string; text: string; seed?: AssistantSeed }) => JobTicket;
   "assistant:proposal": (messageId: string, decision: "apply" | "reject") => ApplyResult;
   "assistant:delete": (threadId: string) => void;
+  // Additive (WS-E Phase 1) ─────────────────────────────────────────────────
+  "assistant:rename": (threadId: string, title: string) => AssistantThread;
+  /** Cancels the thread's running turn (group `thread:<id>`); returns jobs cancelled. */
+  "assistant:stop": (threadId: string) => number;
+  /** Simulate ("what if…") branches anchored by ParaRef. */
+  "assistant:branches": (filePath: string) => SimBranch[];
+  "assistant:branch:create": (req: CreateBranchRequest) => SimBranch;
+  /** Waits for an in-flight continuation of this branch to be stored first. */
+  "assistant:branch:segments": (branchId: string) => SimSegment[];
+  /** Starts `branch.continue` (group `branch:<id>`, streams deltas); main appends the segment on success. */
+  "assistant:branch:continue": (req: { branchId: string; text: string }) => JobTicket;
+  "assistant:branch:delete": (branchId: string) => void;
+  /** Vocabulary deck (SM-2). */
+  "vocab:list": (filter?: VocabFilter) => VocabItem[];
+  "vocab:add": (item: NewVocabItem) => VocabItem;
+  "vocab:review": (id: number, grade: VocabGrade) => VocabItem;
+  "vocab:delete": (id: number) => void;
+  "vocab:stats": (filePath?: string) => VocabStats;
 }
 
 export type RpcChannel = keyof RpcMap;

@@ -19,6 +19,8 @@ export const STYLE_REGEN_TASK_VERSION = 1;
 export interface StyleRegenOccurrence {
   chapterId: ChapterId;
   chapterIndex: number;
+  /** Format artifact variant this occurrence belongs to (one per base). */
+  variant: string;
   /** Host paragraph → base html of the host and everything merged into it, in order. */
   base: Record<ParaId, string[]>;
   /** Host paragraph → current formatted html (contains the component). */
@@ -34,7 +36,7 @@ export interface StyleRegenInput {
 }
 
 export interface StyleRegenOutput {
-  updates: { chapterId: ChapterId; chapterIndex: number; paras: Record<ParaId, string> }[];
+  updates: { chapterId: ChapterId; chapterIndex: number; variant: string; paras: Record<ParaId, string> }[];
 }
 
 async function regenChapter(input: StyleRegenInput, occ: StyleRegenOccurrence, ctx: ChapterTaskContext): Promise<Record<ParaId, string>> {
@@ -79,7 +81,7 @@ export async function runStyleRegen(input: StyleRegenInput, ctx: ChapterTaskCont
   for (const occ of input.occurrences) {
     ctx.signal.throwIfAborted?.();
     const paras = await ctx.memo(`regen:${hashOf(input.component, input.instruction ?? "", occ)}`, () => regenChapter(input, occ, ctx));
-    if (Object.keys(paras).length > 0) updates.push({ chapterId: occ.chapterId, chapterIndex: occ.chapterIndex, paras });
+    if (Object.keys(paras).length > 0) updates.push({ chapterId: occ.chapterId, chapterIndex: occ.chapterIndex, variant: occ.variant, paras });
     ctx.progress(++done, input.occurrences.length);
   }
   return { updates };
@@ -92,6 +94,6 @@ export const styleRegenTask: ChapterTaskDefinition<StyleRegenInput, StyleRegenOu
   temperature: 0.9,
   maxTokens: 8192,
   cacheable: false,
-  key: (input) => hashOf("regen", input.component, input.instruction ?? "", input.occurrences.map((o) => o.chapterId)),
+  key: (input) => hashOf("regen", input.component, input.instruction ?? "", input.occurrences.map((o) => [o.chapterId, o.variant])),
   run: runStyleRegen,
 };
