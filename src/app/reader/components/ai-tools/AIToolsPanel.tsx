@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { BookOpen, FastForward, KeyRound, Layers, Palette, Settings, Sparkles, X } from "lucide-react";
+import { BookOpen, FastForward, KeyRound, Layers, Palette, Settings } from "lucide-react";
 import type { BookAIPrefs, ChapterKind } from "@shared/ai/types";
 import { cn } from "@/lib/utils";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -31,6 +31,7 @@ import { useBookAIPrefs, useBookAIStatus, useBulkRun, useChapterArtifacts } from
 import { ChapterStatusList } from "./ChapterStatusList";
 import { BulkSheet } from "./BulkSheet";
 import { KIND_META, KIND_ORDER } from "./kind-meta";
+import { PanelHeader, READER_PANEL } from "../chrome";
 
 export interface AIToolsPanelProps {
   filePath: string;
@@ -113,33 +114,16 @@ export function AIToolsPanel({
     <motion.aside
       ref={ref}
       aria-label="AI tools"
-      className={cn(
-        "glass-thick grain absolute top-15 right-2 bottom-17 z-30 flex w-80 flex-col overflow-hidden rounded-2xl text-label",
-        className,
-      )}
+      className={cn(READER_PANEL, "absolute top-15 right-3 bottom-17", className)}
       initial={reduce ? { opacity: 0 } : { opacity: 0, x: 24, scale: 0.98 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, x: 16, scale: 0.98 }}
       transition={reduce ? { duration: 0.15 } : { type: "spring", stiffness: 400, damping: 34 }}
     >
-      {/* Header */}
-      <div className="flex h-13 shrink-0 items-center gap-2.5 pr-3 pl-4">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
-          <Sparkles className="size-3.5" strokeWidth={2} />
-        </span>
-        <span className="flex-1 font-display text-base font-semibold text-label">AI Tools</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="focus-ring pressable inline-flex size-7 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
-        >
-          <X className="size-3.5" strokeWidth={2.25} />
-        </button>
-      </div>
+      <PanelHeader title="AI Tools" onClose={onClose} closeLabel="Close AI tools" />
 
       {noKey && (
-        <div className="mx-2 mb-1 flex items-start gap-2.5 rounded-lg bg-warning/10 px-3 py-2.5">
+        <div className="mx-3 mb-2 flex items-start gap-2.5 rounded-lg bg-warning/10 px-3 py-2.5">
           <KeyRound className="mt-px size-4 shrink-0 text-warning" strokeWidth={1.75} />
           <div className="min-w-0 flex-1 space-y-2">
             <p className="text-xs leading-relaxed text-label-secondary">
@@ -153,7 +137,7 @@ export function AIToolsPanel({
         </div>
       )}
 
-      <div className={cn("min-h-0 flex-1 space-y-4 overflow-y-auto px-2 pb-2", noKey && "pointer-events-none select-none opacity-50")}>
+      <div className={cn("min-h-0 flex-1 space-y-5 overflow-y-auto px-3 pb-3", noKey && "pointer-events-none select-none opacity-50")}>
         {/* This chapter: summary + live status */}
         <section aria-label="This chapter">
           <div className="flex items-center gap-3 rounded-lg bg-fill-quaternary px-3 py-2.5">
@@ -194,14 +178,23 @@ export function AIToolsPanel({
           {prefs ? (
             <>
               <FeatureSwitch kind="knowledge" checked={prefs.knowledge} onChange={(v) => void setPrefs(patchFor("knowledge", v))} />
-              <ListRow
-                icon={<FeatureGlyph kind="rewrite" on={prefs.rewrite !== "off"} />}
-                label={KIND_META.rewrite.label}
-                description={prefs.rewrite === "polish" ? "Fixes errors, keeps every word" : prefs.rewrite === "concise" ? "Tighter prose, same story" : undefined}
-                className="flex-wrap"
-              >
+              {/* Label on top, a full-width control below: three options never fit beside a
+                  label + description in a 320px panel without crushing the text. */}
+              <div className="flex flex-col gap-2.5 px-3 py-2.5">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex size-6 shrink-0 items-center justify-center text-label-secondary [&_svg]:size-4">
+                    <FeatureGlyph kind="rewrite" on={prefs.rewrite !== "off"} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-label">{KIND_META.rewrite.label}</div>
+                    <div className="mt-0.5 truncate text-xs text-label-secondary">
+                      {prefs.rewrite === "polish" ? "Fixes errors, keeps every word" : prefs.rewrite === "concise" ? "Tighter prose, same story" : "Original text"}
+                    </div>
+                  </div>
+                </div>
                 <SegmentedControl<BookAIPrefs["rewrite"]>
                   size="sm"
+                  fill
                   value={prefs.rewrite}
                   onValueChange={(v) => void setPrefs({ rewrite: v })}
                   options={[
@@ -211,11 +204,11 @@ export function AIToolsPanel({
                   ]}
                   aria-label="Rewrite mode"
                 />
-              </ListRow>
+              </div>
               <FeatureSwitch kind="format" checked={prefs.formatting} onChange={(v) => void setPrefs(patchFor("format", v))} />
               <FeatureSwitch kind="title" checked={prefs.titles} onChange={(v) => void setPrefs(patchFor("title", v))} />
               <FeatureSwitch kind="comments" checked={prefs.comments} onChange={(v) => void setPrefs(patchFor("comments", v))} />
-              <ListRow icon={<FastForward />} label="Prepare next chapter" description="Process ahead while you read">
+              <ListRow icon={<FastForward />} label="Prepare ahead" description="Process the next chapter early">
                 <Switch size="sm" checked={prefs.prefetchNext} onCheckedChange={(v) => void setPrefs({ prefetchNext: v })} aria-label="Prepare next chapter" />
               </ListRow>
             </>
@@ -305,7 +298,7 @@ function FeatureGlyph({ kind, on }: { kind: ChapterKind; on: boolean }) {
 function FeatureSwitch({ kind, checked, onChange }: { kind: Exclude<ChapterKind, "rewrite">; checked: boolean; onChange: (v: boolean) => void }) {
   const meta = KIND_META[kind];
   return (
-    <ListRow icon={<FeatureGlyph kind={kind} on={checked} />} label={meta.label} description={meta.description}>
+    <ListRow icon={<FeatureGlyph kind={kind} on={checked} />} label={meta.label} description={<span className="block truncate">{meta.description}</span>}>
       <Switch size="sm" checked={checked} onCheckedChange={onChange} aria-label={meta.label} />
     </ListRow>
   );

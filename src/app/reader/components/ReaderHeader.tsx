@@ -88,7 +88,7 @@ export function ReaderHeader({
       {/* ── Left: navigation pill ─────────────────────────── */}
       <div className="flex min-w-0 flex-1 basis-0 items-center">
         {showLeftPill && (
-          <div className="app-no-drag glass flex h-10 items-center gap-0.5 rounded-full p-1">
+          <div className="app-no-drag glass-thin flex h-10 items-center gap-0.5 rounded-full p-1">
             {hasMultipleChapters && (
               <ChromeButton onMouseDown={stop} onClick={onTOCToggle} active={showTOC} title="Contents & bookmarks" aria-label="Contents">
                 <PanelLeft strokeWidth={1.75} />
@@ -146,7 +146,7 @@ export function ReaderHeader({
 
       {/* ── Right: tool pill + window controls ────────────── */}
       <div className="flex h-full min-w-0 flex-1 basis-0 items-center justify-end gap-1.5">
-        <div className="app-no-drag glass flex h-10 shrink-0 items-center gap-0.5 rounded-full p-1">
+        <div className="app-no-drag glass-thin flex h-10 shrink-0 items-center gap-0.5 rounded-full p-1">
           {isImageBook ? (
             /* Image books have no text settings — paper chips live here */
             <div role="radiogroup" aria-label="Page colour" className="flex items-center gap-1 px-1">

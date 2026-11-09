@@ -264,7 +264,7 @@ export function ReaderFooter({
     >
       {/* The popover is a sibling of the glass pill, not a child: glass in glass double-blurs. */}
       <div className="relative min-w-0 max-w-full">
-      <div className="glass relative flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full p-1">
+      <div className="glass-thin relative flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full p-1">
         {branchMode ? (
           /* ── Branch mode ───────────────────────────── */
           <>

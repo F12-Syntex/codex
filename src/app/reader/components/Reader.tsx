@@ -16,7 +16,7 @@
  */
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { AlertCircle, Loader2, Quote } from "lucide-react";
 import type { Annotation, ParaId, ParaRef, RenderedChapter } from "@shared/pipeline/types";
 import type { EntityIndexItem, WikiEntryType } from "@shared/knowledge/types";
@@ -33,7 +33,7 @@ import { useChapterPipeline } from "../hooks/useChapterPipeline";
 import { useReaderAnchors } from "../hooks/useReaderAnchors";
 import { useSimulateBranch } from "../hooks/useSimulateBranch";
 import { ReaderHeader } from "./ReaderHeader";
-import { ReaderFooter } from "./ReaderFooter";
+import { FOOTER_HEIGHT, ReaderFooter } from "./ReaderFooter";
 import { TOCSidebar } from "./TOCSidebar";
 import { TTSPanel } from "./TTSPanel";
 import { TextSettingsPanel } from "./TextSettingsPanel";
@@ -44,7 +44,6 @@ import { EntityCard } from "./EntityCard";
 import { EntityContextMenu } from "./EntityContextMenu";
 import { RecapSheet } from "./RecapSheet";
 import { AIToolsPanel, BulkDock } from "./ai-tools";
-import { LAYOUT_SPRING } from "./chrome";
 import { AssistantLauncher, DefinePopover } from "@/components/assistant";
 import { openAssistant } from "@/lib/assistant/open";
 import { createSelectionActions, type SelectionPayload } from "@/lib/assistant/selection";
@@ -57,17 +56,9 @@ import { useEntityIndex, useFrontier } from "@/lib/knowledge/useKnowledge";
 import { buildChapterLabels, fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
 
-/** Side panels push the text column aside instead of covering it (conventions §13.6). The right
- *  edge is ONE inspector slot (§13.11): AI Tools and the Assistant take turns in it, never both. */
-const TOC_INSET = 336; // TOC 320 + 12 left + 4
-const AI_INSET = 336; // AI Tools 320 + 8 right + 8
-const ASSISTANT_INSET = 444; // Assistant panel 420 + 8 right + 16
-
-/** Elevation over light paper (White, Sepia): same shape as the tokens, a fraction of the ink. */
-const LIGHT_PAPER_SHADOWS = {
-  "--shadow-lg": "0 10px 32px -10px rgb(0 0 0 / 0.20), 0 3px 10px -4px rgb(0 0 0 / 0.10)",
-  "--shadow-xl": "0 16px 48px -16px rgb(0 0 0 / 0.24), 0 6px 16px -8px rgb(0 0 0 / 0.12)",
-} as const;
+/** Side panels float over the page; the text column never reflows when one opens, so the
+ *  page count and the line you were reading stay put. The right edge is ONE inspector slot
+ *  (§13.11): AI Tools and the Assistant take turns in it, never both. */
 
 type Rect = { top: number; left: number; bottom: number; right: number; width: number; height: number };
 const rectOf = (r: { x: number; y: number; width: number; height: number }): Rect => ({
@@ -105,7 +96,6 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
   const [measuredChapter, setMeasuredChapter] = useState(-1);
   const [visibleRange, setVisibleRange] = useState<[number, number]>([0, 0]);
   const [showTOC, setShowTOC] = useState(false);
-  const reduceMotion = useReducedMotion();
   const [showTTS, setShowTTS] = useState(false);
   const [showTextSettings, setShowTextSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
@@ -548,7 +538,8 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
 
   const handleAssistantOpenChange = useCallback((open: boolean) => {
     setAssistantOpen(open);
-    if (open) setShowAI(false);
+    // One panel at a time: the Assistant shares the right slot with AI Tools and Text settings.
+    if (open) { setShowAI(false); setShowTextSettings(false); }
   }, []);
 
   // ── Speed reader (same RenderedChapter: lexicon + entities applied) ──────────────
@@ -718,7 +709,7 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
   const showEntityFromAssistant = useCallback((id: string) => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    setEntityCard({ entityId: id, rect: { top: h / 2 - 120, bottom: h / 2 - 100, left: w - ASSISTANT_INSET - 300, right: w - ASSISTANT_INSET - 16, width: 284, height: 20 } });
+    setEntityCard({ entityId: id, rect: { top: h / 2 - 120, bottom: h / 2 - 100, left: w - 444 - 300, right: w - 444 - 16, width: 284, height: 20 } });
   }, []);
 
   // Escape: the window handler only acts on keys nobody consumed (surfaces that consume Escape
@@ -819,11 +810,7 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
 
   if (!isLoaded) return null;
 
-  // Side panels never occlude the text column (conventions §13.6): the TOC and the Read Aloud
-  // panel take the left gutter, AI tools and the assistant the right.
-  const tocInset = (showTOC && totalChapters > 1) || (showTTS && !isImageBook) ? TOC_INSET : 0;
-  const rightInset = showAI ? AI_INSET : assistantOpen ? ASSISTANT_INSET : 0;
-  const anyPanelOpen = tocInset > 0 || showAI || assistantOpen;
+  const anyPanelOpen = (showTOC && totalChapters > 1) || (showTTS && !isImageBook) || showAI || assistantOpen;
 
   const simulateMode = branchHere;
   const branchEntityName = sim.active?.entityName;
@@ -832,11 +819,10 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
     <div
       className={`relative flex h-screen flex-col ${theme.bg} transition-colors duration-500 ease-apple`}
       data-appearance={settings.readingTheme === "dark" ? undefined : "light"}
+      // Light papers (White, Sepia) take the light appearance, which also brings its
+      // paper-weight elevation (--elev-*), so panels never cast a grey slab.
       style={{
         "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw,
-        // Paper is light on White and Sepia: the canvas-tuned elevation (0.6 black over 80px)
-        // reads as a grey slab there. Panels over the page cast a paper-weight shadow instead.
-        ...(settings.readingTheme === "dark" ? {} : LIGHT_PAPER_SHADOWS),
       } as React.CSSProperties}
     >
       {/* Header — floating pills on the paper, no bar */}
@@ -926,14 +912,9 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
       )}
       </AnimatePresence>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex flex-1 flex-col overflow-hidden">
         <div ref={readerContentRef} className="relative flex-1 overflow-hidden">
-          <motion.div
-            className="h-full"
-            initial={false}
-            animate={{ paddingInlineStart: tocInset, paddingInlineEnd: rightInset }}
-            transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
-          >
+          <div className="h-full">
           {isLoading || (!chapter && pipeline.status !== "error") ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 className={`size-5 animate-spin ${theme.muted}`} strokeWidth={1.5} />
@@ -1005,20 +986,8 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
               speedReaderChunkOffset={srChunkOffset}
             />
           )}
-          </motion.div>
+          </div>
 
-          {speedReaderActive && (
-            <SpeedReaderView
-              theme={theme}
-              chunks={speedReaderChunks}
-              chapterTitle={chapterTitle}
-              onExit={exitSpeedReader}
-              onChapterEnd={handleSpeedReaderChapterEnd}
-              onParagraphChange={() => {}}
-              onReadProgress={handleSpeedReaderReadProgress}
-              onChunkChange={handleSpeedReaderChunkChange}
-            />
-          )}
 
           {/* Top fade */}
           <div
@@ -1055,7 +1024,8 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
             onOpenEntity={showEntityFromAssistant}
             onReveal={(ref) => navigateToRef(ref)}
             hidePill={speedReaderActive}
-            yieldSlot={showAI}
+            yieldSlot={showAI || showTextSettings}
+            slotClassName="right-3"
           />
         )}
 
@@ -1070,6 +1040,21 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
           </div>
         </div>
 
+        {/* Speed reader spans the page and the footer zone; its pill sits on the footer's line. */}
+        {speedReaderActive && (
+          <SpeedReaderView
+            theme={theme}
+            chunks={speedReaderChunks}
+            chapterTitle={chapterTitle}
+            onExit={exitSpeedReader}
+            onChapterEnd={handleSpeedReaderChapterEnd}
+            onParagraphChange={() => {}}
+            onReadProgress={handleSpeedReaderReadProgress}
+            onChunkChange={handleSpeedReaderChunkChange}
+          />
+        )}
+
+        {speedReaderActive && <div aria-hidden className="shrink-0" style={{ height: FOOTER_HEIGHT }} />}
         {!speedReaderActive && <ReaderFooter
           currentPage={currentPage} totalPages={totalPages}
           chapterIndex={currentChapter} chapterCount={totalChapters}

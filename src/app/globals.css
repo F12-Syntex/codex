@@ -109,12 +109,13 @@
 
   /* ── Elevation ── */
   --shadow-hairline: 0 0 0 0.5px var(--separator);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.12);
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.16), 0 1px 2px rgb(0 0 0 / 0.10);
-  --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 0.28), 0 2px 6px -2px rgb(0 0 0 / 0.18);
-  --shadow-lg: 0 12px 40px -8px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.25);
-  --shadow-xl: 0 24px 80px -12px rgb(0 0 0 / 0.6), 0 8px 24px -8px rgb(0 0 0 / 0.3);
-  --shadow-cover: 0 1px 1px rgb(0 0 0 / 0.12), 0 4px 10px -2px rgb(0 0 0 / 0.35), 0 12px 28px -10px rgb(0 0 0 / 0.5);
+  /* Appearance-aware: values live in --elev-* (dark in :root, softer in light). */
+  --shadow-xs: var(--elev-xs);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-xl: var(--elev-xl);
+  --shadow-cover: var(--elev-cover);
 
   /* ── Animations ── */
   --animate-fade-in: fade-in 240ms var(--ease-apple) both;
@@ -179,6 +180,15 @@
   --glass-edge: rgb(255 255 255 / 0.1);
   --glass-highlight: rgb(255 255 255 / 0.07);
   --glass-blur: 40px;
+
+  /* Elevation — tight, low-spread shadows. Glass already separates itself
+     with its edge ring; the shadow only hints at height. */
+  --elev-xs: 0 1px 2px rgb(0 0 0 / 0.12);
+  --elev-sm: 0 1px 3px rgb(0 0 0 / 0.14), 0 1px 2px rgb(0 0 0 / 0.08);
+  --elev-md: 0 4px 14px -4px rgb(0 0 0 / 0.24), 0 2px 4px -2px rgb(0 0 0 / 0.12);
+  --elev-lg: 0 10px 28px -12px rgb(0 0 0 / 0.36), 0 3px 8px -4px rgb(0 0 0 / 0.18);
+  --elev-xl: 0 18px 48px -18px rgb(0 0 0 / 0.46), 0 6px 14px -8px rgb(0 0 0 / 0.22);
+  --elev-cover: 0 1px 1px rgb(0 0 0 / 0.12), 0 4px 10px -2px rgb(0 0 0 / 0.32), 0 12px 28px -10px rgb(0 0 0 / 0.44);
 
   /* Solid surfaces (when glass is not appropriate) */
   --bg-surface: var(--surface-base);
@@ -295,6 +305,14 @@
   --bg-elevated: var(--elevated-base);
   --bg-inset: rgb(0 0 0 / 0.04);
   --scrim: rgb(0 0 0 / 0.25);
+
+  /* Light elevation: a fraction of the ink, so panels never cast grey halos. */
+  --elev-xs: 0 1px 2px rgb(0 0 0 / 0.05);
+  --elev-sm: 0 1px 3px rgb(0 0 0 / 0.07), 0 1px 2px rgb(0 0 0 / 0.04);
+  --elev-md: 0 4px 14px -4px rgb(0 0 0 / 0.10), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --elev-lg: 0 10px 28px -12px rgb(0 0 0 / 0.14), 0 3px 8px -4px rgb(0 0 0 / 0.06);
+  --elev-xl: 0 18px 44px -18px rgb(0 0 0 / 0.18), 0 6px 14px -8px rgb(0 0 0 / 0.08);
+  --elev-cover: 0 1px 1px rgb(0 0 0 / 0.06), 0 4px 10px -2px rgb(0 0 0 / 0.14), 0 12px 28px -10px rgb(0 0 0 / 0.2);
 }
 html[data-appearance="light"] {
   color-scheme: light;
@@ -341,7 +359,7 @@ html[data-appearance="light"] {
   box-shadow:
     inset 0 0 0 0.5px var(--glass-edge),
     inset 0 1px 0 0 var(--glass-highlight),
-    var(--shadow-lg);
+    var(--elev-lg);
 }
 @utility glass-thin {
   background: var(--material-thin);
@@ -356,7 +374,7 @@ html[data-appearance="light"] {
   box-shadow:
     inset 0 0 0 0.5px var(--glass-edge),
     inset 0 1px 0 0 var(--glass-highlight),
-    var(--shadow-xl);
+    var(--elev-xl);
 }
 /* Menus: thick material, popover-level shadow (not the modal's) */
 @utility glass-menu {
@@ -365,7 +383,7 @@ html[data-appearance="light"] {
   box-shadow:
     inset 0 0 0 0.5px var(--glass-edge),
     inset 0 1px 0 0 var(--glass-highlight),
-    var(--shadow-lg);
+    var(--elev-lg);
 }
 @utility glass-chrome {
   background: var(--material-chrome);

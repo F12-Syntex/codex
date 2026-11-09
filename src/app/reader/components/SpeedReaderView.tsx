@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   Play,
   Pause,
@@ -12,10 +12,29 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProgressRing } from "@/components/ui/progress-ring";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { ThemeClasses } from "../lib/types";
 import { ChromeButton, PillDivider, PANEL_SPRING } from "./chrome";
+import { FOOTER_HEIGHT } from "./ReaderFooter";
 import type { SpeedReaderChunk } from "@/lib/speed-reader-engine";
 import { calculateChunkDuration } from "@/lib/speed-reader-engine";
+
+/**
+ * Two ways to speed-read:
+ *  - "page" (default): the whole page stays in view. A highlighter band paces the eye phrase by
+ *    phrase (drawn by TextContent), the current paragraph is full ink, and pages turn on their
+ *    own. Context and regressions stay available, which is what helps retention.
+ *  - "focus": classic RSVP — one phrase at a time on a veil, for maximum speed.
+ */
+export type SpeedReaderMode = "page" | "focus";
+const MODE_KEY = "codex.speedReader.mode";
+function readMode(): SpeedReaderMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === "focus" ? "focus" : "page";
+  } catch {
+    return "page";
+  }
+}
 
 interface SpeedReaderViewProps {
   theme: ThemeClasses;
@@ -42,8 +61,14 @@ export function SpeedReaderView({
   const reduceMotion = useReducedMotion();
   const [playing, setPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [targetWpm, setTargetWpm] = useState(400);
-  const [effectiveWpm, setEffectiveWpm] = useState(400);
+  const [mode, setModeState] = useState<SpeedReaderMode>(readMode);
+  const setMode = useCallback((m: SpeedReaderMode) => {
+    setModeState(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* private window: keep it in memory */ }
+  }, []);
+  // Page mode keeps context on screen, so it starts at a comfortable reading pace.
+  const [targetWpm, setTargetWpm] = useState(() => (readMode() === "page" ? 300 : 400));
+  const [effectiveWpm, setEffectiveWpm] = useState(targetWpm);
   const [sessionStart] = useState(() => Date.now());
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -153,14 +178,15 @@ export function SpeedReaderView({
       if (e.key === "ArrowLeft") { e.preventDefault(); handleRewind(); }
       if (e.key === "ArrowRight") { e.preventDefault(); handleSkipForward(); }
       if (e.key === "ArrowUp") { e.preventDefault(); setTargetWpm((w) => Math.min(800, w + 25)); }
-      if (e.key === "ArrowDown") { e.preventDefault(); setTargetWpm((w) => Math.max(200, w - 25)); }
+      if (e.key === "ArrowDown") { e.preventDefault(); setTargetWpm((w) => Math.max(150, w - 25)); }
+      if (e.key === "m" || e.key === "M") { e.preventDefault(); setMode(mode === "page" ? "focus" : "page"); }
       // Consumed here: preventDefault in the capture phase so the Reader's window handler (which
       // bails on defaultPrevented) never sees it.
       if (e.key === "Escape") { e.preventDefault(); onExit(); }
     };
     window.addEventListener("keydown", handler, { capture: true });
     return () => window.removeEventListener("keydown", handler, { capture: true });
-  }, [handlePlayPause, handleRewind, handleSkipForward, onExit]);
+  }, [handlePlayPause, handleRewind, handleSkipForward, onExit, mode, setMode]);
 
   const displayText = useMemo(() => {
     if (!chunk) return "";
@@ -216,77 +242,106 @@ export function SpeedReaderView({
       initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-      className="absolute inset-0 z-20 flex select-none flex-col"
+      // Page mode lets the page through: only the control pill takes the pointer.
+      className={cn("absolute inset-0 z-20 flex select-none flex-col", mode === "page" && "pointer-events-none")}
     >
-      {/* Paper veil — the page dissolves behind the focus word */}
-      <div
-        className="pointer-events-none absolute inset-0 backdrop-blur-xl"
-        style={{ backgroundColor: "color-mix(in srgb, var(--reader-paper, var(--canvas)) 92%, transparent)" }}
-      />
-
-      {/* Top: chapter (exit lives in the transport pill — never under the window ✕) */}
-      <div className="relative z-10 flex h-12 shrink-0 items-center justify-center px-14">
-        <span className="truncate text-xs text-label-tertiary">{chapterTitle}</span>
-      </div>
-
-      {/* Focal area — RSVP slightly above centre */}
-      <div className="relative z-10 flex flex-1 flex-col items-center overflow-hidden px-8">
-        <div style={{ flex: "2 1 0" }} />
-
-        {/* Speaker label */}
-        <div className="mb-3 h-4 text-xs font-semibold tracking-wide" style={{ color: chunk?.speakerColor || "var(--accent-brand)" }}>
-          {chunk?.speakerName ?? ""}
-        </div>
-
-        {/* Reticle */}
-        <div className="relative w-full max-w-3xl">
-          <div className="mx-auto mb-3 flex w-72 items-end justify-center">
-            <span className="h-px flex-1 bg-separator-strong" />
-            <span className="h-3 w-px bg-brand/60" />
-            <span className="h-px flex-1 bg-separator-strong" />
-          </div>
-
-          <div
-            className={cn("flex w-full items-baseline font-display", chunkColorClass)}
-            style={{ fontSize: "40px", lineHeight: 1.3, ...chunkStyle }}
+      <AnimatePresence initial={false}>
+        {mode === "focus" && (
+          <motion.div
+            key="focus"
+            className="absolute inset-0 flex flex-col"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.01 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.18 } }}
+            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
           >
-            {orp ? (
-              <>
-                <span className="min-w-0 flex-1 overflow-hidden whitespace-pre text-right">{orp.pre}</span>
-                <span className="text-brand">{orp.pivot}</span>
-                <span className="min-w-0 flex-1 overflow-hidden whitespace-pre text-left">{orp.post}</span>
-              </>
-            ) : (
-              <span className="w-full text-center">{displayText}</span>
-            )}
-          </div>
+            {/* Paper veil — the page dissolves behind the focus word */}
+            <div
+              className="pointer-events-none absolute inset-0 backdrop-blur-xl"
+              style={{ backgroundColor: "color-mix(in srgb, var(--reader-paper, var(--canvas)) 92%, transparent)" }}
+            />
 
-          <div className="mx-auto mt-3 flex w-72 items-start justify-center">
-            <span className="h-px flex-1 bg-separator-strong" />
-            <span className="h-3 w-px bg-brand/60" />
-            <span className="h-px flex-1 bg-separator-strong" />
-          </div>
-        </div>
+            {/* Top: chapter (exit lives in the transport pill — never under the window ✕) */}
+            <div className="relative z-10 flex h-12 shrink-0 items-center justify-center px-14">
+              <span className="truncate text-xs text-label-tertiary">{chapterTitle}</span>
+            </div>
 
-        {/* Paragraph progress */}
-        <div className="mt-8 h-1 w-40 overflow-hidden rounded-full bg-fill-secondary">
-          <div
-            className="h-full origin-left rounded-full bg-brand transition-transform duration-200 ease-apple"
-            style={{ transform: `scaleX(${paraProgress})` }}
-          />
-        </div>
+            {/* Focal area — RSVP slightly above centre */}
+            <div className="relative z-10 flex flex-1 flex-col items-center overflow-hidden px-8">
+              <div style={{ flex: "2 1 0" }} />
 
-        <div style={{ flex: "3 1 0" }} />
-      </div>
+              {/* Speaker label */}
+              <div className="mb-3 h-4 text-xs font-semibold tracking-wide" style={{ color: chunk?.speakerColor || "var(--accent-brand)" }}>
+                {chunk?.speakerName ?? ""}
+              </div>
+
+              {/* Reticle */}
+              <div className="relative w-full max-w-3xl">
+                <div className="mx-auto mb-3 flex w-72 items-end justify-center">
+                  <span className="h-px flex-1 bg-separator-strong" />
+                  <span className="h-3 w-px bg-brand/60" />
+                  <span className="h-px flex-1 bg-separator-strong" />
+                </div>
+
+                <div
+                  className={cn("flex w-full items-baseline font-display", chunkColorClass)}
+                  style={{ fontSize: "40px", lineHeight: 1.3, ...chunkStyle }}
+                >
+                  {orp ? (
+                    <>
+                      <span className="min-w-0 flex-1 overflow-hidden whitespace-pre text-right">{orp.pre}</span>
+                      <span className="text-brand">{orp.pivot}</span>
+                      <span className="min-w-0 flex-1 overflow-hidden whitespace-pre text-left">{orp.post}</span>
+                    </>
+                  ) : (
+                    <span className="w-full text-center">{displayText}</span>
+                  )}
+                </div>
+
+                <div className="mx-auto mt-3 flex w-72 items-start justify-center">
+                  <span className="h-px flex-1 bg-separator-strong" />
+                  <span className="h-3 w-px bg-brand/60" />
+                  <span className="h-px flex-1 bg-separator-strong" />
+                </div>
+              </div>
+
+              {/* Paragraph progress */}
+              <div className="mt-8 h-1 w-40 overflow-hidden rounded-full bg-fill-secondary">
+                <div
+                  className="h-full origin-left rounded-full bg-brand transition-transform duration-200 ease-apple"
+                  style={{ transform: `scaleX(${paraProgress})` }}
+                />
+              </div>
+
+              <div style={{ flex: "3 1 0" }} />
+            </div>
+
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Control pill */}
-      <div className="relative z-10 flex shrink-0 justify-center pb-4">
+      <div className="pointer-events-auto relative z-10 mt-auto flex shrink-0 items-center justify-center" style={{ height: FOOTER_HEIGHT }}>
         <motion.div
           initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ ...PANEL_SPRING, delay: 0.05 }}
-          className="glass flex h-12 items-center gap-1 rounded-full p-1.5"
+          className="glass-thin flex h-12 items-center gap-1 rounded-full p-1.5"
         >
+          <SegmentedControl<SpeedReaderMode>
+            size="sm"
+            value={mode}
+            onValueChange={setMode}
+            options={[
+              { value: "page", label: "Page" },
+              { value: "focus", label: "Focus" },
+            ]}
+            aria-label="Speed reader view (M)"
+            className="mr-1"
+          />
+
+          <PillDivider />
+
           <ChromeButton onClick={handleRewind} title="Previous paragraph (←)" aria-label="Previous paragraph">
             <SkipBack className="fill-current" strokeWidth={1.5} />
           </ChromeButton>
@@ -306,7 +361,7 @@ export function SpeedReaderView({
 
           <PillDivider />
 
-          <ChromeButton compact onClick={() => setTargetWpm((w) => Math.max(200, w - 25))} title="Slower (↓)" aria-label="Decrease words per minute">
+          <ChromeButton compact onClick={() => setTargetWpm((w) => Math.max(150, w - 25))} title="Slower (↓)" aria-label="Decrease words per minute">
             <Minus strokeWidth={2} />
           </ChromeButton>
           <div className="flex w-16 flex-col items-center leading-none" title={`Target ${targetWpm} wpm`}>

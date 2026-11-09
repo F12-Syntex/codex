@@ -131,7 +131,7 @@ export function AssistantLauncher({
             whileTap={reduce ? undefined : { scale: 0.94 }}
             transition={{ type: "spring", stiffness: 500, damping: 30 }}
             className={cn(
-              "glass focus-ring fixed right-4 bottom-3 z-40 inline-flex h-9 origin-bottom-right items-center gap-1.5 rounded-full px-3.5 text-sm font-medium text-label transition-colors duration-150 hover:text-brand",
+              "glass-thin focus-ring fixed right-4 bottom-3 z-40 inline-flex h-9 origin-bottom-right items-center gap-1.5 rounded-full px-3.5 text-sm font-medium text-label transition-colors duration-150 hover:text-brand",
               className,
             )}
           >

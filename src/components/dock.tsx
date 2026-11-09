@@ -112,7 +112,9 @@ function DockPanel({
       aria-label={title}
       tabIndex={-1}
       className="glass-thick grain relative flex origin-bottom flex-col overflow-hidden rounded-2xl text-label outline-none"
-      style={{ width: 404, height: "auto", maxHeight: "min(540px, calc(100vh - 150px))" }}
+      // Fixed size: switching tabs (Colors / Style / Wallpaper) swaps the body
+      // content only — the sheet never resizes under the pointer.
+      style={{ width: 404, height: "min(540px, calc(100vh - 150px))" }}
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.94, filter: "blur(6px)" }}
       animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97, filter: "blur(4px)" }}

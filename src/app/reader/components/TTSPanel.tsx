@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   Play, Pause, Square, ChevronDown, Loader2, SkipBack, SkipForward, Search,
-  RotateCcw, AudioLines, Check, X,
+  RotateCcw, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { AudioWaveform } from "@/components/ui/audio-waveform";
 import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
-import { PANEL_SPRING, riseIn, stopNavKeys } from "./chrome";
+import { PANEL_SPRING, PanelHeader, READER_PANEL, riseIn, stopNavKeys } from "./chrome";
 import { formatHms } from "../lib/format";
 
 interface TTSPanelProps {
@@ -108,39 +108,25 @@ export function TTSPanel({
   });
 
   return (
-    <div className="pointer-events-none absolute bottom-16 left-3 z-50 flex">
+    <div className="pointer-events-none absolute bottom-17 left-3 z-30 flex">
       <motion.div
         ref={panelRef}
         {...riseIn}
         initial={reduceMotion ? false : riseIn.initial}
         transition={PANEL_SPRING}
         onKeyDown={stopNavKeys}
-        className="glass-thick grain pointer-events-auto relative flex w-80 origin-bottom-left flex-col overflow-hidden rounded-2xl"
-        style={{ maxHeight: "calc(100vh - 140px)" }}
+        className={cn(READER_PANEL, "pointer-events-auto relative origin-bottom-left")}
+        style={{ maxHeight: "calc(100vh - 128px)" }}
       >
-        <div className="overflow-y-auto p-4">
-          {/* ── Now playing ─────────────────────────── */}
-          <div className="flex items-center gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand/15 text-brand">
-              <AudioLines className="size-4" strokeWidth={1.75} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-headline text-label">Read Aloud</div>
-              <div className="truncate text-2xs text-label-secondary">
-                {voice ? `${voiceLabel} · ${voice.locale}` : "Choose a voice"}
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              aria-label="Close read aloud"
-              className="focus-ring pressable grid size-7 shrink-0 place-items-center rounded-full bg-fill-tertiary text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
-            >
-              <X className="size-3.5" strokeWidth={2} />
-            </button>
-          </div>
-
+        <PanelHeader
+          title="Read Aloud"
+          subtitle={voice ? `${voiceLabel} · ${voice.locale}` : "Choose a voice"}
+          onClose={onClose}
+          closeLabel="Close read aloud"
+        />
+        <div className="overflow-y-auto px-4 pb-4">
           {/* ── Waveform ────────────────────────────── */}
-          <div className="mt-4 rounded-lg bg-fill-quaternary px-3 py-2.5">
+          <div className="rounded-lg bg-fill-quaternary px-3 py-2.5">
             <AudioWaveform
               label={isPlaying ? "Reading aloud" : "Read aloud idle"}
               bars={36}

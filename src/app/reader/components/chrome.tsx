@@ -6,6 +6,7 @@
  */
 
 import * as React from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const PANEL_SPRING = { type: "spring", stiffness: 420, damping: 34 } as const;
@@ -73,6 +74,48 @@ export const ChromeButton = React.forwardRef<HTMLButtonElement, ChromeButtonProp
     </button>
   );
 });
+
+/**
+ * Every reader panel is the same object: a 320px `glass-thick` sheet with 20px radius, pinned to
+ * a window edge on the shared lines (top 60, bottom 68, inset 12). Panels float over the page —
+ * they never push the text column — and only one is open at a time.
+ */
+export const READER_PANEL =
+  "glass-thick grain z-30 flex w-80 flex-col overflow-hidden rounded-2xl text-label";
+
+/** One header for every reader panel: serif title, one meta line, round close button. */
+export function PanelHeader({
+  title,
+  subtitle,
+  onClose,
+  closeLabel = "Close",
+  children,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  onClose: () => void;
+  closeLabel?: string;
+  /** Extra controls left of the close button. */
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex shrink-0 items-start gap-2 px-4 pt-4 pb-3">
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate font-display text-base font-semibold text-label">{title}</h2>
+        {subtitle && <p className="mt-0.5 truncate text-xs tabular-nums text-label-secondary">{subtitle}</p>}
+      </div>
+      {children}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel}
+        className="focus-ring pressable -mr-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary transition-colors duration-150 hover:bg-fill-secondary hover:text-label"
+      >
+        <X className="size-3.5" strokeWidth={2.25} />
+      </button>
+    </div>
+  );
+}
 
 /** Thin vertical divider for use inside pills. */
 export function PillDivider({ className }: { className?: string }) {

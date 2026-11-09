@@ -10,7 +10,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { NumberStepper } from "@/components/ui/number-stepper";
 import type { ThemeClasses, CustomFont, ReadingTheme } from "../lib/types";
 import { ALL_FONTS } from "../lib/constants";
-import { dropIn, LAYOUT_SPRING, PANEL_SPRING, PAPER_SWATCHES, stopNavKeys } from "./chrome";
+import { dropIn, LAYOUT_SPRING, PANEL_SPRING, PAPER_SWATCHES, PanelHeader, READER_PANEL, stopNavKeys } from "./chrome";
 
 interface TextSettingsPanelProps {
   theme: ThemeClasses;
@@ -77,10 +77,12 @@ export function TextSettingsPanel({
       initial={reduceMotion ? false : dropIn.initial}
       transition={PANEL_SPRING}
       onKeyDown={stopNavKeys}
-      className="glass-thick grain absolute right-36 top-full z-50 flex w-80 origin-top-right flex-col overflow-hidden rounded-2xl"
-      style={{ maxHeight: "calc(100vh - 72px)" }}
+      // Same slot as AI Tools: right edge, top line 60, never past the footer line.
+      className={cn(READER_PANEL, "absolute top-15 right-3 origin-top-right")}
+      style={{ maxHeight: "calc(100vh - 128px)" }}
     >
-      <div className="overflow-y-auto p-4">
+      <PanelHeader title="Text & Page" onClose={onClose} closeLabel="Close text settings" />
+      <div className="overflow-y-auto px-4 pb-4">
         {/* ── Paper ─────────────────────────────────── */}
         {readingTheme && onThemeChange && (
           <section className="mb-5">

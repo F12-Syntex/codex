@@ -8,7 +8,7 @@ import { bookProgress } from "@/lib/reading-progress";
 import { cn } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
-import { PANEL_SPRING, LAYOUT_SPRING, stopNavKeys } from "./chrome";
+import { PANEL_SPRING, LAYOUT_SPRING, PanelHeader, READER_PANEL, stopNavKeys } from "./chrome";
 import { visibleChapterNo } from "../lib/chapter-number";
 import type { ReaderBookmark, ThemeClasses } from "../lib/types";
 
@@ -148,29 +148,18 @@ export function TOCSidebar({
       exit={{ opacity: 0, x: -14, scale: 0.98, filter: "blur(2px)", transition: { duration: 0.16 } }}
       transition={PANEL_SPRING}
       onKeyDown={stopNavKeys}
-      className="glass-thick grain absolute top-15 bottom-17 left-3 z-30 flex w-80 origin-left flex-col overflow-hidden rounded-2xl shadow-lg"
+      className={cn(READER_PANEL, "absolute top-15 bottom-17 left-3 origin-left")}
     >
       {/* ── Header ─────────────────────────────────── */}
-      <div className="relative shrink-0 px-4 pb-3 pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold leading-tight text-label">Contents</h2>
-            <p className="mt-0.5 text-xs tabular-nums text-label-secondary">
-              {currentNo != null && <>Chapter {currentNo} of {labelCount || chapters.length} · </>}
-              {Math.round(progressPct)}% read
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close contents"
-            className="focus-ring pressable flex size-7 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary transition-colors duration-150 hover:bg-fill-secondary hover:text-label"
-          >
-            <X className="size-3.5" strokeWidth={2} />
-          </button>
-        </div>
-
+      <PanelHeader
+        title="Contents"
+        subtitle={<>{currentNo != null && <>Chapter {currentNo} of {labelCount || chapters.length} · </>}{Math.round(progressPct)}% read</>}
+        onClose={onClose}
+        closeLabel="Close contents"
+      />
+      <div className="relative shrink-0 px-4 pb-3">
         {/* Book progress */}
-        <div className="mt-3 h-1 overflow-hidden rounded-full bg-fill-secondary">
+        <div className="h-1 overflow-hidden rounded-full bg-fill-secondary">
           <motion.div
             className="h-full origin-left rounded-full bg-brand"
             initial={reduceMotion ? false : { scaleX: 0 }}

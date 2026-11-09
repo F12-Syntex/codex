@@ -175,7 +175,9 @@ animate width/height of large containers per frame; animate transform/opacity.
 
 `shadow-xs`, `shadow-sm` (controls), `shadow-md` (cards hover), `shadow-lg`
 (popovers), `shadow-xl` (modals), `shadow-cover` (book covers). Glass utilities
-include their own shadow.
+include their own shadow. Values live in `--elev-*` and are appearance-aware (light
+mode and light reader papers get a fraction of the ink) — never hardcode a shadow
+or add `shadow-*` on top of a glass utility.
 
 ## 10. Icons
 
@@ -220,7 +222,11 @@ Apple's discipline, with a bookish identity on top:
    sidebar, TOC): `bg-fill-secondary` pill, accent-colored icon, `font-medium` label.
 4. **Colored icon tiles only in navigation**, never on every content row.
 5. **One window chrome:** a 52px transparent title bar with `<WindowControls />` in every window.
-6. **Panels over reading text use `glass-thick`** and must not occlude the text column.
+6. **Reader panels float; text never moves.** Every reader panel is one object (`READER_PANEL` +
+   `PanelHeader` in `src/app/reader/components/chrome.tsx`): `glass-thick` w-80 rounded-2xl, pinned
+   to a window edge on the shared lines (top 60, bottom 68, inset 12), one open at a time. Opening a
+   panel never reflows or re-paginates the text column. Header/footer pills are `glass-thin` (no drop
+   shadow), like the main window's toolbars.
 7. **Labels over glyphs** for toolbars with more than three non-universal actions.
 8. **Magnification is for things, not utilities.** The dock does not fisheye.
 9. **Esc never closes a window.** Esc dismisses the topmost transient UI (menu, popover,

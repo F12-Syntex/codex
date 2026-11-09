@@ -399,6 +399,14 @@ export function TextContent({
         ? (idx < ttsParagraphIndex && idx <= ttsHighWaterMark)
         : idx <= ttsHighWaterMark
     );
+    // Speed reader keeps the whole page in view and guides the eye with contrast: the paragraph
+    // being read is full ink, what's ahead is legible context, what's done steps back.
+    const srOpacity = (idx: number): number | undefined => {
+      if (!speedReaderActive || speedReaderParaIndex < 0) return undefined;
+      if (idx === speedReaderParaIndex) return 1;
+      return idx < speedReaderParaIndex ? 0.28 : 0.5;
+    };
+    const opacityOf = (idx: number) => srOpacity(idx) ?? (isRead(idx) ? 0.45 : undefined);
     const body = shown.map(({ i, p }, k) => {
       const html = p.html;
       const isEmpty = html === "<p></p>" || html.trim() === "";
@@ -431,8 +439,8 @@ export function TextContent({
           style={{
             marginBottom: `${paraSpacing}px`,
             textIndent: !isFirst && k > 0 ? `${fontSize * 1.5}px` : undefined,
-            opacity: isRead(i) ? 0.45 : undefined,
-            transition: "opacity 0.4s ease",
+            opacity: opacityOf(i),
+            transition: "opacity 0.45s cubic-bezier(0.32, 0.72, 0, 1)",
             position: "relative",
           }}
         >
@@ -502,8 +510,8 @@ export function TextContent({
           style={{
             marginBottom: `${paraSpacing}px`,
             textIndent: `${fontSize * 1.5}px`,
-            opacity: isRead(idx) ? 0.45 : undefined,
-            transition: "opacity 0.4s ease",
+            opacity: opacityOf(idx),
+            transition: "opacity 0.45s cubic-bezier(0.32, 0.72, 0, 1)",
           }}
         >
           <span data-para-content dangerouslySetInnerHTML={{ __html: html }} />
@@ -512,6 +520,8 @@ export function TextContent({
     });
     return [...body, ...extra];
   }, [
+    speedReaderActive,
+    speedReaderParaIndex,
     shown,
     paras.length,
     extraParagraphs,
@@ -831,38 +841,6 @@ export function TextContent({
       onPageRequest?.(targetPage);
     }
   }, [speedReaderActive, speedReaderParaIndex, stride, currentPage, totalPages, onPageRequest]);
-
-  // Speed reader paragraph highlight rects
-  const [srParaRects, setSrParaRects] = useState<DOMRect[]>([]);
-
-  useEffect(() => {
-    if (!speedReaderActive || speedReaderParaIndex < 0) {
-      setSrParaRects([]);
-      return;
-    }
-
-    const slider = sliderRef.current;
-    const clipper = slider?.parentElement;
-    if (!slider || !clipper) { setSrParaRects([]); return; }
-
-    const paraEl = slider.querySelector(`[data-para-idx="${speedReaderParaIndex}"]`);
-    if (!paraEl) { setSrParaRects([]); return; }
-
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(paraEl);
-      const clipperRect = clipper.getBoundingClientRect();
-      const rects = Array.from(range.getClientRects()).map(r => new DOMRect(
-        r.x - clipperRect.x,
-        r.y - clipperRect.y,
-        r.width,
-        r.height,
-      ));
-      setSrParaRects(rects);
-    } catch {
-      setSrParaRects([]);
-    }
-  }, [speedReaderActive, speedReaderParaIndex, currentPage]);
 
   // Speed reader chunk underline: find the chunk text within the paragraph and underline it
   const [srChunkRects, setSrChunkRects] = useState<DOMRect[]>([]);
@@ -1201,41 +1179,25 @@ export function TextContent({
           />
         ))}
 
-        {/* Speed reader paragraph highlight overlay */}
-        {speedReaderActive && srParaRects.map((r, i) => (
-          <div
-            key={`sr-para-${i}`}
-            style={{
-              position: "absolute",
-              left: `${r.x}px`,
-              top: `${r.y}px`,
-              width: `${r.width}px`,
-              height: `${r.height}px`,
-              borderRadius: "6px",
-              backgroundColor: ttsParaCol,
-              pointerEvents: "none",
-              transition: "top 0.15s ease, height 0.15s ease",
-              zIndex: 0,
-            }}
-          />
-        ))}
-
-        {/* Speed reader chunk underline overlay */}
+        {/* Speed reader pacer — a soft highlighter band that glides phrase to phrase. One band
+            per line box; keyed by line so a phrase that moves within a line slides, and one that
+            wraps to the next line travels down to it. */}
         {speedReaderActive && srChunkRects.map((r, i) => (
           <div
             key={`sr-chunk-${i}`}
+            aria-hidden
             style={{
               position: "absolute",
-              left: `${r.x - 2}px`,
-              top: `${r.y + r.height - 3}px`,
-              width: `${r.width + 4}px`,
-              height: "2.5px",
-              borderRadius: "1.5px",
-              backgroundColor: "var(--accent-brand)",
-              opacity: 0.7,
+              left: `${r.x - 3}px`,
+              top: `${r.y}px`,
+              width: `${r.width + 6}px`,
+              height: `${r.height}px`,
+              borderRadius: "5px",
+              backgroundColor: "color-mix(in srgb, var(--accent-brand) 20%, transparent)",
+              boxShadow: "inset 0 -2px 0 0 color-mix(in srgb, var(--accent-brand) 65%, transparent)",
               pointerEvents: "none",
-              transition: "left 0.1s ease, top 0.1s ease, width 0.1s ease",
-              zIndex: 1,
+              transition: "left 0.18s cubic-bezier(0.32, 0.72, 0, 1), top 0.18s cubic-bezier(0.32, 0.72, 0, 1), width 0.18s cubic-bezier(0.32, 0.72, 0, 1)",
+              zIndex: 0,
             }}
           />
         ))}

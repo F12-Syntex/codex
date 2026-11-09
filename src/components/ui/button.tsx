@@ -20,7 +20,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "pressable bg-brand text-brand-fg shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_10px_14px_-10px_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge),var(--shadow-sm)] hover:shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_10px_14px_-10px_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge),0_0_24px_-6px_var(--accent-brand)]",
+          "pressable bg-brand text-brand-fg shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_10px_14px_-10px_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge),var(--elev-sm)] hover:shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_10px_14px_-10px_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge),0_0_24px_-6px_var(--accent-brand)]",
         destructive:
           "pressable bg-danger/15 text-danger shadow-[inset_0_0_0_0.5px_color-mix(in_srgb,var(--system-red)_30%,transparent)] hover:bg-danger/25",
         outline:

@@ -22,23 +22,23 @@ export const KIND_ORDER: readonly ChapterKind[] = ["knowledge", "rewrite", "form
 
 export const KIND_META: Record<ChapterKind, KindMeta> = {
   knowledge: {
-    label: "Wiki", short: "Wiki", description: "Characters, places and events as you read",
+    label: "Wiki", short: "Wiki", description: "Characters, places, events",
     Icon: BookMarked, tint: "accent", color: "var(--accent-brand)",
   },
   rewrite: {
-    label: "Rewrite", short: "Rewrite", description: "Polish fixes errors; Concise tightens the prose",
+    label: "Rewrite", short: "Rewrite", description: "Polish or tighten the prose",
     Icon: Minimize2, tint: "blue", color: "var(--system-blue)",
   },
   format: {
-    label: "Formatting", short: "Formatting", description: "Dialogue, system messages and stats styled",
+    label: "Formatting", short: "Formatting", description: "Styled dialogue and stats",
     Icon: Paintbrush, tint: "purple", color: "var(--system-purple)",
   },
   title: {
-    label: "Titles", short: "Titles", description: "Name untitled chapters from their content",
+    label: "Titles", short: "Titles", description: "Names untitled chapters",
     Icon: Type, tint: "green", color: "var(--system-green)",
   },
   comments: {
-    label: "Comments", short: "Comments", description: "A few reactions from a fellow reader",
+    label: "Comments", short: "Comments", description: "Reactions from a fellow reader",
     Icon: MessageCircle, tint: "teal", color: "var(--system-teal)",
   },
 };

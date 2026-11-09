@@ -121,7 +121,7 @@ export function BulkSheet({
                 label={meta.label}
                 description={
                   on ? (
-                    k === "rewrite" && prefs ? `${prefs.rewrite === "polish" ? "Polish" : "Concise"} · ${meta.description}` : meta.description
+                    k === "rewrite" && prefs ? (prefs.rewrite === "polish" ? "Polish · fixes errors" : "Concise · tighter prose") : meta.description
                   ) : (
                     <span>
                       Off for this book ·{" "}
