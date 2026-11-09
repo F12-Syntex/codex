@@ -229,3 +229,10 @@ Apple's discipline, with a bookish identity on top:
 10. **One font registry.** Every bundled typeface is declared once (family → file →
     weight range) and drives both `@font-face` injection and pickers; a test asserts each
     file exists and starts with `wOF2`.
+11. **One right-hand inspector per window.** AI panels (AI Tools, Assistant) are tenants of a
+    single inspector slot — mutually exclusive, one Esc layer, one unclipped shadow. Floating
+    pills hide while a panel is open; floating clusters share the footer's centre line.
+12. **No hydration branches.** Never branch rendering on `window` / `hasRpc()`; use
+    `useSyncExternalStore` with a `false` server snapshot.
+13. **Every window boots through one theme hook** (`useAppTheme` via `WindowShell`), so
+    accent, appearance and tint apply in every window, not just the main one.
