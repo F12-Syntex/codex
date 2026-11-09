@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { fmtCh } from "@/lib/chapter-labels";
 import { X, Search, List, Bookmark, Sparkles, Paintbrush, BookMarked, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
+import { PANEL_SPRING, LAYOUT_SPRING, stopNavKeys } from "./chrome";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
 
 type Tab = "chapters" | "bookmarks";
@@ -36,7 +41,6 @@ export function TOCSidebar({
   chapters,
   currentChapter,
   bookmarks,
-  theme,
   enrichedNames = {},
   enrichEnabled = false,
   enrichingChapter = null,
@@ -53,6 +57,8 @@ export function TOCSidebar({
   onDeleteBookmark,
   onClose,
 }: TOCSidebarProps) {
+  const reduceMotion = useReducedMotion();
+  const hover = useFluidHover<HTMLDivElement>();
   const sidebarRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -135,176 +141,229 @@ export function TOCSidebar({
     inputRef.current?.focus();
   }, []);
 
+  const progressPct = chapters.length > 0 ? ((currentChapter + 1) / chapters.length) * 100 : 0;
+  const currentNo = fmtCh(currentChapter, chapterLabels) ?? currentChapter + 1;
+
   return (
-    <div
+    <motion.div
       ref={sidebarRef}
-      className={`absolute left-0 top-0 z-20 flex h-full w-[320px] flex-col ${theme.panel} border-r ${theme.border} shadow-lg shadow-black/30`}
-      style={{ animation: "slideInLeft 0.2s ease" }}
+      initial={reduceMotion ? false : { opacity: 0, x: -20, scale: 0.98, filter: "blur(4px)" }}
+      animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, x: -14, scale: 0.98, filter: "blur(2px)", transition: { duration: 0.16 } }}
+      transition={PANEL_SPRING}
+      onKeyDown={stopNavKeys}
+      className="glass-thin grain absolute bottom-3 left-3 top-1 z-20 flex w-80 origin-left flex-col overflow-hidden rounded-2xl shadow-lg"
     >
-      {/* Header with tabs */}
-      <div className={`flex items-center justify-between border-b px-3 py-2 ${theme.border}`}>
-        <div className={`flex items-center gap-1 rounded-lg p-0.5 ${theme.subtle}`}>
+      {/* ── Header ─────────────────────────────────── */}
+      <div className="relative shrink-0 px-4 pb-3 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold leading-tight text-label">Contents</h2>
+            <p className="mt-0.5 text-xs tabular-nums text-label-tertiary">
+              Chapter {currentNo} of {chapters.length} · {Math.round(progressPct)}%
+            </p>
+          </div>
           <button
-            onClick={() => setTab("chapters")}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-              tab === "chapters" ? theme.btnActive : theme.btn
-            }`}
+            onClick={onClose}
+            aria-label="Close contents"
+            className="focus-ring pressable flex size-7 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary transition-colors duration-150 hover:bg-fill-secondary hover:text-label"
           >
-            <List className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Chapters
-          </button>
-          <button
-            onClick={() => setTab("bookmarks")}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-              tab === "bookmarks" ? theme.btnActive : theme.btn
-            }`}
-          >
-            <Bookmark className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Bookmarks
-            {bookmarks.length > 0 && (
-              <span className={`ml-0.5 text-xs ${theme.muted}`}>({bookmarks.length})</span>
-            )}
+            <X className="size-3.5" strokeWidth={2} />
           </button>
         </div>
-        <button
-          onClick={onClose}
-          className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-        >
-          <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-      </div>
 
-      {/* Search */}
-      <div className={`border-b px-3 py-2 ${theme.border}`}>
-        <div className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 ${theme.input}`}>
-          <Search className={`h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
+        {/* Book progress */}
+        <div className="mt-3 h-1 overflow-hidden rounded-full bg-fill-secondary">
+          <motion.div
+            className="h-full origin-left rounded-full bg-brand"
+            initial={reduceMotion ? false : { scaleX: 0 }}
+            animate={{ scaleX: progressPct / 100 }}
+            transition={{ type: "spring", bounce: 0, duration: 0.8, delay: 0.1 }}
+          />
+        </div>
+
+        <SegmentedControl
+          className="mt-4"
+          size="sm"
+          fill
+          value={tab}
+          onValueChange={setTab}
+          options={[
+            { value: "chapters", label: "Chapters", icon: <List strokeWidth={1.75} /> },
+            {
+              value: "bookmarks",
+              label: "Bookmarks",
+              icon: <Bookmark strokeWidth={1.75} />,
+              badge: bookmarks.length > 0 ? bookmarks.length : undefined,
+            },
+          ]}
+        />
+
+        {/* Search */}
+        <label className="mt-2.5 flex h-8 items-center gap-2 rounded-full bg-fill-tertiary px-3 transition-shadow duration-150 focus-within:ring-2 focus-within:ring-brand/40">
+          <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
           <input
             ref={inputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={tab === "chapters" ? "Search chapters..." : "Search bookmarks..."}
-            className={`w-full bg-transparent text-xs outline-none placeholder:opacity-40 ${theme.text}`}
+            placeholder={tab === "chapters" ? "Search chapters" : "Search bookmarks"}
+            className="min-w-0 flex-1 bg-transparent text-sm text-label outline-none placeholder:text-label-tertiary"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-lg ${theme.btn}`}
+              aria-label="Clear search"
+              className="focus-ring flex size-4 shrink-0 items-center justify-center rounded-full bg-label-tertiary text-canvas transition-colors hover:bg-label-secondary"
             >
-              <X className="h-2.5 w-2.5" strokeWidth={2} />
+              <X className="size-2.5" strokeWidth={3} />
             </button>
+          )}
+        </label>
+      </div>
+
+      <div className="mx-4 h-px shrink-0 bg-separator" />
+
+      {/* ── Content ────────────────────────────────── */}
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={hover.ref} {...hover.handlers} className="relative p-2">
+          <FluidHoverHighlight hover={hover} className="rounded-md" />
+          {tab === "chapters" ? (
+            filteredChapters.length === 0 ? (
+              <p className="py-10 text-center text-xs text-label-tertiary">No chapters match “{searchQuery}”</p>
+            ) : (
+              filteredChapters.slice(0, renderLimit).map(({ i, displayTitle }) => {
+                const canEnrich = enrichEnabled;
+                const isEnriching = enrichingChapter === i;
+
+                const canFormat = formattingEnabled && !formattedChapters[i];
+                const isFormatting = formattingChapter === i;
+
+                const isEnriched = !!enrichedNames[i];
+                const isFormatted = !!formattedChapters[i];
+                const isWikiProcessed = wikiProcessedChapters.has(i);
+                const hasIndicators = (enrichEnabled && isEnriched) || (formattingEnabled && isFormatted) || (wikiEnabled && isWikiProcessed);
+                const isCurrent = i === currentChapter;
+                const isRead = i < currentChapter;
+
+                return (
+                  <div
+                    key={i}
+                    data-fluid-item
+                    {...(isCurrent ? { "data-active-chapter": true } : {})}
+                    className="group relative flex h-8 w-full items-center gap-2 rounded-md pl-1.5 pr-1.5"
+                  >
+                    {isCurrent && (
+                      <motion.span
+                        layoutId="toc-current-chapter"
+                        transition={LAYOUT_SPRING}
+                        className="absolute inset-0 rounded-md bg-brand/15"
+                      />
+                    )}
+
+                    {/* Progress tick */}
+                    <span className="relative flex w-2 shrink-0 justify-center" aria-hidden>
+                      {isCurrent ? (
+                        <span className="size-1.5 rounded-full bg-brand shadow-[0_0_8px_0_var(--accent-brand)]" />
+                      ) : (
+                        <span className={cn("h-3 w-0.5 rounded-full", isRead ? "bg-brand/45" : "bg-fill")} />
+                      )}
+                    </span>
+
+                    <span
+                      className={cn(
+                        "relative w-6 shrink-0 text-right text-2xs tabular-nums",
+                        isCurrent ? "font-semibold text-brand" : "text-label-tertiary",
+                      )}
+                    >
+                      {fmtCh(i, chapterLabels) ?? ""}
+                    </span>
+
+                    <button
+                      onClick={() => { onSelectChapter(i); onClose(); }}
+                      className={cn(
+                        "focus-ring relative flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-sm",
+                        isCurrent ? "font-medium text-brand" : isRead ? "text-label-tertiary" : "text-label",
+                      )}
+                      title={displayTitle}
+                    >
+                      <span className="truncate">{displayTitle}</span>
+                      {hasIndicators && (
+                        <span className="inline-flex shrink-0 items-center gap-1 text-brand/60">
+                          {enrichEnabled && isEnriched && <Sparkles className="size-3" strokeWidth={2} />}
+                          {formattingEnabled && isFormatted && <Paintbrush className="size-3" strokeWidth={2} />}
+                          {wikiEnabled && isWikiProcessed && <BookMarked className="size-3" strokeWidth={2} />}
+                        </span>
+                      )}
+                    </button>
+
+                    {(isEnriching || isFormatting) && (
+                      <Loader2 className="relative size-3.5 shrink-0 animate-spin text-brand" strokeWidth={1.75} />
+                    )}
+                    {canEnrich && !isEnriching && !isFormatting && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEnrichChapter?.(i); }}
+                        className="focus-ring relative flex size-6 shrink-0 items-center justify-center rounded-full text-brand opacity-0 transition-[opacity,background-color] duration-150 hover:bg-brand/15 focus-visible:opacity-100 group-hover:opacity-100"
+                        title="Rename with AI"
+                      >
+                        <Sparkles className="size-3.5" strokeWidth={1.75} />
+                      </button>
+                    )}
+                    {canFormat && !isEnriching && !isFormatting && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onFormatChapter?.(i); }}
+                        className="focus-ring relative flex size-6 shrink-0 items-center justify-center rounded-full text-brand opacity-0 transition-[opacity,background-color] duration-150 hover:bg-brand/15 focus-visible:opacity-100 group-hover:opacity-100"
+                        title="Format with AI"
+                      >
+                        <Paintbrush className="size-3.5" strokeWidth={1.75} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )
+          ) : filteredBookmarks.length === 0 ? (
+            <div className="flex flex-col items-center px-6 py-12 text-center">
+              <div className="mb-3 grid size-11 place-items-center rounded-full bg-fill-tertiary text-label-tertiary">
+                <Bookmark className="size-5" strokeWidth={1.75} />
+              </div>
+              <p className="text-headline text-label">{searchQuery ? "No matches" : "No bookmarks yet"}</p>
+              <p className="mt-1 text-xs text-label-tertiary">
+                Press <kbd className="rounded-xs bg-fill-tertiary px-1 py-px text-2xs font-medium text-label-secondary">Ctrl B</kbd> on any page
+              </p>
+            </div>
+          ) : (
+            filteredBookmarks.map((bm) => (
+              <div
+                key={bm.id}
+                data-fluid-item
+                className="group relative flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 py-1.5"
+              >
+                <Bookmark className="relative size-4 shrink-0 fill-brand/20 text-brand" strokeWidth={1.75} />
+                <button
+                  onClick={() => {
+                    onJumpToBookmark(bm);
+                    onClose();
+                  }}
+                  className="focus-ring relative flex min-w-0 flex-1 flex-col gap-0.5 rounded-sm text-left"
+                >
+                  <span className="truncate text-sm text-label">{bm.label}</span>
+                  <span className="text-2xs tabular-nums text-label-tertiary">
+                    Chapter {bm.chapterIndex + 1} · Page {bm.paragraphIndex + 1}
+                  </span>
+                </button>
+                <button
+                  onClick={() => onDeleteBookmark(bm.id)}
+                  aria-label="Delete bookmark"
+                  className="focus-ring relative flex size-6 shrink-0 items-center justify-center rounded-full text-label-tertiary opacity-0 transition-[opacity,color,background-color] duration-150 hover:bg-fill-tertiary hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <X className="size-3.5" strokeWidth={2} />
+                </button>
+              </div>
+            ))
           )}
         </div>
       </div>
-
-      {/* Content */}
-      <div ref={listRef} className="flex-1 overflow-y-auto p-1.5">
-        {tab === "chapters" ? (
-          filteredChapters.length === 0 ? (
-            <p className={`py-8 text-center text-xs ${theme.muted}`}>No chapters found</p>
-          ) : (
-            filteredChapters.slice(0, renderLimit).map(({ ch, i, displayTitle }) => {
-              const canEnrich = enrichEnabled;
-              const isEnriching = enrichingChapter === i;
-
-              const canFormat = formattingEnabled && !formattedChapters[i];
-              const isFormatting = formattingChapter === i;
-
-              const isEnriched = !!enrichedNames[i];
-              const isFormatted = !!formattedChapters[i];
-              const isWikiProcessed = wikiProcessedChapters.has(i);
-              const hasIndicators = (enrichEnabled && isEnriched) || (formattingEnabled && isFormatted) || (wikiEnabled && isWikiProcessed);
-              const isRead = i < currentChapter;
-
-              return (
-                <div
-                  key={i}
-                  {...(i === currentChapter ? { "data-active-chapter": true } : {})}
-                  className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                    i === currentChapter ? theme.btnActive : theme.btn
-                  } ${isRead && i !== currentChapter ? "opacity-40" : ""}`}
-                >
-                  <span className={`w-5 shrink-0 text-right tabular-nums text-xs ${theme.muted}`}>
-                    {fmtCh(i, chapterLabels) ?? ""}
-                  </span>
-                  <button
-                    onClick={() => { onSelectChapter(i); onClose(); }}
-                    className="min-w-0 flex-1 truncate text-left"
-                  >
-                    <span>{displayTitle}</span>
-                    {hasIndicators && (
-                      <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
-                        {enrichEnabled && isEnriched && (
-                          <Sparkles className="inline h-2.5 w-2.5 text-[var(--accent-brand)] opacity-50" strokeWidth={1.5} />
-                        )}
-                        {formattingEnabled && isFormatted && (
-                          <Paintbrush className="inline h-2.5 w-2.5 text-[var(--accent-brand)] opacity-50" strokeWidth={1.5} />
-                        )}
-                        {wikiEnabled && isWikiProcessed && (
-                          <BookMarked className="inline h-2.5 w-2.5 text-[var(--accent-brand)] opacity-50" strokeWidth={1.5} />
-                        )}
-                      </span>
-                    )}
-                  </button>
-                  {(isEnriching || isFormatting) && (
-                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--accent-brand)]" strokeWidth={1.5} />
-                  )}
-                  {canEnrich && !isEnriching && !isFormatting && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEnrichChapter?.(i); }}
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100 ${theme.btn}`}
-                      title="Rename with AI"
-                    >
-                      <Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
-                    </button>
-                  )}
-                  {canFormat && !isEnriching && !isFormatting && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onFormatChapter?.(i); }}
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100 ${theme.btn}`}
-                      title="Format with AI"
-                    >
-                      <Paintbrush className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />
-                    </button>
-                  )}
-                </div>
-              );
-            })
-          )
-        ) : filteredBookmarks.length === 0 ? (
-          <div className={`py-8 text-center ${theme.muted}`}>
-            <Bookmark className="mx-auto mb-2 h-8 w-8 opacity-30" strokeWidth={1.5} />
-            <p className="text-xs">No bookmarks yet</p>
-            <p className="mt-1 text-xs opacity-60">Press Ctrl+B to add one</p>
-          </div>
-        ) : (
-          filteredBookmarks.map((bm) => (
-            <div
-              key={bm.id}
-              className={`group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors hover:${theme.subtle}`}
-            >
-              <button
-                onClick={() => {
-                  onJumpToBookmark(bm);
-                  onClose();
-                }}
-                className="flex min-w-0 flex-1 flex-col gap-0.5"
-              >
-                <span className={`truncate text-sm ${theme.text}`}>{bm.label}</span>
-                <span className={`text-xs ${theme.muted}`}>
-                  Chapter {bm.chapterIndex + 1} · Page {bm.paragraphIndex + 1}
-                </span>
-              </button>
-              <button
-                onClick={() => onDeleteBookmark(bm.id)}
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100 ${theme.btn}`}
-              >
-                <X className="h-3 w-3" strokeWidth={1.5} />
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
+    </motion.div>
   );
 }

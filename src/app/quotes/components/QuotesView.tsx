@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, Trash2, User, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, Filter } from "lucide-react";
-import { TitleBar } from "@/components/title-bar";
+import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles, LayoutGrid } from "lucide-react";
+import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
+import { SearchField } from "@/components/ui/search-field";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { MasonryGrid } from "@/components/ui/masonry-grid";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { NumberTicker } from "@/components/ui/number-ticker";
 
 interface SavedQuote {
   id: number;
@@ -19,12 +26,14 @@ interface SavedQuote {
   createdAt: string;
 }
 
-const KIND_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  dialogue: { label: "Dialogue", icon: <MessageSquare className="h-3 w-3" />, color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
-  inner_thought: { label: "Inner Thought", icon: <Eye className="h-3 w-3" />, color: "text-purple-400 bg-purple-400/10 border-purple-400/20" },
-  narration: { label: "Narration", icon: <BookOpen className="h-3 w-3" />, color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
-  description: { label: "Description", icon: <Feather className="h-3 w-3" />, color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
-  quote: { label: "Quote", icon: <QuoteIcon className="h-3 w-3" />, color: "text-white/60 bg-white/5 border-white/10" },
+type BadgeVariant = "default" | "accent" | "success" | "warning" | "danger" | "outline";
+
+const KIND_LABELS: Record<string, { label: string; icon: React.ReactNode; variant: BadgeVariant }> = {
+  dialogue: { label: "Dialogue", icon: <MessageSquare className="size-3" strokeWidth={2} />, variant: "accent" },
+  inner_thought: { label: "Inner Thought", icon: <Eye className="size-3" strokeWidth={2} />, variant: "default" },
+  narration: { label: "Narration", icon: <BookOpen className="size-3" strokeWidth={2} />, variant: "warning" },
+  description: { label: "Description", icon: <Feather className="size-3" strokeWidth={2} />, variant: "success" },
+  quote: { label: "Quote", icon: <QuoteIcon className="size-3" strokeWidth={2} />, variant: "outline" },
 };
 
 const ALL_KINDS = ["dialogue", "inner_thought", "narration", "description", "quote"];
@@ -90,97 +99,112 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
 
   const title = bookTitle || (filePath ? "Book Quotes" : "All Quotes");
 
+  const kindOptions = useMemo(() => [
+    { value: "all", label: "All", icon: <LayoutGrid strokeWidth={1.75} /> },
+    ...ALL_KINDS.map((k) => ({ value: k, icon: KIND_LABELS[k].icon, title: KIND_LABELS[k].label })),
+  ], []);
+
   return (
-    <div className="flex h-screen flex-col bg-[var(--bg-inset)] text-white">
-      <TitleBar breadcrumb={bookTitle ? ["Quotes", bookTitle] : ["Quotes"]} />
+    <WindowShell>
+      <WindowChrome
+        icon={<QuoteIcon strokeWidth={1.75} />}
+        title="Quotes"
+        subtitle={bookTitle}
+      />
 
-      {/* Sub-header */}
-      <div
-        className="shrink-0 border-b border-white/[0.06]"
-        style={{ backgroundColor: "var(--bg-surface)" }}
-      >
-        <div className="flex items-center gap-3 px-5 py-3">
-          <QuoteIcon className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-white/40">
-              {loading ? "Loading…" : `${quotes.length} quote${quotes.length !== 1 ? "s" : ""}`}
-            </p>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Header */}
+        <header className="mx-auto w-full max-w-6xl px-8 pt-6 pb-4">
+          <div className="flex items-end justify-between gap-6">
+            <div className="min-w-0">
+              <h1 className="truncate text-large-title text-label">{title}</h1>
+              <p className="mt-1 text-sm text-label-secondary">
+                {loading ? "Loading…" : (
+                  <>
+                    <NumberTicker value={quotes.length} className="tabular-nums" /> saved {quotes.length === 1 ? "quote" : "quotes"}
+                    {filtered.length !== quotes.length && (
+                      <span className="text-label-tertiary"> · {filtered.length} shown</span>
+                    )}
+                  </>
+                )}
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Search + filters */}
-        <div className="flex items-center gap-2 px-5 pb-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30" strokeWidth={1.5} />
-            <input
-              type="text"
-              placeholder="Search quotes…"
+          {/* Toolbar */}
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <SearchField
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] py-2 pl-8 pr-3 text-xs text-white/80 placeholder-white/30 outline-none focus:border-[var(--accent-brand)]/40"
+              onChange={setSearch}
+              placeholder="Search quotes, speakers, chapters…"
+              className="w-72"
             />
-          </div>
-          <div className="relative">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-white/30 pointer-events-none" strokeWidth={1.5} />
-            <select
+            <SegmentedControl
               value={filterKind}
-              onChange={(e) => setFilterKind(e.target.value)}
-              className="rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] py-2 pl-8 pr-3 text-xs text-white/70 outline-none appearance-none cursor-pointer focus:border-[var(--accent-brand)]/40"
-            >
-              <option value="all">All types</option>
-              {ALL_KINDS.map((k) => (
-                <option key={k} value={k}>{KIND_LABELS[k]?.label ?? k}</option>
-              ))}
-            </select>
+              onValueChange={setFilterKind}
+              options={kindOptions}
+              aria-label="Filter by kind"
+            />
+            {filterKind !== "all" && (
+              <span className="animate-fade-in text-xs text-label-tertiary">{KIND_LABELS[filterKind]?.label}</span>
+            )}
+            {!filePath && uniqueBooks.length > 1 && (
+              <div className="relative ml-auto">
+                <select
+                  value={filterBook}
+                  onChange={(e) => setFilterBook(e.target.value)}
+                  className="focus-ring h-8 max-w-48 cursor-pointer appearance-none truncate rounded-full bg-fill-tertiary pl-3.5 pr-8 text-xs font-medium text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
+                >
+                  <option value="all">All books</option>
+                  {uniqueBooks.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-label-tertiary" strokeWidth={2} />
+              </div>
+            )}
           </div>
-          {!filePath && uniqueBooks.length > 1 && (
-            <select
-              value={filterBook}
-              onChange={(e) => setFilterBook(e.target.value)}
-              className="rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] py-2 px-3 text-xs text-white/70 outline-none appearance-none cursor-pointer focus:border-[var(--accent-brand)]/40 max-w-[160px] truncate"
-            >
-              <option value="all">All books</option>
-              {uniqueBooks.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
+        </header>
+
+        {/* Gallery */}
+        <div className="mx-auto w-full max-w-6xl px-8 pb-10">
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 className="size-5 animate-spin text-label-tertiary" strokeWidth={1.75} />
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<QuoteIcon className="size-10" strokeWidth={1.25} />}
+              title={quotes.length === 0 ? "No quotes yet" : "Nothing matches"}
+              description={quotes.length === 0
+                ? "Highlight text in the reader and tap Quote to keep it here."
+                : "Try a different search or filter."}
+            />
+          ) : (
+            <MasonryGrid
+              items={filtered}
+              getKey={(q) => q.id}
+              className="columns-1 md:columns-2 xl:columns-3"
+              renderItem={(quote) => (
+                <QuoteCard
+                  quote={quote}
+                  showBook={!filePath}
+                  onDelete={handleDelete}
+                  deleting={deletingId === quote.id}
+                />
+              )}
+            />
           )}
         </div>
       </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-5 w-5 animate-spin text-white/30" strokeWidth={1.5} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-            <QuoteIcon className="h-10 w-10 text-white/10" strokeWidth={1} />
-            <p className="text-sm text-white/30">
-              {quotes.length === 0
-                ? "No quotes saved yet. Highlight text in the reader and tap Quote."
-                : "No quotes match your filters."}
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y divide-white/[0.04]">
-            {filtered.map((quote) => (
-              <QuoteCard
-                key={quote.id}
-                quote={quote}
-                showBook={!filePath}
-                onDelete={handleDelete}
-                deleting={deletingId === quote.id}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    </WindowShell>
   );
 }
 
+/**
+ * Quote card — serif pull-quote with hanging quotation marks and a hairline
+ * attribution rule. Adapted from 21st.dev "Testimonial 2" (ncdai, id 18912).
+ */
 function QuoteCard({
   quote,
   showBook,
@@ -195,62 +219,67 @@ function QuoteCard({
   const kindMeta = KIND_LABELS[quote.kind] ?? KIND_LABELS.quote;
   const hasSpeaker = quote.speaker && quote.speaker !== "unknown" && quote.speaker !== "narrator";
   const isNarrative = quote.kind === "narration" || quote.kind === "description";
+  const long = quote.text.length > 320;
 
   return (
-    <div className="group px-5 py-4 transition-colors hover:bg-white/[0.02]">
-      {/* Meta row */}
-      <div className="flex items-center gap-2 mb-2.5">
-        <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${kindMeta.color}`}>
-          {kindMeta.icon}
-          {kindMeta.label}
-        </span>
-        {hasSpeaker && !isNarrative && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-white/40">
-            <User className="h-3 w-3" strokeWidth={1.5} />
-            {quote.speaker}
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-3">
-          <span className="text-[10px] text-white/25">
-            {quote.chapterTitle || `Chapter ${quote.chapterIndex + 1}`}
-          </span>
-          {showBook && quote.bookTitle && (
-            <span className="text-[10px] text-white/25 truncate max-w-[120px]">{quote.bookTitle}</span>
+    <SpotlightCard className="glass-thin group relative rounded-2xl p-5 transition-shadow duration-200 hover:shadow-md">
+      <figure className="relative flex flex-col gap-4">
+        {/* Meta */}
+        <div className="flex h-6 items-center gap-2 pr-8">
+          <Badge variant={kindMeta.variant} className="gap-1">
+            {kindMeta.icon}
+            {kindMeta.label}
+          </Badge>
+          {quote.aiEnhanced && (
+            <span className="inline-flex items-center gap-1 text-2xs text-brand" title="AI enriched">
+              <Sparkles className="size-3" strokeWidth={2} />
+              Enriched
+            </span>
           )}
-          <button
-            onClick={() => onDelete(quote.id)}
-            disabled={deleting}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-500/10 text-white/30 hover:text-red-400"
-          >
-            {deleting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.5} />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
-            )}
-          </button>
-        </span>
-      </div>
-
-      {/* Quote text */}
-      <blockquote className="relative pl-3 text-sm leading-relaxed text-white/80">
-        <span
-          className="absolute left-0 top-0 bottom-0 w-0.5 rounded-full"
-          style={{ backgroundColor: "var(--accent-brand)", opacity: 0.5 }}
-        />
-        {quote.text}
-      </blockquote>
-
-      {/* Note */}
-      {quote.note && (
-        <p className="mt-2 text-xs text-white/40 italic pl-3">{quote.note}</p>
-      )}
-
-      {/* AI enhanced badge */}
-      {quote.aiEnhanced && (
-        <div className="mt-1.5 pl-3">
-          <span className="text-[9px] text-[var(--accent-brand)]/50">AI enriched</span>
         </div>
-      )}
-    </div>
+
+        {/* Pull-quote */}
+        <blockquote
+          className={`relative pl-3 font-display italic text-label text-pretty select-text ${long ? "text-base leading-relaxed" : "text-lg leading-relaxed"}`}
+        >
+          <span aria-hidden className="absolute -left-0.5 top-0 select-none text-label-quaternary">&ldquo;</span>
+          <span>{quote.text}</span>
+          <span aria-hidden className="select-none text-label-quaternary">&rdquo;</span>
+        </blockquote>
+
+        {/* Note */}
+        {quote.note && (
+          <p className="rounded-md bg-fill-quaternary px-3 py-2 text-xs leading-relaxed text-label-secondary select-text">{quote.note}</p>
+        )}
+
+        {/* Attribution */}
+        <figcaption className="flex items-center gap-3">
+          <span aria-hidden className="h-px w-6 shrink-0 bg-separator-strong" />
+          <span className="flex min-w-0 flex-col">
+            {hasSpeaker && !isNarrative && (
+              <span className="truncate text-xs font-medium text-label-secondary">{quote.speaker}</span>
+            )}
+            <span className="truncate text-xs text-label-tertiary">
+              {quote.chapterTitle || `Chapter ${quote.chapterIndex + 1}`}
+              {showBook && quote.bookTitle && <> · <span className="italic">{quote.bookTitle}</span></>}
+            </span>
+          </span>
+        </figcaption>
+      </figure>
+
+      {/* Delete */}
+      <button
+        onClick={() => onDelete(quote.id)}
+        disabled={deleting}
+        title="Delete quote"
+        className="focus-ring pressable absolute right-3 top-3 flex size-7 items-center justify-center rounded-full text-label-tertiary opacity-0 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-100"
+      >
+        {deleting ? (
+          <Loader2 className="size-3.5 animate-spin" strokeWidth={1.75} />
+        ) : (
+          <Trash2 className="size-3.5" strokeWidth={1.75} />
+        )}
+      </button>
+    </SpotlightCard>
   );
 }

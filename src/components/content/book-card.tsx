@@ -36,6 +36,12 @@ export const SPINE_STYLE: React.CSSProperties = {
     "linear-gradient(90deg, rgb(0 0 0 / 0.22) 0%, rgb(255 255 255 / 0.10) 2.5%, rgb(0 0 0 / 0.10) 5%, rgb(255 255 255 / 0.04) 8%, transparent 14%)",
 };
 
+/** Soft elliptical shadow where a floating cover meets the canvas. */
+export const CONTACT_SHADOW: React.CSSProperties = {
+  background: "radial-gradient(closest-side, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.18) 60%, transparent)",
+  filter: "blur(4px)",
+};
+
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
 function extractDominantColor(img: HTMLImageElement): string {
   const canvas = document.createElement("canvas");
@@ -96,57 +102,64 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
   return (
     <div className="group/card flex flex-col">
       {/* Cover — sits directly on the canvas, lifts and tilts toward the pointer */}
-      <div className="relative transition-transform duration-300 ease-apple group-hover/card:-translate-y-1">
+      <div className="relative">
+        {/* Contact shadow on the canvas — tightens and fades as the cover lifts */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-2 -bottom-2.5 h-5 transition-[transform,opacity] duration-500 ease-spring group-hover/card:scale-x-90 group-hover/card:opacity-60"
+          style={CONTACT_SHADOW}
+        />
         {/* Ambient glow in the cover's own colour */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-3 -bottom-1 h-10 rounded-full opacity-0 blur-2xl transition-opacity duration-300 ease-apple group-hover/card:opacity-50"
           style={{ background: glowColor }}
         />
+        <div className="relative transition-transform duration-500 ease-spring group-hover/card:-translate-y-1.5">
+          <div
+            className={cn(
+              "relative transition-shadow duration-200",
+              radius,
+              selected && "ring-2 ring-brand ring-offset-2 ring-offset-canvas",
+            )}
+          >
+            <Tilt maxTilt={5} glare className={radius}>
+              <div className={cn("relative aspect-[2/3] overflow-hidden bg-fill-tertiary shadow-cover", radius)}>
+                {cover ? (
+                  <img
+                    src={cover}
+                    alt={title}
+                    draggable={false}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{ imageRendering: "auto" }}
+                    loading="lazy"
+                    onLoad={handleImageLoad}
+                  />
+                ) : (
+                  <div className="absolute inset-0" style={{ background: gradient }} />
+                )}
 
-        <div
-          className={cn(
-            "relative transition-shadow duration-200",
-            radius,
-            selected && "ring-2 ring-brand ring-offset-2 ring-offset-canvas",
-          )}
-        >
-          <Tilt maxTilt={5} glare className={radius}>
-            <div className={cn("relative aspect-[2/3] overflow-hidden bg-fill-tertiary shadow-cover", radius)}>
-              {cover ? (
-                <img
-                  src={cover}
-                  alt={title}
-                  draggable={false}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  style={{ imageRendering: "auto" }}
-                  loading="lazy"
-                  onLoad={handleImageLoad}
-                />
-              ) : (
-                <div className="absolute inset-0" style={{ background: gradient }} />
-              )}
+                {/* Spine crease + hairline edge */}
+                <div aria-hidden className="pointer-events-none absolute inset-0" style={SPINE_STYLE} />
+                <div aria-hidden className={cn("pointer-events-none absolute inset-0 hairline", radius)} />
 
-              {/* Spine crease + hairline edge */}
-              <div aria-hidden className="pointer-events-none absolute inset-0" style={SPINE_STYLE} />
-              <div aria-hidden className={cn("pointer-events-none absolute inset-0 hairline", radius)} />
+                {/* Selection tint */}
+                {selected && <div aria-hidden className="absolute inset-0 bg-brand/15" />}
+              </div>
+            </Tilt>
 
-              {/* Selection tint */}
-              {selected && <div aria-hidden className="absolute inset-0 bg-brand/15" />}
-            </div>
-          </Tilt>
-
-          {/* Selection check */}
-          {selected && (
-            <div className="absolute -top-1.5 -right-1.5 z-20 flex size-5 animate-pop-in items-center justify-center rounded-full bg-brand text-brand-fg shadow-sm ring-2 ring-canvas">
-              <Check className="size-3" strokeWidth={3} />
-            </div>
-          )}
+            {/* Selection check */}
+            {selected && (
+              <div className="absolute -top-1.5 -right-1.5 z-20 flex size-5 animate-pop-in items-center justify-center rounded-full bg-brand text-brand-fg shadow-sm ring-2 ring-canvas">
+                <Check className="size-3" strokeWidth={3} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Caption — aligned to the cover's left edge */}
-      <div className="mt-3 min-w-0">
+      <div className="mt-4 min-w-0">
         <p className="text-headline line-clamp-2 text-label" title={title}>{title}</p>
         <p className="mt-0.5 truncate text-xs text-label-secondary" title={author}>{author}</p>
         {showMeta && (

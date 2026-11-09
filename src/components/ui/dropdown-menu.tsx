@@ -1,10 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react"
+import { CheckIcon, ChevronRightIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { MenuHighlightScope, useMenuHighlight } from "@/components/ui/menu-highlight"
+
+/**
+ * Dropdown menu — Tahoe menu: thick glass, concentric radii (rounded-xl
+ * panel, p-1, rounded-lg rows), a single accent lozenge that glides between
+ * rows, springy pop-in from the trigger.
+ */
+
+const menuPanel =
+  "glass-thick z-50 min-w-48 overflow-x-hidden overflow-y-auto rounded-xl p-1 text-sm text-label outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-150"
+
+const menuRow =
+  "group/menu-item relative isolate flex h-7 cursor-default items-center gap-2 rounded-lg px-2.5 text-sm text-label outline-none select-none transition-colors duration-100 data-[highlighted]:text-brand-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-35 data-[inset]:pl-7 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-label-secondary data-[highlighted]:[&_svg:not([class*='text-'])]:text-brand-fg"
 
 function DropdownMenu({
   ...props
@@ -34,6 +47,7 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
   className,
   sideOffset = 6,
+  children,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
@@ -42,12 +56,14 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[180px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)]/90 p-1.5 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-xl",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1.5 data-[side=left]:slide-in-from-right-1.5 data-[side=right]:slide-in-from-left-1.5 data-[side=top]:slide-in-from-bottom-1.5",
+          menuPanel,
+          "max-h-(--radix-dropdown-menu-content-available-height) origin-(--radix-dropdown-menu-content-transform-origin)",
           className
         )}
         {...props}
-      />
+      >
+        <MenuHighlightScope>{children}</MenuHighlightScope>
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   )
 }
@@ -64,25 +80,31 @@ function DropdownMenuItem({
   className,
   inset,
   variant = "default",
+  children,
+  onFocus,
+  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & {
   inset?: boolean
   variant?: "default" | "destructive"
 }) {
+  const { itemProps, indicator } = useMenuHighlight(variant, { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "relative flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none",
-        "focus:bg-white/[0.07] focus:text-white [&_svg:not([class*='text-'])]:text-white/40 focus:[&_svg:not([class*='text-'])]:text-white/60",
-        "data-[variant=destructive]:text-red-400 data-[variant=destructive]:focus:bg-red-500/10 data-[variant=destructive]:focus:text-red-300 data-[variant=destructive]:*:[svg]:!text-red-400",
-        "data-[disabled]:pointer-events-none data-[disabled]:opacity-35 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        menuRow,
+        "data-[variant=destructive]:text-danger data-[variant=destructive]:data-[highlighted]:text-brand-fg data-[variant=destructive]:[&_svg]:!text-danger data-[variant=destructive]:data-[highlighted]:[&_svg]:!text-brand-fg",
         className
       )}
       {...props}
-    />
+      {...itemProps}
+    >
+      {indicator}
+      {children}
+    </DropdownMenuPrimitive.Item>
   )
 }
 
@@ -90,21 +112,23 @@ function DropdownMenuCheckboxItem({
   className,
   children,
   checked,
+  onFocus,
+  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  const { itemProps, indicator } = useMenuHighlight("default", { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
-      className={cn(
-        "relative flex cursor-default items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-8 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-35 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
+      className={cn(menuRow, "pl-7", className)}
       checked={checked}
       {...props}
+      {...itemProps}
     >
-      <span className="pointer-events-none absolute left-2.5 flex size-3.5 items-center justify-center">
+      {indicator}
+      <span className="pointer-events-none absolute left-2 flex size-4 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
-          <CheckIcon className="size-3.5 text-[var(--accent-brand)]" />
+          <CheckIcon strokeWidth={2.5} className="size-3.5 text-brand group-data-[highlighted]/menu-item:text-brand-fg" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -126,20 +150,22 @@ function DropdownMenuRadioGroup({
 function DropdownMenuRadioItem({
   className,
   children,
+  onFocus,
+  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+  const { itemProps, indicator } = useMenuHighlight("default", { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
-      className={cn(
-        "relative flex cursor-default items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-8 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-35 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
+      className={cn(menuRow, "pl-7", className)}
       {...props}
+      {...itemProps}
     >
-      <span className="pointer-events-none absolute left-2.5 flex size-3.5 items-center justify-center">
+      {indicator}
+      <span className="pointer-events-none absolute left-2 flex size-4 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-[var(--accent-brand)] text-[var(--accent-brand)]" />
+          <span className="block size-1.5 rounded-full bg-brand group-data-[highlighted]/menu-item:bg-brand-fg" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -158,10 +184,7 @@ function DropdownMenuLabel({
     <DropdownMenuPrimitive.Label
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn(
-        "px-2.5 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-white/25 data-[inset]:pl-8",
-        className
-      )}
+      className={cn("text-section px-2.5 pt-2 pb-1 data-[inset]:pl-7", className)}
       {...props}
     />
   )
@@ -174,10 +197,7 @@ function DropdownMenuSeparator({
   return (
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn(
-        "-mx-1.5 my-1.5 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent",
-        className
-      )}
+      className={cn("mx-2.5 my-1 h-px bg-separator", className)}
       {...props}
     />
   )
@@ -191,7 +211,7 @@ function DropdownMenuShortcut({
     <span
       data-slot="dropdown-menu-shortcut"
       className={cn(
-        "ml-auto rounded bg-white/[0.06] px-1.5 py-0.5 text-xs font-medium text-white/30",
+        "ml-auto pl-5 text-xs tracking-widest text-label-tertiary tabular-nums group-data-[highlighted]/menu-item:text-brand-fg/75",
         className
       )}
       {...props}
@@ -209,40 +229,49 @@ function DropdownMenuSubTrigger({
   className,
   inset,
   children,
+  onFocus,
+  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & {
   inset?: boolean
 }) {
+  const { itemProps, indicator } = useMenuHighlight("default", { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/80 outline-hidden transition-colors duration-100 select-none focus:bg-white/[0.07] focus:text-white data-[state=open]:bg-white/[0.07] [&_svg:not([class*='text-'])]:text-white/40 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        menuRow,
+        "data-[state=open]:not-data-[highlighted]:bg-fill-tertiary",
         className
       )}
       {...props}
+      {...itemProps}
     >
+      {indicator}
       {children}
-      <ChevronRightIcon className="ml-auto size-3.5 text-white/25" />
+      <ChevronRightIcon className="ml-auto size-3.5 text-label-tertiary group-data-[highlighted]/menu-item:text-brand-fg" />
     </DropdownMenuPrimitive.SubTrigger>
   )
 }
 
 function DropdownMenuSubContent({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
       className={cn(
-        "z-50 min-w-[180px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)]/90 p-1.5 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-xl",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1.5 data-[side=left]:slide-in-from-right-1.5 data-[side=right]:slide-in-from-left-1.5 data-[side=top]:slide-in-from-bottom-1.5",
+        menuPanel,
+        "origin-(--radix-dropdown-menu-content-transform-origin)",
         className
       )}
       {...props}
-    />
+    >
+      <MenuHighlightScope>{children}</MenuHighlightScope>
+    </DropdownMenuPrimitive.SubContent>
   )
 }
 

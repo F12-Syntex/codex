@@ -1,19 +1,22 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ChevronLeft,
   ChevronRight,
   GitBranch,
   X,
   Trash2,
-  Volume2,
+  AudioLines,
   Loader2,
-  BookOpen,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ThemeClasses, TTSStatus } from "../lib/types";
 import { fmtCh } from "@/lib/chapter-labels";
+import { AudioWaveform } from "@/components/ui/audio-waveform";
+import { ChromeButton, PillDivider, PANEL_SPRING, riseIn } from "./chrome";
 
 interface ReaderFooterProps {
   currentPage: number;
@@ -29,9 +32,17 @@ interface ReaderFooterProps {
   canGoNext: boolean;
   onPrev: () => void;
   onNext: () => void;
+  /** Jump to a page within the current chapter (enables the scrubber). */
+  onSeekPage?: (page: number) => void;
   // TTS
   ttsStatus: TTSStatus;
   estimatedSeconds: number;
+  /** Playback controls (read aloud + speed reader) in the pill. */
+  showPlayback?: boolean;
+  showTTS?: boolean;
+  onTTSToggle?: () => void;
+  speedReaderActive?: boolean;
+  onSpeedReaderToggle?: () => void;
   // Branch mode
   branchMode?: boolean;
   branchEntityName?: string;
@@ -44,7 +55,8 @@ interface ReaderFooterProps {
   activeBranchId?: string;
 }
 
-export const FOOTER_HEIGHT = 52;
+/** Height of the footer zone; the glass pill floats centred inside it. */
+export const FOOTER_HEIGHT = 60;
 
 /* ── ETA helpers ──────────────────────────────────────────── */
 
@@ -56,111 +68,127 @@ function formatHms(totalSeconds: number): string {
   return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-/* ── Progress bar ─────────────────────────────────────────── */
+/* ── Page scrubber ─────────────────────────────────────────
+ * Adapted from 21st.dev "Playback Scrubber" (sltowl/matte-scrub-slider):
+ * rail + accent fill + playhead that appears on hover, hover readout,
+ * pointer-capture dragging and keyboard seeking.
+ */
 
-function ProgressBar({
-  chapterIndex,
-  chapterCount,
-  currentPage,
-  totalPages,
-  branchMode,
+function PageScrubber({
+  page,
+  pages,
+  onSeek,
+  disabled,
 }: {
-  chapterIndex: number;
-  chapterCount: number;
-  currentPage: number;
-  totalPages: number;
-  branchMode: boolean;
+  page: number;
+  pages: number;
+  onSeek?: (page: number) => void;
+  disabled?: boolean;
 }) {
-  if (branchMode) {
-    return (
-      <div className="absolute top-0 left-0 right-0 h-[3px]">
-        <div className="h-full w-full" style={{ backgroundColor: "var(--accent-brand)", opacity: 0.5 }} />
-      </div>
-    );
-  }
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [hoverPage, setHoverPage] = useState<number | null>(null);
+  const [hoverX, setHoverX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const interactive = !!onSeek && !disabled && pages > 1;
+  const frac = pages > 1 ? page / (pages - 1) : 1;
 
-  if (chapterCount === 0) return null;
+  const pageAt = useCallback(
+    (clientX: number) => {
+      const el = trackRef.current;
+      if (!el) return 0;
+      const r = el.getBoundingClientRect();
+      const x = Math.min(r.width, Math.max(0, clientX - r.left));
+      setHoverX(x);
+      return Math.round((x / r.width) * (pages - 1));
+    },
+    [pages],
+  );
 
-  // Overall book progress: chapters done + fractional current chapter
-  const chapterFraction = totalPages > 1 ? (currentPage + 1) / totalPages : 1;
-  const bookPct = ((chapterIndex + chapterFraction) / chapterCount) * 100;
-
-  // Start of current chapter as % of total book
-  const chapterStartPct = (chapterIndex / chapterCount) * 100;
+  const seek = (p: number) => {
+    if (p !== page) onSeek?.(p);
+  };
 
   return (
     <div
-      className="absolute top-0 left-0 right-0 h-[3px] overflow-hidden"
-      style={{ backgroundColor: "var(--accent-brand)", opacity: 0.1 }}
+      ref={trackRef}
+      role="slider"
+      aria-label="Page in chapter"
+      aria-valuemin={1}
+      aria-valuemax={pages}
+      aria-valuenow={page + 1}
+      aria-disabled={!interactive}
+      tabIndex={interactive ? 0 : -1}
+      className={cn(
+        "focus-ring group/scrub relative flex h-6 w-full items-center rounded-full",
+        interactive ? "cursor-pointer" : "cursor-default",
+      )}
+      onPointerDown={(e) => {
+        if (!interactive) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDragging(true);
+        seek(pageAt(e.clientX));
+      }}
+      onPointerMove={(e) => {
+        if (!interactive) return;
+        const p = pageAt(e.clientX);
+        setHoverPage(p);
+        if (dragging) seek(p);
+      }}
+      onPointerUp={() => setDragging(false)}
+      onPointerCancel={() => setDragging(false)}
+      onPointerLeave={() => !dragging && setHoverPage(null)}
+      onKeyDown={(e) => {
+        if (!interactive) return;
+        const d = ({ ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 } as Record<string, number>)[e.key];
+        if (d === undefined && e.key !== "Home" && e.key !== "End") return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "Home") seek(0);
+        else if (e.key === "End") seek(pages - 1);
+        else seek(Math.min(pages - 1, Math.max(0, page + d)));
+      }}
     >
-      {/* Completed chapters */}
+      {/* Rail */}
       <div
-        className="absolute top-0 left-0 h-full transition-all duration-500"
-        style={{
-          width: `${chapterStartPct}%`,
-          backgroundColor: "var(--accent-brand)",
-          opacity: 0.5,
-        }}
-      />
-      {/* Current chapter page fill */}
-      <div
-        className="absolute top-0 h-full transition-all duration-300"
-        style={{
-          left: `${chapterStartPct}%`,
-          width: `${(chapterFraction / chapterCount) * 100}%`,
-          backgroundColor: "var(--accent-brand)",
-          opacity: 1,
-        }}
-      />
-    </div>
-  );
-}
-
-/* ── TTS status pill ──────────────────────────────────────── */
-
-function TtsPill({ status }: { status: TTSStatus }) {
-  if (status === "idle") return null;
-
-  if (status === "synthesizing") {
-    return (
-      <div className="flex items-center gap-1 rounded-full px-1.5 py-0.5"
-        style={{ backgroundColor: "var(--accent-brand)", opacity: 0.15 }}>
-        <Loader2
-          className="h-2.5 w-2.5 animate-spin"
-          style={{ color: "var(--accent-brand)" }}
-          strokeWidth={2}
-        />
-      </div>
-    );
-  }
-
-  if (status === "paused") {
-    return (
-      <div className="flex items-center gap-1 rounded-full px-1.5 py-0.5"
-        style={{ backgroundColor: "var(--accent-brand)", opacity: 0.12 }}>
-        <Volume2
-          className="h-2.5 w-2.5"
-          style={{ color: "var(--accent-brand)", opacity: 0.5 }}
-          strokeWidth={2}
-        />
-      </div>
-    );
-  }
-
-  // playing
-  return (
-    <div className="flex items-center gap-[2px]">
-      {[0, 1, 2].map((i) => (
+        className={cn(
+          "relative h-1 w-full overflow-hidden rounded-full bg-fill-secondary transition-[height] duration-200 ease-apple",
+          interactive && "group-hover/scrub:h-1.5",
+          dragging && "h-1.5",
+        )}
+      >
         <div
-          key={i}
-          className="w-[2px] rounded-full"
-          style={{
-            backgroundColor: "var(--accent-brand)",
-            animation: `ttsWave 0.8s ease-in-out ${i * 0.15}s infinite alternate`,
-            height: "8px",
-          }}
+          className={cn("absolute inset-0 origin-left rounded-full bg-brand", !dragging && "transition-transform duration-300 ease-apple")}
+          style={{ transform: `scaleX(${frac})` }}
         />
-      ))}
+      </div>
+      {/* Playhead */}
+      {interactive && (
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand shadow-sm ring-2 ring-[var(--material-regular)]",
+            "scale-0 opacity-0 transition-[transform,opacity] duration-200 ease-spring group-hover/scrub:scale-100 group-hover/scrub:opacity-100",
+            dragging && "scale-100 opacity-100",
+            !dragging && "transition-[left,transform,opacity]",
+          )}
+          style={{ left: `${frac * 100}%` }}
+        />
+      )}
+      {/* Hover readout */}
+      <AnimatePresence>
+        {interactive && hoverPage !== null && (
+          <motion.span
+            initial={{ opacity: 0, y: 4, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 2, scale: 0.95, transition: { duration: 0.1 } }}
+            transition={PANEL_SPRING}
+            className="glass-thick pointer-events-none absolute bottom-full mb-2 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-2xs font-medium tabular-nums text-label"
+            style={{ left: hoverX }}
+          >
+            Page {hoverPage + 1}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -173,15 +201,20 @@ export function ReaderFooter({
   chapterIndex,
   chapterCount,
   chapterTitle,
-  theme,
   immersiveMode,
   immersiveVisible,
   canGoPrev,
   canGoNext,
   onPrev,
   onNext,
+  onSeekPage,
   ttsStatus,
   estimatedSeconds,
+  showPlayback = false,
+  showTTS = false,
+  onTTSToggle,
+  speedReaderActive = false,
+  onSpeedReaderToggle,
   branchMode = false,
   branchEntityName,
   onExitBranch,
@@ -193,6 +226,7 @@ export function ReaderFooter({
   activeBranchId,
   chapterLabels = {},
 }: ReaderFooterProps) {
+  const reduceMotion = useReducedMotion();
   const isVisible = !immersiveMode || immersiveVisible;
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -217,257 +251,212 @@ export function ReaderFooter({
   const ttsActive = ttsStatus !== "idle";
   const eta = ttsActive ? formatHms(displaySeconds) : "";
 
+  // Overall book progress: chapters done + fractional current chapter
+  const chapterFraction = totalPages > 1 ? (currentPage + 1) / totalPages : 1;
+  const bookPct = chapterCount > 0 ? Math.round(((chapterIndex + chapterFraction) / chapterCount) * 100) : 0;
+  const chapterNo = fmtCh(chapterIndex, chapterLabels) ?? chapterIndex + 1;
+
   return (
     <footer
-      className={cn(
-        "relative shrink-0 transition-all duration-300",
-        theme.surface,
-      )}
+      data-reader-footer
+      className="relative flex shrink-0 items-center justify-center px-4 transition-[opacity,transform] duration-500 ease-apple"
       style={{
         height: `${FOOTER_HEIGHT}px`,
-        borderTop: "1px solid rgba(255,255,255,0.05)",
         opacity: isVisible ? 1 : 0,
-        transform: isVisible ? "translateY(0)" : "translateY(100%)",
+        transform: isVisible ? "translateY(0)" : "translateY(70%)",
         pointerEvents: isVisible ? "auto" : "none",
       }}
     >
-      <ProgressBar
-        chapterIndex={chapterIndex}
-        chapterCount={chapterCount}
-        currentPage={currentPage}
-        totalPages={totalPages}
-        branchMode={branchMode}
-      />
-
-      <div className="flex h-full items-center px-3">
-        {/* ── Left nav (fixed width) ────── */}
-        <div className="flex w-8 shrink-0 items-center">
-          {branchMode ? (
+      <div
+        className="glass relative flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full p-1"
+      >
+        {branchMode ? (
+          /* ── Branch mode ───────────────────────────── */
+          <>
             <button
               onClick={onExitBranch}
-              className={cn(
-                "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors",
-                theme.btn,
-              )}
+              className="focus-ring pressable flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-fill-tertiary px-3 text-xs font-medium text-label transition-colors duration-150 hover:bg-fill-secondary"
             >
-              <X className="h-3 w-3" strokeWidth={2} />
+              <X className="size-3.5" strokeWidth={2} />
               Exit
             </button>
-          ) : (
-            <button
-              onClick={onPrev}
-              disabled={!canGoPrev}
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
-                theme.btn,
-                "disabled:opacity-20",
-              )}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
-          )}
-        </div>
-
-        {/* ── Center info (flex-1, stable) ─ */}
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-2.5">
-          {branchMode ? (
-            <>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <GitBranch
-                  className="h-3 w-3"
-                  style={{ color: "var(--accent-brand)" }}
-                  strokeWidth={2}
-                />
-                <span className="text-xs font-medium" style={{ color: "var(--accent-brand)" }}>
-                  Branch
-                </span>
-              </div>
-              <Dot />
-              <span className={cn("min-w-0 truncate text-xs", theme.muted)}>
-                {branchEntityName}
+            <div className="flex min-w-0 items-center gap-2 px-3">
+              <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-brand">
+                <GitBranch className="size-3.5" strokeWidth={2} />
+                Branch
               </span>
-            </>
-          ) : (
-            <>
-              {/* Chapter title */}
-              <div className="flex min-w-0 items-center gap-1.5">
-                <BookOpen
-                  className={cn("h-3 w-3 shrink-0", theme.muted)}
-                  strokeWidth={1.5}
-                  style={{ opacity: 0.35 }}
-                />
-                <span
-                  className={cn("min-w-0 truncate text-xs", theme.muted)}
-                  style={{ opacity: 0.65 }}
-                  title={chapterTitle}
-                >
-                  {chapterTitle}
-                </span>
-              </div>
+              <span className="size-0.5 shrink-0 rounded-full bg-label-quaternary" />
+              <span className="min-w-0 max-w-56 truncate text-xs text-label-secondary">{branchEntityName}</span>
+            </div>
+          </>
+        ) : (
+          /* ── Reading mode ──────────────────────────── */
+          <>
+            <ChromeButton onClick={onPrev} disabled={!canGoPrev} title="Previous page (←)" aria-label="Previous page">
+              <ChevronLeft strokeWidth={2} />
+            </ChromeButton>
 
-              <Dot />
-
-              {/* Page counter */}
-              <span className={cn("shrink-0 text-xs tabular-nums", theme.muted)} style={{ opacity: 0.5 }}>
-                {currentPage + 1}
-                <span style={{ opacity: 0.45 }}> / {totalPages}</span>
-              </span>
-
-              <Dot />
-
-              {/* Chapter counter */}
-              <span className={cn("shrink-0 text-xs tabular-nums", theme.muted)} style={{ opacity: 0.38 }}>
-                Ch {fmtCh(chapterIndex, chapterLabels) ?? chapterIndex + 1}
-                <span style={{ opacity: 0.7 }}> / {chapterCount}</span>
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* ── Right zone (fixed width, TTS + nav) ── */}
-        <div className="flex w-[120px] shrink-0 items-center justify-end gap-2">
-          {/* TTS indicator — always rendered, fades in/out */}
-          <div
-            className="flex items-center gap-2 transition-opacity duration-300"
-            style={{ opacity: ttsActive ? 1 : 0, pointerEvents: "none" }}
-          >
-            <TtsPill status={ttsStatus} />
-            {/* ETA — fixed-width slot to prevent layout shift */}
-            <span
-              className="w-[52px] text-right text-xs tabular-nums font-medium"
-              style={{ color: "var(--accent-brand)", opacity: 0.85 }}
-            >
-              {eta}
-            </span>
-          </div>
-
-          {/* Branch list button */}
-          {savedBranches.length > 0 && (
-            <button
-              onClick={onToggleBranchList}
-              className={cn(
-                "flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors",
-                theme.btn,
-                showBranchList && "bg-white/[0.08]",
-              )}
-            >
-              <GitBranch className="h-3 w-3" strokeWidth={1.5} />
-              {savedBranches.length}
-            </button>
-          )}
-
-          {/* → nav button */}
-          {!branchMode && (
-            <button
-              onClick={onNext}
-              disabled={!canGoNext}
-              className={cn(
-                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-                theme.btn,
-                "disabled:opacity-20",
-              )}
-            >
-              <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Branch list popover */}
-      {showBranchList && savedBranches.length > 0 && (
-        <div
-          className="absolute bottom-full right-4 mb-2 w-[280px] rounded-lg shadow-lg shadow-black/40"
-          style={{
-            background: "var(--bg-overlay)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            animation: "footerPopIn 0.12s ease-out",
-          }}
-        >
-          <div
-            className="px-3 py-2 border-b"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
-          >
-            <span className="text-xs font-medium text-white/40 uppercase tracking-wider">
-              Saved Branches
-            </span>
-          </div>
-          <div className="max-h-[240px] overflow-y-auto py-1">
-            {savedBranches.map((branch) => (
-              <div
-                key={branch.id}
-                className={cn(
-                  "flex items-center justify-between gap-2 px-3 py-1.5 transition-colors hover:bg-white/[0.05]",
-                  activeBranchId === branch.id && "bg-white/[0.08]",
-                )}
-              >
-                <button
-                  onClick={() => onLoadBranch?.(branch)}
-                  className="flex flex-1 flex-col items-start min-w-0"
-                >
-                  <span className="text-xs text-white/80 truncate w-full text-left">
-                    {branch.entity_name}
-                  </span>
-                  <span className="text-xs text-white/30">
-                    Ch. {branch.chapter_index + 1} ·{" "}
-                    {new Date(branch.created_at).toLocaleDateString()}
-                  </span>
-                </button>
-                {confirmDelete === branch.id ? (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        onDeleteBranch?.(branch.id);
-                        setConfirmDelete(null);
-                      }}
-                      className="rounded-lg px-1.5 py-0.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(null)}
-                      className="rounded-lg px-1.5 py-0.5 text-xs text-white/40 hover:bg-white/[0.05] transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConfirmDelete(branch.id)}
-                    className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors",
-                      theme.btn,
-                    )}
-                    style={{ opacity: 0.35 }}
-                    title="Delete branch"
+            <div className="flex min-w-0 items-center gap-3 px-2">
+              {/* Chapter */}
+              <div className="flex min-w-0 max-w-56 items-baseline gap-1.5" title={`Chapter ${chapterNo} of ${chapterCount} — ${chapterTitle}`}>
+                <span className="shrink-0 text-2xs font-semibold tabular-nums text-label-tertiary">{chapterNo}</span>
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.span
+                    key={chapterTitle}
+                    initial={reduceMotion ? false : { opacity: 0, filter: "blur(3px)" }}
+                    animate={{ opacity: 1, filter: "blur(0px)" }}
+                    exit={{ opacity: 0, filter: "blur(3px)", transition: { duration: 0.12 } }}
+                    className="min-w-0 truncate text-xs text-label-secondary"
                   >
-                    <Trash2 className="h-3 w-3" strokeWidth={1.5} />
-                  </button>
-                )}
+                    {chapterTitle}
+                  </motion.span>
+                </AnimatePresence>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      <style>{`
-        @keyframes footerPopIn {
-          from { opacity: 0; transform: translateY(4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes ttsWave {
-          from { transform: scaleY(0.3); }
-          to   { transform: scaleY(1.2); }
-        }
-      `}</style>
+              {/* Scrubber */}
+              <div className="w-32 shrink-0 lg:w-48">
+                <PageScrubber page={currentPage} pages={totalPages} onSeek={onSeekPage} />
+              </div>
+
+              {/* Page + book percent */}
+              <div className="flex shrink-0 items-baseline gap-1.5 tabular-nums">
+                <span className="text-xs font-medium text-label-secondary">
+                  {currentPage + 1}
+                  <span className="text-label-tertiary"> / {totalPages}</span>
+                </span>
+                <span className="text-2xs text-label-tertiary" title={`Chapter ${chapterNo} of ${chapterCount}`}>
+                  {bookPct}%
+                </span>
+              </div>
+            </div>
+
+            <ChromeButton onClick={onNext} disabled={!canGoNext} title="Next page (→)" aria-label="Next page">
+              <ChevronRight strokeWidth={2} />
+            </ChromeButton>
+          </>
+        )}
+
+        {/* ── Playback & branches ─────────────────────── */}
+        {(showPlayback || savedBranches.length > 0 || ttsActive) && <PillDivider />}
+
+        {showPlayback && onTTSToggle && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={onTTSToggle}
+            title={ttsActive ? "Read aloud — time left in chapter" : "Read aloud"}
+            aria-label="Read aloud"
+            aria-pressed={showTTS || ttsActive}
+            className={cn(
+              "focus-ring pressable flex h-8 shrink-0 items-center justify-center gap-2 rounded-full transition-colors duration-150",
+              ttsActive
+                ? "bg-brand/15 px-3 text-brand hover:bg-brand/20"
+                : showTTS
+                  ? "w-8 bg-brand/15 text-brand"
+                  : "w-8 text-label-secondary hover:bg-fill-tertiary hover:text-label",
+            )}
+          >
+            {ttsStatus === "synthesizing" ? (
+              <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
+            ) : ttsActive ? (
+              <AudioWaveform label="Reading aloud" bars={5} barWidth={2} gap={2} height={14} playing={ttsStatus === "playing"} />
+            ) : (
+              <AudioLines className="size-4" strokeWidth={1.75} />
+            )}
+            {ttsActive && <span className="w-13 text-left text-xs font-medium tabular-nums">{eta}</span>}
+          </button>
+        )}
+        {!showPlayback && ttsActive && (
+          /* Status-only indicator when playback lives elsewhere */
+          <span className="flex h-8 items-center gap-2 rounded-full bg-brand/15 px-3 text-brand">
+            <AudioWaveform label="Reading aloud" bars={5} barWidth={2} gap={2} height={14} playing={ttsStatus === "playing"} />
+            <span className="w-13 text-xs font-medium tabular-nums">{eta}</span>
+          </span>
+        )}
+
+        {showPlayback && onSpeedReaderToggle && (
+          <ChromeButton onMouseDown={(e) => e.stopPropagation()} onClick={onSpeedReaderToggle} active={speedReaderActive} title="Speed reader" aria-label="Speed reader">
+            <Zap strokeWidth={1.75} />
+          </ChromeButton>
+        )}
+
+        {savedBranches.length > 0 && (
+          <button
+            onClick={onToggleBranchList}
+            title="Saved branches"
+            className={cn(
+              "focus-ring pressable flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium tabular-nums transition-colors duration-150",
+              showBranchList ? "bg-brand/15 text-brand" : "text-label-secondary hover:bg-fill-tertiary hover:text-label",
+            )}
+          >
+            <GitBranch className="size-3.5" strokeWidth={1.75} />
+            {savedBranches.length}
+          </button>
+        )}
+
+        {/* ── Branch list popover ─────────────────────── */}
+        <AnimatePresence>
+          {showBranchList && savedBranches.length > 0 && (
+            <motion.div
+              {...riseIn}
+              transition={PANEL_SPRING}
+              className="glass-thick absolute bottom-full right-0 mb-3 w-72 origin-bottom-right rounded-xl p-1"
+            >
+              <div className="px-2.5 pb-1.5 pt-2 text-section">Saved branches</div>
+              <div className="max-h-60 overflow-y-auto">
+                {savedBranches.map((branch) => (
+                  <div
+                    key={branch.id}
+                    className={cn(
+                      "group flex min-h-11 items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors duration-150 hover:bg-fill-quaternary",
+                      activeBranchId === branch.id && "bg-brand/10",
+                    )}
+                  >
+                    <button
+                      onClick={() => onLoadBranch?.(branch)}
+                      className="focus-ring flex min-w-0 flex-1 flex-col items-start rounded-sm"
+                    >
+                      <span className={cn("w-full truncate text-left text-sm", activeBranchId === branch.id ? "text-brand" : "text-label")}>
+                        {branch.entity_name}
+                      </span>
+                      <span className="text-2xs tabular-nums text-label-tertiary">
+                        Ch. {branch.chapter_index + 1} · {new Date(branch.created_at).toLocaleDateString()}
+                      </span>
+                    </button>
+                    {confirmDelete === branch.id ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => {
+                            onDeleteBranch?.(branch.id);
+                            setConfirmDelete(null);
+                          }}
+                          className="focus-ring pressable h-6 rounded-sm bg-danger/15 px-2 text-2xs font-medium text-danger transition-colors hover:bg-danger/25"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="focus-ring pressable h-6 rounded-sm px-2 text-2xs text-label-secondary transition-colors hover:bg-fill-tertiary"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(branch.id)}
+                        className="focus-ring pressable flex size-7 shrink-0 items-center justify-center rounded-full text-label-tertiary opacity-0 transition-[opacity,color,background-color] duration-150 hover:bg-fill-tertiary hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                        title="Delete branch"
+                      >
+                        <Trash2 className="size-3.5" strokeWidth={1.75} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </footer>
-  );
-}
-
-/* ── Tiny separator dot ───────────────────────────────────── */
-function Dot() {
-  return (
-    <span className="shrink-0 text-white/[0.12] select-none text-xs">·</span>
   );
 }

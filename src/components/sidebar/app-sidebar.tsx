@@ -16,6 +16,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Badge } from "@/components/ui/badge";
+import { CodexIdentity } from "@/components/title-bar";
 import type { LibraryData } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -174,8 +175,13 @@ export function AppSidebar({
 
   return (
     <aside className="glass-thin grain relative flex h-full flex-col overflow-hidden rounded-2xl">
+      {/* ── Identity (also a window drag handle) ──── */}
+      <div className="app-drag-region flex h-9 shrink-0 items-center pl-[17px]">
+        <CodexIdentity />
+      </div>
+
       {/* ── Section switcher ─────────────────────── */}
-      <div className="shrink-0 px-2 pt-2">
+      <div className="shrink-0 px-2 pt-1">
         <SegmentedControl
           fill
           value={activeSection}

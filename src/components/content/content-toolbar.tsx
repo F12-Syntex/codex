@@ -89,17 +89,20 @@ export function ContentToolbar({
   const filtered = formatFilter !== "all";
 
   return (
-    <header className="flex shrink-0 items-center gap-6 px-8 pt-6 pb-4">
-      {/* Title + count */}
-      <div className="flex min-w-0 flex-1 items-baseline gap-3">
-        <h1 className="text-large-title truncate text-label">{viewLabel}</h1>
-        <span className="shrink-0 text-sm text-label-tertiary tabular-nums">
-          <NumberTicker value={itemCount} /> {itemCount === 1 ? "item" : "items"}
-        </span>
+    <header className="flex shrink-0 items-end gap-6 px-8 pt-6 pb-4">
+      {/* Editorial title block: eyebrow count, serif large title */}
+      <div className="min-w-0 flex-1 animate-blur-in" key={viewLabel}>
+        <p className="text-section flex h-4 items-center gap-1.5 text-label-tertiary">
+          <span className="size-1.5 rounded-full bg-brand shadow-[0_0_8px_var(--accent-brand)]" />
+          <span className="tabular-nums">
+            <NumberTicker value={itemCount} /> {itemCount === 1 ? "title" : "titles"}
+          </span>
+        </p>
+        <h1 className="text-large-title mt-1 truncate text-label">{viewLabel}</h1>
       </div>
 
-      {/* Control cluster */}
-      <div className="flex shrink-0 items-center gap-2">
+      {/* Control cluster — bottom-aligned with the title's baseline row */}
+      <div className="flex h-9 shrink-0 items-center gap-2">
         {/* Search pill */}
         <button
           type="button"

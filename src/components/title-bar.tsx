@@ -2,93 +2,144 @@
 
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Kbd } from "@/components/ui/kbd";
 import { WindowControls } from "@/components/window-controls";
 import { APP_VERSION } from "@/lib/version";
+import { SHORTCUT_REGISTRY } from "@/lib/shortcuts";
+import { cn } from "@/lib/utils";
 
 interface TitleBarProps {
   breadcrumb?: string[];
+  /** Show the Codex identity here (when the sidebar — its usual home — is hidden). */
+  showIdentity?: boolean;
+  /** When given, a Spotlight-style search field sits centred in the bar. */
+  onSearchOpen?: () => void;
 }
 
+/** Codex mark + wordmark + version — shared with the sidebar header. */
+export function CodexIdentity({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <Image
+        src="/codex-logo.svg"
+        alt=""
+        width={18}
+        height={18}
+        className="pointer-events-none rounded-xs"
+        draggable={false}
+        priority
+      />
+      <span className="font-display text-base leading-none font-semibold tracking-tight text-label">Codex</span>
+      <Badge variant="outline" className="h-4 px-1.5 text-label-tertiary">
+        v{APP_VERSION}
+      </Badge>
+    </div>
+  );
+}
+
+const searchKeys = SHORTCUT_REGISTRY.find((s) => s.id === "search")?.keys ?? "Ctrl+K";
+
 /**
- * Main window chrome. Transparent over the ink canvas so the window reads as
- * one continuous surface; the whole bar is a drag region except the controls.
+ * Unified toolbar-style window chrome for the content column (macOS Tahoe:
+ * the sidebar runs full height, the title bar belongs to the content).
+ * Transparent over the ink canvas; the bar is a drag region except controls.
  * Breadcrumb adapted from 21st.dev "Breadcrumb" (originui, id 439 — chevron
  * separator variant) with a blur-fade crossfade between locations.
  */
-export function TitleBar({ breadcrumb }: TitleBarProps) {
+export function TitleBar({ breadcrumb, showIdentity = true, onSearchOpen }: TitleBarProps) {
   const reduce = useReducedMotion();
   const segments = breadcrumb && breadcrumb.length > 0 ? breadcrumb : ["Library"];
 
   return (
-    <header className="app-drag-region relative z-20 flex h-11 shrink-0 select-none items-center">
-      {/* Identity */}
-      <div className="flex h-full items-center gap-2 pl-4">
-        <Image
-          src="/codex-logo.svg"
-          alt=""
-          width={18}
-          height={18}
-          className="pointer-events-none rounded-xs"
-          draggable={false}
-          priority
-        />
-        <span className="font-display text-sm font-semibold tracking-tight text-label">Codex</span>
-        <Badge variant="outline" className="h-4 px-1.5 text-label-tertiary">
-          v{APP_VERSION}
-        </Badge>
+    <header className="app-drag-region relative z-20 grid h-13 shrink-0 select-none grid-cols-[1fr_auto_1fr] items-center">
+      {/* Identity + location */}
+      <div className={cn("flex h-full min-w-0 items-center", showIdentity ? "pl-4" : "pl-8")}>
+        <AnimatePresence initial={false}>
+          {showIdentity && (
+            <motion.div
+              key="identity"
+              className="flex items-center"
+              initial={reduce ? { opacity: 0 } : { opacity: 0, x: -8, filter: "blur(4px)" }}
+              animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0 }}
+              transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            >
+              <CodexIdentity />
+              <span aria-hidden="true" className="mx-3.5 h-3.5 w-px bg-separator-strong" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <nav aria-label="Breadcrumb" className="min-w-0">
+          <ol className="flex min-w-0 items-center gap-1">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {segments.flatMap((segment, i) => {
+                const last = i === segments.length - 1;
+                const item = (
+                  <motion.li
+                    key={`seg-${i}-${segment}`}
+                    layout={!reduce}
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(4px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(4px)" }}
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                    aria-current={last ? "page" : undefined}
+                    className={cn(
+                      "truncate text-sm",
+                      last ? "font-semibold text-label" : "text-label-tertiary",
+                    )}
+                  >
+                    {segment}
+                  </motion.li>
+                );
+                if (i === 0) return [item];
+                return [
+                  <motion.li
+                    key={`sep-${i}-${segment}`}
+                    role="presentation"
+                    aria-hidden="true"
+                    layout={!reduce}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="flex items-center text-label-quaternary"
+                  >
+                    <ChevronRight className="size-3.5" strokeWidth={2} />
+                  </motion.li>,
+                  item,
+                ];
+              })}
+            </AnimatePresence>
+          </ol>
+        </nav>
       </div>
 
-      <span aria-hidden="true" className="mx-3.5 h-3.5 w-px bg-separator-strong" />
+      {/* Centre — Spotlight field */}
+      <div className="flex justify-center">
+        {onSearchOpen && (
+          <button
+            type="button"
+            onClick={onSearchOpen}
+            className="app-no-drag focus-ring group/search flex h-8 w-72 items-center gap-2 rounded-full bg-fill-tertiary pr-1.5 pl-3 text-label-tertiary shadow-[inset_0_0_0_0.5px_var(--separator)] transition-colors duration-150 hover:bg-fill-secondary hover:text-label-secondary"
+          >
+            <Search className="size-3.5 shrink-0" strokeWidth={2} />
+            <span className="flex-1 truncate text-left text-xs">Search your library</span>
+            <span className="inline-flex items-center gap-0.5 opacity-80 transition-opacity group-hover/search:opacity-100">
+              {searchKeys.split("+").map((k) => (
+                <Kbd key={k}>{k}</Kbd>
+              ))}
+            </span>
+          </button>
+        )}
+      </div>
 
-      {/* Location */}
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center">
-        <ol className="flex min-w-0 items-center gap-1">
-          <AnimatePresence mode="popLayout" initial={false}>
-            {segments.flatMap((segment, i) => {
-              const last = i === segments.length - 1;
-              const item = (
-                <motion.li
-                  key={`seg-${i}-${segment}`}
-                  layout={!reduce}
-                  initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(4px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(4px)" }}
-                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                  aria-current={last ? "page" : undefined}
-                  className={
-                    last
-                      ? "truncate text-xs font-medium text-label-secondary"
-                      : "truncate text-xs text-label-tertiary"
-                  }
-                >
-                  {segment}
-                </motion.li>
-              );
-              if (i === 0) return [item];
-              return [
-                <motion.li
-                  key={`sep-${i}-${segment}`}
-                  role="presentation"
-                  aria-hidden="true"
-                  layout={!reduce}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="flex items-center text-label-quaternary"
-                >
-                  <ChevronRight className="size-3" strokeWidth={2} />
-                </motion.li>,
-                item,
-              ];
-            })}
-          </AnimatePresence>
-        </ol>
-      </nav>
-
-      <WindowControls />
+      {/* Window controls */}
+      <div className="flex h-full justify-end">
+        <WindowControls />
+      </div>
     </header>
   );
 }

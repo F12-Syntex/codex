@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink, MessageCircle, Plus, X } from "lucide-react";
+import { User, Swords, MapPin, Flame, Lightbulb, ExternalLink, MessageCircle, Plus, X, Sparkles, ArrowRight } from "lucide-react";
+import { TypingDots } from "@/components/ui/typing-dots";
 import { CommentInput } from "./CommentInput";
 import type { ThemeClasses, ReadingTheme, TTSStatus, TTSHighlightMode } from "../lib/types";
 import { SelectionToolbar } from "./SelectionToolbar";
@@ -422,25 +423,13 @@ export function TextContent({
               }}
             >
               {paraComments!.some((c) => c.author === "ai") && (
-                <span style={{
-                  width: "18px", height: "18px", borderRadius: "50%",
-                  background: "linear-gradient(135deg, var(--accent-brand), #a78bfa)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  border: "1.5px solid rgba(255,255,255,0.1)",
-                }}>
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11 6.5 7.5 3 6l3.5-1.5L8 1z" fill="white" opacity="0.9"/><circle cx="4" cy="12" r="1.5" fill="white" opacity="0.5"/><circle cx="12" cy="13" r="1" fill="white" opacity="0.4"/></svg>
-                </span>
+                <CommentAvatar author="ai" />
               )}
               {paraComments!.some((c) => c.author === "user") && (
-                <span style={{
-                  width: "18px", height: "18px", borderRadius: "50%",
-                  background: "linear-gradient(135deg, rgb(52, 211, 153), rgb(110, 231, 183))",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  border: "1.5px solid rgba(255,255,255,0.1)",
-                  marginLeft: paraComments!.some((c) => c.author === "ai") ? "-5px" : "0",
-                }}>
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.8 2 4 3.8 4 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 9c-3 0-6 1.5-6 3v1h12v-1c0-1.5-3-3-6-3z" fill="black" opacity="0.7"/></svg>
-                </span>
+                <CommentAvatar
+                  author="user"
+                  className={paraComments!.some((c) => c.author === "ai") ? "-ml-1.5" : undefined}
+                />
               )}
             </span>
           )}
@@ -461,7 +450,9 @@ export function TextContent({
                 zIndex: 5,
               }}
             >
-              <Plus style={{ width: "12px", height: "12px", color: "var(--text-muted, rgba(255,255,255,0.3))" }} strokeWidth={2} />
+              <span className="inline-flex size-5 items-center justify-center rounded-full bg-current/10 shadow-xs">
+                <Plus className="size-3" strokeWidth={2.25} />
+              </span>
             </span>
           )}
         </div>
@@ -1119,19 +1110,15 @@ export function TextContent({
                 padding: `${paraSpacing}px 0`,
                 display: "flex",
                 alignItems: "center",
-                gap: "8px",
-                opacity: 0.5,
+                gap: "10px",
+                opacity: 0.7,
                 fontFamily,
                 fontSize: `${fontSize}px`,
               }}
             >
-              <div className="sim-loading-dots" style={{ display: "flex", gap: "4px" }}>
-                <span className="sim-dot" />
-                <span className="sim-dot" />
-                <span className="sim-dot" />
-              </div>
+              <TypingDots className="text-brand" />
               <span className={theme.muted} style={{ fontSize: `${fontSize * 0.85}px` }}>
-                Writing...
+                Writing…
               </span>
             </div>
           )}
@@ -1146,16 +1133,18 @@ export function TextContent({
             >
               {/* Divider */}
               <div
-                style={{
-                  height: "1px",
-                  background: "rgba(255,255,255,0.06)",
-                  marginBottom: `${paraSpacing}px`,
-                }}
-              />
+                className="flex items-center gap-3 text-brand"
+                style={{ marginBottom: `${paraSpacing}px` }}
+              >
+                <span className="h-px flex-1 bg-current/20" />
+                <Sparkles className="size-3.5 opacity-70" strokeWidth={1.75} />
+                <span className="text-2xs font-semibold tracking-wider uppercase opacity-70">What happens next</span>
+                <span className="h-px flex-1 bg-current/20" />
+              </div>
 
               {/* Choice buttons (from AI) */}
               {simulateChoices.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: `${paraSpacing * 0.75}px` }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: `${paraSpacing * 0.75}px` }}>
                   {simulateChoices.map((choice, i) => (
                     <button
                       key={i}
@@ -1165,42 +1154,13 @@ export function TextContent({
                         }
                       }}
                       onKeyDown={(e) => e.stopPropagation()}
-                      style={{
-                        display: "flex",
-                        alignItems: "baseline",
-                        gap: "10px",
-                        padding: "10px 14px",
-                        borderRadius: "8px",
-                        background: "var(--bg-inset)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        fontFamily,
-                        transition: "border-color 0.15s, background 0.15s",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "var(--accent-brand)";
-                        e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
-                        e.currentTarget.style.background = "var(--bg-inset)";
-                      }}
+                      className="group/choice focus-ring pressable flex items-start gap-3 rounded-lg bg-current/[0.04] px-3.5 py-3 text-left shadow-[inset_0_0_0_1px_color-mix(in_srgb,currentColor_10%,transparent)] transition-[background-color,box-shadow] duration-150 hover:bg-brand/10 hover:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-brand)_55%,transparent)]"
+                      style={{ fontFamily }}
                     >
-                      <span
-                        style={{
-                          fontSize: `${fontSize * 0.75}px`,
-                          fontWeight: 600,
-                          color: "var(--accent-brand)",
-                          opacity: 0.8,
-                          flexShrink: 0,
-                          lineHeight: 1,
-                          marginTop: "2px",
-                        }}
-                      >
+                      <span className="mt-px inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-brand/15 text-2xs font-semibold text-brand transition-colors group-hover/choice:bg-brand group-hover/choice:text-brand-fg">
                         {String.fromCharCode(65 + i)}
                       </span>
-                      <div style={{ minWidth: 0 }}>
+                      <div style={{ minWidth: 0 }} className="flex-1">
                         <div
                           className={theme.text}
                           style={{
@@ -1222,6 +1182,7 @@ export function TextContent({
                           {choice.description}
                         </div>
                       </div>
+                      <ArrowRight className="mt-0.5 size-4 shrink-0 -translate-x-1 text-brand opacity-0 transition-[opacity,transform] duration-200 group-hover/choice:translate-x-0 group-hover/choice:opacity-100" strokeWidth={1.75} />
                     </button>
                   ))}
 
@@ -1233,44 +1194,22 @@ export function TextContent({
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
+                    className={`focus-ring pressable flex items-center justify-center gap-2 self-center rounded-full px-4 py-2 transition-colors duration-150 hover:bg-current/[0.06] ${theme.muted}`}
                     style={{
-                      padding: "10px 14px",
-                      borderRadius: "8px",
-                      background: "transparent",
-                      border: "1px dashed rgba(255,255,255,0.08)",
-                      cursor: "pointer",
-                      textAlign: "center",
                       fontFamily,
                       fontSize: `${fontSize * 0.8}px`,
                       fontWeight: 500,
-                      transition: "border-color 0.15s, background 0.15s",
-                    }}
-                    className={theme.muted}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
-                      e.currentTarget.style.background = "rgba(255,255,255,0.02)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
-                      e.currentTarget.style.background = "transparent";
                     }}
                   >
-                    Continue story...
+                    Continue story
+                    <ArrowRight className="size-3.5" strokeWidth={1.75} />
                   </button>
                 </div>
               )}
 
               {/* Custom direction input */}
               <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 12px",
-                  borderRadius: "8px",
-                  background: "var(--bg-inset)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
+                className="flex items-center gap-2 rounded-full bg-current/[0.04] px-4 py-2 shadow-[inset_0_0_0_1px_color-mix(in_srgb,currentColor_10%,transparent)] transition-shadow duration-150 focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-brand)_60%,transparent),0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_18%,transparent)]"
               >
                 <input
                   ref={simInputRef}
@@ -1448,53 +1387,44 @@ export function TextContent({
         const rect = paraEl.getBoundingClientRect();
         return (
           <div
+            className="glass-thick flex w-[280px] animate-pop-in flex-col overflow-hidden rounded-xl text-label"
             style={{
               position: "fixed", zIndex: 100,
               top: `${Math.min(rect.top, window.innerHeight - 260)}px`,
               left: `${Math.min(rect.right + 12, window.innerWidth - 320)}px`,
-              width: "280px", maxHeight: "240px",
-              background: "var(--bg-elevated, #1a1a2e)", border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
-              borderRadius: "10px", padding: "10px", display: "flex", flexDirection: "column", gap: "8px",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.5)", overflowY: "auto",
-              animation: "wikiTooltipIn 0.12s ease-out",
+              maxHeight: "240px",
+              transformOrigin: "0 0",
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {comments.map((c, ci) => (
-              <div key={ci} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                <span style={{
-                  width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0,
-                  background: c.author === "ai"
-                    ? "linear-gradient(135deg, var(--accent-brand), #a78bfa)"
-                    : "linear-gradient(135deg, rgb(52, 211, 153), rgb(110, 231, 183))",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  border: "1.5px solid rgba(255,255,255,0.1)",
-                }}>
-                  {c.author === "ai" ? (
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11 6.5 7.5 3 6l3.5-1.5L8 1z" fill="white" opacity="0.9"/><circle cx="4" cy="12" r="1.5" fill="white" opacity="0.5"/><circle cx="12" cy="13" r="1" fill="white" opacity="0.4"/></svg>
-                  ) : (
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.8 2 4 3.8 4 6s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 9c-3 0-6 1.5-6 3v1h12v-1c0-1.5-3-3-6-3z" fill="black" opacity="0.7"/></svg>
+            <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+              <MessageCircle className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
+              <span className="flex-1 text-section text-label-tertiary">Margin notes</span>
+              <span className="text-2xs tabular-nums text-label-tertiary">{comments.length}</span>
+            </div>
+            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5">
+              {comments.map((c, ci) => (
+                <div key={ci} className="group/note flex items-start gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-fill-quaternary">
+                  <CommentAvatar author={c.author} className="mt-px" />
+                  <p className={c.author === "ai"
+                    ? "flex-1 font-display text-sm leading-snug text-label"
+                    : "flex-1 text-xs leading-relaxed text-label-secondary"}
+                  >
+                    {c.text}
+                  </p>
+                  {c.author === "user" && onDeleteComment && (
+                    <button
+                      type="button"
+                      aria-label="Delete note"
+                      onClick={() => onDeleteComment(expandedCommentPara, c.author, c.text)}
+                      className="focus-ring pressable inline-flex size-5 shrink-0 items-center justify-center rounded-full text-label-tertiary opacity-0 transition-[opacity,background-color,color] group-hover/note:opacity-100 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100"
+                    ><X className="size-3" strokeWidth={2.25} /></button>
                   )}
-                </span>
-                <span style={{
-                  fontSize: "12px", lineHeight: "1.5",
-                  color: "rgba(255,255,255,0.65)", flex: 1,
-                }}>{c.text}</span>
-                {c.author === "user" && onDeleteComment && (
-                  <button
-                    onClick={() => onDeleteComment(expandedCommentPara, c.author, c.text)}
-                    style={{
-                      flexShrink: 0, width: "16px", height: "16px", borderRadius: "4px",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      background: "transparent", border: "none", cursor: "pointer",
-                      color: "rgba(255,255,255,0.3)",
-                    }}
-                  ><X style={{ width: "10px", height: "10px" }} strokeWidth={2} /></button>
-                )}
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
             {/* User input */}
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "6px" }}>
+            <div className="shrink-0 border-t border-separator p-1.5">
               <CommentInput
                 value={commentInput}
                 onChange={setCommentInput}
@@ -1518,15 +1448,12 @@ export function TextContent({
         const rect = paraEl.getBoundingClientRect();
         return (
           <div
+            className="glass-thick flex w-[260px] animate-pop-in items-center rounded-xl p-1.5"
             style={{
               position: "fixed", zIndex: 100,
               top: `${Math.min(rect.top, window.innerHeight - 60)}px`,
               left: `${Math.min(rect.right + 12, window.innerWidth - 300)}px`,
-              width: "260px",
-              background: "var(--bg-elevated, #1a1a2e)", border: "1px solid var(--glass-border, rgba(255,255,255,0.08))",
-              borderRadius: "10px", padding: "8px", display: "flex", alignItems: "center", gap: "6px",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-              animation: "wikiTooltipIn 0.12s ease-out",
+              transformOrigin: "0 50%",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1575,20 +1502,27 @@ export function TextContent({
         }
         .wiki-entity {
           cursor: pointer;
-          border-bottom: 1px dotted;
-          padding-bottom: 1px;
-          transition: border-color 0.15s ease, background-color 0.15s ease;
+          border-radius: 0.2em;
+          text-decoration-line: underline;
+          text-decoration-style: dotted;
+          text-decoration-thickness: 1.5px;
+          text-underline-offset: 0.22em;
+          transition: text-decoration-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
         }
-        .wiki-entity-blue { color: rgba(147, 197, 253, 0.9); border-color: rgba(96, 165, 250, 0.3); }
-        .wiki-entity-blue:hover { background: rgba(96, 165, 250, 0.08); border-color: rgba(96, 165, 250, 0.6); }
-        .wiki-entity-amber { color: rgba(252, 211, 77, 0.9); border-color: rgba(251, 191, 36, 0.3); }
-        .wiki-entity-amber:hover { background: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.6); }
-        .wiki-entity-emerald { color: rgba(110, 231, 183, 0.9); border-color: rgba(52, 211, 153, 0.3); }
-        .wiki-entity-emerald:hover { background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.6); }
-        .wiki-entity-rose { color: rgba(253, 164, 175, 0.9); border-color: rgba(251, 113, 133, 0.3); }
-        .wiki-entity-rose:hover { background: rgba(251, 113, 133, 0.08); border-color: rgba(251, 113, 133, 0.6); }
-        .wiki-entity-violet { color: rgba(196, 181, 253, 0.9); border-color: rgba(167, 139, 250, 0.3); }
-        .wiki-entity-violet:hover { background: rgba(167, 139, 250, 0.08); border-color: rgba(167, 139, 250, 0.6); }
+        .wiki-entity:hover {
+          text-decoration-style: solid;
+          background: color-mix(in srgb, var(--wiki-c) 12%, transparent);
+          box-shadow: 0 0 0 0.12em color-mix(in srgb, var(--wiki-c) 12%, transparent);
+        }
+        .wiki-entity-blue, .wiki-entity-amber, .wiki-entity-emerald, .wiki-entity-rose, .wiki-entity-violet {
+          color: color-mix(in srgb, var(--wiki-c) 62%, currentColor);
+          text-decoration-color: color-mix(in srgb, var(--wiki-c) 40%, transparent);
+        }
+        .wiki-entity-blue { --wiki-c: var(--system-blue); }
+        .wiki-entity-amber { --wiki-c: var(--system-orange); }
+        .wiki-entity-emerald { --wiki-c: var(--system-green); }
+        .wiki-entity-rose { --wiki-c: var(--system-pink); }
+        .wiki-entity-violet { --wiki-c: var(--system-purple); }
         .wiki-tooltip-enter {
           animation: wikiTooltipIn 0.15s ease-out;
         }
@@ -1614,15 +1548,37 @@ export function TextContent({
   );
 }
 
+// ── Comment avatar (AI = accent sparkle, you = success person) ──
+function CommentAvatar({ author, className }: { author: string; className?: string }) {
+  const ai = author === "ai";
+  return (
+    <span
+      aria-label={ai ? "AI note" : "Your note"}
+      className={`inline-flex size-5 shrink-0 items-center justify-center rounded-full shadow-xs ${
+        ai ? "bg-brand text-brand-fg" : "bg-success text-brand-fg"
+      } ${className ?? ""}`}
+    >
+      {ai
+        ? <Sparkles className="size-3" strokeWidth={2.25} />
+        : <User className="size-3" strokeWidth={2.25} />}
+    </span>
+  );
+}
+
 // ── Wiki tooltip type metadata ──────────────────────────
-const WIKI_TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string; border: string }> = {
-  character: { icon: <User className="h-3 w-3" strokeWidth={1.5} />, label: "Character", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.15)", border: "rgba(96, 165, 250, 0.4)" },
-  item: { icon: <Swords className="h-3 w-3" strokeWidth={1.5} />, label: "Item", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.15)", border: "rgba(251, 191, 36, 0.4)" },
-  location: { icon: <MapPin className="h-3 w-3" strokeWidth={1.5} />, label: "Location", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.15)", border: "rgba(52, 211, 153, 0.4)" },
-  event: { icon: <Flame className="h-3 w-3" strokeWidth={1.5} />, label: "Event", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.15)", border: "rgba(251, 113, 133, 0.4)" },
-  concept: { icon: <Lightbulb className="h-3 w-3" strokeWidth={1.5} />, label: "Concept", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.15)", border: "rgba(167, 139, 250, 0.4)" },
+const typeTint = (v: string) => ({ color: v, bg: `color-mix(in srgb, ${v} 16%, transparent)` });
+const WIKI_TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
+  character: { icon: <User className="size-3" strokeWidth={2} />, label: "Character", ...typeTint("var(--system-blue)") },
+  item: { icon: <Swords className="size-3" strokeWidth={2} />, label: "Item", ...typeTint("var(--system-orange)") },
+  location: { icon: <MapPin className="size-3" strokeWidth={2} />, label: "Location", ...typeTint("var(--system-green)") },
+  event: { icon: <Flame className="size-3" strokeWidth={2} />, label: "Event", ...typeTint("var(--system-pink)") },
+  concept: { icon: <Lightbulb className="size-3" strokeWidth={2} />, label: "Concept", ...typeTint("var(--system-purple)") },
 };
 
+/**
+ * Hover card for a wiki entity — macOS-style glass card: type badge,
+ * serif name, short description, significance meter, open-in-wiki action.
+ */
 function WikiTooltipPopup({
   data,
   tooltipRef,
@@ -1662,7 +1618,8 @@ function WikiTooltipPopup({
     zIndex: 50,
     width: "280px",
     left: `${data.x}px`,
-    borderLeft: `3px solid ${meta.border}`,
+    // Grow out of the entity the card is anchored to
+    transformOrigin: `${data.arrowX + 5}px ${data.placement === "above" ? "100%" : "0%"}`,
   };
 
   if (data.placement === "above") {
@@ -1674,74 +1631,64 @@ function WikiTooltipPopup({
   return (
     <div
       ref={tooltipRef}
-      className="rounded-lg shadow-lg shadow-black/40 wiki-tooltip-enter"
+      className="glass-thick grain relative animate-pop-in overflow-hidden rounded-xl text-label"
       style={style}
     >
+      {/* Type-tinted wash along the top edge */}
       <div
-        className="rounded-lg p-3 space-y-2"
-        style={{
-          background: "var(--bg-overlay)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-        }}
-      >
-        {/* Type badge + name */}
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-16"
+        style={{ background: `linear-gradient(to bottom, ${meta.bg}, transparent)` }}
+      />
+
+      <div className="relative space-y-2.5 p-3.5">
+        {/* Type badge + significance */}
         <div className="flex items-center gap-2">
           <span
-            className="flex items-center gap-1 shrink-0 rounded-lg px-1.5 py-0.5 text-xs font-medium"
+            className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-2xs font-semibold"
             style={{ background: meta.bg, color: meta.color }}
           >
             {meta.icon}
             {meta.label}
           </span>
-          <span className="text-sm font-semibold text-white/90 truncate">{data.name}</span>
+          <span className="flex-1" />
+          <span className="flex items-center gap-0.5" aria-label={`Significance ${data.significance} of 4`}>
+            {Array.from({ length: 4 }, (_, k) => (
+              <span
+                key={k}
+                className="h-1.5 w-3 rounded-full"
+                style={{ background: k < data.significance ? meta.color : "var(--fill-secondary)" }}
+              />
+            ))}
+          </span>
         </div>
+
+        {/* Name */}
+        <h3 className="truncate font-display text-lg leading-tight font-semibold text-label">{data.name}</h3>
 
         {/* Short description */}
         {data.shortDescription && (
-          <p className="text-xs leading-relaxed text-white/50 line-clamp-3">
+          <p className="line-clamp-3 text-xs leading-relaxed text-label-secondary">
             {data.shortDescription}
           </p>
         )}
 
-        {/* Status + significance */}
-        <div className="flex items-center gap-2">
-          <span
-            className="rounded-lg px-1.5 py-0.5 text-xs font-medium capitalize"
-            style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}
-          >
+        {/* Status + Open Wiki */}
+        <div className="flex items-center gap-2 pt-0.5">
+          <span className="inline-flex h-5 items-center rounded-full bg-fill-tertiary px-2 text-2xs font-medium text-label-secondary capitalize">
             {data.status}
           </span>
-          <span className="text-xs text-white/25">·</span>
-          <span className="text-xs text-white/30">
-            {"★".repeat(data.significance)}{"☆".repeat(Math.max(0, 4 - data.significance))}
-          </span>
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={openWiki}
+            className="focus-ring pressable inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-tertiary px-3 text-xs font-medium text-label transition-colors hover:bg-fill-secondary"
+          >
+            Open in Wiki
+            <ExternalLink className="size-3 text-label-secondary" strokeWidth={2} />
+          </button>
         </div>
-
-        {/* Open Wiki button */}
-        <button
-          onClick={openWiki}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors hover:bg-white/[0.08]"
-          style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }}
-        >
-          <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
-          Open Wiki
-        </button>
       </div>
-
-      {/* Arrow */}
-      <div
-        style={{
-          position: "absolute",
-          left: `${data.arrowX}px`,
-          [data.placement === "above" ? "bottom" : "top"]: "-5px",
-          width: "10px",
-          height: "10px",
-          background: "var(--bg-overlay)",
-          transform: "rotate(45deg)",
-          borderRadius: "2px",
-        }}
-      />
     </div>
   );
 }

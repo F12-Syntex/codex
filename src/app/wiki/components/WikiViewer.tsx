@@ -1,19 +1,28 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import {
-  Loader2, Search, ArrowLeft,
+  Search, ArrowLeft,
   User, Swords, MapPin, Flame, Lightbulb,
-  BookOpen, GitBranch, Clock, ChevronRight, Hash,
-  Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity, Network,
-  Quote,
+  BookOpen, GitBranch, Clock, ChevronRight, ChevronDown, Hash,
+  Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity,
+  Quote, Sparkles,
 } from "lucide-react";
-import { WindowHeader } from "@/components/window-header";
+import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ShimmerText } from "@/components/ui/shimmer-text";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { NumberTicker } from "@/components/ui/number-ticker";
+import { BlurFade } from "@/components/ui/blur-fade";
+import { ListGroup, ListRow } from "@/components/ui/list-group";
 import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
 import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiAIChat } from "./WikiAIChat";
 import { RelationshipGraph } from "./RelationshipGraph";
+import { WikiSidebar, WikiSidebarSkeleton, EntityAvatar, type WikiView } from "./WikiSidebar";
 
 interface WikiViewerProps {
   filePath: string;
@@ -22,11 +31,11 @@ interface WikiViewerProps {
 }
 
 const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; plural: string; color: string; bg: string }> = {
-  character: { icon: <User className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Character", plural: "Characters", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
-  item: { icon: <Swords className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Item", plural: "Items", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
-  location: { icon: <MapPin className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Location", plural: "Locations", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
-  event: { icon: <Flame className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Event", plural: "Events", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
-  concept: { icon: <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Concept", plural: "Concepts", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
+  character: { icon: <User className="size-3.5" strokeWidth={1.75} />, label: "Character", plural: "Characters", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
+  item: { icon: <Swords className="size-3.5" strokeWidth={1.75} />, label: "Item", plural: "Items", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
+  location: { icon: <MapPin className="size-3.5" strokeWidth={1.75} />, label: "Location", plural: "Locations", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
+  event: { icon: <Flame className="size-3.5" strokeWidth={1.75} />, label: "Event", plural: "Events", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
+  concept: { icon: <Lightbulb className="size-3.5" strokeWidth={1.75} />, label: "Concept", plural: "Concepts", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
 };
 
 const TYPE_ORDER: WikiEntryType[] = ["character", "item", "location", "event", "concept"];
@@ -91,7 +100,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
   const [mergeLog, setMergeLog] = useState<MergeLogItem[]>([]);
-  const [activeView, setActiveView] = useState<"encyclopedia" | "stats" | "graph">("encyclopedia");
+  const [activeView, setActiveView] = useState<WikiView>("encyclopedia");
   const [processedChapters, setProcessedChapters] = useState<number[]>([]);
   const [mcStats, setMcStats] = useState<MCStat[]>([]);
   const [mcEntityId, setMcEntityId] = useState<string | null>(null);
@@ -124,30 +133,30 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
       api.wikiGetMCEntityId(filePath),
     ]);
 
-    setEntries(entryRows.map((e) => ({
+    setEntries((entryRows ?? []).map((e) => ({
       id: e.id, name: e.name, type: e.type as WikiEntryType,
       short_description: e.short_description, first_appearance: e.first_appearance,
       significance: e.significance, status: e.status,
     })));
-    setProcessedCount(processed.length);
-    setProcessedChapters(processed);
-    setArcs(arcRows.map((a) => ({
+    setProcessedCount((processed ?? []).length);
+    setProcessedChapters(processed ?? []);
+    setArcs((arcRows ?? []).map((a) => ({
       id: a.id, name: a.name, description: a.description, arcType: a.arc_type,
       status: a.status, startChapter: a.start_chapter, endChapter: a.end_chapter,
     })));
-    setChapterSummaries(summaryRows.map((s) => ({
+    setChapterSummaries((summaryRows ?? []).map((s) => ({
       chapter_index: s.chapter_index, summary: s.summary,
       key_events: s.key_events, mood: s.mood,
     })));
-    setMergeLog(mergeLogRows.map((m) => ({
+    setMergeLog((mergeLogRows ?? []).map((m) => ({
       id: m.id, source_name: m.source_name, target_name: m.target_name, merged_at: m.merged_at,
     })));
-    setMcStats(statRows.map((s) => ({
+    setMcStats((statRows ?? []).map((s) => ({
       id: s.id, stat_key: s.stat_key, category: s.category,
       display_name: s.display_name, value: s.value,
       is_active: s.is_active === 1, last_chapter: s.last_chapter,
     })));
-    setMcEntityId(mcId);
+    setMcEntityId(mcId ?? null);
     setIsLoading(false);
   }, [filePath]);
 
@@ -229,141 +238,190 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
   const totalEntries = entries.length;
 
+  // Sidebar: switching section returns from an open article
+  const selectView = useCallback((view: WikiView) => {
+    setSelectedEntryId(null);
+    setSelectedEntry(null);
+    setActiveView(view);
+  }, []);
+
+  const chrome = (
+    <WindowChrome icon={<BookOpen strokeWidth={1.75} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
+  );
+
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[var(--bg-inset)]">
-        <Loader2 className="h-6 w-6 animate-spin text-white/40" strokeWidth={1.5} />
-      </div>
+      <WindowShell>
+        {chrome}
+        <div className="flex min-h-0 flex-1 gap-2 p-2" style={{ zoom: zoom / 100 }}>
+          <WikiSidebarSkeleton />
+          <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3">
+            <div className="flex size-12 items-center justify-center rounded-full bg-brand/15 text-brand animate-pop-in">
+              <BookOpen className="size-5" strokeWidth={1.75} />
+            </div>
+            <ShimmerText className="text-sm">Opening the wiki…</ShimmerText>
+          </main>
+        </div>
+      </WindowShell>
     );
   }
 
   if (totalEntries === 0) {
     return (
-      <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <WindowHeader icon={<BookOpen className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <BookOpen className="mx-auto h-8 w-8 text-white/20" strokeWidth={1.5} />
-            <p className="mt-3 text-sm text-white/40">No wiki data yet</p>
-            <p className="mt-1 text-xs text-white/25">Enable AI Wiki in the reader to start building</p>
-          </div>
+      <WindowShell>
+        {chrome}
+        <div className="flex min-h-0 flex-1 items-center justify-center p-8" style={{ zoom: zoom / 100 }}>
+          <EmptyWiki bookTitle={bookTitle} />
         </div>
-      </div>
+      </WindowShell>
     );
   }
 
+  const contentKey = selectedEntry ? `entry:${selectedEntry.id}` : activeView;
+
   return (
-    <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-      <WindowHeader icon={<BookOpen className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
+    <WindowShell>
+      {chrome}
 
-      {/* Tab bar */}
-      {!selectedEntry && (
-        <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.04] px-4" style={{ zoom: zoom / 100 }}>
-          <TabButton active={activeView === "encyclopedia"} onClick={() => setActiveView("encyclopedia")}>
-            <BookOpen className="h-3 w-3" strokeWidth={1.5} />
-            Encyclopedia
-          </TabButton>
-          <TabButton active={activeView === "stats"} onClick={() => setActiveView("stats")}>
-            <BarChart2 className="h-3 w-3" strokeWidth={1.5} />
-            Stats
-          </TabButton>
-          <TabButton active={activeView === "graph"} onClick={() => setActiveView("graph")}>
-            <Network className="h-3 w-3" strokeWidth={1.5} />
-            Graph
-          </TabButton>
-        </div>
-      )}
-
-      <div className="relative flex-1 overflow-hidden" style={{ zoom: zoom / 100 }}>
-        {/* Graph view fills the entire area without scroll */}
-        {!selectedEntry && activeView === "graph" && (
-          <RelationshipGraph
-            filePath={filePath}
-            chapterLabels={chapterLabels}
-            entries={entries}
-            onNavigate={navigateTo}
-          />
-        )}
-
-        {/* Scrollable views */}
-        {(selectedEntry || activeView !== "graph") && (
-          <div
-            ref={scrollRef}
-            className="h-full overflow-y-auto"
-            style={{
-              paddingBottom: chatOpen && !chatExpanded
-                ? "clamp(280px, 45%, 420px)"
-                : undefined,
-            }}
-          >
-            {selectedEntry ? (
-              <EntryPage
-                entry={selectedEntry}
-                allEntries={entries}
-                resolvedNames={resolvedNames}
-                onNavigate={navigateTo}
-                onBack={goBack}
-                onMerge={handleMerge}
-                canGoBack
-                chapterLabels={chapterLabels}
-              />
-            ) : activeView === "stats" ? (
-              <StatsPage
-                mcEntry={mcEntry}
-                mcStats={mcStats}
-                onNavigateToMC={mcEntityId ? () => navigateTo(mcEntityId) : undefined}
-                chapterLabels={chapterLabels}
-              />
-            ) : (
-              <HomePage
-                bookTitle={bookTitle}
-                entries={entries}
-                filteredEntries={filteredEntries}
-                groupedFiltered={groupedFiltered}
-                arcs={arcs}
-                chapterSummaries={chapterSummaries}
-                processedCount={processedCount}
-                mergeLog={mergeLog}
-                searchQuery={searchQuery}
-                filterType={filterType}
-                onSearchChange={setSearchQuery}
-                onFilterChange={setFilterType}
-                onEntryClick={navigateTo}
-                onUnmerge={handleUnmerge}
-                chapterLabels={chapterLabels}
-              />
-            )}
-          </div>
-        )}
-
-        <WikiAIChat
-          filePath={filePath}
-          bookTitle={bookTitle}
-          onEntryClick={navigateTo}
-          chapterLabels={chapterLabels}
-          onOpenChange={(open, expanded) => { setChatOpen(open); setChatExpanded(expanded); }}
+      <div className="flex min-h-0 flex-1 gap-2 p-2" style={{ zoom: zoom / 100 }}>
+        <WikiSidebar
+          typeMeta={TYPE_META}
+          typeOrder={TYPE_ORDER}
+          entries={entries}
+          groupedFiltered={groupedFiltered}
+          filteredCount={filteredEntries.length}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          filterType={filterType}
+          onFilterChange={setFilterType}
+          selectedEntryId={selectedEntryId}
+          activeView={activeView}
+          onSelectView={selectView}
+          onSelectEntry={navigateTo}
+          processedCount={processedCount}
         />
+
+        <main className="relative min-w-0 flex-1 overflow-hidden rounded-2xl">
+          {/* Graph view fills the entire area without scroll */}
+          {!selectedEntry && activeView === "graph" && (
+            <RelationshipGraph
+              filePath={filePath}
+              chapterLabels={chapterLabels}
+              entries={entries}
+              onNavigate={navigateTo}
+            />
+          )}
+
+          {/* Scrollable views */}
+          {(selectedEntry || activeView !== "graph") && (
+            <div
+              ref={scrollRef}
+              className="h-full overflow-y-auto"
+              style={{
+                paddingBottom: chatOpen && !chatExpanded
+                  ? "clamp(280px, 45%, 420px)"
+                  : undefined,
+              }}
+            >
+              <div key={contentKey} className="animate-blur-in">
+                {selectedEntry ? (
+                  <EntryPage
+                    entry={selectedEntry}
+                    allEntries={entries}
+                    resolvedNames={resolvedNames}
+                    onNavigate={navigateTo}
+                    onBack={goBack}
+                    onMerge={handleMerge}
+                    canGoBack
+                    chapterLabels={chapterLabels}
+                  />
+                ) : activeView === "stats" ? (
+                  <StatsPage
+                    mcEntry={mcEntry}
+                    mcStats={mcStats}
+                    onNavigateToMC={mcEntityId ? () => navigateTo(mcEntityId) : undefined}
+                    chapterLabels={chapterLabels}
+                  />
+                ) : (
+                  <HomePage
+                    bookTitle={bookTitle}
+                    entries={entries}
+                    filteredEntries={filteredEntries}
+                    groupedFiltered={groupedFiltered}
+                    arcs={arcs}
+                    chapterSummaries={chapterSummaries}
+                    processedCount={processedCount}
+                    mergeLog={mergeLog}
+                    searchQuery={searchQuery}
+                    filterType={filterType}
+                    onSearchChange={setSearchQuery}
+                    onFilterChange={setFilterType}
+                    onEntryClick={navigateTo}
+                    onUnmerge={handleUnmerge}
+                    chapterLabels={chapterLabels}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          <WikiAIChat
+            filePath={filePath}
+            bookTitle={bookTitle}
+            onEntryClick={navigateTo}
+            chapterLabels={chapterLabels}
+            onOpenChange={(open, expanded) => { setChatOpen(open); setChatExpanded(expanded); }}
+          />
+        </main>
       </div>
-    </div>
+    </WindowShell>
   );
 }
 
 /* ══════════════════════════════════════════════════════════
-   TAB BUTTON
+   EMPTY — no wiki data yet
    ══════════════════════════════════════════════════════════ */
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function EmptyWiki({ bookTitle }: { bookTitle: string }) {
+  const ghost: WikiEntryType[] = ["character", "location", "item", "event", "concept"];
   return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs transition-colors ${
-        active
-          ? "border-[var(--accent-brand)] font-medium text-[var(--accent-brand)]"
-          : "border-transparent text-white/35 hover:text-white/55"
-      }`}
-    >
-      {children}
-    </button>
+    <div className="flex w-full max-w-xl flex-col items-center text-center">
+      {/* Constellation of ghost entities */}
+      <div className="relative mb-8 h-40 w-80">
+        <svg aria-hidden className="absolute inset-0 size-full text-separator-strong" viewBox="0 0 320 160" fill="none">
+          <path d="M160 80 L52 38 M160 80 L268 34 M160 80 L64 132 M160 80 L256 128" stroke="currentColor" strokeDasharray="2 4" />
+        </svg>
+        {ghost.map((t, i) => {
+          const pos = [
+            "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+            "left-8 top-4", "right-8 top-2", "left-12 bottom-2", "right-12 bottom-3",
+          ][i];
+          const meta = TYPE_META[t];
+          return (
+            <motion.span
+              key={t}
+              className={`absolute ${pos}`}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: i === 0 ? 1 : 0.55, scale: 1 }}
+              transition={{ type: "spring", bounce: 0.35, duration: 0.6, delay: 0.08 * i }}
+            >
+              <span
+                className={`flex items-center justify-center rounded-full ${i === 0 ? "size-16 [&_svg]:size-7" : "size-10 [&_svg]:size-4"}`}
+                style={{ background: meta.bg, color: meta.color, boxShadow: `inset 0 0 0 0.5px ${meta.color}50` }}
+              >
+                {meta.icon}
+              </span>
+            </motion.span>
+          );
+        })}
+      </div>
+      <p className="text-section">The Wiki</p>
+      <h1 className="mt-2 text-large-title text-label">{bookTitle}</h1>
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-label-secondary">
+        Nothing has been written here yet. Turn on <span className="text-label">AI Wiki</span> in the reader and
+        Codex will chronicle characters, places and events as you read.
+      </p>
+    </div>
   );
 }
 
@@ -372,12 +430,12 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
    ══════════════════════════════════════════════════════════ */
 
 const STAT_CATEGORY_META: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
-  attributes: { icon: <Shield className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Attributes", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
-  skills: { icon: <Zap className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Skills", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
-  inventory: { icon: <Package className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Inventory", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
-  currency: { icon: <Coins className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Currency", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
-  status: { icon: <Activity className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Status Effects", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
-  other: { icon: <BarChart2 className="h-3.5 w-3.5" strokeWidth={1.5} />, label: "Other", color: "rgb(255,255,255)", bg: "rgba(255,255,255,0.06)" },
+  attributes: { icon: <Shield className="size-3.5" strokeWidth={1.75} />, label: "Attributes", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
+  skills: { icon: <Zap className="size-3.5" strokeWidth={1.75} />, label: "Skills", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
+  inventory: { icon: <Package className="size-3.5" strokeWidth={1.75} />, label: "Inventory", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
+  currency: { icon: <Coins className="size-3.5" strokeWidth={1.75} />, label: "Currency", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
+  status: { icon: <Activity className="size-3.5" strokeWidth={1.75} />, label: "Status Effects", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
+  other: { icon: <BarChart2 className="size-3.5" strokeWidth={1.75} />, label: "Other", color: "rgb(255,255,255)", bg: "rgba(255,255,255,0.06)" },
 };
 
 const STAT_CATEGORY_ORDER = ["attributes", "skills", "inventory", "currency", "status", "other"];
@@ -418,7 +476,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
       {/* MC Profile Card */}
       {mcEntry && (
         <section className="mb-8">
-          <SectionHeader icon={<User className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Protagonist" color="rgb(147, 197, 253)" />
+          <SectionHeader icon={<User className="size-3.5" strokeWidth={1.75} />} label="Protagonist" color="rgb(147, 197, 253)" />
           <button
             onClick={onNavigateToMC}
             className="mt-3 group w-full rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-4 text-left transition-all hover:border-white/[0.12] hover:bg-white/[0.04]"
@@ -504,7 +562,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
       {/* Lost/consumed items */}
       {inactiveStats.length > 0 && (
         <section className="mb-8">
-          <SectionHeader icon={<X className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Lost / Consumed" color="rgba(255,255,255,0.2)" />
+          <SectionHeader icon={<X className="size-3.5" strokeWidth={1.75} />} label="Lost / Consumed" color="rgba(255,255,255,0.2)" />
           <div className="mt-3 flex flex-wrap gap-2">
             {inactiveStats.map((stat) => (
               <div key={stat.stat_key} className="flex items-center gap-1.5 rounded-lg border border-white/[0.04] bg-[var(--bg-surface)] px-2.5 py-1.5">
@@ -614,7 +672,7 @@ function HomePage({
           {/* Main Characters spotlight */}
           {mainCharacters.length > 0 && (
             <section className="mb-8">
-              <SectionHeader icon={<User className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Main Characters" color="rgb(147, 197, 253)" />
+              <SectionHeader icon={<User className="size-3.5" strokeWidth={1.75} />} label="Main Characters" color="rgb(147, 197, 253)" />
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {mainCharacters.map((e) => (
                   <button key={e.id} onClick={() => onEntryClick(e.id)} className="group rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-3 text-left transition-all hover:border-white/[0.12] hover:bg-white/[0.04]">
@@ -637,7 +695,7 @@ function HomePage({
           {/* Recently introduced */}
           {recentEntries.length > 0 && (
             <section className="mb-8">
-              <SectionHeader icon={<Clock className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Recently Introduced" color="rgb(196, 181, 253)" />
+              <SectionHeader icon={<Clock className="size-3.5" strokeWidth={1.75} />} label="Recently Introduced" color="rgb(196, 181, 253)" />
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {recentEntries.map((e) => (
                   <EntryCard key={e.id} entry={e} onClick={() => onEntryClick(e.id)} showChapter />
@@ -649,7 +707,7 @@ function HomePage({
           {/* Story Arcs */}
           {arcs.length > 0 && (
             <section className="mb-8">
-              <SectionHeader icon={<GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Story Arcs" color="rgb(252, 211, 77)" />
+              <SectionHeader icon={<GitBranch className="size-3.5" strokeWidth={1.75} />} label="Story Arcs" color="rgb(252, 211, 77)" />
               <div className="mt-3 space-y-2">
                 {arcs.map((arc) => (
                   <div key={arc.id} className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] p-3">
@@ -674,7 +732,7 @@ function HomePage({
           {/* Chapter Timeline */}
           {chapterSummaries.length > 0 && (
             <section className="mb-8">
-              <SectionHeader icon={<Hash className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Chapter Timeline" color="rgb(253, 164, 175)" />
+              <SectionHeader icon={<Hash className="size-3.5" strokeWidth={1.75} />} label="Chapter Timeline" color="rgb(253, 164, 175)" />
               <div className="mt-3 space-y-2">
                 {chapterSummaries
                   .filter((ch) => Object.keys(chapterLabels).length === 0 || ch.chapter_index in chapterLabels)
@@ -718,7 +776,7 @@ function HomePage({
       {/* Merge log */}
       {mergeLog.length > 0 && !searchQuery && filterType === "all" && (
         <section className="mb-8">
-          <SectionHeader icon={<Merge className="h-3.5 w-3.5" strokeWidth={1.5} />} label="Merged Entries" color="rgb(196, 181, 253)" />
+          <SectionHeader icon={<Merge className="size-3.5" strokeWidth={1.75} />} label="Merged Entries" color="rgb(196, 181, 253)" />
           <div className="mt-3 space-y-1.5">
             {mergeLog.map((m) => (
               <div key={m.id} className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-[var(--bg-surface)] px-3 py-2">

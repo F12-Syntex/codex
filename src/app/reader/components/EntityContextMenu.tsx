@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { Sparkles, ExternalLink } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
+import { Badge } from "@/components/ui/badge";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 
 const TYPE_LABELS: Record<WikiEntryType, string> = {
@@ -30,6 +32,7 @@ export function EntityContextMenu({
   onClose,
 }: EntityContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
 
   // Position adjustment to keep menu in viewport
   useEffect(() => {
@@ -75,62 +78,82 @@ export function EntityContextMenu({
     };
   }, [onClose]);
 
+  const dot = ENTITY_DOT[entity.color] ?? "var(--accent-brand)";
+
   return (
-    <div
+    <motion.div
       ref={menuRef}
-      className="entity-context-menu-enter rounded-lg shadow-lg shadow-black/40"
-      style={{
-        position: "fixed",
-        zIndex: 60,
-        left: `${x}px`,
-        top: `${y}px`,
-        width: "180px",
-        background: "var(--bg-overlay)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
+      role="menu"
+      aria-label={`${entity.name} actions`}
+      className="glass-thick w-[220px] rounded-xl p-1 text-label"
+      style={{ position: "fixed", zIndex: 60, left: `${x}px`, top: `${y}px`, transformOrigin: "0 0" }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: -4 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={reduce ? { duration: 0.1 } : { type: "spring", stiffness: 600, damping: 34, mass: 0.6 }}
     >
-      {/* Entity label */}
-      <div
-        className="flex items-center gap-2 px-2.5 py-2 border-b"
-        style={{ borderColor: "rgba(255,255,255,0.06)" }}
-      >
-        <span className="text-xs font-medium text-white/40 uppercase tracking-wide">
-          {TYPE_LABELS[entity.type] ?? "Entity"}
-        </span>
-        <span className="text-xs font-semibold text-white/70 truncate">
+      {/* Entity header */}
+      <div className="flex items-center gap-2.5 px-2 pt-1.5 pb-2">
+        <span
+          aria-hidden
+          className="size-2 shrink-0 rounded-full"
+          style={{ background: dot, boxShadow: `0 0 10px 0 ${dot}` }}
+        />
+        <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-label">
           {entity.name}
         </span>
+        <Badge variant="outline">{TYPE_LABELS[entity.type] ?? "Entity"}</Badge>
       </div>
+
+      <div aria-hidden className="mx-2 mb-1 h-px bg-separator" />
 
       {/* Menu items */}
-      <div className="py-1">
-        <button
-          onClick={() => { onSimulate(); onClose(); }}
-          className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/[0.08]"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          Simulate
-        </button>
-        <button
-          onClick={() => { onOpenWiki(); onClose(); }}
-          className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/[0.08]"
-        >
-          <ExternalLink className="h-3.5 w-3.5 text-white/40" strokeWidth={1.5} />
-          Open Wiki
-        </button>
-      </div>
+      <MenuItem
+        icon={<Sparkles strokeWidth={1.75} />}
+        label="Simulate"
+        hint="What if…"
+        onSelect={() => { onSimulate(); onClose(); }}
+      />
+      <MenuItem
+        icon={<ExternalLink strokeWidth={1.75} />}
+        label="Open in Wiki"
+        onSelect={() => { onOpenWiki(); onClose(); }}
+      />
+    </motion.div>
+  );
+}
 
-      <style>{`
-        .entity-context-menu-enter {
-          animation: entityCtxIn 0.12s ease-out;
-        }
-        @keyframes entityCtxIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
-    </div>
+/** Wiki entity color key → system color (dot). */
+const ENTITY_DOT: Record<string, string> = {
+  blue: "var(--system-blue)",
+  amber: "var(--system-orange)",
+  emerald: "var(--system-green)",
+  rose: "var(--system-pink)",
+  violet: "var(--system-purple)",
+};
+
+/** macOS menu item: h-7 rounded-md, accent highlight with inverted text. */
+function MenuItem({ icon, label, hint, onSelect }: {
+  icon: React.ReactNode;
+  label: string;
+  hint?: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onSelect}
+      className="group/item flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label outline-none transition-colors duration-75 hover:bg-brand hover:text-brand-fg focus-visible:bg-brand focus-visible:text-brand-fg"
+    >
+      <span className="inline-flex text-label-secondary group-hover/item:text-brand-fg group-focus-visible/item:text-brand-fg [&_svg]:size-4">
+        {icon}
+      </span>
+      <span className="flex-1">{label}</span>
+      {hint && (
+        <span className="text-xs text-label-tertiary group-hover/item:text-brand-fg/70 group-focus-visible/item:text-brand-fg/70">
+          {hint}
+        </span>
+      )}
+    </button>
   );
 }

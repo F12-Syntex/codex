@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
@@ -13,6 +14,22 @@ import { needsEnrichment } from "@/lib/ai-prompts";
 import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { type ChapterLabels } from "@/lib/chapter-labels";
 import { BulkAnalyserModal } from "./BulkAnalyserModal";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { ListIcon, type ListIconTint } from "@/components/ui/list-group";
+import { ProgressRing } from "@/components/ui/progress-ring";
+import { NumberTicker } from "@/components/ui/number-ticker";
+
+/** Feature tint → ListIcon tint + CSS color for rings/status. */
+const TINT_COLOR: Partial<Record<ListIconTint, string>> = {
+  accent: "var(--accent-brand)",
+  purple: "var(--system-purple)",
+  blue: "var(--system-blue)",
+  green: "var(--system-green)",
+  pink: "var(--system-pink)",
+  orange: "var(--system-orange)",
+  teal: "var(--system-teal)",
+};
 
 interface AISidebarProps {
   theme: ThemeClasses;
@@ -103,6 +120,14 @@ export function AISidebar({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const reduce = useReducedMotion();
+  // The Bulk Analyser modal is portaled to <body>; while it's open, clicks in it
+  // must not count as "outside" the sidebar (they used to be DOM children).
+  const bulkOpenRef = useRef(bulkOpen);
+  bulkOpenRef.current = bulkOpen;
+  const handleOutside = useCallback(() => {
+    if (!bulkOpenRef.current) onClose();
+  }, [onClose]);
 
   useEffect(() => {
     window.electronAPI?.getSetting("openrouterApiKey").then((key) => {
@@ -110,7 +135,7 @@ export function AISidebar({
     });
   }, []);
 
-  useClickOutside(sidebarRef, onClose, "[data-reader-header]");
+  useClickOutside(sidebarRef, handleOutside, "[data-reader-header]");
 
   const disabled = hasApiKey === false;
   const loading = hasApiKey === null;
@@ -124,6 +149,10 @@ export function AISidebar({
   const isFormatRunning = formatAllProgress !== null || formattingChapter !== null;
   const isCondenseRunning = condenseAllProgress !== null || condensingChapter !== null;
   const isWikiRunning = wikiProcessingChapter !== null;
+  const activeTools = [
+    formattingEnabled, condenseEnabled, wikiEnabled, enrichEnabled,
+    buddyEnabled && wikiEnabled, simulateEnabled && wikiEnabled, commentsEnabled,
+  ].filter(Boolean).length;
 
   /* ── External links ──────────────────────────────────────── */
 
@@ -131,51 +160,79 @@ export function AISidebar({
   const openWiki = () => window.electronAPI?.openWiki({ filePath, title: bookTitle });
 
   return (
-    <div
+    <motion.div
       ref={sidebarRef}
-      className={cn(
-        "absolute right-0 top-0 z-20 flex h-full w-[280px] flex-col border-l",
-        theme.panel, theme.border,
-      )}
-      style={{ animation: "slideInRight 0.18s ease", boxShadow: "rgba(0,0,0,0.25) -8px 0 24px -4px" }}
+      className="glass-thin grain absolute top-2 right-2 bottom-2 z-20 flex w-[288px] flex-col overflow-hidden rounded-2xl text-label"
+      style={{
+        boxShadow: "inset 0 0 0 0.5px var(--glass-edge), inset 0 1px 0 0 var(--glass-highlight), var(--shadow-lg)",
+      }}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, x: 24, scale: 0.98 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      transition={reduce ? { duration: 0.15 } : { type: "spring", stiffness: 400, damping: 34 }}
     >
       {/* ── Header ── */}
-      <div className="flex shrink-0 items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          <span className={cn("text-sm font-semibold", theme.text)}>AI Tools</span>
-        </div>
+      <div className="flex h-13 shrink-0 items-center gap-2.5 pr-3 pl-4">
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
+          <Sparkles className="size-3.5" strokeWidth={2} />
+        </span>
+        <span className="flex-1 font-display text-base font-semibold text-label">AI Tools</span>
         <button
+          type="button"
           onClick={onClose}
-          className={cn("flex h-6 w-6 items-center justify-center rounded-lg transition-colors", theme.btn)}
+          aria-label="Close"
+          className="focus-ring pressable inline-flex size-7 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
         >
-          <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <X className="size-3.5" strokeWidth={2.25} />
         </button>
       </div>
 
       {/* ── API key warning ── */}
       {!loading && disabled && (
-        <div className="mx-3 mb-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-          <div className="flex items-start gap-2">
-            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" strokeWidth={1.5} />
-            <p className="text-xs leading-relaxed text-amber-300/80">
-              Add an <span className="font-medium text-amber-300">OpenRouter API key</span> in Settings to enable AI.
-            </p>
-          </div>
+        <div className="mx-2 mb-1 flex items-start gap-2.5 rounded-lg bg-warning/10 px-3 py-2.5">
+          <KeyRound className="mt-px size-4 shrink-0 text-warning" strokeWidth={1.75} />
+          <p className="text-xs leading-relaxed text-label-secondary">
+            Add an <span className="font-medium text-warning">OpenRouter API key</span> in Settings to enable AI.
+          </p>
         </div>
       )}
 
+      {/* ── Overview: wiki coverage ring + tools-on count ── */}
+      <div className="mx-2 mb-1 flex shrink-0 items-center gap-3 rounded-lg bg-fill-quaternary px-3 py-2.5">
+        <ProgressRing
+          size={38}
+          stroke={3.5}
+          value={totalChapters > 0 ? wikiProcessedCount / totalChapters : 0}
+          indeterminate={isWikiRunning && totalChapters === 0}
+          aria-label="Wiki coverage"
+        >
+          <span className="text-2xs font-semibold tabular-nums text-label">
+            {totalChapters > 0 ? Math.round((wikiProcessedCount / totalChapters) * 100) : 0}
+          </span>
+        </ProgressRing>
+        <div className="min-w-0 flex-1">
+          <div className="text-headline text-label">
+            <NumberTicker value={activeTools} className="tabular-nums" /> of 7 tools on
+          </div>
+          <div className="truncate text-xs text-label-tertiary">
+            {wikiEnabled
+              ? `Wiki covers ${wikiProcessedCount} of ${totalChapters} chapters`
+              : "Wiki is off"}
+          </div>
+        </div>
+      </div>
+
       {/* ── Feature list ── */}
-      <div className={cn("flex-1 overflow-y-auto", disabled ? "pointer-events-none select-none opacity-40" : "")}>
+      <div className={cn("min-h-0 flex-1 overflow-y-auto px-2 pb-2", disabled ? "pointer-events-none select-none opacity-40" : "")}>
 
         {/* ── Reading ── */}
-        <Section label="Reading" theme={theme} />
+        <Section label="Reading" />
 
         <FeatureRow
-          Icon={Paintbrush} label="Formatting" color="#a78bfa" theme={theme}
+          Icon={Paintbrush} label="Formatting" tint="purple"
           active={formattingEnabled} onToggle={onFormattingToggle}
           running={isFormatRunning}
           status={fmtStatus(formattedChapterCount, chapters.length, formatAllProgress, formattingChapter)}
+          progress={formatAllProgress}
           canRetry={formattingEnabled && !isFormatRunning && currentChapterFormatDone}
           onRetry={onFormatRetry}
           canCancel={isFormatRunning}
@@ -187,10 +244,11 @@ export function AISidebar({
         />
 
         <FeatureRow
-          Icon={Minimize2} label="Concise" color="#60a5fa" theme={theme}
+          Icon={Minimize2} label="Concise" tint="blue"
           active={condenseEnabled} onToggle={onCondenseToggle}
           running={isCondenseRunning}
           status={fmtStatus(condensedChapterCount, chapters.length, condenseAllProgress, condensingChapter)}
+          progress={condenseAllProgress}
           canRetry={condenseEnabled && !isCondenseRunning && currentChapterCondenseDone}
           onRetry={onCondenseRetry}
           canCancel={isCondenseRunning}
@@ -201,13 +259,14 @@ export function AISidebar({
 
 
         {/* ── Analysis ── */}
-        <Section label="Analysis" theme={theme} />
+        <Section label="Analysis" />
 
         <FeatureRow
-          Icon={BookMarked} label="Wiki" color="var(--accent-brand)" theme={theme}
+          Icon={BookMarked} label="Wiki" tint="accent"
           active={wikiEnabled} onToggle={onWikiToggle}
           running={isWikiRunning}
           status={fmtWikiStatus(wikiProcessedCount, totalChapters, wikiAllProgress, wikiProcessingChapter)}
+          progress={wikiAllProgress}
           canRetry={wikiEnabled && !isWikiRunning && currentChapterWikiDone}
           onRetry={onWikiRetry}
           canCancel={isWikiRunning}
@@ -220,10 +279,11 @@ export function AISidebar({
         />
 
         <FeatureRow
-          Icon={Type} label="Titles" color="#34d399" theme={theme}
+          Icon={Type} label="Titles" tint="green"
           active={enrichEnabled} onToggle={onEnrichToggle}
           running={isEnrichRunning}
           status={fmtEnrichStatus(alreadyEnriched, enrichToDo, enrichAllProgress, enrichingChapter)}
+          progress={enrichAllProgress}
           canRetry={enrichEnabled && !isEnrichRunning && currentChapterEnrichDone}
           onRetry={onEnrichRetry}
           canCancel={isEnrichRunning}
@@ -233,24 +293,24 @@ export function AISidebar({
         />
 
         {/* ── Experience ── */}
-        <Section label="Experience" theme={theme} />
+        <Section label="Experience" />
 
         <FeatureRow
-          Icon={MessageCircle} label="Buddy" color="#f472b6" theme={theme}
+          Icon={MessageCircle} label="Buddy" tint="pink"
           active={buddyEnabled && wikiEnabled} onToggle={onBuddyToggle}
           disabled={!wikiEnabled}
           lockNote={!wikiEnabled ? "Requires Wiki" : undefined}
         />
 
         <FeatureRow
-          Icon={Clapperboard} label="Simulate" color="#fb923c" theme={theme}
+          Icon={Clapperboard} label="Simulate" tint="orange"
           active={simulateEnabled && wikiEnabled} onToggle={onSimulateToggle}
           disabled={!wikiEnabled}
           lockNote={!wikiEnabled ? "Requires Wiki" : undefined}
         />
 
         <FeatureRow
-          Icon={MessageCircle} label="Comments" color="#a3e635" theme={theme}
+          Icon={MessageCircle} label="Comments" tint="teal"
           active={commentsEnabled} onToggle={onCommentsToggle}
           running={commentingChapter !== null}
           status={chapterCommentCount > 0 ? `${chapterCommentCount} ch.` : undefined}
@@ -260,18 +320,20 @@ export function AISidebar({
       </div>
 
       {/* ── Bulk Analyse ── */}
-      <div className={cn("shrink-0 border-t px-3 py-3", theme.border)}>
+      <div className="shrink-0 border-t border-separator p-3">
         <button
+          type="button"
           onClick={() => setBulkOpen(true)}
           disabled={disabled}
           className={cn(
-            "flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-all",
-            disabled ? "cursor-not-allowed opacity-30" : "hover:opacity-90 active:scale-[0.99]",
+            "focus-ring pressable flex h-8 w-full items-center justify-center gap-2 rounded-md bg-brand px-3.5 text-sm font-medium text-brand-fg transition-[filter,opacity]",
+            disabled
+              ? "cursor-not-allowed opacity-30"
+              : "shadow-[0_0_24px_-6px_var(--accent-brand)] hover:brightness-110",
           )}
-          style={{ background: "var(--accent-brand)", color: "var(--accent-brand-fg)" }}
         >
-          <Layers className="h-3.5 w-3.5" strokeWidth={1.5} />
-          Bulk Analyse
+          <Layers className="size-4" strokeWidth={1.75} />
+          Bulk Analyse…
         </button>
       </div>
 
@@ -288,7 +350,7 @@ export function AISidebar({
         enrichEnabled={enrichEnabled}
         condenseEnabled={condenseEnabled}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -332,15 +394,10 @@ function fmtEnrichStatus(
 
 /* ── Section header ────────────────────────────────────────── */
 
-function Section({ label, theme }: { label: string; theme: ThemeClasses }) {
+function Section({ label }: { label: string }) {
   return (
-    <div className="px-4 pb-1 pt-4 first:pt-2">
-      <span
-        className={cn("text-xs font-medium uppercase tracking-wider", theme.muted)}
-        style={{ opacity: 0.3, fontSize: "10px" }}
-      >
-        {label}
-      </span>
+    <div className="px-2.5 pt-4 pb-1.5 first:pt-1">
+      <span className="text-section text-label-tertiary">{label}</span>
     </div>
   );
 }
@@ -350,14 +407,15 @@ function Section({ label, theme }: { label: string; theme: ThemeClasses }) {
 interface FeatureRowProps {
   Icon: React.ElementType;
   label: string;
-  color: string;
-  theme: ThemeClasses;
+  tint: ListIconTint;
   active: boolean;
   onToggle: () => void;
   disabled?: boolean;
   lockNote?: string;
   running?: boolean;
   status?: string;
+  /** Batch progress, used to fill the running ring. */
+  progress?: { current: number; total: number } | null;
   badge?: string;
   canRetry?: boolean;
   onRetry?: () => void;
@@ -369,9 +427,9 @@ interface FeatureRowProps {
 }
 
 function FeatureRow({
-  Icon, label, color, theme,
+  Icon, label, tint,
   active, onToggle, disabled: toggleDisabled, lockNote,
-  running, status, badge,
+  running, status, progress, badge,
   canRetry, onRetry,
   canCancel, onCancel,
   canClear, onClear,
@@ -393,56 +451,50 @@ function FeatureRow({
 
   const isRunning = running === true;
   const isDone = status === "done";
+  const color = TINT_COLOR[tint] ?? "var(--accent-brand)";
+  const on = active && !toggleDisabled;
+  const ringValue = progress && progress.total > 0 ? progress.current / progress.total : undefined;
 
   return (
-    <div className={cn(
-      "group flex items-center gap-2 px-4 py-[7px] transition-colors",
-      active ? "bg-white/[0.02]" : "",
-    )}>
-      {/* Toggle */}
-      <button
-        onClick={toggleDisabled ? undefined : onToggle}
+    <div className="group flex h-9 items-center gap-2.5 rounded-md px-2.5 transition-colors duration-150 hover:bg-fill-quaternary">
+      {/* Icon tile */}
+      <ListIcon
+        tint={tint}
         className={cn(
-          "relative h-[16px] w-7 shrink-0 rounded-full transition-colors",
-          toggleDisabled ? "cursor-not-allowed opacity-20" : "",
+          "transition-[background-color,color,box-shadow] duration-200",
+          !on && "bg-fill-tertiary text-label-tertiary shadow-none",
         )}
-        style={{ background: active && !toggleDisabled ? color : "var(--bg-inset)" }}
       >
-        <span
-          className={cn(
-            "absolute left-[2px] top-[2px] h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-            active && !toggleDisabled ? "translate-x-[11px]" : "",
-          )}
-        />
-      </button>
-
-      {/* Icon */}
-      <Icon
-        className="h-3.5 w-3.5 shrink-0"
-        strokeWidth={1.5}
-        style={{ color: active ? color : undefined, opacity: active ? 0.8 : 0.25 }}
-      />
+        <Icon />
+      </ListIcon>
 
       {/* Label */}
-      <span
-        className={cn("flex-1 text-sm", theme.text)}
-        style={{ opacity: active ? 0.9 : 0.4 }}
-      >
+      <span className={cn(
+        "min-w-0 flex-1 truncate text-sm transition-colors",
+        toggleDisabled ? "text-label-tertiary" : on ? "text-label" : "text-label-secondary",
+      )}>
         {lockNote || label}
       </span>
 
       {/* Status / actions (right side) */}
       <div className="flex items-center gap-1">
-        {/* Running spinner + cancel */}
+        {/* Running ring + cancel */}
         {isRunning && (
           <>
-            <span className={cn("text-xs tabular-nums", theme.muted)} style={{ opacity: 0.5 }}>
-              {status !== "..." ? status : ""}
-            </span>
-            <Loader2 className="h-3 w-3 animate-spin" style={{ color }} strokeWidth={2} />
+            {status && status !== "..." && (
+              <span className="text-2xs tabular-nums text-label-tertiary">{status}</span>
+            )}
+            <ProgressRing
+              size={16}
+              stroke={2}
+              color={color}
+              value={ringValue}
+              indeterminate={ringValue === undefined}
+              aria-label={`${label} progress`}
+            />
             {canCancel && onCancel && (
-              <ActionBtn onClick={onCancel} theme={theme} title="Stop">
-                <Square className="h-2.5 w-2.5" strokeWidth={2} fill="currentColor" />
+              <ActionBtn onClick={onCancel} title="Stop" danger>
+                <Square className="size-2.5" strokeWidth={2} fill="currentColor" />
               </ActionBtn>
             )}
           </>
@@ -450,28 +502,25 @@ function FeatureRow({
 
         {/* Idle status */}
         {!isRunning && status && (
-          <span
-            className={cn("text-xs tabular-nums", theme.muted)}
-            style={{ opacity: isDone ? 0.6 : 0.4, color: isDone ? color : undefined }}
-          >
-            {status}
-          </span>
+          isDone ? (
+            <span className="inline-flex items-center gap-0.5 text-2xs font-medium" style={{ color }}>
+              <Check className="size-3" strokeWidth={2.5} />
+              done
+            </span>
+          ) : (
+            <span className="text-2xs tabular-nums text-label-tertiary">{status}</span>
+          )
         )}
 
         {/* Badge (e.g. wiki entry count) */}
         {!isRunning && badge && (
-          <span
-            className="rounded-lg px-1.5 py-0.5 text-xs tabular-nums"
-            style={{ background: `${color}15`, color, opacity: 0.7 }}
-          >
-            {badge}
-          </span>
+          <Badge variant="accent" className="tabular-nums">{badge}</Badge>
         )}
 
         {/* Re-process current chapter */}
         {!isRunning && canRetry && onRetry && (
-          <ActionBtn onClick={onRetry} color={color} title="Re-process chapter">
-            <RefreshCw className="h-3 w-3" strokeWidth={2} />
+          <ActionBtn onClick={onRetry} title="Re-process chapter">
+            <RefreshCw className="size-3" strokeWidth={2} />
           </ActionBtn>
         )}
 
@@ -481,21 +530,32 @@ function FeatureRow({
             onClick={handleClear}
             title={confirmClear ? "Confirm clear" : "Clear all"}
             danger={confirmClear}
-            theme={theme}
+            filled={confirmClear}
+            className={confirmClear ? undefined : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}
           >
             {confirmClear
-              ? <Check className="h-3 w-3" strokeWidth={2.5} />
-              : <Trash2 className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={1.5} />
+              ? <Check className="size-3" strokeWidth={2.5} />
+              : <Trash2 className="size-3" strokeWidth={1.75} />
             }
           </ActionBtn>
         )}
 
         {/* Extra action (external link) */}
         {!isRunning && extraAction && (
-          <ActionBtn onClick={extraAction.onClick} theme={theme} title={extraAction.title}>
-            <extraAction.icon className="h-3 w-3" strokeWidth={1.5} />
+          <ActionBtn onClick={extraAction.onClick} title={extraAction.title}>
+            <extraAction.icon className="size-3" strokeWidth={1.75} />
           </ActionBtn>
         )}
+
+        {/* Toggle */}
+        <Switch
+          size="sm"
+          checked={on}
+          disabled={toggleDisabled}
+          onCheckedChange={() => { if (!toggleDisabled) onToggle(); }}
+          aria-label={`${label} ${on ? "on" : "off"}`}
+          className="ml-1"
+        />
       </div>
     </div>
   );
@@ -504,24 +564,30 @@ function FeatureRow({
 /* ── Tiny action button ────────────────────────────────────── */
 
 function ActionBtn({
-  onClick, theme, color, danger, title, children,
+  onClick, danger, filled, title, className, children,
 }: {
   onClick: () => void;
-  theme?: ThemeClasses;
-  color?: string;
   danger?: boolean;
+  filled?: boolean;
   title?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       title={title}
+      aria-label={title}
       className={cn(
-        "flex h-5 w-5 shrink-0 items-center justify-center rounded-lg transition-all",
-        danger ? "bg-red-500/20 text-red-400" : color ? "" : theme?.btn,
+        "focus-ring pressable inline-flex size-6 shrink-0 items-center justify-center rounded-full transition-[background-color,color,opacity] duration-150",
+        filled
+          ? "bg-danger/15 text-danger"
+          : danger
+            ? "text-label-tertiary hover:bg-danger/15 hover:text-danger"
+            : "text-label-tertiary hover:bg-fill-tertiary hover:text-label",
+        className,
       )}
-      style={color && !danger ? { color } : undefined}
     >
       {children}
     </button>

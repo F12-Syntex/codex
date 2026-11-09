@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, Sparkles, Loader2, BookOpen, User, Tag, FileText, Save, Globe } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Globe, Check, AlertCircle } from "lucide-react";
+import { GlassModal } from "@/components/ui/glass-modal";
+import { Tilt } from "@/components/ui/tilt";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ShimmerText } from "@/components/ui/shimmer-text";
+import { cn } from "@/lib/utils";
 import { createOpenRouterClient } from "@/lib/openrouter";
 import type { MockItem } from "@/lib/mock-data";
 
@@ -133,141 +139,149 @@ Return ONLY valid JSON:
   const genres = fetched?.genres?.length ? fetched.genres : savedMeta?.genres;
   const displayCover = proxiedCover || fetched?.coverUrl || item.cover;
   const status = fetched?.status;
+  const statusVariant = status === "Completed" ? "success" : status === "Ongoing" ? "accent" : "default";
+
+  const rows: { label: string; value: React.ReactNode }[] = [
+    { label: "Author", value: fetched?.author ?? item.author ?? "Unknown" },
+    { label: "Format", value: <Badge>{item.format.toUpperCase()}</Badge> },
+  ];
+  if (status) rows.push({ label: "Status", value: <Badge variant={statusVariant}>{status}</Badge> });
+  if (fetched?.source) {
+    rows.push({
+      label: "Source",
+      value: (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <Globe className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+          <span className="truncate">{fetched.source}</span>
+        </span>
+      ),
+    });
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="w-full max-w-lg rounded-lg border border-white/[0.08] shadow-lg shadow-black/40 overflow-hidden"
-        style={{ backgroundColor: "var(--bg-overlay)", backdropFilter: "blur(24px)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-          <span className="text-sm font-medium text-white/70">Book Details</span>
-          <button onClick={onClose} className="rounded-lg p-1 text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors">
-            <X className="h-4 w-4" strokeWidth={1.5} />
-          </button>
-        </div>
+    <GlassModal open onClose={onClose} width={640} hideClose className="grain">
+      {/* Ambient cover bloom — the book's own colour washes the top of the sheet */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-64 overflow-hidden" style={{ maskImage: "linear-gradient(to bottom, black, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black, transparent)" }}>
+        {displayCover ? (
+          <img src={displayCover} alt="" className="h-full w-full scale-125 object-cover opacity-30 blur-3xl" />
+        ) : (
+          <div className="h-full w-full opacity-30 blur-3xl" style={{ background: item.gradient }} />
+        )}
+      </div>
 
-        {/* Content */}
-        <div className="p-4">
-          <div className="flex gap-4">
-            {/* Cover */}
-            <div className="shrink-0 w-32 aspect-[2/3] rounded-lg overflow-hidden bg-white/[0.03] relative">
-              {displayCover ? (
-                <img
-                  src={displayCover}
-                  alt={item.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center" style={{ background: item.gradient }}>
-                  <BookOpen className="h-8 w-8 text-white/20" />
-                </div>
-              )}
-              {/* Loading overlay while proxying cover */}
-              {fetched?.coverUrl && !proxiedCover && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                  <Loader2 className="h-4 w-4 animate-spin text-white/50" />
-                </div>
-              )}
-            </div>
-
-            {/* Info */}
-            <div className="flex flex-1 flex-col gap-2 min-w-0">
-              <h2 className="text-sm font-medium text-white/70 leading-snug">
-                {fetched?.title ?? item.title}
-              </h2>
-
-              {fetched?.alternativeNames && fetched.alternativeNames.length > 0 && (
-                <p className="text-xs text-white/20 leading-snug line-clamp-1">
-                  {fetched.alternativeNames.join(" · ")}
-                </p>
-              )}
-
-              <div className="flex items-center gap-1.5">
-                <User className="h-3 w-3 shrink-0 text-white/20" strokeWidth={1.5} />
-                <span className="text-xs text-white/40">{fetched?.author ?? item.author}</span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <FileText className="h-3 w-3 shrink-0 text-white/20" strokeWidth={1.5} />
-                  <span className="text-xs text-white/40">{item.format.toUpperCase()}</span>
-                </div>
-                {status && (
-                  <span className={`rounded-lg px-1.5 py-0.5 text-xs ${
-                    status === "Completed" ? "bg-green-500/10 text-green-400/60" :
-                    status === "Ongoing" ? "bg-blue-500/10 text-blue-400/60" :
-                    "bg-white/[0.06] text-white/30"
-                  }`}>
-                    {status}
-                  </span>
+      <GlassModal.Body className="relative px-6 pt-6 pb-6">
+        <div className="flex gap-6">
+          {/* Cover */}
+          <div className="w-44 shrink-0">
+            <Tilt maxTilt={6} glare className="rounded-lg">
+              <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-fill-tertiary shadow-cover">
+                {displayCover ? (
+                  <img src={displayCover} alt={item.title} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center" style={{ background: item.gradient }}>
+                    <BookOpen className="size-10 text-label-quaternary" strokeWidth={1.25} />
+                  </div>
+                )}
+                <div aria-hidden className="pointer-events-none absolute inset-0 rounded-lg hairline" />
+                {/* Loading overlay while proxying cover */}
+                {fetched?.coverUrl && !proxiedCover && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-canvas/40 backdrop-blur-sm">
+                    <Loader2 className="size-5 animate-spin text-label-secondary" strokeWidth={1.75} />
+                  </div>
                 )}
               </div>
-
-              {genres && genres.length > 0 && (
-                <div className="flex items-start gap-1.5 mt-1">
-                  <Tag className="h-3 w-3 shrink-0 text-white/20 mt-0.5" strokeWidth={1.5} />
-                  <div className="flex flex-wrap gap-1">
-                    {genres.map((g) => (
-                      <span key={g} className="rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-xs text-white/30">
-                        {g}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {description && (
-                <p className="mt-1 text-xs text-white/30 leading-relaxed line-clamp-5">
-                  {description}
-                </p>
-              )}
-
-              {fetched?.source && (
-                <div className="flex items-center gap-1 mt-auto">
-                  <Globe className="h-3 w-3 text-white/10" strokeWidth={1.5} />
-                  <span className="text-xs text-white/15">{fetched.source}</span>
-                </div>
-              )}
-            </div>
+            </Tilt>
+            {fetched && (
+              <p className="mt-3 flex animate-fade-up items-center justify-center gap-1.5 text-2xs text-label-tertiary">
+                <Check className="size-3 text-success" strokeWidth={2.5} />
+                Preview — not saved yet
+              </p>
+            )}
           </div>
 
-          {/* Error */}
-          {fetchError && (
-            <div className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {fetchError}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.06]">
-          <button
-            onClick={handleFetch}
-            disabled={fetching}
-            className="flex items-center gap-2 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/50 hover:bg-white/[0.09] hover:text-white/70 transition-colors disabled:opacity-40"
-          >
-            {fetching ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.5} />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />
+          {/* Info */}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="text-section">Book Details</p>
+            <h2 className="mt-1.5 font-display text-xl font-semibold text-label text-balance">
+              {fetched?.title ?? item.title}
+            </h2>
+            {fetched?.alternativeNames && fetched.alternativeNames.length > 0 && (
+              <p className="mt-1 line-clamp-1 text-xs text-label-tertiary">
+                {fetched.alternativeNames.join(" · ")}
+              </p>
             )}
-            {fetching ? "Searching online..." : fetched ? "Search Again" : "Fetch Details"}
-          </button>
 
-          {fetched && (
-            <button
-              onClick={handleApply}
-              className="flex items-center gap-2 rounded-lg bg-[var(--accent-brand)] px-3 py-1.5 text-xs text-white font-medium hover:opacity-90 transition-opacity"
-            >
-              <Save className="h-3.5 w-3.5" strokeWidth={1.5} />
-              Apply Changes
-            </button>
-          )}
+            {/* Properties — inset grouped rows */}
+            <dl className="mt-4 overflow-hidden rounded-lg bg-fill-quaternary hairline">
+              {rows.map((row, i) => (
+                <div
+                  key={row.label}
+                  className={cn("flex h-9 items-center gap-3 px-3 text-sm", i > 0 && "border-t border-separator")}
+                >
+                  <dt className="w-16 shrink-0 text-xs text-label-tertiary">{row.label}</dt>
+                  <dd className="flex min-w-0 flex-1 justify-end truncate text-label">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {genres && genres.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {genres.map((g) => (
+                  <Badge key={g} variant="outline">{g}</Badge>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 min-h-0">
+              {fetching ? (
+                <ShimmerText className="text-sm">Searching the web for this book…</ShimmerText>
+              ) : description ? (
+                <p className="max-h-40 overflow-y-auto pr-1 text-sm leading-relaxed text-label-secondary">
+                  {description}
+                </p>
+              ) : (
+                <p className="text-sm text-label-tertiary">
+                  No description yet. Fetch details to look this book up online.
+                </p>
+              )}
+            </div>
+
+            {/* Error */}
+            {fetchError && (
+              <div className="mt-4 flex animate-fade-up items-start gap-2 rounded-md bg-danger/10 px-3 py-2 text-xs text-danger">
+                <AlertCircle className="mt-px size-3.5 shrink-0" strokeWidth={2} />
+                {fetchError}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      </GlassModal.Body>
+
+      <GlassModal.Footer className="relative justify-between px-6 py-4">
+        <Button variant="secondary" size="sm" className="rounded-md" onClick={handleFetch} disabled={fetching}>
+          {fetching ? (
+            <Loader2 className="animate-spin" strokeWidth={1.75} />
+          ) : (
+            <Sparkles strokeWidth={1.75} />
+          )}
+          {fetching ? "Searching…" : fetched ? "Search Again" : "Fetch Details"}
+        </Button>
+
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" className="rounded-md" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="rounded-md"
+            onClick={handleApply}
+            disabled={!fetched}
+            title={fetched ? undefined : "Fetch details first"}
+          >
+            Apply Changes
+          </Button>
+        </div>
+      </GlassModal.Footer>
+    </GlassModal>
   );
 }

@@ -30,8 +30,8 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)]/90 p-4 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur-xl outline-hidden",
-          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          "glass z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-xl p-4 text-sm text-label outline-hidden",
+          "data-[state=open]:animate-pop-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-150",
           className
         )}
         {...props}
@@ -60,7 +60,7 @@ function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
     <div
       data-slot="popover-title"
-      className={cn("font-medium text-foreground", className)}
+      className={cn("text-headline text-label", className)}
       {...props}
     />
   )
@@ -73,7 +73,7 @@ function PopoverDescription({
   return (
     <p
       data-slot="popover-description"
-      className={cn("text-white/40 text-sm", className)}
+      className={cn("text-sm text-label-secondary", className)}
       {...props}
     />
   )

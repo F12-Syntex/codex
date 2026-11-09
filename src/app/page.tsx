@@ -13,6 +13,7 @@ import { SettingsPage } from "@/components/pages/settings-page";
 import { ChangelogPage } from "@/components/pages/changelog-page";
 import { InstallerPage } from "@/components/pages/installer-page";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { InkCanvas } from "@/components/ui/ink-canvas";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -481,7 +482,7 @@ export default function Home() {
   const overlayStyle = useMemo(() => {
     if (!theme.backgroundImage) return undefined;
     const s: React.CSSProperties = {
-      backgroundColor: `color-mix(in oklch, var(--foreground) ${theme.backgroundOpacity}%, transparent)`,
+      backgroundColor: `color-mix(in srgb, var(--canvas) ${theme.backgroundOpacity}%, transparent)`,
       backdropFilter: theme.backgroundBlur > 0 ? `blur(${theme.backgroundBlur}px)` : undefined,
     };
     return s;
@@ -496,101 +497,123 @@ export default function Home() {
     return [sectionLabel, vLabel];
   }, [activeSection, activeView]);
 
+  const showInk = !theme.backgroundImage && theme.ambientBackground !== false;
+
   return (
     <TooltipProvider>
       <div
-        className="flex h-full flex-col"
+        className="app-canvas relative flex h-full overflow-hidden"
         data-accent={theme.accent}
         data-appearance={theme.appearance}
         data-tint={theme.tintSurfaces ? "true" : undefined}
         data-cursor={theme.cursorStyle !== "default" ? theme.cursorStyle : undefined}
         style={rootStyle}
       >
-        <TitleBar breadcrumb={breadcrumb} />
-        <ResizablePanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
+        {/* ── Backdrop: wallpaper, or the living ink canvas ── */}
+        {theme.backgroundImage ? (
+          <div className="pointer-events-none absolute inset-0" style={contentStyle}>
+            <div className="absolute inset-0" style={overlayStyle} />
+          </div>
+        ) : showInk ? (
+          <InkCanvas
+            className="absolute inset-0"
+            accentKey={`${theme.accent}-${theme.appearance}-${theme.tintSurfaces}-${theme.customAccentColor}`}
+          />
+        ) : null}
+
+        <ResizablePanelGroup orientation="horizontal" className="relative z-10 h-full overflow-hidden">
           {!sidebarCollapsed && (
             <>
               <ResizablePanel
                 defaultSize={`${theme.sidebarWidth}%`}
-                minSize="180px"
+                minSize="200px"
                 maxSize="400px"
               >
-                <AppSidebar
-                  activeSection={activeSection}
-                  onSectionChange={handleSectionChange}
-                  activeView={activeView}
-                  onViewChange={(v: NavView) => { setActiveView(v); setSelectedIds(new Set()); }}
-                  data={data}
-                  onImport={handleImport}
-                  isDev={isDev}
-                />
+                {/* Floating source list, inset from the window edges */}
+                <div className="h-full py-2 pl-2">
+                  <AppSidebar
+                    activeSection={activeSection}
+                    onSectionChange={handleSectionChange}
+                    activeView={activeView}
+                    onViewChange={(v: NavView) => { setActiveView(v); setSelectedIds(new Set()); }}
+                    data={data}
+                    onImport={handleImport}
+                    isDev={isDev}
+                  />
+                </div>
               </ResizablePanel>
-              <ResizableHandle />
+              <ResizableHandle className="w-2" />
             </>
           )}
           <ResizablePanel defaultSize={sidebarCollapsed ? "100%" : `${100 - theme.sidebarWidth}%`}>
-            <div
-              className="relative flex h-full flex-col overflow-hidden"
-              style={contentStyle}
-            >
-              {theme.backgroundImage && (
-                <div
-                  className="pointer-events-none absolute inset-0"
-                  style={overlayStyle}
-                />
-              )}
-              <div className="relative flex h-full flex-col">
-                {activeView === "settings" ? (
-                  <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} />
-                ) : activeView === "changelog" ? (
-                  <ChangelogPage />
-                ) : activeView === "installer" ? (
-                  <InstallerPage />
-                ) : (
-                  <>
-                    <ContentToolbar
-                      viewMode={viewMode}
-                      onViewModeChange={setViewMode}
-                      viewLabel={viewLabel}
-                      itemCount={processedItems.length}
-                      sortField={sortField}
-                      sortDir={sortDir}
-                      onSortChange={handleSortChange}
-                      formatFilter={formatFilter}
-                      onFormatFilterChange={setFormatFilter}
-                      onImport={handleImport}
-                    />
-                    <ContentGrid
-                      items={processedItems}
-                      viewMode={viewMode}
-                      coverStyle={theme.coverStyle}
-                      showFormatBadge={theme.showFormatBadge}
-                      onMoveItem={handleMoveItem}
-                      onDeleteItem={handleDeleteItem}
-                      onTransferItem={handleTransferItem}
-                      onOpenItem={handleOpenItem}
-                      onViewDetails={setDetailsItem}
-                      activeView={activeView}
-                      section={activeSection}
-                      selectedIds={selectedIds}
-                      onToggleSelect={handleToggleSelect}
-                      onClearSelection={() => setSelectedIds(new Set())}
-                      onBatchDelete={handleBatchDelete}
-                      onBatchMove={handleBatchMove}
-                      readingProgress={readingProgress}
-                    />
-                  </>
-                )}
+            <div className="flex h-full min-w-0 flex-col">
+              <TitleBar
+                breadcrumb={breadcrumb}
+                showIdentity={sidebarCollapsed}
+                onSearchOpen={() => setSearchOpen(true)}
+              />
+              <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex h-full min-h-0 flex-col">
+                  {activeView === "settings" ? (
+                    <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} />
+                  ) : activeView === "changelog" ? (
+                    <ChangelogPage />
+                  ) : activeView === "installer" ? (
+                    <InstallerPage />
+                  ) : (
+                    <>
+                      <ContentToolbar
+                        viewMode={viewMode}
+                        onViewModeChange={setViewMode}
+                        viewLabel={viewLabel}
+                        itemCount={processedItems.length}
+                        sortField={sortField}
+                        sortDir={sortDir}
+                        onSortChange={handleSortChange}
+                        formatFilter={formatFilter}
+                        onFormatFilterChange={setFormatFilter}
+                        onImport={handleImport}
+                      />
+                      <ContentGrid
+                        items={processedItems}
+                        viewMode={viewMode}
+                        coverStyle={theme.coverStyle}
+                        showFormatBadge={theme.showFormatBadge}
+                        onMoveItem={handleMoveItem}
+                        onDeleteItem={handleDeleteItem}
+                        onTransferItem={handleTransferItem}
+                        onOpenItem={handleOpenItem}
+                        onViewDetails={setDetailsItem}
+                        activeView={activeView}
+                        section={activeSection}
+                        selectedIds={selectedIds}
+                        onToggleSelect={handleToggleSelect}
+                        onClearSelection={() => setSelectedIds(new Set())}
+                        onBatchDelete={handleBatchDelete}
+                        onBatchMove={handleBatchMove}
+                        readingProgress={readingProgress}
+                      />
+                    </>
+                  )}
+                </div>
                 <Dock
                   theme={theme}
                   onThemeChange={handleThemeChange}
                   onSearchOpen={() => setSearchOpen(true)}
+                  sidebarVisible={!sidebarCollapsed}
+                  onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
                 />
-              </div>
+              </main>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
-        <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} bookData={bookData} comicData={comicData} />
+        <SearchOverlay
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          bookData={bookData}
+          comicData={comicData}
+          onOpenItem={handleOpenItem}
+        />
         {detailsItem && (
           <BookDetailsModal
             item={detailsItem}
