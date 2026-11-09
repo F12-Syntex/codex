@@ -2,9 +2,8 @@
 
 /**
  * useChapterPipeline(filePath, chapterIndex) — the reader's single source of rendered text
- * (owner: WS-C). Phase 1: written and unit-tested (via the framework-free controller in
- * `electron/shared/pipeline/controller.ts`, see electron/pipeline-controller.test.ts) but NOT
- * mounted; the reader switches to it in Phase 2c.
+ * (owner: WS-C). Mounted by the reader since Phase 2c; the logic lives in the framework-free
+ * controller `electron/shared/pipeline/controller.ts` (electron/pipeline-controller.test.ts).
  *
  * It loads `book:content` (sanitized, ParaId-anchored), the chapter's artifacts
  * (`chapters:artifacts`), the lexicon and the frontier-gated entity index, builds the

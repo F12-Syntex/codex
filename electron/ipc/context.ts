@@ -13,7 +13,7 @@ export interface InvokeEventLike {
 
 /** Subset of `Electron.IpcMain` used by the registry. `ipcMain` satisfies it. */
 export interface IpcMainLike {
-  handle(channel: string, listener: (event: InvokeEventLike, ...args: any[]) => unknown): void;
+  handle(channel: string, listener: (event: InvokeEventLike, ...args: unknown[]) => unknown): void;
   removeHandler(channel: string): void;
 }
 

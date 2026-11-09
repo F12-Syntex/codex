@@ -98,7 +98,11 @@ test("registerBook: book:content (real EPUB), read marks and lexicon RPC with br
   const { ipc, handlers, call } = fakeIpc();
   const ctx = createAreaContext({ db, ipcMain: ipc, getWindows: () => [win] });
   registerBook(ctx, { parse: parseBookContentV2 });
-  assert.deepEqual([...handlers.keys()].sort(), ["book:content", "book:readMarks:get", "book:readMarks:set", "lexicon:get", "lexicon:set"]);
+  assert.deepEqual([...handlers.keys()].sort(), [
+    "book:anchors:delete", "book:anchors:list", "book:anchors:set",
+    "book:annotations:add", "book:annotations:delete", "book:annotations:list",
+    "book:content", "book:readMarks:get", "book:readMarks:set", "lexicon:get", "lexicon:set",
+  ]);
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-bc-"));
   const file = makeEpub(path.join(dir, "named-weird.bin"), [`<p>Hello.</p>`]);

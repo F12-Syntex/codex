@@ -1,24 +1,4 @@
-// Types for the reader (copied from electron.d.ts since it's not a module)
-
-export interface BookChapter {
-  title: string;
-  paragraphs: string[];
-  htmlParagraphs: string[];
-}
-
-export interface TocEntry {
-  label: string;
-  chapterIndex: number;
-}
-
-export interface BookContent {
-  chapters: BookChapter[];
-  isImageBook: boolean;
-  toc: TocEntry[];
-  fontFamily?: string;
-  fontSizePx?: number;
-  css?: string;
-}
+// Reader UI types. Book content types live in @shared/pipeline/types (BookContentV2, TocEntry).
 
 export interface ReaderBookmark {
   id: number;

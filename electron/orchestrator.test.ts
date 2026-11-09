@@ -329,7 +329,7 @@ test("integration: real WS-A scheduler + fake provider + WS-D tasks; registerCha
   const orch = registerChapters(ctx, { scheduler: rt.scheduler, books: fakeBooks({ [BOOK]: chapters }) })!;
   assert.deepEqual([...handlers.keys()].sort(), [
     "bulk:cancel", "bulk:start", "bulk:status", "chapters:artifacts", "chapters:clear", "chapters:ensure",
-    "chapters:prefs:get", "chapters:prefs:set", "chapters:status", "style:get", "style:regenerate",
+    "chapters:prefs:get", "chapters:prefs:set", "chapters:status", "chapters:titles", "style:get", "style:regenerate",
   ]);
   const meta = { sender: { id: 1 } };
   await handlers.get("chapters:prefs:set")!(meta, BOOK, { titles: true });

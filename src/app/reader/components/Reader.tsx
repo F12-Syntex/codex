@@ -151,7 +151,7 @@ export function Reader({ filePath, title, author }: ReaderProps) {
     annotations: quoteAnnotations,
   });
   const { book, lexicon } = pipeline;
-  const chapters = book?.chapters ?? [];
+  const chapters = useMemo(() => book?.chapters ?? [], [book]);
   const totalChapters = chapters.length;
   const ready = pipeline.chapterIndex === currentChapter && pipeline.status === "ready";
   const chapter: RenderedChapter | null = ready ? pipeline.chapter : null;
@@ -370,8 +370,9 @@ export function Reader({ filePath, title, author }: ReaderProps) {
   const navViaRef = useRef<"page" | "jump">("page");
   const maxPageRef = useRef<{ chapter: number; page: number }>({ chapter: -1, page: 0 });
 
-  const handleChapterChange = useCallback((index: number, opts: { lastPage?: boolean; via?: "page" | "jump" } = {}) => {
-    if (branchLockChapter !== null && index > branchLockChapter) return;
+  const handleChapterChange = useCallback((index: number, opts: { lastPage?: boolean; via?: "page" | "jump"; force?: boolean } = {}) => {
+    // While a "what if" branch is shown, the story can't continue past the branch chapter.
+    if (!opts.force && branchLockChapter !== null && index > branchLockChapter) return;
     tts.actions.stop();
     navViaRef.current = opts.via ?? "page";
     pendingLastPageRef.current = !!opts.lastPage;
@@ -382,11 +383,11 @@ export function Reader({ filePath, title, author }: ReaderProps) {
   }, [tts.actions, branchLockChapter]);
   handleChapterChangeRef.current = handleChapterChange;
 
-  const navigateToRef = useCallback((ref: { chapterId: string; paraId: ParaId }, fallbackChapter?: number) => {
+  const navigateToRef = useCallback((ref: { chapterId: string; paraId: ParaId }, fallbackChapter?: number, force = false) => {
     const idx = chapters.findIndex((c) => c.id === ref.chapterId);
     const target = idx >= 0 ? idx : fallbackChapter;
     if (target === undefined || target < 0) return;
-    if (target !== currentChapter) handleChapterChange(target, { via: "jump" });
+    if (target !== currentChapter) handleChapterChange(target, { via: "jump", force });
     else navViaRef.current = "jump";
     setReveal({ chapterIndex: target, paraId: ref.paraId });
   }, [chapters, currentChapter, handleChapterChange]);
@@ -695,6 +696,12 @@ export function Reader({ filePath, title, author }: ReaderProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
+      // Ctrl/Cmd+W closes the reader, like every desktop app (Esc never does).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        window.electronAPI?.close();
+        return;
+      }
       if (e.key === "Escape") {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") {
@@ -1044,7 +1051,7 @@ export function Reader({ filePath, title, author }: ReaderProps) {
           onLoadBranch={(b) => {
             setShowBranchList(false);
             void sim.load(b.id);
-            navigateToRef(b.ref, b.chapterIndex);
+            navigateToRef(b.ref, b.chapterIndex, true);
           }}
           onDeleteBranch={(id) => void sim.remove(id)}
           activeBranchId={sim.active?.id}

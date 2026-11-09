@@ -9,12 +9,16 @@
 import * as React from "react";
 import type { Citation } from "@shared/assistant/types";
 import { parseMarkdown, type MdBlock, type MdInline } from "@shared/assistant/markdown";
+import { applyLexiconText } from "@shared/pipeline/lexicon";
+import { useLexicon } from "@/lib/book/lexicon";
 import { cn } from "@/lib/utils";
 import { CitationChip } from "./CitationChip";
 import { useAssistantUI } from "./context";
 
-export function EntityMention({ id, name }: { id: string; name: string }) {
+export function EntityMention({ id, name: rawName }: { id: string; name: string }) {
   const { openEntity } = useAssistantUI();
+  // AI text shown to the reader passes through the display lexicon (word replacements).
+  const name = applyLexiconText(rawName, useLexicon(), "display");
   const cls = "rounded-xs bg-brand/10 px-1 font-medium text-brand decoration-brand/40 underline-offset-2";
   if (!openEntity) return <span className={cls}>{name}</span>;
   return (
@@ -29,12 +33,13 @@ export function EntityMention({ id, name }: { id: string; name: string }) {
 }
 
 function Inline({ nodes, citations }: { nodes: MdInline[]; citations: Citation[] }) {
+  const lex = useLexicon();
   return (
     <>
       {nodes.map((n, i) => {
         switch (n.t) {
           case "text":
-            return <React.Fragment key={i}>{n.v}</React.Fragment>;
+            return <React.Fragment key={i}>{applyLexiconText(n.v, lex, "display")}</React.Fragment>;
           case "strong":
             return <strong key={i} className="font-semibold text-label"><Inline nodes={n.c} citations={citations} /></strong>;
           case "em":

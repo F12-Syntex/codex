@@ -128,8 +128,9 @@ export function useTTS({
   }, [voice, rate, pitch, volume]);
 
   useEffect(() => {
+    const session = sessionRef;
     return () => {
-      sessionRef.current++;
+      session.current++;
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;

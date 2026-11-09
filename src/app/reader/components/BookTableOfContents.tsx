@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Search, X, ChevronRight } from "lucide-react";
-import type { TocEntry, ThemeClasses } from "../lib/types";
+import type { TocEntry } from "@shared/pipeline/types";
+import type { ThemeClasses } from "../lib/types";
 import { cn } from "@/lib/utils";
 import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
 

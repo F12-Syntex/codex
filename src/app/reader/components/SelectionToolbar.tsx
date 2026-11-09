@@ -24,6 +24,8 @@ interface ToolbarState {
   x: number;
   y: number;
   paraIndex: number;
+  /** Container width when the selection was made (for clamping). */
+  containerWidth: number;
   /** Null for text that isn't a book paragraph (e.g. a "what if" continuation). */
   payload: SelectionPayload | null;
 }
@@ -108,6 +110,7 @@ export function SelectionToolbar({ containerRef, filePath, chapterId, chapterInd
           x: rect.left + rect.width / 2 - containerRect.left,
           y: rect.top - containerRect.top - 8,
           paraIndex,
+          containerWidth: container.clientWidth,
           payload,
         });
         setCopied(false);
@@ -183,7 +186,7 @@ export function SelectionToolbar({ containerRef, filePath, chapterId, chapterInd
   // Clamp the pill to the container (estimate until the first measure lands).
   const actionCount = 1 + (onPlayFromParagraph ? 1 : 0) + Object.values(show).filter(Boolean).length;
   const width = toolbarWidth || actionCount * 60;
-  const containerWidth = containerRef.current?.clientWidth ?? 800;
+  const containerWidth = state.containerWidth || 800;
   const clampedX = Math.max(width / 2 + 4, Math.min(state.x, containerWidth - width / 2 - 4));
 
   return (

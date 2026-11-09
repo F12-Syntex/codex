@@ -10,12 +10,12 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
 import { PANEL_SPRING, LAYOUT_SPRING, stopNavKeys } from "./chrome";
 import { visibleChapterNo } from "../lib/chapter-number";
-import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
+import type { ReaderBookmark, ThemeClasses } from "../lib/types";
 
 type Tab = "chapters" | "bookmarks";
 
 interface TOCSidebarProps {
-  chapters: BookChapter[];
+  chapters: { title: string }[];
   currentChapter: number;
   bookmarks: ReaderBookmark[];
   theme: ThemeClasses;
@@ -67,8 +67,6 @@ export function TOCSidebar({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Reset limit when search changes so results appear immediately
-  useEffect(() => { setRenderLimit(searchQuery ? Infinity : 60); }, [searchQuery]);
 
   // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
@@ -210,7 +208,11 @@ export function TOCSidebar({
             ref={inputRef}
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              // Show results immediately while searching (no progressive render).
+              if (e.target.value) setRenderLimit(Infinity);
+            }}
             onKeyDown={() => setSearchEngaged(true)}
             onPointerDown={() => setSearchEngaged(true)}
             onBlur={() => setSearchEngaged(false)}
@@ -219,7 +221,7 @@ export function TOCSidebar({
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => { setSearchQuery(""); }}
               aria-label="Clear search"
               className="focus-ring -mr-1 flex size-5 shrink-0 items-center justify-center rounded-full text-label-tertiary transition-colors hover:bg-fill-secondary hover:text-label"
             >
