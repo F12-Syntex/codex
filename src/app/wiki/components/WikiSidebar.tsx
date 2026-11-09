@@ -14,7 +14,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { BarChart2, BookOpen, Network, LayoutGrid } from "lucide-react";
-import type { WikiEntryType } from "@/lib/ai-wiki";
+import type { WikiEntryType } from "@shared/knowledge/types";
 import { cn } from "@/lib/utils";
 import { tintOf } from "@/lib/wiki-type-meta";
 import { SearchField } from "@/components/ui/search-field";

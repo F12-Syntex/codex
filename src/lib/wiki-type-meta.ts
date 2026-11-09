@@ -21,7 +21,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { WikiEntryType } from "@/lib/ai-wiki";
+import type { WikiEntryType } from "@shared/knowledge/types";
 
 /** `pct`% of `color` over transparent: rings, glows and washes. */
 export function tintOf(color: string, pct: number): string {

@@ -58,6 +58,8 @@ export interface EntityDetail {
   source?: string;
   /** True when a later detail (≤ frontier) of the same category replaced it. */
   superseded: boolean;
+  /** Additive (Phase 2b): 1–5 importance from ingestion (the wiki archives < 2). */
+  relevance?: number;
 }
 
 export interface EntityRelationship {
@@ -83,6 +85,14 @@ export interface EntitySnapshot {
   color?: string;
   details: EntityDetail[];
   relationships: EntityRelationship[];
+  // Additive (Phase 2b) — filled by `knowledge:entity` only (the wiki article page):
+  /** Long description. It is not versioned, so it is only included when nothing about the entry
+   *  happens after the frontier (or the frontier is "off"). */
+  description?: string;
+  /** Aliases (≤ frontier) with their kind and 1–5 relevance; `aliases` keeps the plain names. */
+  aliasDetails?: { alias: string; type: string; relevance: number }[];
+  /** Chapters ≤ frontier the entry appears in, ascending. */
+  appearances?: number[];
 }
 
 // ── Context for prompts ─────────────────────────────────────────────────────
@@ -229,6 +239,22 @@ export interface WikiSnapshot {
   mc?: { entityId: string; stats: (MCStat & { category: string; active: boolean; chapter: number })[] };
   /** Chapters with a completed knowledge run (any frontier). */
   processedChapters: number[];
+  /** Additive (Phase 2b): merges whose entries are both visible at the frontier, newest first.
+   *  Revert one with `knowledge:edits:undo(undoId)`. */
+  mergeLog?: WikiMergeItem[];
+}
+
+/** Additive (Phase 2b): one entry of the wiki's merge history. */
+export interface WikiMergeItem {
+  /** `wiki_merge_log` id. */
+  id: number;
+  /** `knowledge_edit_log` id to pass to `knowledge:edits:undo`. */
+  undoId: number;
+  sourceId: string;
+  sourceName: string;
+  targetId: string;
+  targetName: string;
+  mergedAt: string;
 }
 
 // ── Main-side reader (used by tasks via TaskContext.knowledge) ──────────────

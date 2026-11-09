@@ -250,3 +250,42 @@ export type ApplyLexiconFn = (html: string, lex: Lexicon, scope: "display" | "sp
 
 /** Whether a stored layer could be applied to the current source (see `applyLayers`). */
 export type LayerState = "none" | "applied" | "stale" | "hidden";
+
+// ── Anchored user data (additive, WS-C Phase 2c) ────────────────────────────
+
+/** A user annotation (`annotations` table), anchored by ParaRef. AI comments are artifacts. */
+export interface BookAnnotation {
+  id: number;
+  filePath: string;
+  chapterId: ChapterId;
+  paraId: ParaId;
+  kind: "comment" | "highlight";
+  author: "user";
+  text: string;
+  /** Paragraph text (or the highlighted words) at creation time, for re-anchoring after re-parse. */
+  quote: string;
+  createdAt: number;
+}
+
+export interface NewBookAnnotation {
+  filePath: string;
+  chapterId: ChapterId;
+  paraId: ParaId;
+  kind: "comment" | "highlight";
+  text?: string;
+  quote?: string;
+}
+
+/** Rows kept in legacy tables (`quotes`, `bookmarks`) get their ParaRef from `para_anchors`. */
+export type AnchorKind = "quote" | "bookmark";
+
+export interface BookAnchor {
+  kind: AnchorKind;
+  /** The legacy row id (as a string). */
+  refId: string;
+  filePath: string;
+  chapterId: ChapterId;
+  paraId: ParaId;
+  /** Quote text (quotes) used to re-anchor and to highlight the passage. */
+  quote?: string;
+}

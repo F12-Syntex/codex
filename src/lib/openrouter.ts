@@ -1,10 +1,15 @@
-/* ── OpenRouter API middleware ───────────────────────────── */
+/* ── OpenRouter compatibility shim (Phase 2) ──────────────────
+ *
+ * The renderer no longer talks to OpenRouter. `createOpenRouterClient().chat()` runs as a
+ * `legacy.complete` job on the main-process AI core (via `ai-client.ts`), so it shares the one
+ * queue, cache and safeStorage key. The `apiKey` argument is ignored, and the model id only picks
+ * a role: web-search models (`perplexity/*`, `…:online`) use the Web role, anything else Fast; the
+ * concrete model is whatever Settings › Intelligence has for that role.
+ *
+ * Deleted in Phase 3 once nothing imports it.
+ */
 
-import {
-  getPreset,
-  getEffectiveModel,
-  type PresetOverrides,
-} from "./ai-presets";
+import { ai as complete, type AIRequestOptions } from "./ai-client";
 
 export interface OpenRouterMessage {
   role: "system" | "user" | "assistant";
@@ -27,114 +32,31 @@ interface ChatOptions {
 }
 
 interface OpenRouterClient {
-  chat(
-    messages: OpenRouterMessage[],
-    model: string,
-    options?: ChatOptions,
-  ): Promise<OpenRouterResponse>;
+  chat(messages: OpenRouterMessage[], model: string, options?: ChatOptions): Promise<OpenRouterResponse>;
 }
 
-const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_MODELS_API = "https://openrouter.ai/api/v1/models";
-
-export interface OpenRouterModel {
-  id: string;
-  name: string;
-  pricing: { prompt: string; completion: string };
-  context_length: number;
+function roleForModel(model: string): NonNullable<AIRequestOptions["role"]> {
+  return model.startsWith("perplexity/") || model.endsWith(":online") ? "web" : "fast";
 }
 
-let cachedModels: OpenRouterModel[] | null = null;
-
-/** Fetch available models from OpenRouter (cached after first call). */
-export async function fetchModels(): Promise<OpenRouterModel[]> {
-  if (cachedModels) return cachedModels;
-
-  const res = await fetch(OPENROUTER_MODELS_API);
-  if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
-
-  const json = (await res.json()) as { data: OpenRouterModel[] };
-  cachedModels = json.data
-    .filter((m) => m.id && m.name)
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  return cachedModels;
-}
-
-/** Validate an API key by sending a minimal request. */
-export async function testApiKey(apiKey: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const preset = getPreset("quick");
-    const model = preset?.defaultModel ?? "openai/gpt-4o-mini";
-    const client = createOpenRouterClient(apiKey);
-    await client.chat(
-      [{ role: "user", content: "hi" }],
-      model,
-      { max_tokens: 1 },
-    );
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
-  }
-}
-
-export function createOpenRouterClient(apiKey: string): OpenRouterClient {
+export function createOpenRouterClient(_apiKey?: string | null): OpenRouterClient {
+  void _apiKey;
   return {
     async chat(messages, model, options = {}) {
-      const res = await fetch(OPENROUTER_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://github.com/F12-Syntex/codex",
-          "X-Title": "Codex",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          ...options,
-          // Disable Gemini safety filters so dark fiction (violence, abuse, etc.) isn't blocked
-          ...(model.startsWith("google/") && {
-            safety_settings: [
-              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-              { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-              { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-              { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-            ],
-          }),
-        }),
+      const role = roleForModel(model);
+      const r = await complete({
+        preset: role,
+        role,
+        messages,
+        temperature: options.temperature,
+        maxTokens: options.max_tokens,
       });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "Unknown error");
-        throw new Error(`OpenRouter ${res.status}: ${text}`);
-      }
-
-      return res.json() as Promise<OpenRouterResponse>;
+      return {
+        id: "",
+        choices: [{ message: { role: "assistant", content: r.content }, finish_reason: r.finish_reason }],
+        model: r.model,
+        usage: r.usage,
+      };
     },
   };
-}
-
-/**
- * Send a chat request using a named preset's model and parameters.
- * Caller can provide `options` as defaults — preset values override them if defined.
- */
-export async function chatWithPreset(
-  apiKey: string,
-  presetId: string,
-  messages: OpenRouterMessage[],
-  overrides?: PresetOverrides,
-  options?: ChatOptions,
-): Promise<OpenRouterResponse> {
-  const preset = getPreset(presetId);
-  if (!preset) throw new Error(`Unknown AI preset: "${presetId}"`);
-
-  const model = getEffectiveModel(preset, overrides ?? {});
-  const client = createOpenRouterClient(apiKey);
-
-  return client.chat(messages, model, {
-    ...options,
-    ...(preset.temperature !== undefined && { temperature: preset.temperature }),
-    ...(preset.maxTokens !== undefined && { max_tokens: preset.maxTokens }),
-  });
 }

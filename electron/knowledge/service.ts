@@ -15,6 +15,7 @@ import { applyEdits, undoEdit, type ApplyEditsOutcome } from "./edits";
 import { frontierEvent, knowledgeEvent, safeEmitter } from "./events";
 import { getFrontier, markRecapSeen, recapStatus, recordPosition, type SpoilerMode } from "./frontier";
 import { clearChapterKnowledge } from "./ingest";
+import { adoptLegacyMerges, mergeLogAt } from "./legacy";
 import { buildWikiSnapshot, defaultLabel, getEntityAt, getEntityIndexAt, type ChapterLabeler } from "./read";
 import { ensureIndexed, isIndexed, searchBook, type BookSource } from "./search";
 import { clearWiki } from "./store";
@@ -106,7 +107,17 @@ export function createKnowledgeService(opts: KnowledgeServiceOptions): Knowledge
       if (r.changed) emit(frontierEvent(filePath, r.frontier));
       return mode() === "frontier" ? r.frontier : getFrontier(db, filePath, mode());
     },
-    wiki: (filePath, frontier) => buildWikiSnapshot(db, filePath, resolveFrontier(filePath, frontier), labelsFor(filePath)),
+    wiki(filePath, frontier) {
+      const f = resolveFrontier(filePath, frontier);
+      const snap = buildWikiSnapshot(db, filePath, f, labelsFor(filePath));
+      try {
+        adoptLegacyMerges(db, filePath, now());
+        snap.mergeLog = mergeLogAt(db, filePath, f);
+      } catch (err) {
+        console.warn("[knowledge] merge history unavailable", err);
+      }
+      return snap;
+    },
     applyEdits(filePath, edits) {
       const out = applyEdits(db, filePath, edits, now());
       if (out.applied > 0) emit(knowledgeEvent(filePath, out.chapters, out.mergeLogIds.length ? "merge" : "edit"));

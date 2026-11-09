@@ -13,6 +13,7 @@
 
 import type { AreaContext } from "../ipc/context";
 import { peekAIRuntime } from "../ai/runtime";
+import { getBookContentReader } from "../book/content-cache";
 import { AssistantService, type AssistantRuntime } from "./service";
 
 let service: AssistantService | null = null;
@@ -40,6 +41,13 @@ export function registerAssistant(ctx: AreaContext): AssistantService {
       console.error("[assistant] task registration failed", err);
     }
   }
+  // Book content (lazy: parsing happens only when a legacy Simulate branch needs anchoring).
+  svc.configure({
+    books: {
+      getBook: (filePath) => getBookContentReader().getBook(filePath),
+      getChapter: (filePath, index) => getBookContentReader().getChapter(filePath, index),
+    },
+  });
   if (pendingRuntime) svc.configure(pendingRuntime);
   pendingRuntime = null;
   service = svc;

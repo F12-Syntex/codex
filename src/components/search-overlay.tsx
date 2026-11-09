@@ -10,7 +10,7 @@
  * Re-tokenised to Codex glass; search logic unchanged.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo, useId } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useId } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Search, CornerDownLeft, BookOpen } from "lucide-react";
@@ -98,13 +98,18 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
     return map;
   }, [filtered]);
 
+  // Reset when the overlay closes (not on open) so keys typed right after
+  // Ctrl+K are never wiped; focus synchronously as soon as the input mounts.
   useEffect(() => {
-    if (open) {
+    if (!open) {
       setQuery("");
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open, mounted]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -186,6 +191,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
               <Search className="size-5 shrink-0 text-label-tertiary" strokeWidth={2} />
               <input
                 ref={inputRef}
+                autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by title or author"

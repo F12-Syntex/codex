@@ -9,6 +9,7 @@
  */
 
 import type { Migration } from "../db/migrate";
+import { importLegacyChats } from "./legacy";
 
 export const assistantMigrations: Migration[] = [
   {
@@ -82,5 +83,15 @@ export const assistantMigrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_vocab_file ON vocab_items(file_path);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_vocab_term ON vocab_items(COALESCE(file_path, ''), lower(term));
     `,
+  },
+  {
+    // Phase 2d: legacy Buddy / chat history (settings keys) → assistant threads, then the legacy
+    // keys are removed. Per-book failures are logged and left for the lazy per-book import
+    // (`AssistantService.listThreads`). Simulate branches need the parsed book: imported lazily.
+    version: 2,
+    name: "import legacy buddy and chat history",
+    up: (db) => {
+      importLegacyChats(db, { onError: (filePath, err) => console.error(`[assistant] legacy chat import failed for ${filePath}`, err) });
+    },
   },
 ];

@@ -8,7 +8,6 @@ import {
   Trash2,
   Download,
   ExternalLink,
-  RotateCcw,
   Plus,
   X,
   Sparkles,
@@ -17,31 +16,20 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
-  Loader2,
   Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { GlassModal } from "@/components/ui/glass-modal";
-import { SecureInput } from "@/components/ui/secure-input";
 import { APP_VERSION } from "@/lib/version";
-import { testApiKey } from "@/lib/openrouter";
-import { ModelCombobox } from "@/components/ui/model-combobox";
 import { ThemePanel } from "@/components/theme-panel";
+import { IntelligencePane, AICacheGroup } from "@/components/settings/intelligence-pane";
+import { chapters, hasRpc } from "@/lib/ai/bridge";
 import type { ThemeConfig } from "@/lib/theme";
-import {
-  DEFAULT_PRESETS,
-  PRESET_OVERRIDES_KEY,
-  getEffectiveModel,
-  parseOverrides,
-  stringifyOverrides,
-  type PresetOverrides,
-} from "@/lib/ai-presets";
 import {
   loadReplacements,
   saveReplacements,
@@ -95,11 +83,6 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
   const [lastScanCount, setLastScanCount] = useState<number | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [testingKey, setTestingKey] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
-  const [presetOverrides, setPresetOverrides] = useState<PresetOverrides>({});
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
   const [clearStatus, setClearStatus] = useState<string | null>(null);
   const [wordReplacements, setWordReplacements] = useState<WordReplacement[]>([]);
@@ -115,13 +98,9 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
     Promise.all([
       api!.getSetting("libraryPath"),
       api!.getSetting("autoScan"),
-      api!.getSetting("openrouterApiKey"),
-      api!.getSetting(PRESET_OVERRIDES_KEY),
-    ]).then(([path, scan, key, overridesJson]) => {
+    ]).then(([path, scan]) => {
       if (path) setLibraryPath(path);
       if (scan) setAutoScan(scan === "true");
-      if (key) setApiKey(key);
-      setPresetOverrides(parseOverrides(overridesJson));
     });
     loadReplacements().then(setWordReplacements);
   });
@@ -254,40 +233,17 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
       await api?.clearSettingsByPrefix?.("fmtCondensedChapters:");
       await api?.clearSettingsByPrefix?.("styleDictionary:");
       await api?.clearSettingsByPrefix?.("formattingEnabled:");
+      // Formatted chapters from the new chapter pipeline, for every book in the library.
+      if (hasRpc() && api?.getItems) {
+        const items = (await Promise.all(LIBRARY_SECTIONS.map((s) => api.getItems(s)))).flat();
+        await Promise.all(items.map((item) => chapters.clear(item.filePath, "format").catch(() => {})));
+      }
       setClearStatus("Formatting cache cleared");
       setTimeout(() => setClearStatus(null), 3000);
     } catch {
       setClearStatus("Failed to clear formatting");
       setTimeout(() => setClearStatus(null), 3000);
     }
-  };
-
-  const handleApiKeyChange = (value: string) => {
-    setApiKey(value);
-    setTestResult(null);
-    if (hasApi) api!.setSetting("openrouterApiKey", value);
-  };
-
-  const handleTestKey = async () => {
-    if (!apiKey.trim()) return;
-    setTestingKey(true);
-    setTestResult(null);
-    const result = await testApiKey(apiKey);
-    setTestResult(result);
-    setTestingKey(false);
-  };
-
-  const handlePresetModelChange = (presetId: string, model: string) => {
-    const next = { ...presetOverrides, [presetId]: { model } };
-    setPresetOverrides(next);
-    if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
-  };
-
-  const handlePresetReset = (presetId: string) => {
-    const next = { ...presetOverrides };
-    delete next[presetId];
-    setPresetOverrides(next);
-    if (hasApi) api!.setSetting(PRESET_OVERRIDES_KEY, stringifyOverrides(next));
   };
 
   const handleReplacementChange = (index: number, field: "from" | "to", value: string) => {
@@ -314,7 +270,7 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
     { value: "library", label: "Library", icon: Folder, description: "Where Codex finds your books and comics, and how it keeps them in sync." },
     { value: "appearance", label: "Appearance", icon: Palette, description: "Mode, accent, type and canvas. The same controls as the dock’s Appearance button." },
     { value: "books", label: "Reading", icon: BookText, description: "Fine-tune how book text is rendered while you read." },
-    { value: "ai", label: "Intelligence", icon: Sparkles, description: "Connect OpenRouter and choose the models behind every AI feature." },
+    { value: "ai", label: "Intelligence", icon: Sparkles, description: "Connect OpenRouter, choose the models behind every AI feature, and set limits." },
     { value: "updates", label: "Software Update", icon: Download, description: "Keep Codex current and learn about this build." },
     { value: "storage", label: "Storage", icon: HardDrive, description: "Reset cached data. Files on disk are never touched." },
   ];
@@ -327,12 +283,6 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
     else if (confirmAction === "wiki") handleClearWiki();
     else if (confirmAction === "formatting") handleClearFormatting();
   };
-
-  const testDescription = testResult
-    ? testResult.ok
-      ? "API key is valid"
-      : testResult.error ?? "Invalid key"
-    : "Verify your key works";
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -488,38 +438,41 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
               )}
 
               {activeTab === "storage" && (
-                <ListGroup
-                  title="Reset"
-                  footer={
-                    clearStatus ? (
-                      <span className={cn("inline-flex items-center gap-1.5", clearStatus.startsWith("Failed") ? "text-danger" : "text-success")}>
-                        {clearStatus.startsWith("Failed") ? <X className="size-3.5" strokeWidth={2} /> : <Check className="size-3.5" strokeWidth={2} />}
-                        {clearStatus}
-                      </span>
-                    ) : (
-                      "These actions can't be undone."
-                    )
-                  }
-                >
-                  <ListRow
-                    label="Clear library"
-                    description="Remove all items from your library. Files on disk are not affected."
+                <>
+                  <AICacheGroup />
+                  <ListGroup
+                    title="Reset"
+                    footer={
+                      clearStatus ? (
+                        <span className={cn("inline-flex items-center gap-1.5", clearStatus.startsWith("Failed") ? "text-danger" : "text-success")}>
+                          {clearStatus.startsWith("Failed") ? <X className="size-3.5" strokeWidth={2} /> : <Check className="size-3.5" strokeWidth={2} />}
+                          {clearStatus}
+                        </span>
+                      ) : (
+                        "These actions can't be undone."
+                      )
+                    }
                   >
-                    <DangerButton onClick={handleClearLibrary}>Clear…</DangerButton>
-                  </ListRow>
-                  <ListRow
-                    label="Clear wiki data"
-                    description="Delete all wiki entries, relationships, arcs, and summaries for every book."
-                  >
-                    <DangerButton onClick={handleClearWiki}>Clear…</DangerButton>
-                  </ListRow>
-                  <ListRow
-                    label="Clear formatting cache"
-                    description="Delete all AI-formatted chapter data. Chapters will reformat on next visit."
-                  >
-                    <DangerButton onClick={handleClearFormatting}>Clear…</DangerButton>
-                  </ListRow>
-                </ListGroup>
+                    <ListRow
+                      label="Clear library"
+                      description="Remove all items from your library. Files on disk are not affected."
+                    >
+                      <DangerButton onClick={handleClearLibrary}>Clear…</DangerButton>
+                    </ListRow>
+                    <ListRow
+                      label="Clear wiki data"
+                      description="Delete all wiki entries, relationships, arcs, and summaries for every book."
+                    >
+                      <DangerButton onClick={handleClearWiki}>Clear…</DangerButton>
+                    </ListRow>
+                    <ListRow
+                      label="Clear formatting cache"
+                      description="Delete all AI-formatted chapter data. Chapters will reformat on next visit."
+                    >
+                      <DangerButton onClick={handleClearFormatting}>Clear…</DangerButton>
+                    </ListRow>
+                  </ListGroup>
+                </>
               )}
 
               {activeTab === "books" && (
@@ -571,106 +524,7 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
                 </ListGroup>
               )}
 
-              {activeTab === "ai" && (
-                <>
-                  <ListGroup title="OpenRouter" footer="Your key is stored locally and only sent to OpenRouter.">
-                    <ListRow
-                      label="API key"
-                      description="Used for AI-powered features like recommendations"
-                    >
-                      <SecureInput
-                        value={apiKey}
-                        onChange={(e) => handleApiKeyChange(e.target.value)}
-                        placeholder="sk-or-..."
-                        revealed={showApiKey}
-                        onRevealedChange={setShowApiKey}
-                        containerClassName="w-60"
-                        aria-label="OpenRouter API key"
-                      />
-                    </ListRow>
-                    <ListRow
-                      label="Test connection"
-                      description={
-                        <span className={cn(testResult?.ok && "text-success", testResult && !testResult.ok && "text-danger")}>
-                          {testDescription}
-                        </span>
-                      }
-                    >
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleTestKey}
-                        disabled={testingKey || !apiKey.trim()}
-                        className={cn("w-24", testResult?.ok && "text-success", testResult && !testResult.ok && "text-danger")}
-                      >
-                        {testingKey ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : testResult?.ok ? (
-                          <Check className="size-3.5" strokeWidth={2.5} />
-                        ) : testResult && !testResult.ok ? (
-                          <X className="size-3.5" strokeWidth={2.5} />
-                        ) : (
-                          <RefreshCw className="size-3.5" />
-                        )}
-                        {testingKey ? "Testing" : testResult?.ok ? "Valid" : testResult && !testResult.ok ? "Failed" : "Test"}
-                      </Button>
-                    </ListRow>
-                    <ListRow
-                      label="Get an API key"
-                      description="openrouter.ai/keys"
-                      onClick={() => window.open("https://openrouter.ai/keys", "_blank")}
-                    >
-                      <ArrowRight className="size-4 text-label-tertiary" strokeWidth={1.75} />
-                    </ListRow>
-                  </ListGroup>
-
-                  <ListGroup
-                    title="Model Presets"
-                    footer="Pick which model powers each AI feature. Customised presets can be reset to their default."
-                  >
-                    {DEFAULT_PRESETS.map((preset) => {
-                      const isOverridden = !!presetOverrides[preset.id];
-                      const effectiveModel = getEffectiveModel(preset, presetOverrides);
-
-                      return (
-                        <ListRow
-                          key={preset.id}
-                          label={
-                            <span className="inline-flex items-center gap-2">
-                              {preset.label}
-                              {isOverridden && <Badge variant="accent">Custom</Badge>}
-                            </span>
-                          }
-                          description={preset.description}
-                        >
-                          {/* Reset slot sits BEFORE the combobox so the combobox's
-                              trailing edge lands on the row's 12px inset like every
-                              other control; the fixed slot keeps the comboboxes aligned. */}
-                          <span className="inline-flex size-7 items-center justify-center">
-                            {isOverridden && (
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                onClick={() => handlePresetReset(preset.id)}
-                                title="Reset to default"
-                                aria-label={`Reset ${preset.label} to default`}
-                                className="text-label-tertiary hover:text-label"
-                              >
-                                <RotateCcw className="size-3.5" />
-                              </Button>
-                            )}
-                          </span>
-                          <ModelCombobox
-                            value={effectiveModel}
-                            onChange={(model) => handlePresetModelChange(preset.id, model)}
-                            placeholder={preset.defaultModel}
-                          />
-                        </ListRow>
-                      );
-                    })}
-                  </ListGroup>
-                </>
-              )}
+              {activeTab === "ai" && <IntelligencePane />}
             </motion.div>
           </AnimatePresence>
         </div>

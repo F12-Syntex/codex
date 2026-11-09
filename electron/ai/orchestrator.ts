@@ -947,6 +947,40 @@ export class ChapterOrchestrator {
     this.emitRun(run);
   }
 
+  /**
+   * The book's last reader window closed (AI_AUDIT §4.4.6 lifecycle, matrix #11): stop its bulk
+   * runs and drop every queued/running entry for the book. Cancelled entries never write
+   * (`settle` → "cancelled"), so nothing lands after the window is gone.
+   */
+  cancelBook(filePath: string): number {
+    let n = 0;
+    for (const run of this.runs.values()) {
+      if (run.status.filePath === filePath && run.status.state === "running") this.cancelBulk(run.status.runId);
+    }
+    for (const e of [...this.inflight.values()]) {
+      if (e.filePath !== filePath || e.aborted) continue;
+      this.abort(e);
+      n++;
+    }
+    return n;
+  }
+
+  /** Ready AI titles by chapter index (only while the book's `titles` pref is on). */
+  async chapterTitles(filePath: string): Promise<Record<number, string>> {
+    const out: Record<number, string> = {};
+    const prefs = this.deps.prefs.get(filePath);
+    if (!prefs.titles) return out;
+    const book = await this.deps.books.getBook(filePath);
+    const idx = this.metaIndex(filePath);
+    const byId = new Map(this.deps.artifacts.list<{ title: string }>(filePath, "title").map((a) => [a.chapterId, a]));
+    for (const ch of book.chapters) {
+      if (this.artifactState(ch, "title", prefs, idx) !== "ready") continue;
+      const t = byId.get(ch.id)?.data.title;
+      if (t) out[ch.index] = t;
+    }
+    return out;
+  }
+
   /** Resolves when the run is no longer running (tests, shutdown). */
   async waitForRun(runId: string): Promise<BulkStatus | null> {
     const run = this.runs.get(runId);

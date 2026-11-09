@@ -15,6 +15,7 @@ function isAllowedEvent(event: unknown): event is string {
 }
 
 /** Subscribe to `channel`; returns an unsubscriber that removes exactly this listener. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload types are per channel (see electron.d.ts)
 function subscribe(channel: string, listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void): () => void {
   ipcRenderer.on(channel, listener);
   return () => { ipcRenderer.removeListener(channel, listener); };

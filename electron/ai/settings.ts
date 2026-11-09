@@ -6,12 +6,13 @@
  * - The API key is encrypted with Electron `safeStorage` (injected as `SecretCipher`) under
  *   `ai:key:v1`. The renderer only ever sees `hasKey` / `keyHealth`.
  * - Legacy migration (`ai-preset-overrides`, `openrouterApiKey`):
- *     Phase 1 (now, `activate: false`): READ-ONLY. With no `ai:settings:v1`, settings are derived
- *       from the legacy preset overrides on the fly; the key falls back to the legacy plaintext
- *       key. Nothing legacy is written or deleted, so the old renderer client is unaffected.
- *     Phase 2a (`activateMigration()`): writes `ai:settings:v1` and moves the key into safeStorage.
- *       The legacy plaintext key is removed one release later (Phase 3), together with the
- *       `ai:key:get-legacy` shim.
+ *     Before activation: READ-ONLY. With no `ai:settings:v1`, settings are derived from the
+ *       legacy preset overrides on the fly; the key falls back to the legacy plaintext key.
+ *     Phase 2a (`activateMigration()`, called by main at startup): writes `ai:settings:v1` and
+ *       copies the key into safeStorage. From then on the new settings are the only source: the
+ *       legacy keys are answered from here (`legacy.ts`). The untouched legacy plaintext key is
+ *       kept for one release as a downgrade safety net (Phase 3 deletes it), but any explicit key
+ *       change or removal deletes it at once, so a stale key can never come back as a fallback.
  * - Preset → role mapping: quick → fast, chat, analysis; format → format, rewrite;
  *   creative → creative; format-regen → (task-level temperature, no role); web is new.
  */
@@ -261,7 +262,10 @@ export class AISettingsStore {
     return v && v.trim() ? v.trim() : null;
   }
 
-  /** Write-only key update. "" removes the stored key (the legacy key is untouched in Phase 1). */
+  /**
+   * Write-only key update. "" removes the key. Either way the legacy plaintext key is deleted:
+   * the user chose a key explicitly, so the old one must not linger or return as a fallback.
+   */
   setApiKey(key: string): { ok: boolean } {
     const trimmed = (key ?? "").trim();
     if (trimmed.length > 500) return { ok: false };
@@ -270,6 +274,7 @@ export class AISettingsStore {
     } else {
       this.writeSecret(trimmed);
     }
+    this.opts.kv.delete(LEGACY_KEY_SETTING);
     this.keyCache = null;
     this.health = "unknown";
     this.emit();
@@ -298,9 +303,10 @@ export class AISettingsStore {
   }
 
   /**
-   * Phase 2a activation (NOT called in Phase 1): persist migrated settings and move the legacy
+   * Phase 2a activation (main calls it at startup): persist migrated settings and copy the legacy
    * plaintext key into safeStorage. Idempotent. The legacy keys themselves are left in place for
-   * one release (Phase 3 deletes them).
+   * one release (Phase 3 deletes them). A stored secret is never overwritten, even one this run
+   * can't decrypt (e.g. the OS keychain is locked), so a newer key can't be replaced by the old.
    */
   activateMigration(): { settingsWritten: boolean; keyMoved: boolean } {
     let settingsWritten = false;
@@ -311,7 +317,7 @@ export class AISettingsStore {
       settingsWritten = true;
     }
     const legacy = this.legacyApiKey();
-    if (legacy && this.readSecret() === null) {
+    if (legacy && this.opts.kv.get(AI_SECRET_KEY) === null) {
       this.writeSecret(legacy);
       this.keyCache = null;
       keyMoved = true;

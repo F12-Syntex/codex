@@ -409,7 +409,7 @@ test("ai:* IPC: channels, legacy read-only settings, submit/result and owner-win
   });
   try {
     assert.deepEqual([...handlers.keys()].sort(), [
-      "ai:cache:clear", "ai:cache:stats", "ai:cancel", "ai:key:get-legacy", "ai:key:set", "ai:key:test", "ai:models",
+      "ai:cache:clear", "ai:cache:stats", "ai:cancel", "ai:health", "ai:key:set", "ai:key:test", "ai:models",
       "ai:result", "ai:settings:get", "ai:settings:update", "ai:submit", "ai:usage",
     ]);
     const rt = getAIRuntime();

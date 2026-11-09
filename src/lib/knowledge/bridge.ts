@@ -23,8 +23,9 @@ export const knowledge = {
   applyEdits: (filePath: string, edits: WikiEdit[]) => rpc("knowledge:edits:apply", filePath, edits),
   /** Revert one edit by an id from `ApplyResult.undoIds`. */
   undoEdit: (filePath: string, undoId: number) => rpc("knowledge:edits:undo", filePath, undoId),
-  ingest: (filePath: string, chapterIndex: number, priority: Priority) =>
-    rpc("knowledge:ingest", filePath, chapterIndex, priority),
+  /** `opts.force` re-runs a done chapter; `opts.bookTitle` goes into the prompt (Phase 2b). */
+  ingest: (filePath: string, chapterIndex: number, priority: Priority, opts?: { force?: boolean; bookTitle?: string }) =>
+    rpc("knowledge:ingest", filePath, chapterIndex, priority, opts),
   clear: (filePath: string, chapterIndex?: number) => rpc("knowledge:clear", filePath, chapterIndex),
   wiki: (filePath: string, frontier?: Frontier) => rpc("knowledge:wiki", filePath, frontier),
   /** Should "Previously on…" be offered now? (Starts a reading session after 30 min idle.) */

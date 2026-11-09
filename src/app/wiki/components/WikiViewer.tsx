@@ -1,13 +1,24 @@
 "use client";
 
+/**
+ * WikiViewer — the wiki window (Phase 2b: reads `knowledge:wiki` / `knowledge:entity`).
+ *
+ * Spoiler-safe by default: everything is clamped to the book's reading frontier (global spoiler
+ * mode applied in main); the "Show everything" switch in the title bar lifts the clamp for this
+ * window only. Refreshes on `knowledge` / `frontier` AI events (ingest, edits, merges, clears in
+ * any window) and when the window regains focus. Merges go through `knowledge:edits:apply` and
+ * are undone with `knowledge:edits:undo`. The assistant is the shared `<AssistantPanel host="wiki">`.
+ */
+
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search, ArrowLeft, User,
   BookOpen, GitBranch, Clock, ChevronRight, ChevronDown, Hash,
-  Merge, Undo2, X, BarChart2,
-  Quote,
+  Merge, Undo2, X, BarChart2, EyeOff,
+  Quote, ShieldCheck, Eye,
 } from "lucide-react";
+import type { EntitySnapshot, Frontier, WikiArcItem, WikiEntryType, WikiMergeItem } from "@shared/knowledge/types";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,10 +27,12 @@ import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { SearchField } from "@/components/ui/search-field";
-import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
+import { Switch } from "@/components/ui/switch";
 import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
-import { fetchWikiEntry } from "@/lib/ai-wiki";
-import { WikiAIChat } from "./WikiAIChat";
+import { hasRpc } from "@/lib/ai/rpc";
+import { knowledge } from "@/lib/knowledge/bridge";
+import { useEntity, useFrontier, useWikiSnapshot } from "@/lib/knowledge/useKnowledge";
+import { WikiAssistant } from "./WikiAssistant";
 import { RelationshipGraph } from "./RelationshipGraph";
 import { WikiSidebar, WikiSidebarSkeleton, EntityAvatar, type WikiView, type SidebarTypeMeta } from "./WikiSidebar";
 import {
@@ -43,6 +56,8 @@ const TYPE_META = Object.fromEntries(
 
 const TYPE_ORDER = WIKI_TYPE_ORDER;
 
+/** "Show everything": an ungated read for this window only. */
+const SHOW_ALL: Frontier = { chapterIndex: -1, mode: "off" };
 
 interface EntryListItem {
   id: string;
@@ -57,8 +72,52 @@ interface EntryListItem {
 interface ChapterSummary {
   chapter_index: number;
   summary: string;
-  key_events: string;
+  key_events: string[];
   mood: string;
+}
+
+interface AliasItem {
+  alias: string;
+  alias_type: string;
+  relevance: number;
+}
+
+/** An entity as the article page shows it (built from a frontier-gated `EntitySnapshot`). */
+interface ArticleEntry {
+  id: string;
+  name: string;
+  type: WikiEntryType;
+  aliases: AliasItem[];
+  shortDescription: string;
+  description: string;
+  firstAppearance: number;
+  chapterAppearances: number[];
+  details: { chapterIndex: number; content: string; category: string; relevance: number; isSuperseded: boolean; sourceText: string }[];
+  relationships: { targetId: string; relation: string; since: number }[];
+  significance: number;
+  status: string;
+}
+
+function toArticle(s: EntitySnapshot): ArticleEntry {
+  return {
+    id: s.id,
+    name: s.name,
+    type: s.type,
+    aliases: s.aliasDetails
+      ? s.aliasDetails.map((a) => ({ alias: a.alias, alias_type: a.type, relevance: a.relevance }))
+      : s.aliases.map((alias) => ({ alias, alias_type: "name", relevance: 3 })),
+    shortDescription: s.shortDescription,
+    description: s.description ?? "",
+    firstAppearance: s.firstAppearance,
+    chapterAppearances: s.appearances ?? [],
+    details: s.details.map((d) => ({
+      chapterIndex: d.chapter, content: d.content, category: d.category, relevance: d.relevance ?? 3,
+      isSuperseded: d.superseded, sourceText: d.source ?? "",
+    })),
+    relationships: s.relationships.map((r) => ({ targetId: r.targetId, relation: r.relation, since: r.since })),
+    significance: s.significance,
+    status: s.status,
+  };
 }
 
 /* ── Relation grouping ── */
@@ -73,16 +132,8 @@ const RELATION_GROUPS: { label: string; match: RegExp }[] = [
 
 /* ── Main Viewer ── */
 
-interface MergeLogItem {
-  id: number;
-  source_name: string;
-  target_name: string;
-  merged_at: string;
-}
-
 interface MCStat {
-  id: number;
-  stat_key: string;
+  key: string;
   category: string;
   display_name: string;
   value: string | null;
@@ -91,26 +142,14 @@ interface MCStat {
 }
 
 export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerProps) {
-  const [entries, setEntries] = useState<EntryListItem[]>([]);
-  const [arcs, setArcs] = useState<WikiArc[]>([]);
-  const [chapterSummaries, setChapterSummaries] = useState<ChapterSummary[]>([]);
-  const [processedCount, setProcessedCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(initialEntryId ?? null);
-  const [selectedEntry, setSelectedEntry] = useState<WikiEntry | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<WikiEntryType | "all">("all");
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
-  const [mergeLog, setMergeLog] = useState<MergeLogItem[]>([]);
   const [activeView, setActiveView] = useState<WikiView>("encyclopedia");
-  const [processedChapters, setProcessedChapters] = useState<number[]>([]);
-  const [mcStats, setMcStats] = useState<MCStat[]>([]);
-  const [mcEntityId, setMcEntityId] = useState<string | null>(null);
-  const [mcEntry, setMcEntry] = useState<WikiEntry | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatExpanded, setChatExpanded] = useState(false);
   const [chapterLabels, setChapterLabels] = useState<ChapterLabels>({});
 
   // Load AI-assigned chapter labels (skips cover/TOC pages)
@@ -122,65 +161,53 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     });
   }, [filePath]);
 
-  const refreshData = useCallback(async () => {
-    const api = window.electronAPI;
-    if (!api || !filePath) return;
+  // Frontier-gated reads (refreshed on knowledge/frontier events by the hooks).
+  const requested = showAll ? SHOW_ALL : null;
+  const frontier = useFrontier(filePath);
+  const wiki = useWikiSnapshot(filePath, requested);
+  const snap = wiki.data;
+  const selected = useEntity(filePath, selectedEntryId, requested);
+  const mcEntityId = snap?.mc?.entityId ?? null;
+  const mc = useEntity(filePath, mcEntityId, requested);
 
-    const [entryRows, processed, arcRows, summaryRows, mergeLogRows, statRows, mcId] = await Promise.all([
-      api.wikiGetEntries(filePath),
-      api.wikiGetProcessed(filePath),
-      api.wikiGetAllArcs(filePath),
-      api.wikiGetAllChapterSummaries(filePath),
-      api.wikiGetMergeLog(filePath),
-      api.wikiGetMCStats(filePath),
-      api.wikiGetMCEntityId(filePath),
-    ]);
+  // Legacy wiki:* writers (the not-yet-cut-over reader) emit no events: refresh on focus.
+  const refreshWiki = wiki.refresh;
+  const refreshSelected = selected.refresh;
+  const refreshMc = mc.refresh;
+  useEffect(() => {
+    const onFocus = () => { refreshWiki(); refreshSelected(); refreshMc(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshWiki, refreshSelected, refreshMc]);
 
-    setEntries((entryRows ?? []).map((e) => ({
-      id: e.id, name: e.name, type: e.type as WikiEntryType,
-      short_description: e.short_description, first_appearance: e.first_appearance,
-      significance: e.significance, status: e.status,
-    })));
-    setProcessedCount((processed ?? []).length);
-    setProcessedChapters(processed ?? []);
-    setArcs((arcRows ?? []).map((a) => ({
-      id: a.id, name: a.name, description: a.description, arcType: a.arc_type,
-      status: a.status, startChapter: a.start_chapter, endChapter: a.end_chapter,
-    })));
-    setChapterSummaries((summaryRows ?? []).map((s) => ({
-      chapter_index: s.chapter_index, summary: s.summary,
-      key_events: s.key_events, mood: s.mood,
-    })));
-    setMergeLog((mergeLogRows ?? []).map((m) => ({
-      id: m.id, source_name: m.source_name, target_name: m.target_name, merged_at: m.merged_at,
-    })));
-    setMcStats((statRows ?? []).map((s) => ({
-      id: s.id, stat_key: s.stat_key, category: s.category,
-      display_name: s.display_name, value: s.value,
-      is_active: s.is_active === 1, last_chapter: s.last_chapter,
-    })));
-    setMcEntityId(mcId ?? null);
-    setIsLoading(false);
-  }, [filePath]);
+  const entries = useMemo<EntryListItem[]>(() => (snap?.entries ?? []).map((e) => ({
+    id: e.id, name: e.name, type: e.type, short_description: e.shortDescription,
+    first_appearance: e.firstAppearance, significance: e.significance, status: e.status,
+  })), [snap]);
+  const processedCount = snap?.processedChapters.length ?? 0;
+  const arcs = snap?.arcs ?? [];
+  const chapterSummaries = useMemo<ChapterSummary[]>(() => (snap?.summaries ?? []).map((s) => ({
+    chapter_index: s.chapter, summary: s.summary, key_events: s.keyEvents, mood: s.mood ?? "",
+  })), [snap]);
+  const mergeLog = snap?.mergeLog ?? [];
+  const mcStats = useMemo<MCStat[]>(() => (snap?.mc?.stats ?? []).map((s) => ({
+    key: `${s.category}:${s.name}`, category: s.category, display_name: s.name, value: s.value,
+    is_active: s.active, last_chapter: s.chapter,
+  })), [snap]);
+  const selectedEntry = useMemo(
+    () => (selected.data && selected.data.id === selectedEntryId ? toArticle(selected.data) : null),
+    [selected.data, selectedEntryId],
+  );
+  const mcEntry = useMemo(
+    () => (mc.data && mc.data.id === mcEntityId ? toArticle(mc.data) : null),
+    [mc.data, mcEntityId],
+  );
+  /** The selected entry exists but is not introduced at this frontier (e.g. opened from a spoiler). */
+  const selectedHidden = !!selectedEntryId && !!snap && !snap.entries.some((e) => e.id === selectedEntryId);
 
   useEffect(() => {
-    if (!filePath) { setIsLoading(false); return; }
-    window.electronAPI?.wikiPurgeNullEntries(filePath).catch(() => {});
-    refreshData();
-    const interval = setInterval(refreshData, 5000);
-    return () => clearInterval(interval);
-  }, [filePath, refreshData]);
-
-  useEffect(() => {
-    if (!selectedEntryId || !filePath) { setSelectedEntry(null); return; }
-    fetchWikiEntry(filePath, selectedEntryId).then(setSelectedEntry);
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }, [filePath, selectedEntryId, processedCount]);
-
-  useEffect(() => {
-    if (!mcEntityId || !filePath) { setMcEntry(null); return; }
-    fetchWikiEntry(filePath, mcEntityId).then(setMcEntry);
-  }, [filePath, mcEntityId, processedCount]);
+  }, [selectedEntryId]);
 
   const navigateTo = useCallback((id: string) => {
     if (selectedEntryId) setHistory((h) => [...h, selectedEntryId!]);
@@ -194,25 +221,35 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
       setSelectedEntryId(prev);
     } else {
       setSelectedEntryId(null);
-      setSelectedEntry(null);
     }
   }, [history]);
 
   const handleMerge = useCallback(async (sourceId: string, targetId: string) => {
-    const api = window.electronAPI;
-    if (!api || !filePath) return;
-    await api.wikiMergeEntries(filePath, sourceId, targetId);
-    await refreshData();
+    if (!filePath || !hasRpc()) return;
+    try {
+      const res = await knowledge.applyEdits(filePath, [{ op: "merge", sourceId, targetId }]);
+      if (res.applied === 0) {
+        console.warn("Wiki merge failed:", res.failed[0]?.reason);
+        return;
+      }
+    } catch (err) {
+      console.warn("Wiki merge failed:", err);
+      return;
+    }
+    wiki.refresh();
     // Navigate to the target entry after merge
     setSelectedEntryId(targetId);
-  }, [filePath, refreshData]);
+  }, [filePath, wiki]);
 
-  const handleUnmerge = useCallback(async (mergeLogId: number) => {
-    const api = window.electronAPI;
-    if (!api || !filePath) return;
-    await api.wikiUnmergeEntries(filePath, mergeLogId);
-    await refreshData();
-  }, [filePath, refreshData]);
+  const handleUnmerge = useCallback(async (undoId: number) => {
+    if (!filePath || !hasRpc()) return;
+    try {
+      await knowledge.undoEdit(filePath, undoId);
+    } catch (err) {
+      console.warn("Wiki unmerge failed:", err);
+    }
+    wiki.refresh();
+  }, [filePath, wiki]);
 
   const resolvedNames = useMemo(() => {
     const map = new Map<string, { name: string; type: WikiEntryType }>();
@@ -244,13 +281,23 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   // Sidebar: switching section returns from an open article
   const selectView = useCallback((view: WikiView) => {
     setSelectedEntryId(null);
-    setSelectedEntry(null);
     setActiveView(view);
   }, []);
 
+  const gated = !showAll && frontier?.mode !== "off";
+  const frontierLabel = frontier && frontier.mode !== "off" && frontier.chapterIndex >= 0
+    ? `Chapter ${fmtCh(frontier.chapterIndex, chapterLabels) ?? frontier.chapterIndex + 1}`
+    : undefined;
+
   const chrome = (
-    <WindowChrome icon={<BookOpen strokeWidth={1.75} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom} />
+    <WindowChrome icon={<BookOpen strokeWidth={1.75} />} title="Wiki" subtitle={bookTitle} zoomKey="wiki" zoom={zoom} onZoomChange={setZoom}>
+      {frontier && frontier.mode !== "off" && (
+        <SpoilerControl showAll={showAll} onShowAllChange={setShowAll} frontierLabel={frontierLabel} />
+      )}
+    </WindowChrome>
   );
+
+  const isLoading = !!filePath && hasRpc() && !snap && !wiki.error;
 
   if (isLoading) {
     return (
@@ -274,13 +321,23 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
       <WindowShell>
         {chrome}
         <div className="flex min-h-0 flex-1 items-center justify-center p-8" style={{ zoom: zoom / 100 }}>
-          <EmptyWiki bookTitle={bookTitle} />
+          {wiki.error && !snap ? (
+            <EmptyState
+              icon={<BookOpen className="size-10" strokeWidth={1.25} />}
+              title="The wiki could not be opened"
+              description={wiki.error}
+            />
+          ) : gated && processedCount > 0 ? (
+            <SpoilerGateEmpty bookTitle={bookTitle} processedCount={processedCount} onShowAll={() => setShowAll(true)} />
+          ) : (
+            <EmptyWiki bookTitle={bookTitle} />
+          )}
         </div>
       </WindowShell>
     );
   }
 
-  const contentKey = selectedEntry ? `entry:${selectedEntry.id}` : activeView;
+  const contentKey = selectedEntry ? `entry:${selectedEntry.id}` : selectedHidden ? `hidden:${selectedEntryId}` : activeView;
 
   return (
     <WindowShell>
@@ -306,26 +363,18 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
         <main className="relative min-w-0 flex-1 overflow-hidden rounded-2xl">
           {/* Graph view fills the entire area without scroll */}
-          {!selectedEntry && activeView === "graph" && (
+          {!selectedEntry && !selectedHidden && activeView === "graph" && (
             <RelationshipGraph
-              filePath={filePath}
               chapterLabels={chapterLabels}
               entries={entries}
+              relationships={snap?.relationships ?? []}
               onNavigate={navigateTo}
             />
           )}
 
           {/* Scrollable views */}
-          {(selectedEntry || activeView !== "graph") && (
-            <div
-              ref={scrollRef}
-              className="h-full overflow-y-auto pb-28"
-              style={{
-                paddingBottom: chatOpen && !chatExpanded
-                  ? "clamp(280px, 45%, 420px)"
-                  : undefined,
-              }}
-            >
+          {(selectedEntry || selectedHidden || activeView !== "graph") && (
+            <div ref={scrollRef} className="h-full overflow-y-auto pb-28">
               <div key={contentKey} className="animate-blur-in">
                 {selectedEntry ? (
                   <EntryPage
@@ -338,6 +387,8 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
                     canGoBack
                     chapterLabels={chapterLabels}
                   />
+                ) : selectedHidden ? (
+                  <HiddenEntryPage onBack={goBack} onShowAll={gated ? () => setShowAll(true) : undefined} />
                 ) : activeView === "stats" ? (
                   <StatsPage
                     mcEntry={mcEntry}
@@ -368,16 +419,108 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
             </div>
           )}
 
-          <WikiAIChat
+          <WikiAssistant
             filePath={filePath}
             bookTitle={bookTitle}
-            onEntryClick={navigateTo}
-            chapterLabels={chapterLabels}
-            onOpenChange={(open, expanded) => { setChatOpen(open); setChatExpanded(expanded); }}
+            frontierLabel={frontierLabel}
+            onOpenEntity={navigateTo}
           />
         </main>
       </div>
     </WindowShell>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   SPOILER CONTROL — title-bar capsule: frontier + "Show everything"
+   ══════════════════════════════════════════════════════════ */
+
+function SpoilerControl({ showAll, onShowAllChange, frontierLabel }: {
+  showAll: boolean;
+  onShowAllChange: (v: boolean) => void;
+  frontierLabel?: string;
+}) {
+  return (
+    <div className="app-no-drag ml-auto mr-1 flex h-7 shrink-0 items-center gap-2 rounded-full bg-fill-quaternary pr-1 pl-2.5">
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-label-secondary tabular-nums"
+        title={showAll ? "Everything Codex has analysed, including chapters you haven't read" : "Only what you've read so far"}
+      >
+        {showAll ? (
+          <Eye className="size-3.5 text-warning" strokeWidth={1.75} />
+        ) : (
+          <ShieldCheck className="size-3.5 text-success" strokeWidth={1.75} />
+        )}
+        {showAll ? "Spoilers shown" : frontierLabel ? `Up to ${frontierLabel}` : "Nothing read yet"}
+      </span>
+      <span aria-hidden className="h-3.5 w-px bg-separator" />
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-label">
+        Show everything
+        <Switch size="sm" checked={showAll} onCheckedChange={onShowAllChange} aria-label="Show everything, including spoilers" />
+      </label>
+    </div>
+  );
+}
+
+/** Analysed chapters exist, but none of them is read yet. */
+function SpoilerGateEmpty({ bookTitle, processedCount, onShowAll }: { bookTitle: string; processedCount: number; onShowAll: () => void }) {
+  return (
+    <div className="flex w-full max-w-xl flex-col items-center text-center">
+      <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-success/15 text-success animate-pop-in">
+        <ShieldCheck className="size-6" strokeWidth={1.75} />
+      </div>
+      <h1 className="text-large-title font-display text-label text-balance">{bookTitle}</h1>
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-label-secondary">
+        Codex has analysed {processedCount} {processedCount === 1 ? "chapter" : "chapters"}, but the wiki only shows what
+        you&apos;ve read. Finish a chapter and its characters, places and events appear here.
+      </p>
+      <button
+        onClick={onShowAll}
+        className="glass-thin focus-ring pressable mt-6 inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium text-label-secondary hover:text-label"
+      >
+        <Eye className="size-3.5" strokeWidth={1.75} />
+        Show everything
+      </button>
+    </div>
+  );
+}
+
+/** The opened entry isn't introduced yet at the frontier. */
+function HiddenEntryPage({ onBack, onShowAll }: { onBack: () => void; onShowAll?: () => void }) {
+  return (
+    <div className="flex min-h-[70vh] flex-col items-center justify-center gap-5 px-8">
+      {onShowAll ? (
+        <EmptyState
+          icon={<EyeOff className="size-10" strokeWidth={1.25} />}
+          title="Not in the story yet"
+          description="This entry first appears after where you've read. Keep reading, or show everything to see it now."
+        />
+      ) : (
+        <EmptyState
+          icon={<Search className="size-10" strokeWidth={1.25} />}
+          title="Entry not found"
+          description="It may have been merged into another entry or removed."
+        />
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onBack}
+          className="glass-thin focus-ring pressable inline-flex h-8 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-xs font-medium text-label-secondary hover:text-label"
+        >
+          <ArrowLeft className="size-3.5" strokeWidth={2} />
+          Back
+        </button>
+        {onShowAll && (
+          <button
+            onClick={onShowAll}
+            className="glass-thin focus-ring pressable inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium text-label-secondary hover:text-label"
+          >
+            <Eye className="size-3.5" strokeWidth={1.75} />
+            Show everything
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -460,7 +603,7 @@ function PageHero({ title, children }: { title: string; children?: React.ReactNo
 }
 
 function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
-  mcEntry: WikiEntry | null;
+  mcEntry: ArticleEntry | null;
   mcStats: MCStat[];
   onNavigateToMC?: () => void;
   chapterLabels: ChapterLabels;
@@ -491,7 +634,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
   }
 
   const renderStat = (stat: MCStat, meta: typeof STAT_CATEGORY_META[string], showIcon: boolean) => (
-    <div key={stat.stat_key} className="rounded-lg bg-fill-quaternary p-3.5 hairline">
+    <div key={stat.key} className="rounded-lg bg-fill-quaternary p-3.5 hairline">
       <div className="flex items-center gap-2">
         {showIcon && (
           <span className="flex size-6 shrink-0 items-center justify-center rounded-full" style={{ background: meta.bg, color: meta.color }}>
@@ -581,7 +724,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
           <SectionHeader icon={<X className="size-3.5" strokeWidth={1.75} />} label="Lost / Consumed" color="var(--label-tertiary)" count={inactiveStats.length} />
           <div className="mt-3 flex flex-wrap gap-1.5">
             {inactiveStats.map((stat) => (
-              <span key={stat.stat_key} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-quaternary px-3">
+              <span key={stat.key} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-quaternary px-3">
                 <span className="text-xs text-label-secondary line-through">{stat.display_name}</span>
                 {stat.value && <span className="text-2xs text-label-secondary">{stat.value}</span>}
               </span>
@@ -605,16 +748,16 @@ function HomePage({
   entries: EntryListItem[];
   filteredEntries: EntryListItem[];
   groupedFiltered: Partial<Record<WikiEntryType, EntryListItem[]>>;
-  arcs: WikiArc[];
+  arcs: WikiArcItem[];
   chapterSummaries: ChapterSummary[];
   processedCount: number;
-  mergeLog: MergeLogItem[];
+  mergeLog: WikiMergeItem[];
   searchQuery: string;
   filterType: WikiEntryType | "all";
   onSearchChange: (q: string) => void;
   onFilterChange: (t: WikiEntryType | "all") => void;
   onEntryClick: (id: string) => void;
-  onUnmerge: (mergeLogId: number) => void;
+  onUnmerge: (undoId: number) => void;
   chapterLabels: ChapterLabels;
 }) {
   const mainCharacters = entries.filter((e) => e.type === "character" && e.significance >= 3).slice(0, 6);
@@ -803,10 +946,10 @@ function HomePage({
                 key={m.id}
                 icon={<Merge strokeWidth={1.75} />}
                 iconTint="purple"
-                label={<><span className="font-medium">{m.source_name}</span><span className="text-label-secondary"> merged into </span><span className="font-medium">{m.target_name}</span></>}
+                label={<><span className="font-medium">{m.sourceName}</span><span className="text-label-secondary"> merged into </span><span className="font-medium">{m.targetName}</span></>}
               >
                 <button
-                  onClick={() => onUnmerge(m.id)}
+                  onClick={() => onUnmerge(m.undoId)}
                   className="focus-ring pressable inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-tertiary px-3 text-xs font-medium text-label-secondary hover:bg-fill-secondary hover:text-label"
                   title="Undo merge"
                 >
@@ -829,7 +972,7 @@ function HomePage({
 function EntryPage({
   entry, allEntries, resolvedNames, onNavigate, onBack, onMerge, canGoBack, chapterLabels,
 }: {
-  entry: WikiEntry;
+  entry: ArticleEntry;
   allEntries: EntryListItem[];
   resolvedNames: Map<string, { name: string; type: WikiEntryType }>;
   onNavigate: (id: string) => void;
@@ -1254,7 +1397,7 @@ function ArchivedDetailsSection({
   );
 }
 
-function HistoricalAliasesSection({ aliases }: { aliases: WikiAliasDetailed[] }) {
+function HistoricalAliasesSection({ aliases }: { aliases: AliasItem[] }) {
   return (
     <Disclosure label={`${aliases.length} contextual / historical reference${aliases.length !== 1 ? "s" : ""}`}>
       <div className="flex flex-wrap gap-1.5">
@@ -1270,8 +1413,7 @@ function HistoricalAliasesSection({ aliases }: { aliases: WikiAliasDetailed[] })
 }
 
 function ChapterRow({ chapter, chapterLabels }: { chapter: ChapterSummary; chapterLabels: ChapterLabels }) {
-  let events: string[] = [];
-  try { events = JSON.parse(chapter.key_events); } catch { /* ignore */ }
+  const events = chapter.key_events;
 
   return (
     <li className="relative pb-5 pl-6 last:pb-0">

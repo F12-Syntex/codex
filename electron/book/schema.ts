@@ -30,4 +30,20 @@ export const bookMigrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_annotations_file ON annotations (file_path, chapter_id);
     `,
   },
+  {
+    version: 2,
+    name: "para_anchors (ParaRef of rows kept in legacy tables: quotes, bookmarks)",
+    up: `
+      CREATE TABLE IF NOT EXISTS para_anchors (
+        kind TEXT NOT NULL,            -- quote | bookmark
+        ref_id TEXT NOT NULL,          -- legacy row id
+        file_path TEXT NOT NULL,
+        chapter_id TEXT NOT NULL,
+        para_id TEXT NOT NULL,
+        quote TEXT,
+        PRIMARY KEY (kind, ref_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_para_anchors_file ON para_anchors (file_path);
+    `,
+  },
 ];

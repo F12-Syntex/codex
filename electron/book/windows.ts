@@ -20,6 +20,18 @@ interface Entry {
 }
 
 const byWebContents = new Map<number, Entry>();
+const lastClosedListeners = new Set<(filePath: string) => void>();
+
+/**
+ * Called when the LAST reader window of a book closes (e.g. the orchestrator stops that book's
+ * bulk runs and queued chapter work: matrix #11). Returns an unsubscriber.
+ */
+export function onBookLastWindowClosed(listener: (filePath: string) => void): () => void {
+  lastClosedListeners.add(listener);
+  return () => {
+    lastClosedListeners.delete(listener);
+  };
+}
 
 /** Register a reader window for `filePath`; it is forgotten automatically when closed. */
 export function trackReaderWindow<W extends ReaderWindowLike>(win: W, filePath: string): void {
@@ -30,6 +42,15 @@ export function trackReaderWindow<W extends ReaderWindowLike>(win: W, filePath: 
   win.once("closed", () => {
     const e = byWebContents.get(webContentsId);
     if (e && e.win === win) byWebContents.delete(webContentsId);
+    if (!isBookOpen(filePath, webContentsId)) {
+      for (const l of Array.from(lastClosedListeners)) {
+        try {
+          l(filePath);
+        } catch (err) {
+          console.warn("[book] last-window listener failed", err);
+        }
+      }
+    }
   });
 }
 
@@ -61,4 +82,5 @@ export function isBookOpen(filePath: string, exceptWebContentsId?: number): bool
 /** Test helper. */
 export function _resetReaderWindowsForTests(): void {
   byWebContents.clear();
+  lastClosedListeners.clear();
 }

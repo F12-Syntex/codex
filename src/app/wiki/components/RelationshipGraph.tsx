@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { ChevronRight, ArrowLeft, Home, Network } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { WikiEntryType } from "@/lib/ai-wiki";
+import type { WikiEntryType } from "@shared/knowledge/types";
 import type { ChapterLabels } from "@/lib/chapter-labels";
 import { WIKI_RELATION_CATEGORIES, WIKI_TYPE_META, WIKI_TYPE_ORDER, tintOf } from "@/lib/wiki-type-meta";
 
@@ -86,42 +86,27 @@ function groupRelationsForEntity(
   return Array.from(groups.values());
 }
 
-/* ── Layout positions for the tree branches ──────────── */
-
-const BRANCH_ANGLES = [
-  { angle: -Math.PI / 2, label: "top" },    // up
-  { angle: Math.PI / 2, label: "bottom" },  // down
-  { angle: Math.PI, label: "left" },         // left
-  { angle: 0, label: "right" },              // right
-  { angle: -Math.PI / 4, label: "top-right" },
-  { angle: -3 * Math.PI / 4, label: "top-left" },
-  { angle: Math.PI / 4, label: "bottom-right" },
-  { angle: 3 * Math.PI / 4, label: "bottom-left" },
-];
-
 /* ── Component ─────────────────────────────────────────── */
 
 interface RelationshipGraphProps {
-  filePath: string;
   chapterLabels: ChapterLabels;
+  /** Entries visible at the wiki's frontier. */
   entries: EntryListItem[];
+  /** Relationships visible at the same frontier (`WikiSnapshot.relationships`). */
+  relationships: { sourceId: string; targetId: string; relation: string }[];
   onNavigate: (id: string) => void;
 }
 
-export function RelationshipGraph({ filePath, entries, onNavigate }: RelationshipGraphProps) {
-  const [rels, setRels] = useState<RelRow[]>([]);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
+export function RelationshipGraph({ entries, relationships, onNavigate }: RelationshipGraphProps) {
+  const rels = useMemo<RelRow[]>(
+    () => relationships.map((r) => ({ source_id: r.sourceId, target_id: r.targetId, relation: r.relation })),
+    [relationships],
+  );
+  const [pickedId, setFocusedId] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const reduceMotion = useReducedMotion();
-
-  // Fetch all relationships
-  useEffect(() => {
-    window.electronAPI?.wikiGetAllRelationships(filePath).then((rows: RelRow[]) => {
-      if (rows) setRels(rows);
-    });
-  }, [filePath]);
 
   // Auto-detect MC (highest significance character)
   const mcEntity = useMemo(() => {
@@ -131,12 +116,9 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
     return chars[0] ?? entries[0] ?? null;
   }, [entries]);
 
-  // Set initial focus to MC
-  useEffect(() => {
-    if (mcEntity && !focusedId) {
-      setFocusedId(mcEntity.id);
-    }
-  }, [mcEntity, focusedId]);
+  // Focus starts on the MC, and falls back to it when the picked entry leaves the visible set
+  // (e.g. "Show everything" switched off).
+  const focusedId = pickedId && entries.some((e) => e.id === pickedId) ? pickedId : mcEntity?.id ?? null;
 
   const focusedEntry = useMemo(() => {
     return entries.find(e => e.id === focusedId) ?? null;

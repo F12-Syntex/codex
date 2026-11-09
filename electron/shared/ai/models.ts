@@ -44,4 +44,5 @@ export const TASK_LABELS: Record<TaskId, string> = {
   "branch.continue": "Simulate",
   "book.lookup": "Book lookup",
   "library.tag": "Library tagging",
+  "legacy.complete": "Other AI features",
 };

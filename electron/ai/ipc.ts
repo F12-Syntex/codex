@@ -8,8 +8,9 @@
  * (interest removal: a job other windows also asked for keeps running), except Background jobs
  * of a book that another reader window still shows (bulk runs survive closing one of two windows).
  *
- * Phase 1: purely additive. Nothing calls these channels yet; legacy settings are only READ
- * (see settings.ts). No top-level `electron` import: it is required lazily, and tests can inject.
+ * Phase 2a: the renderer uses these channels for every AI call. The legacy renderer client
+ * (`src/lib/ai-client.ts`) submits the `legacy.complete` task registered here (see legacy.ts).
+ * No top-level `electron` import: it is required lazily, and tests can inject.
  */
 
 import type { AreaContext } from "../ipc/context";
@@ -18,6 +19,7 @@ import { Priority } from "../shared/ai/types";
 import { isBookOpen } from "../book/windows";
 import { initAIRuntime, type AIRuntime, type AIRuntimeDeps } from "./runtime";
 import type { SecretCipher } from "./settings";
+import { legacyCompleteTask, sanitizeLegacyInput } from "./legacy";
 
 /** The bits of the `electron` module this file uses (structural, for tests). */
 export interface ElectronLike {
@@ -135,8 +137,15 @@ export function registerAI(ctx: AreaContext, opts: RegisterAIOptions = {}): AIRu
     locale,
   });
 
+  if (!rt.registry.has("legacy.complete")) rt.registry.register(legacyCompleteTask);
+
   // ── jobs ──
-  ctx.handle("ai:submit", (meta, spec) => rt.scheduler.submit(sanitizeSpec(spec), meta.senderId));
+  ctx.handle("ai:submit", (meta, raw) => {
+    const spec = sanitizeSpec(raw);
+    // Validate the legacy payload here, so a malformed request fails at once (and is never cached).
+    if (spec.task === "legacy.complete") spec.input = sanitizeLegacyInput(spec.input);
+    return rt.scheduler.submit(spec, meta.senderId);
+  });
   ctx.handle("ai:result", (_meta, jobId) => rt.scheduler.result(String(jobId)));
   ctx.handle("ai:cancel", (meta, sel) => {
     const s = sanitizeCancel(sel);
@@ -156,8 +165,7 @@ export function registerAI(ctx: AreaContext, opts: RegisterAIOptions = {}): AIRu
   ctx.handle("ai:settings:update", (_meta, patch) => rt.settings.update(patch ?? {}));
   ctx.handle("ai:key:set", (_meta, key) => rt.setApiKey(typeof key === "string" ? key : ""));
   ctx.handle("ai:key:test", () => rt.testKey());
-  /** @deprecated Phase 2a shim for the legacy renderer client; removed in Phase 3. */
-  ctx.handle("ai:key:get-legacy", () => rt.settings.getApiKey());
+  ctx.handle("ai:health", () => rt.health());
 
   // ── models / usage / cache ──
   ctx.handle("ai:models", () => rt.models.list());

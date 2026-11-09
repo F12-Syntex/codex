@@ -3,13 +3,15 @@
  *
  * Creates the knowledge service on the shared connection, provides it to the AI runtime as
  * `TaskServices.knowledge`, registers the `chapter.knowledge`, `book.recap` and `entity.lookup`
- * tasks, and registers every `knowledge:*` channel. Phase 1: purely additive — nothing calls these
- * channels yet; the legacy `wiki:*` handlers keep working (they delegate to the same store).
+ * tasks, and registers every `knowledge:*` channel. Phase 2b: all wiki ingestion (including the
+ * legacy `generateWikiForChapter*` wrappers in `src/lib/ai-wiki.ts`) goes through
+ * `knowledge:ingest`, and the wiki window reads `knowledge:wiki` / `knowledge:entity`. The legacy
+ * `wiki:*` handlers still exist for the not-yet-cut-over reader (they share the same store).
  */
 
 import type { AreaContext } from "../ipc/context";
 import { Priority, type AIEvent } from "../shared/ai/types";
-import type { Frontier, ReadingPosition, WikiEdit } from "../shared/knowledge/types";
+import type { Frontier, KnowledgeIngestInput, ReadingPosition, WikiEdit } from "../shared/knowledge/types";
 import { peekAIRuntime } from "../ai/runtime";
 import { createKnowledgeTask } from "../ai/tasks/knowledge";
 import { createRecapTask } from "../ai/tasks/recap";
@@ -125,15 +127,18 @@ export function registerKnowledge(ctx: AreaContext): void {
     return result;
   });
   ctx.handle("knowledge:edits:undo", (_m, filePath, undoId) => svc.undoEdit(str(filePath, "filePath"), int(undoId, "undoId")));
-  ctx.handle("knowledge:ingest", (meta, filePath, chapterIndex, priority) => {
+  ctx.handle("knowledge:ingest", (meta, filePath, chapterIndex, priority, opts) => {
     const rt = peekAIRuntime();
     if (!rt) throw new Error("knowledge:ingest: the AI runtime is not available");
     const fp = str(filePath, "filePath");
     const ch = int(chapterIndex, "chapterIndex");
+    const input: KnowledgeIngestInput = { filePath: fp, chapterIndex: ch };
+    if (opts?.force === true) input.force = true;
+    if (typeof opts?.bookTitle === "string" && opts.bookTitle.trim()) input.bookTitle = opts.bookTitle.trim().slice(0, 500);
     return rt.scheduler.submit(
       {
         task: "chapter.knowledge",
-        input: { filePath: fp, chapterIndex: ch },
+        input,
         scope: { filePath: fp, chapterIndex: ch },
         priority: PRIORITIES.has(priority) ? priority : Priority.Background,
       },

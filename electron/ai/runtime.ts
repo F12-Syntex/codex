@@ -14,7 +14,7 @@
  * No top-level `electron` import: the cipher (safeStorage) and locale are injected.
  */
 
-import type { AIEvent, ModelRole } from "../shared/ai/types";
+import type { AIEvent, AIHealthStatus, ModelRole } from "../shared/ai/types";
 import type { SqlDb } from "../db/sql";
 import { createSqlAICache, DEFAULT_CACHE_MAX_BYTES, type AICache } from "./cache";
 import { createOpenRouterClient, type LLMClient } from "./client";
@@ -57,8 +57,10 @@ export interface AIRuntime {
   readonly limiter: RateLimiter;
   /** Provide (or replace) TaskContext services; call from your area's register*(). */
   provideServices(services: Partial<TaskServices>): void;
-  /** Write-only key update; resets the breaker and key health. */
+  /** Write-only key update; resets the breaker and key health, and broadcasts the new health. */
   setApiKey(key: string): { ok: boolean };
+  /** The state behind the single health banner (`ai:health`; changes arrive as `health` events). */
+  health(): AIHealthStatus;
   /** Minimal request with the `fast` model. Updates `keyHealth`. */
   testKey(): Promise<{ ok: boolean; error?: string }>;
   dispose(): void;
@@ -208,7 +210,20 @@ export function createAIRuntime(deps: AIRuntimeDeps): AIRuntime {
     setApiKey(key) {
       const r = settings.setApiKey(key);
       scheduler!.resetBreaker();
+      // resetBreaker only emits on a change of the scheduler's own state; "no key" lives here.
+      events.emit({ type: "health", ...rt.health() });
       return r;
+    },
+    health() {
+      if (!fake && !settings.getApiKey()) return { state: "no_key" };
+      const snap = scheduler!.snapshot();
+      const state = scheduler!.health;
+      if (state === "rate_limited") {
+        const until = limiter!.pausedUntil;
+        return until > now() ? { state, retryAt: until } : { state: "ok" };
+      }
+      if ((state === "auth_failed" || state === "no_key") && snap.breaker) return { state, message: snap.breaker.message };
+      return { state };
     },
     async testKey() {
       if (fake) {

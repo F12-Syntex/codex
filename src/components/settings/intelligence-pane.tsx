@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Settings → Intelligence (owner: WS-A). Built in Phase 1, mounted by Phase 2a in place of the
- * legacy AI pane (`settings-page.tsx`, `activeTab === "ai"`), and `<AICacheGroup />` in Storage.
+ * Settings → Intelligence (owner: WS-A). Mounted by `settings-page.tsx` (`activeTab === "ai"`), with
+ * `<AICacheGroup />` in Storage. The OpenRouter group carries the app's one AI health banner
+ * (no key / key rejected / rate limited / offline), fed by `ai:health` + `health` events.
  *
  * Renders a fragment of `ListGroup`s so it drops into the pane column (`flex flex-col gap-7`).
  * Everything goes through `useAISettings` (main is the source of truth; the key is write-only).
@@ -74,7 +75,7 @@ export function IntelligencePane() {
 
   return (
     <>
-      <KeyGroup settings={s} health={ai.health} retryAt={ai.retryAt} setKey={ai.setKey} testKey={ai.testKey} />
+      <KeyGroup settings={s} health={ai.health} retryAt={ai.retryAt} healthMessage={ai.healthMessage} setKey={ai.setKey} testKey={ai.testKey} />
       <ModelsGroup settings={s} update={ai.update} />
       <LimitsGroup settings={s} update={ai.update} />
       <ReadingGroup settings={s} update={ai.update} />
@@ -91,12 +92,14 @@ function KeyGroup({
   settings,
   health,
   retryAt,
+  healthMessage,
   setKey,
   testKey,
 }: {
   settings: PublicAISettings;
   health: AIHealthState;
   retryAt?: number;
+  healthMessage?: string;
   setKey: (key: string) => Promise<boolean>;
   testKey: () => Promise<{ ok: boolean; error?: string }>;
 }) {
@@ -149,7 +152,13 @@ function KeyGroup({
           icon={<AlertTriangle />}
           iconTint={health === "rate_limited" || health === "offline" ? "orange" : "red"}
           label={banner.title}
-          description={health === "rate_limited" && retryLabel ? `${banner.body} Next try at ${retryLabel}.` : banner.body}
+          description={
+            health === "rate_limited" && retryLabel
+              ? `${banner.body} Next try at ${retryLabel}.`
+              : health === "auth_failed" && healthMessage
+                ? `${banner.body} (${healthMessage})`
+                : banner.body
+          }
         />
       )}
       <ListRow

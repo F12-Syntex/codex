@@ -33,6 +33,8 @@ import { EdgeTTS } from "@andresaya/edge-tts";
 import { searchNovels, getNovelInfo, getDownloadManager, fetchImageAsDataUrl, getAvailableSources, type NovelInfo } from "./installer";
 import { getDownloads, removeDownload, clearCompletedDownloads, getDownload } from "./database";
 import { registerAll } from "./ipc/registry";
+import { getAIRuntime, peekAIRuntime } from "./ai/runtime";
+import { PROTECTED_SETTINGS, readLegacySetting, writeLegacySetting } from "./ai/legacy";
 import { trackReaderWindow } from "./book/windows";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
@@ -160,6 +162,13 @@ function createWindow() {
   initDatabase();
   // New RPC areas (ai:*, chapters:*, knowledge:*, book:*, assistant:*). Idempotent.
   registerAll({ db: getDb(), getWindows: () => BrowserWindow.getAllWindows(), ipcMain });
+  // Phase 2a: the new AI settings become the single source; the legacy key moves into safeStorage.
+  try {
+    const migrated = getAIRuntime().settings.activateMigration();
+    if (migrated.settingsWritten || migrated.keyMoved) console.log("[ai] settings migrated", migrated);
+  } catch (err) {
+    console.warn("[ai] settings migration failed; legacy settings stay readable", err);
+  }
 
   mainWindow = createAppWindow("", undefined, { width: 1200, height: 800, minWidth: 800, minHeight: 600 });
 
@@ -424,16 +433,24 @@ function createWindow() {
 
   // ── Settings ──────────────────────────────────────
 
+  // Legacy AI keys (`openrouterApiKey`, `ai-preset-overrides`) are answered from the new AI
+  // settings (electron/ai/legacy.ts): the key stays in safeStorage, one source of truth.
   ipcMain.handle("library:get-setting", (_event, key: string) => {
-    return getSetting(key);
+    const rt = peekAIRuntime();
+    const legacy = rt ? readLegacySetting(rt.settings, key) : undefined;
+    return legacy !== undefined ? legacy : getSetting(key);
   });
 
   ipcMain.handle("library:set-setting", (_event, key: string, value: string) => {
+    const rt = peekAIRuntime();
+    if (rt && writeLegacySetting(rt.settings, (k) => rt.setApiKey(k), key, value)) return;
     return setSetting(key, value);
   });
 
   ipcMain.handle("library:get-all-settings", () => {
-    return getAllSettings();
+    const all = getAllSettings();
+    for (const k of [...PROTECTED_SETTINGS, "openrouterApiKey"]) delete all[k];
+    return all;
   });
 
   // ── Reading Activity ──────────────────────────────
@@ -501,7 +518,11 @@ function createWindow() {
   ipcMain.handle("wiki:clear-all", () => { return clearAllWiki(); });
   ipcMain.handle("wiki:clear-chapter-data", (_event, filePath: string, chapterIndex: number) => { return clearChapterWikiData(filePath, chapterIndex); });
   ipcMain.handle("wiki:get-all-aliases", (_event, filePath: string) => getAllWikiAliases(filePath));
-  ipcMain.handle("settings:clear-prefix", (_event, prefix: string) => { return clearSettingsByPrefix(prefix); });
+  ipcMain.handle("settings:clear-prefix", (_event, prefix: string) => {
+    // Never let a broad prefix wipe the AI settings or the stored key.
+    if (typeof prefix !== "string" || !prefix || [...PROTECTED_SETTINGS].some((k) => k.startsWith(prefix))) return;
+    return clearSettingsByPrefix(prefix);
+  });
   ipcMain.handle("wiki:migrate-json", (_event, filePath: string) => migrateJsonWiki(filePath));
 
   ipcMain.handle("wiki:merge-entries", (_event, filePath: string, sourceId: string, targetId: string) => { return mergeWikiEntries(filePath, sourceId, targetId); });

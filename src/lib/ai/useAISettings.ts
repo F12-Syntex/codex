@@ -9,14 +9,16 @@
  *   `PublicAISettings`, refreshed by `settings` events from main (any window's change lands here).
  * - `update(patch)` is optimistic; main validates/clamps and the returned settings win.
  * - The API key is write-only: `setKey(key)`; the renderer only sees `hasKey` / `keyHealth`.
- * - `health` follows `health` events (no_key / auth_failed / rate_limited / offline / ok).
+ * - `health` is loaded with `ai:health` and then follows `health` events (no_key / auth_failed /
+ *   rate_limited / offline / ok). `useAIHealth()` is the same state for a single app-wide banner;
+ *   a rate-limit pause clears itself when its `retryAt` passes.
  *
  * Companion hooks for the Settings pane: `useAIModels()`, `useAIUsage(sel)`, `useAICacheStats()`.
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type {
-  AIHealthState, AISettings, CacheSelector, CacheStats, ModelInfo, PublicAISettings, UsageSummary,
+  AIHealthState, AIHealthStatus, AISettings, CacheSelector, CacheStats, ModelInfo, PublicAISettings, UsageSummary,
 } from "@shared/ai/types";
 import { ai, hasRpc } from "./bridge";
 import { onAIEvent } from "./events";
@@ -27,6 +29,8 @@ interface SettingsSnapshot {
   error: string | null;
   health: AIHealthState;
   retryAt?: number;
+  /** Why the breaker tripped (auth_failed / no_key), when known. */
+  healthMessage?: string;
 }
 
 let snap: SettingsSnapshot = { settings: null, loading: true, error: null, health: "ok" };
@@ -34,9 +38,34 @@ const subscribers = new Set<() => void>();
 let detach: (() => void) | null = null;
 let loadPromise: Promise<void> | null = null;
 
+let healthTimer: ReturnType<typeof setTimeout> | null = null;
+
 function set(patch: Partial<SettingsSnapshot>) {
   snap = { ...snap, ...patch };
   for (const s of Array.from(subscribers)) s();
+}
+
+/** Apply a health state; a rate-limit pause re-checks with main once `retryAt` has passed. */
+function setHealth(h: AIHealthStatus) {
+  if (healthTimer) {
+    clearTimeout(healthTimer);
+    healthTimer = null;
+  }
+  set({ health: h.state, retryAt: h.retryAt, healthMessage: h.message });
+  if (h.state === "rate_limited" && h.retryAt) {
+    healthTimer = setTimeout(() => {
+      healthTimer = null;
+      void loadHealth();
+    }, Math.max(1000, h.retryAt - Date.now() + 250));
+  }
+}
+
+function loadHealth(): Promise<void> {
+  if (!hasRpc()) return Promise.resolve();
+  return ai
+    .health()
+    .then(setHealth)
+    .catch(() => {});
 }
 
 function load(): Promise<void> {
@@ -59,12 +88,17 @@ function subscribe(cb: () => void): () => void {
   subscribers.add(cb);
   if (!detach) {
     const offSettings = onAIEvent("settings", (e) => set({ settings: e.settings, error: null }));
-    const offHealth = onAIEvent("health", (e) => set({ health: e.state, retryAt: e.retryAt }));
+    const offHealth = onAIEvent("health", (e) => setHealth({ state: e.state, retryAt: e.retryAt }));
     detach = () => {
       offSettings();
       offHealth();
+      if (healthTimer) {
+        clearTimeout(healthTimer);
+        healthTimer = null;
+      }
     };
     if (!snap.settings) void load();
+    void loadHealth();
   }
   return () => {
     subscribers.delete(cb);
@@ -107,7 +141,7 @@ export function useAISettings(): UseAISettings {
   const setKey = useCallback(async (key: string) => {
     try {
       const r = await ai.setKey(key);
-      await load(); // hasKey / keyHealth changed
+      await Promise.all([load(), loadHealth()]); // hasKey / keyHealth / health changed
       return r.ok;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
@@ -118,7 +152,7 @@ export function useAISettings(): UseAISettings {
   const testKey = useCallback(async () => {
     try {
       const r = await ai.testKey();
-      await load();
+      await Promise.all([load(), loadHealth()]);
       return r;
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -126,6 +160,15 @@ export function useAISettings(): UseAISettings {
   }, []);
 
   return { ...state, update, setKey, testKey, refresh: load };
+}
+
+/**
+ * The app-wide AI health for one banner (matrix scenario 9): `ok`, `no_key`, `auth_failed`,
+ * `rate_limited` (with `retryAt`) or `offline`. Shares the settings store, so it costs nothing extra.
+ */
+export function useAIHealth(): { state: AIHealthState; retryAt?: number; message?: string; hasKey: boolean | null } {
+  const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return { state: state.health, retryAt: state.retryAt, message: state.healthMessage, hasKey: state.settings ? state.settings.hasKey : null };
 }
 
 function mergeOptimistic(prev: PublicAISettings, patch: Partial<AISettings>): PublicAISettings {

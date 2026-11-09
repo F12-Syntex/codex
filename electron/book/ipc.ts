@@ -3,10 +3,14 @@
  *
  *   book:content           → BookContentV2 (main-side cache; format resolved here)
  *   book:readMarks:get/set → ParaId-anchored read marks (read_marks table)
+ *   book:annotations:*     → user comments/highlights anchored by ParaRef (annotations table)
+ *   book:anchors:*         → ParaRefs of rows kept in legacy tables (quotes, bookmarks)
  *   lexicon:get/set        → word replacements; `set` broadcasts {type:"lexicon", version}
  *
- * `book:reveal` is not registered yet: it needs the reader to listen for a navigation event,
- * which lands with the Phase 2c reader cutover.
+ * `book:reveal` is not registered: citations and bookmarks are revealed inside the reader window
+ * itself (Phase 2c), so no cross-window navigation event is needed yet.
+ * Every read of user anchors first awaits the book's one-time legacy migration
+ * (`legacy-migrate.ts`), so old index-anchored data is never shown un-migrated.
  * Do not import `electron` at the top level; take what you need from `ctx` or inject it.
  */
 
@@ -15,6 +19,8 @@ import { provideKnowledgeBooks } from "../knowledge/ipc";
 import { configureBookContentCache, type ContentCacheDeps } from "./content-cache";
 import { LexiconStore, settingsKV } from "./lexicon-store";
 import { getReadMarks, setReadMark } from "./read-marks";
+import { addAnnotation, deleteAnchor, deleteAnnotation, listAnchors, listAnnotations, setAnchor } from "./anchors";
+import { configureLegacyMigration, ensureBookMigrated } from "./legacy-migrate";
 import { peekAIRuntime } from "../ai/runtime";
 
 let lexiconStore: LexiconStore | null = null;
@@ -51,8 +57,32 @@ export function registerBook(ctx: AreaContext, opts?: { parse?: ContentCacheDeps
     return cache.getBook(filePath);
   });
 
-  ctx.handle("book:readMarks:get", (_meta, filePath) => getReadMarks(ctx.db, filePath));
+  configureLegacyMigration({
+    db: ctx.db,
+    getBook: (filePath) => cache.getBook(filePath),
+    getDefaults: () => peekAIRuntime()?.settings.get().defaults,
+  });
+
+  ctx.handle("book:readMarks:get", async (_meta, filePath) => {
+    await ensureBookMigrated(filePath);
+    return getReadMarks(ctx.db, filePath);
+  });
   ctx.handle("book:readMarks:set", (_meta, filePath, chapterId, paraId) => setReadMark(ctx.db, filePath, chapterId, paraId));
+
+  ctx.handle("book:annotations:list", async (_meta, filePath) => {
+    if (typeof filePath !== "string" || !filePath) throw new Error("book:annotations:list: filePath required");
+    await ensureBookMigrated(filePath);
+    return listAnnotations(ctx.db, filePath);
+  });
+  ctx.handle("book:annotations:add", (_meta, a) => addAnnotation(ctx.db, a));
+  ctx.handle("book:annotations:delete", (_meta, id) => deleteAnnotation(ctx.db, id));
+  ctx.handle("book:anchors:list", async (_meta, filePath) => {
+    if (typeof filePath !== "string" || !filePath) throw new Error("book:anchors:list: filePath required");
+    await ensureBookMigrated(filePath);
+    return listAnchors(ctx.db, filePath);
+  });
+  ctx.handle("book:anchors:set", (_meta, a) => setAnchor(ctx.db, a));
+  ctx.handle("book:anchors:delete", (_meta, kind, refId) => deleteAnchor(ctx.db, kind, refId));
 
   ctx.handle("lexicon:get", () => lexicon.get());
   ctx.handle("lexicon:set", (_meta, entries) => {

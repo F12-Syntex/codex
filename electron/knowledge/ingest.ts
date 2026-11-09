@@ -19,6 +19,7 @@ import type { AIEvent } from "../shared/ai/types";
 import type { SourceChapter } from "../shared/pipeline/types";
 import { aliasStrings, gateAliases, type GatedAlias } from "./alias-gate";
 import { getContext } from "./context";
+import { adoptLegacyChapter } from "./legacy";
 import { getChapterDataFromResponse, parseWikiResponse, type AIWikiChapterData, type AIWikiResponse } from "./parse";
 import { buildIngestUserPrompt, INGEST_CONTEXT_BUDGET, INGEST_PROMPT_VERSION, INGEST_SYSTEM_PROMPT } from "./prompts";
 import { defaultLabel, type ChapterLabeler } from "./read";
@@ -629,8 +630,10 @@ async function ingestNow(deps: IngestDeps, req: IngestRequest): Promise<IngestRe
   if (prev && (prev.status === "done" || prev.status === "skipped") && prev.task_version >= KNOWLEDGE_TASK_VERSION && !req.force) {
     return { ...base, status: "unchanged" };
   }
-  // Processed by the legacy renderer path (no run row): keep it unless forced.
+  // Processed by the legacy renderer path (no run row): adopt it as a run (now that its chapter
+  // id is known) and keep it unless forced.
   if (!prev && !req.force && db.get("SELECT 1 FROM wiki_processed WHERE file_path = ? AND chapter_index = ?", [filePath, ch])) {
+    adoptLegacyChapter(db, filePath, chapter, KNOWLEDGE_TASK_VERSION, now());
     return { ...base, status: "unchanged" };
   }
 
@@ -677,8 +680,9 @@ async function ingestNow(deps: IngestDeps, req: IngestRequest): Promise<IngestRe
       const L = parseLedger(existing.created_ids);
       if (L) undoLedger(db, filePath, existing.chapter_index, L);
       else clearChapterWikiData(db, filePath, existing.chapter_index);
-    } else if (db.get("SELECT 1 FROM wiki_processed WHERE file_path = ? AND chapter_index = ?", [filePath, ch])) {
-      clearChapterWikiData(db, filePath, ch); // legacy-processed chapter being re-run
+    } else if (req.force || db.get("SELECT 1 FROM wiki_processed WHERE file_path = ? AND chapter_index = ?", [filePath, ch])) {
+      // Legacy-processed chapter being re-run (the old retry path unmarks wiki_processed first).
+      clearChapterWikiData(db, filePath, ch);
     }
     const applied = applyChapterData(db, {
       filePath, chapterIndex: ch, chapterId: chapter.id, bookTitle: req.bookTitle, data,

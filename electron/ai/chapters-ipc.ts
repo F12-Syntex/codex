@@ -29,6 +29,8 @@ import { formatTask } from "./tasks/format";
 import { commentsTask } from "./tasks/comments";
 import { styleRegenTask } from "./tasks/style-regen";
 import type { TaskDefinition } from "./registry";
+import { ensureBookMigrated } from "../book/legacy-migrate";
+import { onBookLastWindowClosed } from "../book/windows";
 
 /** WS-D's task definitions, registered with WS-A's `TaskRegistry`. */
 export const CHAPTER_TASKS: readonly TaskDefinition[] = [titleTask, rewriteTask, formatTask, commentsTask, styleRegenTask];
@@ -46,6 +48,7 @@ export interface ChapterRuntime {
 }
 
 let orchestrator: ChapterOrchestrator | null = null;
+let offWindowClosed: (() => void) | null = null;
 
 /** The live orchestrator (null until registered), e.g. for main-side callers. */
 export function getChapterOrchestrator(): ChapterOrchestrator | null {
@@ -126,6 +129,11 @@ export function registerChapters(ctx: AreaContext, r?: ChapterRuntime | null): C
   });
   orchestrator?.dispose();
   orchestrator = o;
+  // Last reader window of a book closed → stop its chapter work (matrix #11: no orphan writes).
+  offWindowClosed?.();
+  offWindowClosed = onBookLastWindowClosed((filePath) => {
+    if (orchestrator === o) o.cancelBook(filePath);
+  });
 
   const str = (v: unknown, name: string): string => {
     if (typeof v !== "string" || !v) throw new Error(`chapters: ${name} must be a non-empty string`);
@@ -136,11 +144,22 @@ export function registerChapters(ctx: AreaContext, r?: ChapterRuntime | null): C
     return v;
   };
 
-  ctx.handle("chapters:prefs:get", (_m, filePath) => o.getPrefs(str(filePath, "filePath")));
-  ctx.handle("chapters:prefs:set", (_m, filePath, patch) => o.setPrefs(str(filePath, "filePath"), patch ?? {}));
-  ctx.handle("chapters:ensure", (_m, req) => o.ensure({ ...req, filePath: str(req?.filePath, "filePath"), chapterIndex: idx(req?.chapterIndex) }));
-  ctx.handle("chapters:artifacts", (_m, filePath, chapterIndex) => o.chapterArtifacts(str(filePath, "filePath"), idx(chapterIndex)));
-  ctx.handle("chapters:status", (_m, filePath) => o.bookStatus(str(filePath, "filePath")));
+  // Every read first awaits the book's one-time legacy migration (legacy titles, layers, comments
+  // and toggles become artifacts/prefs), so a first `ensure` never re-buys work already paid for.
+  const migrated = <T>(filePath: string, fn: () => T | Promise<T>): Promise<T> => ensureBookMigrated(filePath).then(fn);
+
+  ctx.handle("chapters:prefs:get", (_m, filePath) => migrated(str(filePath, "filePath"), () => o.getPrefs(filePath)));
+  ctx.handle("chapters:prefs:set", (_m, filePath, patch) => migrated(str(filePath, "filePath"), () => o.setPrefs(filePath, patch ?? {})));
+  ctx.handle("chapters:ensure", (_m, req) => {
+    const r = { ...req, filePath: str(req?.filePath, "filePath"), chapterIndex: idx(req?.chapterIndex) };
+    return migrated(r.filePath, () => o.ensure(r));
+  });
+  ctx.handle("chapters:artifacts", (_m, filePath, chapterIndex) => {
+    const i = idx(chapterIndex);
+    return migrated(str(filePath, "filePath"), () => o.chapterArtifacts(filePath, i));
+  });
+  ctx.handle("chapters:status", (_m, filePath) => migrated(str(filePath, "filePath"), () => o.bookStatus(filePath)));
+  ctx.handle("chapters:titles", (_m, filePath) => migrated(str(filePath, "filePath"), () => o.chapterTitles(filePath)));
   ctx.handle("chapters:clear", (_m, filePath, kind, chapterIndex) => {
     o.clear(str(filePath, "filePath"), kind, chapterIndex === undefined || chapterIndex === null ? undefined : idx(chapterIndex));
   });

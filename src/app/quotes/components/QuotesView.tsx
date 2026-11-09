@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles } from "lucide-react";
+import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles, Layers } from "lucide-react";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { SearchField } from "@/components/ui/search-field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -10,6 +10,10 @@ import { MasonryGrid } from "@/components/ui/masonry-grid";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { VocabularyDeck } from "@/components/assistant";
+import { vocab } from "@/lib/assistant/bridge";
+import { hasRpc } from "@/lib/ai/rpc";
+import { classifySavedQuote } from "@/lib/quotes/classify";
 
 interface SavedQuote {
   id: number;
@@ -49,7 +53,17 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
   const [filterKind, setFilterKind] = useState<string>("all");
   const [filterBook, setFilterBook] = useState<string>("all");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [classifyingId, setClassifyingId] = useState<number | null>(null);
   const [zoom, setZoom] = useState(100);
+  const [wordsOpen, setWordsOpen] = useState(false);
+  const [wordsDue, setWordsDue] = useState<{ total: number; due: number } | null>(null);
+
+  // Saved words (vocabulary deck) live beside the quotes; the pill shows how many are due.
+  const loadWordStats = useCallback(() => {
+    if (!hasRpc()) return;
+    vocab.stats(filePath).then((st) => setWordsDue({ total: st.total, due: st.due })).catch(() => {});
+  }, [filePath]);
+  useEffect(() => { loadWordStats(); }, [loadWordStats]);
 
   const load = useCallback(async () => {
     const api = window.electronAPI;
@@ -97,7 +111,47 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
     setDeletingId(null);
   };
 
+  /** Speaker + kind through the `quote.classify` task (cached, spoiler-gated speaker list). */
+  const handleClassify = async (q: SavedQuote) => {
+    setClassifyingId(q.id);
+    try {
+      const fields = await classifySavedQuote(q.id, {
+        filePath: q.filePath,
+        text: q.text,
+        bookTitle: q.bookTitle,
+        chapterTitle: q.chapterTitle,
+      });
+      if (fields) setQuotes((prev) => prev.map((x) => (x.id === q.id ? { ...x, ...fields } : x)));
+    } catch { /* job failed: the card stays as it was */ } finally {
+      setClassifyingId(null);
+    }
+  };
+
   const title = bookTitle || (filePath ? "Book Quotes" : "All Quotes");
+
+  const wordsButton = wordsDue && wordsDue.total > 0 && (
+    <button
+      type="button"
+      onClick={() => setWordsOpen(true)}
+      title="Review saved words"
+      className="focus-ring pressable inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-fill-tertiary pr-2 pl-3 text-xs font-medium text-label-secondary transition-colors duration-150 hover:bg-fill-secondary hover:text-label"
+    >
+      <Layers className="size-3.5" strokeWidth={1.75} />
+      Words
+      <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-2xs tabular-nums ${wordsDue.due > 0 ? "bg-brand text-brand-fg" : "bg-fill-secondary text-label-secondary"}`}>
+        {wordsDue.due > 0 ? wordsDue.due : wordsDue.total}
+      </span>
+    </button>
+  );
+
+  const deck = (
+    <VocabularyDeck
+      open={wordsOpen}
+      onClose={() => { setWordsOpen(false); loadWordStats(); }}
+      filePath={filePath}
+      scopeLabel={bookTitle}
+    />
+  );
 
   // Labels over glyphs (conventions §13.7): every kind segment carries its word.
   const kindOptions = useMemo(() => [
@@ -118,7 +172,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto" style={{ zoom: zoom / 100 }}>
         {!loading && quotes.length === 0 ? (
-          <EmptyQuotes title={title} />
+          <EmptyQuotes title={title} action={wordsButton || undefined} />
         ) : (
           <>
             {/* Hero */}
@@ -166,6 +220,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-label-tertiary" strokeWidth={2} />
                   </div>
                 )}
+                {wordsButton}
               </div>
             </div>
 
@@ -199,6 +254,8 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
                       showBook={!filePath}
                       onDelete={handleDelete}
                       deleting={deletingId === quote.id}
+                      onClassify={hasRpc() ? handleClassify : undefined}
+                      classifying={classifyingId === quote.id}
                     />
                   )}
                 />
@@ -207,12 +264,13 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
           </>
         )}
       </div>
+      {deck}
     </WindowShell>
   );
 }
 
 /** Empty state — a fanned stack of blank glass quote cards. */
-function EmptyQuotes({ title }: { title: string }) {
+function EmptyQuotes({ title, action }: { title: string; action?: React.ReactNode }) {
   const reduceMotion = useReducedMotion();
   const cards = [
     { rot: -8, x: -120, y: 18, lines: [88, 72, 54] },
@@ -252,6 +310,7 @@ function EmptyQuotes({ title }: { title: string }) {
         </span>{" "}
         to start your collection.
       </p>
+      {action && <div className="mt-6">{action}</div>}
     </div>
   );
 }
@@ -267,11 +326,16 @@ function QuoteCard({
   showBook,
   onDelete,
   deleting,
+  onClassify,
+  classifying,
 }: {
   quote: SavedQuote;
   showBook: boolean;
   onDelete: (id: number) => void;
   deleting: boolean;
+  /** Identify speaker and kind with AI (offered until the quote has been classified). */
+  onClassify?: (q: SavedQuote) => void;
+  classifying?: boolean;
 }) {
   const kindMeta = KIND_LABELS[quote.kind] ?? KIND_LABELS.quote;
   const hasSpeaker = quote.speaker && quote.speaker !== "unknown" && quote.speaker !== "narrator";
@@ -287,10 +351,21 @@ function QuoteCard({
             <span className={kindMeta.tint}>{kindMeta.icon}</span>
             {kindMeta.label}
           </span>
-          {quote.aiEnhanced && (
+          {quote.aiEnhanced ? (
             <span className="inline-flex text-brand" title="AI enriched" aria-label="AI enriched">
               <Sparkles className="size-3.5" strokeWidth={1.75} />
             </span>
+          ) : onClassify && (
+            <button
+              type="button"
+              onClick={() => onClassify(quote)}
+              disabled={classifying}
+              title="Identify the speaker and kind with AI"
+              className="focus-ring pressable inline-flex h-5 items-center gap-1 rounded-full px-2 text-2xs font-medium text-label-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-fill-tertiary hover:text-label focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-100"
+            >
+              {classifying ? <Loader2 className="size-3 animate-spin" strokeWidth={2} /> : <Sparkles className="size-3" strokeWidth={2} />}
+              {classifying ? "Identifying…" : "Identify"}
+            </button>
           )}
         </div>
 

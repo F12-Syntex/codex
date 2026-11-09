@@ -17,13 +17,15 @@
 import type {
   AISettings, BookAIPrefs, BookAIStatus, BulkRequest, BulkStatus, CacheSelector, CacheStats,
   CancelSelector, ChapterArtifacts, ArtifactKind, ChapterStatus, EnsureRequest, JobResult, JobSpec,
-  JobTicket, ModelInfo, Priority, PublicAISettings, StyleDictionary, UsageSummary, AIEvent,
+  JobTicket, ModelInfo, Priority, PublicAISettings, StyleDictionary, UsageSummary, AIEvent, AIHealthStatus,
 } from "./ai/types";
 import type {
   ApplyResult, EntityIndexItem, EntitySnapshot, Frontier, KnowledgeContext, KnowledgeContextRequest,
   ReadingPosition, RecapStatus, SearchHit, WikiEdit, WikiSnapshot,
 } from "./knowledge/types";
-import type { BookContentV2, ChapterId, Lexicon, LexiconEntry, ParaId, ParaRef } from "./pipeline/types";
+import type {
+  AnchorKind, BookAnchor, BookAnnotation, BookContentV2, ChapterId, Lexicon, LexiconEntry, NewBookAnnotation, ParaId, ParaRef,
+} from "./pipeline/types";
 import type {
   AssistantMessage, AssistantMode, AssistantSeed, AssistantThread, CreateBranchRequest, NewVocabItem, SimBranch, SimSegment,
   VocabFilter, VocabGrade, VocabItem, VocabStats,
@@ -45,8 +47,9 @@ export interface RpcMap {
   "ai:key:set": (key: string) => { ok: boolean };
   /** Tests the stored key with the configured `fast` model. */
   "ai:key:test": () => { ok: boolean; error?: string };
-  /** @deprecated Phase 2a compatibility shim for the legacy renderer client; removed in Phase 3. */
-  "ai:key:get-legacy": () => string | null;
+  /** Additive (Phase 2a): current health (no key / key rejected / rate limited / offline / ok).
+   *  Changes are pushed as `health` events on `ai:event`. */
+  "ai:health": () => AIHealthStatus;
   "ai:models": () => ModelInfo[];
   "ai:usage": (sel: { filePath?: string; sinceMs?: number }) => UsageSummary;
   "ai:cache:stats": () => CacheStats;
@@ -60,6 +63,8 @@ export interface RpcMap {
   "chapters:ensure": (req: EnsureRequest) => ChapterStatus;
   "chapters:artifacts": (filePath: string, chapterIndex: number) => ChapterArtifacts;
   "chapters:status": (filePath: string) => BookAIStatus;
+  /** Additive (Phase 2c): AI chapter titles that are ready, by 0-based index (TOC, labels). */
+  "chapters:titles": (filePath: string) => Record<number, string>;
   /** Per chapter and per kind. Never touches user data (user comments live in `annotations`). */
   "chapters:clear": (filePath: string, kind: ArtifactKind | "all", chapterIndex?: number) => void;
   "bulk:start": (req: BulkRequest) => { runId: string };
@@ -76,6 +81,15 @@ export interface RpcMap {
   "book:reveal": (filePath: string, ref: ParaRef) => void;
   "book:readMarks:get": (filePath: string) => Record<ChapterId, ParaId>;
   "book:readMarks:set": (filePath: string, chapterId: ChapterId, paraId: ParaId) => void;
+  /** Additive (Phase 2c): user comments/highlights anchored by ParaRef (`annotations`). The first
+   *  call for a book also runs its one-time legacy migration (index anchors → ParaRef). */
+  "book:annotations:list": (filePath: string) => BookAnnotation[];
+  "book:annotations:add": (a: NewBookAnnotation) => BookAnnotation;
+  "book:annotations:delete": (id: number) => void;
+  /** Additive (Phase 2c): ParaRefs of rows kept in legacy tables (quotes, bookmarks). */
+  "book:anchors:list": (filePath: string) => BookAnchor[];
+  "book:anchors:set": (a: BookAnchor) => void;
+  "book:anchors:delete": (kind: AnchorKind, refId: string) => void;
   "lexicon:get": () => Lexicon;
   /** Replaces all entries; broadcasts a `lexicon` event with the new version. */
   "lexicon:set": (entries: LexiconEntry[]) => Lexicon;
@@ -90,7 +104,9 @@ export interface RpcMap {
   "knowledge:entity": (filePath: string, id: string, frontier?: Frontier) => EntitySnapshot | null;
   "knowledge:search": (filePath: string, query: string, opts: { frontier?: Frontier; limit?: number }) => SearchHit[];
   "knowledge:edits:apply": (filePath: string, edits: WikiEdit[]) => ApplyResult;
-  "knowledge:ingest": (filePath: string, chapterIndex: number, priority: Priority) => JobTicket;
+  /** Additive (Phase 2b): `opts.force` re-runs a done chapter (its old run is undone first);
+   *  `opts.bookTitle` is used in the prompt and stored as the wiki's title. */
+  "knowledge:ingest": (filePath: string, chapterIndex: number, priority: Priority, opts?: { force?: boolean; bookTitle?: string }) => JobTicket;
   /** Whole book, or one chapter (removes what that chapter's run created). */
   "knowledge:clear": (filePath: string, chapterIndex?: number) => void;
   /** Wiki window bulk read. */

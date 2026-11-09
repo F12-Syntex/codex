@@ -19,6 +19,7 @@ function BuddyPage() {
   const bookTitle = searchParams.get("title") || "Untitled";
   const currentChapter = parseInt(searchParams.get("currentChapter") || "0", 10);
   const totalChapters = parseInt(searchParams.get("totalChapters") || "1", 10);
+  const threadId = searchParams.get("threadId");
 
   return (
     <BuddyWindow
@@ -26,6 +27,7 @@ function BuddyPage() {
       bookTitle={bookTitle}
       currentChapter={currentChapter}
       totalChapters={totalChapters}
+      threadId={threadId}
     />
   );
 }

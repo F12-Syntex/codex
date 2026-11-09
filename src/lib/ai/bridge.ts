@@ -23,6 +23,8 @@ export const ai = {
   updateSettings: (patch: Partial<AISettings>) => rpc("ai:settings:update", patch),
   setKey: (key: string) => rpc("ai:key:set", key),
   testKey: () => rpc("ai:key:test"),
+  /** Current health (pushed afterwards as `health` events). */
+  health: () => rpc("ai:health"),
   models: () => rpc("ai:models"),
   usage: (sel: { filePath?: string; sinceMs?: number } = {}) => rpc("ai:usage", sel),
   cacheStats: () => rpc("ai:cache:stats"),

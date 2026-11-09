@@ -11,12 +11,40 @@ import type { KnowledgeIngestInput, KnowledgeIngestOutput } from "../../shared/k
 import { AIError } from "../errors";
 import type { TaskDefinition } from "../registry";
 import { ingestChapter, KNOWLEDGE_TASK_VERSION, knowledgeLane, type KnowledgeLane } from "../../knowledge/ingest";
+import { adoptLegacyProcessed } from "../../knowledge/legacy";
 import type { KnowledgeService } from "../../knowledge/service";
 
 export const KNOWLEDGE_MAX_TOKENS = 16_000;
 
 export function knowledgeLaneOf(filePath: string): string {
   return `knowledge:${filePath}`;
+}
+
+const adopted = new WeakMap<object, Set<string>>();
+
+/**
+ * Migrate the book's legacy `wiki_processed` marks into `knowledge_runs` (chapter ids come from
+ * the content cache), once per book and process. Failures only log: ingestion still treats
+ * legacy-processed chapters as done and adopts them one by one.
+ */
+async function adoptBookOnce(
+  svc: KnowledgeService,
+  filePath: string,
+  getBook: () => Promise<{ chapters: { index: number; id: string }[] }>,
+  log?: (level: "debug" | "info" | "warn", msg: string, data?: unknown) => void,
+): Promise<void> {
+  let seen = adopted.get(svc.db);
+  if (!seen) adopted.set(svc.db, (seen = new Set()));
+  if (seen.has(filePath)) return;
+  seen.add(filePath);
+  try {
+    if (!svc.db.get("SELECT 1 FROM wiki_processed WHERE file_path = ? LIMIT 1", [filePath])) return;
+    const book = await getBook();
+    const n = adoptLegacyProcessed(svc.db, filePath, book.chapters, KNOWLEDGE_TASK_VERSION);
+    if (n > 0) log?.("info", `knowledge: adopted ${n} legacy processed chapter(s) as runs`);
+  } catch (err) {
+    log?.("warn", "knowledge: legacy adoption failed", err instanceof Error ? err.message : err);
+  }
 }
 
 export function createKnowledgeTask(
@@ -34,6 +62,7 @@ export function createKnowledgeTask(
     key: (input) => hashOf(input.filePath, input.chapterIndex, input.force ? "force" : ""),
     validate: (o): o is KnowledgeIngestOutput => !!o && typeof o === "object" && typeof (o as KnowledgeIngestOutput).status === "string",
     async run(input, ctx) {
+      await adoptBookOnce(svc, input.filePath, () => ctx.books.getBook(input.filePath), ctx.log);
       return ingestChapter(
         {
           db: svc.db,

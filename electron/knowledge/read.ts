@@ -116,7 +116,45 @@ export function getEntityAt(db: SqlDb, filePath: string, id: string, f: Frontier
   const e = db.get<WikiEntryRow>("SELECT * FROM wiki_entries WHERE file_path = ? AND id = ?", [filePath, id]);
   const max = maxChapterSql(f);
   if (!e || e.first_appearance > max) return null;
-  return snapshotsFor(db, filePath, [e], f)[0] ?? null;
+  const snap = snapshotsFor(db, filePath, [e], f)[0];
+  if (!snap) return null;
+  // Article extras (Phase 2b). The long description accumulates over chapters and is not
+  // versioned: show it only when nothing about the entry happens after the frontier.
+  const last = db.get<{ last: number | null }>(
+    `SELECT MAX(ch) AS last FROM (
+       SELECT MAX(chapter_index) AS ch FROM wiki_appearances WHERE file_path = ? AND entry_id = ?
+       UNION ALL SELECT MAX(chapter_index) FROM wiki_details WHERE file_path = ? AND entry_id = ?
+       UNION ALL SELECT MAX(since_chapter) FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?)
+     )`,
+    [filePath, id, filePath, id, filePath, id, id],
+  )?.last;
+  const versionMax = tableExists(db, "wiki_entry_versions")
+    ? db.get<{ last: number | null }>("SELECT MAX(chapter_index) AS last FROM wiki_entry_versions WHERE file_path = ? AND entry_id = ?", [filePath, id])?.last
+    : null;
+  const touched = Math.max(e.first_appearance, Number(last ?? -1), Number(versionMax ?? -1));
+  if (e.description && (f.mode === "off" || touched <= max)) snap.description = e.description;
+  snap.aliasDetails = aliasDetailRows(db, filePath, f, id).filter((a) => a.alias.toLowerCase() !== e.name.toLowerCase());
+  snap.appearances = db
+    .all<{ chapter_index: number }>(
+      "SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ? AND chapter_index <= ? ORDER BY chapter_index ASC",
+      [filePath, id, max],
+    )
+    .map((r) => Number(r.chapter_index));
+  return snap;
+}
+
+/** Aliases ≤ frontier with kind and relevance (every relevance), strongest first. */
+function aliasDetailRows(db: SqlDb, filePath: string, f: Frontier, entryId: string): { alias: string; type: string; relevance: number }[] {
+  const firstExpr = aliasHasFirstChapter(db) ? "COALESCE(a.first_chapter, e.first_appearance)" : "e.first_appearance";
+  return db
+    .all<{ alias: string; alias_type: string | null; relevance: number | null }>(
+      `SELECT a.alias, a.alias_type, a.relevance FROM wiki_aliases a
+       JOIN wiki_entries e ON e.file_path = a.file_path AND e.id = a.entry_id
+       WHERE a.file_path = ? AND a.entry_id = ? AND ${firstExpr} <= ?
+       ORDER BY a.relevance DESC, a.alias ASC`,
+      [filePath, entryId, maxChapterSql(f)],
+    )
+    .map((a) => ({ alias: a.alias, type: a.alias_type || "name", relevance: Number(a.relevance ?? 3) }));
 }
 
 /** Snapshots for several entries at once (batched queries). */
@@ -140,8 +178,8 @@ export function snapshotsFor(db: SqlDb, filePath: string, entries: WikiEntryRow[
   }
 
   const details = new Map<string, EntityDetail[]>();
-  for (const d of db.all<{ entry_id: string; chapter_index: number; category: string; content: string; source_text: string | null; is_superseded: number; superseded_chapter: number | null }>(
-    `SELECT entry_id, chapter_index, category, content, source_text, is_superseded, superseded_chapter FROM wiki_details
+  for (const d of db.all<{ entry_id: string; chapter_index: number; category: string; content: string; source_text: string | null; is_superseded: number; superseded_chapter: number | null; relevance: number | null }>(
+    `SELECT entry_id, chapter_index, category, content, source_text, is_superseded, superseded_chapter, relevance FROM wiki_details
      WHERE file_path = ? AND chapter_index <= ? AND ${inIds("entry_id")}
      ORDER BY chapter_index ASC, relevance DESC, id ASC`,
     [filePath, max, ...idList],
@@ -151,6 +189,7 @@ export function snapshotsFor(db: SqlDb, filePath: string, entries: WikiEntryRow[
     const superseded = d.is_superseded === 1 && d.superseded_chapter != null && d.superseded_chapter <= max;
     const item: EntityDetail = { chapter: d.chapter_index, category: d.category, content: d.content, superseded };
     if (d.source_text) item.source = d.source_text;
+    if (d.relevance != null) item.relevance = Number(d.relevance);
     list.push(item);
     details.set(d.entry_id, list);
   }

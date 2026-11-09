@@ -15,11 +15,12 @@ import type {
   BranchContinueResult, CreateBranchRequest, MessageBlock, SimBranch, SimSegment,
 } from "../shared/assistant/types";
 import type { SqlDb } from "../db/sql";
-import type { SchedulerLike, TaskDefinition, TaskRegistryLike } from "./contracts";
+import type { BookContentReader, SchedulerLike, TaskDefinition, TaskRegistryLike } from "./contracts";
 import { BranchStore, ThreadStore, systemClock, type StoreClock } from "./store";
 import { VocabStore } from "./vocab";
 import { toSafeParagraphs } from "./text";
 import type { ChapterLabeler } from "./book-view";
+import { hasLegacyBranches, hasLegacyChats, importLegacyBranches, importLegacyChats } from "./legacy";
 import { createAssistantTurnTask } from "../ai/tasks/assistant";
 import { createDefineTask } from "../ai/tasks/define";
 import { createTranslateTask } from "../ai/tasks/translate";
@@ -39,6 +40,8 @@ export interface AssistantRuntime {
   applyEdits?: ((filePath: string, edits: WikiEdit[]) => ApplyResult | Promise<ApplyResult>) | null;
   /** WS-C `classify.ts` chapter labels; default 1-based spine numbers. */
   labeler?: ChapterLabeler;
+  /** WS-C book content (anchors legacy Simulate branches to ParaIds on first listing). */
+  books?: BookContentReader | null;
 }
 
 const MAX_TEXT = 8_000;
@@ -63,8 +66,10 @@ export class AssistantService {
   readonly vocab: VocabStore;
   private runtime: AssistantRuntime = {};
   private readonly pendingAppends = new Map<string, Promise<unknown>>();
+  /** Books whose legacy chats / branches were already checked this session. */
+  private readonly legacyChecked = { chats: new Set<string>(), branches: new Set<string>() };
 
-  constructor(db: SqlDb, clock: StoreClock = systemClock) {
+  constructor(private readonly db: SqlDb, private readonly clock: StoreClock = systemClock) {
     this.threads = new ThreadStore(db, clock);
     this.branches = new BranchStore(db, clock);
     this.vocab = new VocabStore(db, clock.now);
@@ -100,7 +105,19 @@ export class AssistantService {
   // ── Threads ───────────────────────────────────────────────────────────────
 
   listThreads(filePath: string): AssistantThread[] {
+    this.importLegacyChatsOnce(filePath);
     return this.threads.listThreads(filePath);
+  }
+
+  /** Legacy Buddy / chat history written after the startup migration (e.g. by an old window). */
+  private importLegacyChatsOnce(filePath: string): void {
+    if (this.legacyChecked.chats.has(filePath)) return;
+    this.legacyChecked.chats.add(filePath);
+    try {
+      if (hasLegacyChats(this.db, filePath)) importLegacyChats(this.db, { filePath, now: this.clock.now, newId: this.clock.newId });
+    } catch (err) {
+      console.error("[assistant] legacy chat import failed", err);
+    }
   }
 
   getThread(threadId: string): { thread: AssistantThread; messages: AssistantMessage[] } {
@@ -216,8 +233,29 @@ export class AssistantService {
 
   // ── Simulate branches ─────────────────────────────────────────────────────
 
-  listBranches(filePath: string): SimBranch[] {
+  async listBranches(filePath: string): Promise<SimBranch[]> {
+    await this.importLegacyBranchesOnce(filePath);
     return this.branches.list(filePath);
+  }
+
+  /** Legacy `sim_branches` need the parsed book to become ParaRefs; imported on first listing. */
+  private async importLegacyBranchesOnce(filePath: string): Promise<void> {
+    if (this.legacyChecked.branches.has(filePath)) return;
+    const books = this.runtime.books;
+    try {
+      if (!hasLegacyBranches(this.db, filePath)) {
+        this.legacyChecked.branches.add(filePath);
+        return;
+      }
+      if (!books) return; // try again once book content is wired
+      const book = await books.getBook(filePath);
+      importLegacyBranches(this.db, filePath, book, { now: this.clock.now, newId: this.clock.newId });
+      this.legacyChecked.branches.add(filePath);
+    } catch (err) {
+      // Missing/unreadable file: keep the legacy rows and stop retrying this session.
+      this.legacyChecked.branches.add(filePath);
+      console.error("[assistant] legacy branch import failed", err);
+    }
   }
 
   createBranch(req: CreateBranchRequest): SimBranch {

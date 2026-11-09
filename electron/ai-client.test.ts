@@ -354,14 +354,14 @@ test("settings: safeStorage key, write-only updates, change events, activation (
   assert.ok(!kv.get(AI_SECRET_KEY)!.includes("sk-or-new"));
   assert.equal(store.getApiKey(), "sk-or-new");
   assert.equal(store.isEncrypted(), true);
-  assert.equal(kv.get(LEGACY_KEY_SETTING), "sk-or-legacy"); // legacy untouched in Phase 1
+  assert.equal(kv.get(LEGACY_KEY_SETTING), null); // an explicit key change drops the legacy plaintext key
   store.setKeyHealth("ok");
   store.update({ spoilerMode: "position" });
   assert.equal(JSON.parse(kv.get(AI_SETTINGS_KEY)!).spoilerMode, "position");
   assert.equal(changes.length, 3);
   store.setApiKey("");
   assert.equal(kv.get(AI_SECRET_KEY), null);
-  assert.equal(store.getApiKey(), "sk-or-legacy"); // falls back to the legacy key
+  assert.equal(store.getApiKey(), null); // removed means removed: no stale legacy fallback
 
   // no keychain → stored without encryption (same exposure as before), still readable
   const plain = new AISettingsStore({ kv: memoryKeyValueStore(), cipher: xorCipher(false) });

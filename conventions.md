@@ -64,7 +64,10 @@ accent aurora). Floating chrome is glass:
 | `hairline` | 0.5px inner ring for solid cards / covers |
 
 Glass utilities already include blur, saturation, edge ring and highlight.
-Verify glass actually blurs: `getComputedStyle(el).backdropFilter !== "none"`.
+Verify glass actually blurs with a **stripe test**: place high-contrast stripes behind
+the panel and confirm they are blurred in a screenshot. `getComputedStyle(el).backdropFilter`
+alone is not proof — an ancestor that creates a stacking/backdrop root (`z-index` on a
+positioned wrapper, `filter`, `mask-image`, `opacity < 1`, `isolation`) silently stops the blur.
 Any ancestor with a `filter` (even `blur(0px)` left by an animation) becomes a
 backdrop root and kills descendant glass — entrance animations must end at
 `filter: none` (motion: `transitionEnd: { filter: "none" }`). Do
@@ -220,3 +223,9 @@ Apple's discipline, with a bookish identity on top:
 6. **Panels over reading text use `glass-thick`** and must not occlude the text column.
 7. **Labels over glyphs** for toolbars with more than three non-universal actions.
 8. **Magnification is for things, not utilities.** The dock does not fisheye.
+9. **Esc never closes a window.** Esc dismisses the topmost transient UI (menu, popover,
+   panel, selection, speed reader) and stops there. Only Ctrl/Cmd+W (or the window
+   control) closes a window.
+10. **One font registry.** Every bundled typeface is declared once (family → file →
+    weight range) and drives both `@font-face` injection and pickers; a test asserts each
+    file exists and starts with `wOF2`.

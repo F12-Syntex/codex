@@ -28,7 +28,10 @@ export type TaskId =
   | "book.recap" | "entity.lookup"
   | "assistant.turn" | "selection.define" | "selection.translate"
   | "quote.classify" | "branch.continue"
-  | "book.lookup" | "library.tag";
+  | "book.lookup" | "library.tag"
+  /** Phase 2 compatibility: raw chat completions from the legacy renderer modules
+   *  (`src/lib/ai-client.ts`), routed through the one queue, cache and key. Removed in Phase 3. */
+  | "legacy.complete";
 
 // ── Chat primitives ─────────────────────────────────────────────────────────
 
@@ -360,6 +363,15 @@ export interface StyleDictionary {
 // ── Events ──────────────────────────────────────────────────────────────────
 
 export type AIHealthState = "ok" | "no_key" | "auth_failed" | "rate_limited" | "offline";
+
+/** `ai:health`: the current state behind the single health banner (matrix scenario 9). */
+export interface AIHealthStatus {
+  state: AIHealthState;
+  /** While `rate_limited`: epoch ms when requests resume. */
+  retryAt?: number;
+  /** The error that tripped the breaker (`no_key` / `auth_failed`), if any. */
+  message?: string;
+}
 
 /** The single broadcast stream (`"ai:event"`) to every window. Consumers switch on `type`. */
 export type AIEvent =

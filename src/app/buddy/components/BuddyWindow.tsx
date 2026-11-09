@@ -1,63 +1,77 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+/**
+ * The detached Buddy window: the unified assistant (`<AssistantPanel host="buddy">`) beside a
+ * companion card. Conversations live in main (`assistant_threads`), so opening the window picks up
+ * the conversation the reader was having (the `threadId` URL param, or the most recent thread)
+ * instead of starting empty — the old window replaced its history with whatever the last panel had
+ * written to `buddyMessages:<path>`.
+ */
+
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles, BookOpen, Library } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import type { BuddyMessage, ChapterReader } from "@/lib/ai-buddy";
-import { AIChat } from "@/components/ai-chat";
+import type { Frontier } from "@shared/knowledge/types";
+import { AssistantPanel } from "@/components/assistant";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { ShimmerText } from "@/components/ui/shimmer-text";
+import { assistant } from "@/lib/assistant/bridge";
+import { hasRpc } from "@/lib/ai/rpc";
+import { useEntityIndex, useFrontier } from "@/lib/knowledge/useKnowledge";
 
 interface BuddyWindowProps {
   filePath: string;
   bookTitle: string;
+  /** Reader position when the window was opened (fallback until the frontier loads). */
   currentChapter: number;
   totalChapters: number;
+  /** Continue this conversation (set when the reader detaches its panel). */
+  threadId?: string | null;
 }
 
-export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters }: BuddyWindowProps) {
+/** 1-based chapter the reader has reached, from the spoiler frontier. */
+function reachedChapter(frontier: Frontier | null, fallback: number): number {
+  if (!frontier || frontier.mode === "off") return fallback + 1;
+  return Math.max(1, frontier.chapterIndex + (frontier.paraId ? 2 : 1));
+}
+
+export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters, threadId }: BuddyWindowProps) {
   const [zoom, setZoom] = useState(100);
-  const [wikiEntryCount, setWikiEntryCount] = useState(0);
-  const [bookChapters, setBookChapters] = useState<Array<{ paragraphs: string[] }> | null>(null);
-
-  // Restore messages from the pop-out source (persisted in settings)
-  const [initialMessages, setInitialMessages] = useState<BuddyMessage[] | undefined>(undefined);
   const reduceMotion = useReducedMotion();
+  const frontier = useFrontier(filePath);
+  const entities = useEntityIndex(filePath, frontier);
+  const wikiEntryCount = entities.data?.length ?? 0;
 
-  // Load book content once on mount so readChapter can be sync
+  // Resolve the conversation to continue BEFORE mounting the panel (it reads `threadId` once).
+  const [initialThread, setInitialThread] = useState<string | null | undefined>(threadId ?? undefined);
   useEffect(() => {
-    const format = new URLSearchParams(window.location.search).get("format") || "EPUB";
-    window.electronAPI?.getBookContent(filePath, format).then((content: { chapters: Array<{ paragraphs: string[] }> } | undefined) => {
-      if (content?.chapters) setBookChapters(content.chapters);
-    });
-  }, [filePath]);
+    if (initialThread !== undefined) return;
+    if (!filePath || !hasRpc()) {
+      setInitialThread(null);
+      return;
+    }
+    let alive = true;
+    assistant
+      .threads(filePath)
+      .then((list) => {
+        if (alive) setInitialThread(list[0]?.id ?? null);
+      })
+      .catch(() => {
+        if (alive) setInitialThread(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [filePath, initialThread]);
 
-  // Load persisted messages (from when user popped out)
-  useEffect(() => {
-    window.electronAPI?.getSetting(`buddyMessages:${filePath}`).then((raw) => {
-      if (raw) {
-        try {
-          const msgs = JSON.parse(raw) as BuddyMessage[];
-          setInitialMessages(msgs);
-        } catch { setInitialMessages([]); }
-      } else {
-        setInitialMessages([]);
-      }
-    });
-  }, [filePath]);
+  const chapter = reachedChapter(frontier, currentChapter);
+  const frontierLabel = frontier?.mode === "off" ? undefined : `Chapter ${chapter}`;
+  const progress = totalChapters > 0 ? Math.min(1, chapter / totalChapters) : 0;
 
-  useEffect(() => {
-    window.electronAPI?.wikiGetEntries(filePath).then((entries) => setWikiEntryCount(entries?.length ?? 0));
-  }, [filePath]);
-
-  const readChapter: ChapterReader = useCallback((idx: number) => {
-    return bookChapters?.[idx]?.paragraphs?.join("\n") ?? null;
-  }, [bookChapters]);
-
-  // Persist messages on change (for round-tripping with the panel)
-  const handleMessagesChange = useCallback((msgs: BuddyMessage[]) => {
-    window.electronAPI?.setSetting(`buddyMessages:${filePath}`, JSON.stringify(msgs));
-  }, [filePath]);
+  const openEntity = useMemo(
+    () => (entryId: string) => void window.electronAPI?.openWiki({ filePath, title: bookTitle, entryId }),
+    [filePath, bookTitle],
+  );
 
   const chrome = (
     <WindowChrome
@@ -70,29 +84,22 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
     />
   );
 
-  const progress = totalChapters > 0 ? Math.min(1, (currentChapter + 1) / totalChapters) : 0;
-
-  /** Living ink orb — the buddy's face. */
-  const orb = (size: "md" | "lg") => (
-    <span className={`relative flex items-center justify-center ${size === "lg" ? "size-20" : "size-10"}`}>
-      <motion.span
-        aria-hidden
-        className="absolute inset-0 rounded-full bg-brand/40 blur-xl"
-        animate={reduceMotion ? undefined : { scale: [1, 1.15, 1], opacity: [0.6, 0.9, 0.6] }}
-        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <span className="relative flex size-full items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)] ring-[0.5px] ring-separator-strong ring-inset">
-        <Sparkles className={size === "lg" ? "size-10" : "size-4"} strokeWidth={size === "lg" ? 1.25 : 1.75} />
-      </span>
-    </span>
-  );
-
-  if (initialMessages === undefined) {
+  if (initialThread === undefined) {
     return (
       <WindowShell>
         {chrome}
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
-          {orb("lg")}
+          <span className="relative flex size-20 items-center justify-center">
+            <motion.span
+              aria-hidden
+              className="absolute inset-0 rounded-full bg-brand/40 blur-xl"
+              animate={reduceMotion ? undefined : { scale: [1, 1.15, 1], opacity: [0.6, 0.9, 0.6] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <span className="relative flex size-full items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]">
+              <Sparkles className="size-10" strokeWidth={1.25} />
+            </span>
+          </span>
           <ShimmerText className="text-sm">Waking your reading buddy…</ShimmerText>
         </div>
       </WindowShell>
@@ -106,7 +113,6 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
       <div className="flex min-h-0 flex-1 gap-2 p-2">
         {/* Companion card */}
         <aside className="glass-thin grain relative hidden w-64 shrink-0 flex-col overflow-hidden rounded-2xl p-5 animate-slide-in-left lg:flex">
-          {/* No avatar here: the conversation's empty state carries the one Buddy mark. */}
           <h2 className="line-clamp-3 text-title font-display text-label text-balance">{bookTitle}</h2>
 
           <div className="mt-8 space-y-4">
@@ -114,7 +120,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-label-secondary">
                   <BookOpen className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
-                  Chapter {currentChapter + 1}
+                  Chapter {chapter}
                 </span>
                 <span className="tabular-nums text-label-secondary">of {totalChapters}</span>
               </div>
@@ -139,36 +145,21 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
           </div>
 
           <p className="mt-auto text-2xs leading-relaxed text-label-secondary">
-            Spoiler-safe: your buddy only knows what you&rsquo;ve read up to chapter {currentChapter + 1}.
+            Spoiler-safe: your buddy only knows what you&rsquo;ve read, up to chapter {chapter}.
           </p>
         </aside>
 
-        {/* Conversation */}
-        <div className="glass-thin grain relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl animate-sheet-in">
-          {/* Compact identity strip (narrow windows) */}
-          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-separator px-4 lg:hidden">
-            {orb("md")}
-            <div className="min-w-0">
-              <p className="truncate text-headline text-label">Reading buddy</p>
-              <p className="truncate text-2xs tabular-nums text-label-secondary">
-                Ch. {currentChapter + 1} of {totalChapters}{wikiEntryCount > 0 && ` · ${wikiEntryCount} wiki entries`}
-              </p>
-            </div>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ zoom: zoom / 100 }}>
-            <AIChat
-              filePath={filePath}
-              bookTitle={bookTitle}
-              currentChapter={currentChapter}
-              totalChapters={totalChapters}
-              initialMessages={initialMessages}
-              onMessagesChange={handleMessagesChange}
-              readChapter={readChapter}
-              wikiEntryCount={wikiEntryCount}
-              variant="window"
-              maxWidth="700px"
-            />
-          </div>
+        {/* Conversation — the panel is its own glass surface (no glass-in-glass). */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl animate-sheet-in" style={{ zoom: zoom / 100 }}>
+          <AssistantPanel
+            host="buddy"
+            filePath={filePath}
+            bookTitle={bookTitle}
+            threadId={initialThread}
+            frontierLabel={frontierLabel}
+            onOpenEntity={openEntity}
+            className="rounded-2xl"
+          />
         </div>
       </div>
     </WindowShell>

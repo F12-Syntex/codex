@@ -14,9 +14,10 @@ import { ShimmerText } from "@/components/ui/shimmer-text";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { cn } from "@/lib/utils";
-import type { StyleDictionary, StyleRule } from "@/lib/ai-style-dictionary";
-import { loadDictionary, saveDictionary, extractRulesFromFormatted } from "@/lib/ai-style-dictionary";
-import { regenerateRule } from "@/lib/ai-formatting";
+import type { StyleDictionary, StyleRule } from "@shared/ai/types";
+import { ai, style } from "@/lib/ai/bridge";
+import { onAIEvent } from "@/lib/ai/events";
+import { hasRpc } from "@/lib/ai/rpc";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
 
 interface StyleDictionaryViewProps {
@@ -48,96 +49,53 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const reduceMotion = useReducedMotion();
 
-  useEffect(() => {
-    if (!filePath) { setIsLoading(false); return; }
-    loadDictionary(filePath).then((dict) => {
-      setDictionary(dict);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  // The dictionary lives in main (`book_style`), merged by every format job of this book.
+  const reload = useCallback(async () => {
+    if (!filePath || !hasRpc()) {
       setIsLoading(false);
-    });
+      return;
+    }
+    try {
+      setDictionary(await style.get(filePath));
+    } catch {
+      setDictionary(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [filePath]);
 
+  useEffect(() => { void reload(); }, [reload]);
+
+  // New rules arrive whenever a chapter of this book is formatted (reader, bulk, regeneration).
+  useEffect(() => {
+    if (!filePath) return;
+    return onAIEvent("artifact", (e) => {
+      if (e.filePath === filePath && e.kind === "format") void reload();
+    });
+  }, [filePath, reload]);
+
+  /**
+   * Re-formats every paragraph that uses `componentClass` through the orchestrator
+   * (`style:regenerate` → `style.regenerate` task). Updates land in each chapter's format
+   * artifact (every variant: plain and concise-formatted), then the rule's example is refreshed.
+   */
   const handleRegenerate = useCallback(async (componentClass: string, instruction?: string) => {
-    const apiKey = await window.electronAPI?.getSetting("openrouterApiKey");
-    if (!apiKey || !filePath) return;
-
-    // Load formatted chapters
-    const raw = await window.electronAPI?.getSetting(`formattedChapters:${filePath}`);
-    if (!raw) return;
-
-    let formattedChapters: Record<string, string[]>;
-    try { formattedChapters = JSON.parse(raw); } catch { return; }
-
-    // Load book content for originals
-    const format = new URLSearchParams(window.location.search).get("format") || "EPUB";
-    const bookContent = await window.electronAPI?.getBookContent(filePath, format);
-    if (!bookContent) return;
-
+    if (!filePath || !hasRpc()) return;
     setRegeneratingRule(componentClass);
+    setRegenError(null);
     try {
-      const allUpdates = await regenerateRule(
-        componentClass, formattedChapters, bookContent, bookTitle,
-        instruction || undefined,
-      );
-      if (!allUpdates) return;
-
-      // Apply updates across all affected chapters
-      for (const [chKey, updates] of Object.entries(allUpdates)) {
-        const formatted = formattedChapters[chKey];
-        if (!formatted) continue;
-        const updated = [...formatted];
-        for (const [idx, html] of Object.entries(updates)) {
-          updated[Number(idx)] = html;
-        }
-        formattedChapters[chKey] = updated;
-      }
-
-      await window.electronAPI?.setSetting(
-        `formattedChapters:${filePath}`,
-        JSON.stringify(formattedChapters),
-      );
-
-      // Update the style dictionary with new examples
-      if (dictionary) {
-        const newDict = { ...dictionary, updatedAt: new Date().toISOString() };
-        const updatedRules = [...newDict.rules];
-
-        // Use the first updated paragraph as the new example
-        const firstChKey = Object.keys(allUpdates)[0];
-        const firstUpdates = allUpdates[firstChKey];
-        const firstIdx = Object.keys(firstUpdates).map(Number).sort((a, b) => a - b)[0];
-        const newExampleHtml = firstUpdates[firstIdx];
-        const trimmedExample = newExampleHtml.length > 300
-          ? newExampleHtml.slice(0, 300) + "..."
-          : newExampleHtml;
-
-        // Update the targeted rule's example
-        const ruleIdx = updatedRules.findIndex(r => r.component === componentClass);
-        if (ruleIdx >= 0) {
-          updatedRules[ruleIdx] = { ...updatedRules[ruleIdx], exampleHtml: trimmedExample };
-        }
-
-        // Check if any NEW classes appeared that we don't track yet
-        const chIdx = Number(firstChKey);
-        const originals = bookContent.chapters[chIdx]?.htmlParagraphs;
-        if (originals) {
-          const newRules = extractRulesFromFormatted(originals, formattedChapters[firstChKey]);
-          for (const nr of newRules) {
-            if (!updatedRules.some(r => r.component === nr.component)) {
-              updatedRules.push(nr);
-            }
-          }
-        }
-
-        newDict.rules = updatedRules;
-        await saveDictionary(filePath, newDict);
-        setDictionary(newDict);
-      }
+      const ticket = await style.regenerate(filePath, componentClass, instruction || undefined);
+      const r = await ai.result(ticket.jobId);
+      if (r.state === "error") setRegenError(r.error?.message ?? "Regeneration failed.");
+      await reload();
     } catch (err) {
-      console.error("Regenerate failed:", err);
+      setRegenError(err instanceof Error ? err.message : "Regeneration failed.");
     } finally {
       setRegeneratingRule(null);
     }
-  }, [filePath, bookTitle, dictionary]);
+  }, [filePath, reload]);
 
   // View-only: category list + text filter
   const grouped = useMemo(() => (dictionary?.rules ?? []).reduce<Record<string, StyleRule[]>>((acc, rule) => {
@@ -300,6 +258,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                 <NumberTicker value={dictionary.rules.length} className="tabular-nums text-label" /> {dictionary.rules.length === 1 ? "rule" : "rules"} learned across{" "}
                 {categories.length} {categories.length === 1 ? "category" : "categories"}
               </p>
+              {regenError && <p role="alert" className="mt-2 text-xs text-danger">{regenError}</p>}
             </header>
 
             <AnimatePresence mode="popLayout" initial={false}>

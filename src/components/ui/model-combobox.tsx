@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Search } from "lucide-react";
-import { fetchModels, type OpenRouterModel } from "@/lib/openrouter";
+import { useAIModels } from "@/lib/ai/useAISettings";
 
 interface ModelComboboxProps {
   value: string;
@@ -20,21 +20,13 @@ export function ModelCombobox({
 }: ModelComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [models, setModels] = useState<OpenRouterModel[]>([]);
-  const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Fetch models on first open
-  useEffect(() => {
-    if (!open || models.length > 0) return;
-    setLoading(true);
-    fetchModels()
-      .then(setModels)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [open, models.length]);
+  // The catalog comes from the main process (`ai:models`, cached there), loaded on first open.
+  const { models, loading: fetching } = useAIModels(open);
+  const loading = fetching && models.length === 0;
 
   // Close on outside click
   useEffect(() => {
@@ -48,12 +40,11 @@ export function ModelCombobox({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // Focus search input when opening
+  // Focus search input when opening (the search is reset by the trigger)
   useEffect(() => {
-    if (open) {
-      setSearch("");
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (!open) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(t);
   }, [open]);
 
   const filtered = search.trim()
@@ -83,7 +74,10 @@ export function ModelCombobox({
       {/* Trigger button */}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) setSearch("");
+          setOpen(!open);
+        }}
         className={cn(
           "pressable focus-ring flex h-8 w-56 items-center justify-between gap-2 rounded-full bg-fill-tertiary pr-2.5 pl-3.5 text-left text-xs shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge)] hover:bg-fill-secondary",
           open && "bg-fill-secondary",
