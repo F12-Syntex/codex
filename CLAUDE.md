@@ -4,23 +4,28 @@
 
 Codex is an Electron + Next.js 16 desktop app for organizing books and manga. Dark theme, modern UI.
 
-## Design System
+## Design System — "Glass"
+
+Desktop-only app. Apple macOS (Tahoe) design language — glass materials, semantic
+colors, continuous radii, spring motion — with a Codex twist (ink shader canvas,
+serif display type, paper grain, cursor light).
 
 **Always read `conventions.md` before making any UI changes.** It defines:
-- Border radius tokens (one radius for everything, `rounded-lg` = 8px)
-- Spacing scale
-- Surface color variables (`--bg-surface`, `--bg-inset`, `--bg-elevated`, `--bg-overlay`)
-- Typography scale (11px, 12px, 13px, 14px only)
-- Modal patterns (centered floating panels, not popovers)
-- Shadow tokens
+- Semantic color tokens (`text-label*`, `bg-fill*`, `border-separator*`, `bg-brand`, status colors)
+- Glass materials (`glass-thin`, `glass`, `glass-thick`, `glass-chrome`, `hairline`, `grain`)
+- Radius scale (`rounded-xs` → `rounded-3xl`, concentric rule)
+- Type scale (`text-2xs`…`text-2xl`, `text-large-title`, `text-title`, `text-headline`, `text-section`, `font-display`)
+- Motion (`motion/react`, `ease-apple`, `ease-spring`, `animate-*`)
+- Shared primitives (`GlassModal`, `SegmentedControl`, `ListGroup`, `InkCanvas`, `Tilt`, `SpotlightCard`, …)
 
 ## Rules
 
-- Never hardcode `oklch()` values in Tailwind classes. Use CSS variables from `globals.css`.
-- Never use arbitrary border-radius values like `rounded-[5px]`, `rounded-xl`, or `rounded-2xl`. Use `rounded-lg` (8px).
-- The dock is the only element that uses `rounded-full`.
-- All modals float centered above the dock, not as Radix popovers.
-- Keep the import button the same radius as everything else (`rounded-lg`).
+- Never hardcode colors in class names (`white/40`, `bg-black/50`, hex, `oklch()`). Use semantic tokens from `globals.css`.
+- Only use the radius scale (`rounded-xs|sm|md|lg|xl|2xl|3xl|full`). Never `rounded-[Npx]`.
+- Only use the type scale. Never `text-[Npx]`.
+- Centered modals use `GlassModal`; tab-like choices use `SegmentedControl`; settings use `ListGroup`.
+- Animate with `motion/react` (not framer-motion); respect reduced motion.
+- Prefer adapting 21st.dev components to the tokens over hand-rolling.
 - Run `npx next build` to verify after changes.
 
 ## Versioning
@@ -42,7 +47,8 @@ Also update the version badge in `src/components/title-bar.tsx` to match.
 
 ## Key Files
 
-- `src/app/globals.css` — all design tokens
+- `src/app/globals.css` — all design tokens & glass utilities
+- `src/components/ui/` — primitives (incl. `glass-modal`, `segmented-control`, `list-group`, `ink-canvas`)
 - `src/lib/accent.ts` — accent color definitions
 - `src/lib/shortcuts.ts` — keyboard shortcut registry
 - `conventions.md` — design conventions (READ BEFORE UI CHANGES)

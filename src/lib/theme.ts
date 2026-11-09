@@ -20,23 +20,25 @@ export interface ThemeConfig {
   showFormatBadge: boolean;
   sidebarWidth: number;         // default panel % (15–35)
   tintSurfaces: boolean;        // tint surfaces with accent color
+  ambientBackground: boolean;   // animated "ink" shader behind the glass
 }
 
 export const DEFAULT_THEME: ThemeConfig = {
   accent: "blue",
-  customAccentColor: "#6366f1",
+  customAccentColor: "#0a84ff",
   appearance: "dark",
   backgroundImage: null,
   backgroundBlur: 0,
   backgroundOpacity: 70,
   surfaceOpacity: 100,
-  fontFamily: "geist",
+  fontFamily: "system",
   coverStyle: "rounded",
   cursorStyle: "default",
-  borderRadius: 8,
+  borderRadius: 12,
   showFormatBadge: true,
   sidebarWidth: 20,
   tintSurfaces: false,
+  ambientBackground: true,
 };
 
 export const APPEARANCE_OPTIONS: { id: AppearanceMode; label: string }[] = [
@@ -49,5 +51,5 @@ export const FONT_OPTIONS: { id: FontFamily; label: string; preview: string }[] 
   { id: "geist", label: "Geist Sans", preview: "Aa" },
   { id: "inter", label: "Inter", preview: "Aa" },
   { id: "mono", label: "Geist Mono", preview: "Aa" },
-  { id: "system", label: "System", preview: "Aa" },
+  { id: "system", label: "San Francisco", preview: "Aa" },
 ];

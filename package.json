@@ -1,6 +1,6 @@
 {
   "name": "codex",
-  "version": "0.91.0",
+  "version": "0.92.0",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.3",
     "lucide-react": "^0.575.0",
+    "motion": "12.23.12",
     "next": "16.1.6",
     "pdf-parse": "1.1.1",
     "radix-ui": "^1.4.3",
