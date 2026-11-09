@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -10,6 +10,23 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+/** Display serif — feeds `--font-display` (globals.css). Keeps the optical-size axis. */
+const sourceSerif = Source_Serif_4({
+  variable: "--font-serif",
+  subsets: ["latin"],
+  axes: ["opsz"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+/** UI sans fallback for non-Apple platforms — feeds `--font-ui`. */
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  axes: ["opsz"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -23,11 +40,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Theme attributes (data-accent / data-appearance / data-tint, color-scheme)
+  // are mirrored onto <html> at runtime by the main window, so portals inherit them.
   return (
-    <html lang="en" className="dark">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-canvas font-sans text-sm text-label antialiased select-none`}
-      >
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable} ${inter.variable}`}
+    >
+      <body className="bg-canvas font-sans text-sm text-label antialiased select-none">
         <div className="flex h-screen flex-col overflow-hidden">
           {children}
         </div>

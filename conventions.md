@@ -45,6 +45,10 @@ Exception: content that must stay a fixed color (book cover overlays drawn on to
 of images, reader paper themes in `src/app/reader/lib/theme.ts`, graph node
 palettes, AI formatting CSS) may keep literal colors.
 
+**Theme scope:** theme attributes (`data-accent`, `data-appearance`, `data-tint`,
+`data-cursor`) and the custom-accent variables live on `<html>`. Never theme a
+subtree — portals (menus, modals, tooltips, search) render outside it.
+
 ## 2. Materials (glassmorphism)
 
 Glass needs something behind it. The main window body uses `app-canvas` (a soft
@@ -54,11 +58,16 @@ accent aurora). Floating chrome is glass:
 |---|---|
 | `glass-thin` | Sidebars, toolbars, inline floating bars (no shadow) |
 | `glass` | Dock, popovers, cards that float, menus |
-| `glass-thick` | Modals, dialogs, command palette, context menus (max legibility) |
+| `glass-thick` | Modals, dialogs, command palette (max legibility, modal shadow) |
+| `glass-menu` | Dropdown & context menus, popovers over content (thick material, popover shadow) |
 | `glass-chrome` | Title bar, sticky headers |
 | `hairline` | 0.5px inner ring for solid cards / covers |
 
-Glass utilities already include blur, saturation, edge ring and highlight. Do
+Glass utilities already include blur, saturation, edge ring and highlight.
+Verify glass actually blurs: `getComputedStyle(el).backdropFilter !== "none"`.
+Any ancestor with a `filter` (even `blur(0px)` left by an animation) becomes a
+backdrop root and kills descendant glass — entrance animations must end at
+`filter: none` (motion: `transitionEnd: { filter: "none" }`). Do
 not add extra borders on glass. Do not nest glass in glass (inner panels use
 `bg-fill-quaternary` instead).
 
@@ -86,8 +95,8 @@ System font stack (`--font-ui`): SF Pro on macOS, Inter elsewhere. macOS density
 
 | Class | Size | Use |
 |---|---|---|
-| `text-large-title` | 30/700 | Page titles ("Bookshelf", "Settings") |
-| `text-title` | 20/650 | Modal titles, section heroes |
+| `text-large-title` / `text-2xl` | 32/600 serif | Page titles ("Bookshelf", "Settings") |
+| `text-title` / `text-xl` | 21/600 serif | Modal titles, section heroes |
 | `text-lg` | 17 | Book title in detail views |
 | `text-base` | 15 | Emphasised body, empty-state headlines |
 | `text-headline` | 13/600 | Row titles, card titles, group headers |
@@ -96,7 +105,7 @@ System font stack (`--font-ui`): SF Pro on macOS, Inter elsewhere. macOS density
 | `text-2xs` | 11 | Captions, badges, kbd, counts |
 | `text-section` | 11/600 caps | Sidebar / grouped list section headers |
 
-Weights: 400 body, 500 controls, 600 headings, 700 large titles only. Use
+**Seven sizes only: 11 · 12 · 13 · 15 · 17 · 21 · 32.** Weights: 400 body, 500 controls, 600 headings. Use
 `tabular-nums` on counters/percentages. No arbitrary `text-[Npx]`.
 
 ## 5. Spacing & alignment
@@ -154,6 +163,7 @@ Library: `motion` (`import { motion, AnimatePresence } from "motion/react"`).
 | `animate-blur-in` | page/view changes |
 | motion spring | `{ type: "spring", stiffness: 400, damping: 32 }` (snappy), `{ type: "spring", bounce: 0.2, duration: 0.45 }` (layout) |
 
+Segmented-control thumbs use `bg-[var(--segment-thumb)]` (always lighter than the track).
 Use `layoutId` for sliding selection indicators (sidebar selection, segmented
 controls, tabs). Respect `prefers-reduced-motion` (`useReducedMotion`). Never
 animate width/height of large containers per frame; animate transform/opacity.
@@ -198,3 +208,15 @@ Apple's discipline, with a bookish identity on top:
    segmented control, spotlight, tilt cards, number tickers, animated lists,
    text effects, toasts…) over hand-rolling. Adapt them to these tokens. No
    hardcoded palettes, `rounded-[Npx]` or one-off fonts.
+
+## 13. Discipline rules (from the CEO review)
+
+1. **No eyebrows.** No small-caps label above a title.
+2. **Say it once.** A count, version or location label appears once per window.
+3. **One selection style** for every source list (app sidebar, settings nav, wiki
+   sidebar, TOC): `bg-fill-secondary` pill, accent-colored icon, `font-medium` label.
+4. **Colored icon tiles only in navigation**, never on every content row.
+5. **One window chrome:** a 52px transparent title bar with `<WindowControls />` in every window.
+6. **Panels over reading text use `glass-thick`** and must not occlude the text column.
+7. **Labels over glyphs** for toolbars with more than three non-universal actions.
+8. **Magnification is for things, not utilities.** The dock does not fisheye.
