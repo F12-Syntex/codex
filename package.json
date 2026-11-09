@@ -1,6 +1,6 @@
 {
   "name": "codex",
-  "version": "0.92.25",
+  "version": "0.92.26",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
