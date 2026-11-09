@@ -191,6 +191,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
                 placeholder="Search by title or author"
                 spellCheck={false}
                 role="combobox"
+                aria-controls={`${highlightId}-list`}
                 aria-expanded={hasResults}
                 aria-autocomplete="list"
                 className="min-w-0 flex-1 bg-transparent text-xl font-normal tracking-tight text-label outline-none placeholder:text-label-tertiary"
@@ -211,7 +212,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
                 >
                   <div className="border-t border-separator" />
 
-                  <div ref={resultsRef} role="listbox" className="max-h-[52vh] overflow-y-auto p-2">
+                  <div ref={resultsRef} id={`${highlightId}-list`} role="listbox" className="max-h-[52vh] overflow-y-auto p-2">
                     {!hasResults && (
                       <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
                         <span className="inline-flex size-11 items-center justify-center rounded-full bg-fill-tertiary text-label-tertiary">

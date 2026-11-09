@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Codex",
-  description: "Codex desktop application",
+  description: "Codex — a quiet library for your books and manga",
   icons: { icon: "/codex-logo.svg" },
 };
 
@@ -26,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased select-none`}
+        className={`${geistSans.variable} ${geistMono.variable} bg-canvas font-sans text-sm text-label antialiased select-none`}
       >
         <div className="flex h-screen flex-col overflow-hidden">
           {children}

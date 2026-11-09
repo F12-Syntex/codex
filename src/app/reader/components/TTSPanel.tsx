@@ -1,9 +1,19 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import { Play, Pause, Square, Volume2, ChevronDown, Loader2, SkipBack, SkipForward, Search } from "lucide-react";
+import {
+  Play, Pause, Square, ChevronDown, Loader2, SkipBack, SkipForward, Search,
+  RotateCcw, AudioLines, Check, Volume1, Volume2, X,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { AudioWaveform } from "@/components/ui/audio-waveform";
 import type { EdgeVoice, ThemeClasses, TTSState, TTSHighlightMode } from "../lib/types";
+import { PANEL_SPRING, riseIn, stopNavKeys } from "./chrome";
 
 interface TTSPanelProps {
   theme: ThemeClasses;
@@ -34,8 +44,21 @@ interface TTSPanelProps {
   onClose: () => void;
 }
 
+const voiceName = (v: EdgeVoice) => v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
+
+function formatHms(totalSeconds: number) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/**
+ * Read Aloud — a small media player that rises above the footer pill:
+ * live waveform, a big accent transport, voice picker and fine controls.
+ */
 export function TTSPanel({
-  theme,
   state,
   voices,
   selectedVoice,
@@ -62,240 +85,273 @@ export function TTSPanel({
   onShowReadMarkChange,
   onClose,
 }: TTSPanelProps) {
+  const reduceMotion = useReducedMotion();
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [voiceSearch, setVoiceSearch] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Click outside to close
-  useClickOutside(panelRef, onClose, "[data-reader-header]");
+  // Click outside to close (the toggles live in the header and footer)
+  useClickOutside(panelRef, onClose, "[data-reader-header], [data-reader-footer]");
 
   const voice = voices.find((v) => v.shortName === selectedVoice);
-  const voiceLabel = voice ? voice.shortName.split("-").pop()?.replace("Neural", "") ?? voice.shortName : "Select voice";
+  const voiceLabel = voice ? voiceName(voice) : "Select voice";
 
   const isActive = state.status !== "idle";
   const isPlaying = state.status === "playing";
   const isPaused = state.status === "paused";
   const isSynthesizing = state.status === "synthesizing";
+  const progress = isActive && totalParagraphs > 0 ? (currentParagraph + 1) / totalParagraphs : undefined;
+
+  const mainAction = !isActive ? onPlayFromCurrent : isPlaying ? onPause : isPaused ? onResume : undefined;
+  const mainLabel = !isActive ? "Play from here" : isPlaying ? "Pause" : isPaused ? "Resume" : "Preparing…";
+
+  const filteredVoices = voices.filter((v) => {
+    if (!voiceSearch) return true;
+    const q = voiceSearch.toLowerCase();
+    return v.shortName.toLowerCase().includes(q) || v.locale.toLowerCase().includes(q) || v.gender.toLowerCase().includes(q);
+  });
 
   return (
-    <div
-      ref={panelRef}
-      className={`absolute right-12 top-full z-50 mt-2 w-[280px] rounded-lg border ${theme.border} ${theme.panel} shadow-lg shadow-black/30`}
-      style={{ maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}
-    >
-      <div className="space-y-3 p-4">
-        {/* Play controls */}
-        {!isActive ? (
-          <div className="flex gap-2">
+    <div className="pointer-events-none absolute inset-x-0 bottom-16 z-50 flex justify-center px-4">
+      <motion.div
+        ref={panelRef}
+        {...riseIn}
+        initial={reduceMotion ? false : riseIn.initial}
+        transition={PANEL_SPRING}
+        onKeyDown={stopNavKeys}
+        className="glass grain pointer-events-auto relative flex w-80 origin-bottom flex-col overflow-hidden rounded-2xl"
+        style={{ maxHeight: "calc(100vh - 140px)" }}
+      >
+        <div className="overflow-y-auto p-4">
+          {/* ── Now playing ─────────────────────────── */}
+          <div className="flex items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand/15 text-brand">
+              <AudioLines className="size-4" strokeWidth={1.75} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-headline text-label">Read Aloud</div>
+              <div className="truncate text-2xs text-label-tertiary">
+                {voice ? `${voiceLabel} · ${voice.locale}` : "Choose a voice"}
+              </div>
+            </div>
             <button
-              onClick={onPlayFromStart}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
+              onClick={onClose}
+              aria-label="Close read aloud"
+              className="focus-ring pressable grid size-7 shrink-0 place-items-center rounded-full bg-fill-tertiary text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
             >
-              <Play className="h-3 w-3" strokeWidth={2} />
-              From start
-            </button>
-            <button
-              onClick={onPlayFromCurrent}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
-            >
-              <Play className="h-3 w-3" strokeWidth={2} />
-              From here
+              <X className="size-3.5" strokeWidth={2} />
             </button>
           </div>
-        ) : (
-          <div className="flex items-center justify-center gap-1.5">
-            <button
-              onClick={onSkipPrev}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-            >
-              <SkipBack className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
-            {isSynthesizing ? (
-              <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${theme.subtle} ${theme.muted}`}>
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} />
-              </div>
-            ) : isPlaying ? (
-              <button
-                onClick={onPause}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${theme.subtle} transition-colors ${theme.text}`}
-              >
-                <Pause className="h-4 w-4" strokeWidth={1.5} />
-              </button>
-            ) : isPaused ? (
-              <button
-                onClick={onResume}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${theme.subtle} transition-colors ${theme.text}`}
-              >
-                <Play className="h-4 w-4" strokeWidth={1.5} />
-              </button>
-            ) : null}
-            <button
-              onClick={onStop}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-            >
-              <Square className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
-            <button
-              onClick={onSkipNext}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-            >
-              <SkipForward className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
+
+          {/* ── Waveform ────────────────────────────── */}
+          <div className="mt-4 rounded-lg bg-fill-quaternary px-3 py-2.5">
+            <AudioWaveform
+              label={isPlaying ? "Reading aloud" : "Read aloud idle"}
+              bars={36}
+              barWidth={3}
+              gap={4}
+              height={36}
+              playing={isPlaying}
+              progress={progress}
+              barClassName={isActive ? "bg-brand" : "bg-label-quaternary"}
+              className="justify-between"
+            />
+            <div className="mt-2 flex items-center justify-between text-2xs tabular-nums text-label-tertiary">
+              <span>{isActive && totalParagraphs > 0 ? `¶ ${currentParagraph + 1} of ${totalParagraphs}` : "Ready"}</span>
+              <span>{isActive && totalParagraphs > 0 ? `−${formatHms(estimatedSeconds)}` : "Resumes where you left off"}</span>
+            </div>
           </div>
-        )}
 
-        {/* Progress info — shown during active TTS */}
-        {isActive && totalParagraphs > 0 && (() => {
-          const pct = Math.round(((currentParagraph + 1) / totalParagraphs) * 100);
-          const s = Math.max(0, Math.floor(estimatedSeconds));
-          const h = Math.floor(s / 3600);
-          const m = Math.floor((s % 3600) / 60);
-          const sec = s % 60;
-          const timeStr = `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-          return (
-            <div className="space-y-1.5">
-              {/* Progress bar */}
-              <div className={`h-1 w-full overflow-hidden rounded-full ${theme.subtle}`}>
-                <div
-                  className="h-full rounded-full bg-[var(--accent-brand)] transition-all duration-300"
-                  style={{ width: `${pct}%`, opacity: 0.7 }}
-                />
-              </div>
-              {/* Stats row */}
-              <div className="flex items-center justify-between">
-                <span className={`text-xs tabular-nums ${theme.muted}`}>
-                  {currentParagraph + 1}/{totalParagraphs}
-                </span>
-                <span className={`text-xs tabular-nums ${theme.muted}`}>
-                  {timeStr}
-                </span>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Voice selector */}
-        <div className="relative">
-          <button
-            onClick={() => { setShowVoicePicker((v) => !v); setVoiceSearch(""); }}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
-          >
-            <div className="flex items-center gap-2">
-              <Volume2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
-              <span className="truncate">{voiceLabel}</span>
-            </div>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
-          </button>
-
-          {showVoicePicker && (
-            <div className={`absolute top-full left-0 z-50 mt-1 w-full overflow-hidden rounded-lg border shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`} style={{ maxHeight: "min(260px, 40vh)" }}>
-              {/* Search input */}
-              <div className={`flex items-center gap-1.5 border-b px-2 py-1.5 ${theme.border}`}>
-                <Search className={`h-3 w-3 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
-                <input
-                  type="text"
-                  value={voiceSearch}
-                  onChange={(e) => setVoiceSearch(e.target.value)}
-                  placeholder="Search voices..."
-                  autoFocus
-                  className={`w-full bg-transparent text-xs outline-none placeholder:opacity-40 ${theme.text}`}
-                />
-              </div>
-              <div className="max-h-[220px] overflow-y-auto p-1">
-                {voices
-                  .filter((v) => {
-                    if (!voiceSearch) return true;
-                    const q = voiceSearch.toLowerCase();
-                    return v.shortName.toLowerCase().includes(q) || v.locale.toLowerCase().includes(q) || v.gender.toLowerCase().includes(q);
-                  })
-                  .map((v) => {
-                    const label = v.shortName.split("-").pop()?.replace("Neural", "") ?? v.shortName;
-                    return (
-                      <button
-                        key={v.shortName}
-                        onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); setVoiceSearch(""); }}
-                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${v.shortName === selectedVoice ? theme.btnActive : theme.btn}`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{label}</span>
-                        <span className={`shrink-0 text-xs ${theme.muted}`}>{v.gender}</span>
-                        <span className={`shrink-0 text-xs ${theme.muted}`}>{v.locale}</span>
-                      </button>
-                    );
-                  })}
-                {voices.length === 0 && (
-                  <p className={`px-2 py-3 text-center text-xs ${theme.muted}`}>Loading voices...</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Speed & Volume */}
-        <SliderRow label="Speed" value={rate} min={0.5} max={3} step={0.25} format={(v) => `${v.toFixed(2).replace(/0$/, "")}x`} onChange={onRateChange} theme={theme} />
-        <SliderRow label="Vol" value={volume} min={0} max={100} step={5} format={(v) => `${v}%`} onChange={onVolumeChange} theme={theme} />
-
-        {/* Auto-advance toggle */}
-        <div className="flex items-center justify-between">
-          <span className={`text-xs ${theme.muted}`}>Auto-advance chapters</span>
-          <button
-            onClick={() => onAutoAdvanceChange(!autoAdvance)}
-            className={`relative h-5 w-9 rounded-full transition-colors ${autoAdvance ? "bg-[var(--accent-brand)]" : theme.subtle}`}
-          >
-            <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${autoAdvance ? "translate-x-4" : ""}`} />
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className={`border-t ${theme.border}`} />
-
-        {/* Highlight mode */}
-        <div className="space-y-2">
-          <span className={`text-xs ${theme.muted}`}>Highlight</span>
-          <div className={`flex rounded-lg ${theme.subtle} p-0.5`}>
-            {(["none", "word", "para", "both"] as const).map((mode) => {
-              const value: TTSHighlightMode = mode === "para" ? "paragraph" : mode;
-              const label = mode === "para" ? "Para" : mode.charAt(0).toUpperCase() + mode.slice(1);
-              const active = highlightMode === value;
-              return (
+          {/* ── Transport ───────────────────────────── */}
+          <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center">
+            <div className="flex justify-start">
+              {isActive ? (
                 <button
-                  key={mode}
-                  onClick={() => onHighlightModeChange(value)}
-                  className={`flex-1 rounded-lg px-1 py-1 text-xs transition-colors ${active ? theme.btnActive : theme.btn}`}
+                  onClick={onStop}
+                  title="Stop"
+                  aria-label="Stop"
+                  className="focus-ring pressable grid size-8 place-items-center rounded-full text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
                 >
-                  {label}
+                  <Square className="size-3.5 fill-current" strokeWidth={1.75} />
                 </button>
-              );
-            })}
+              ) : (
+                <button
+                  onClick={onPlayFromStart}
+                  title="Play chapter from the start"
+                  className="focus-ring pressable flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
+                >
+                  <RotateCcw className="size-3.5" strokeWidth={1.75} />
+                  Start
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onSkipPrev}
+                disabled={!isActive}
+                aria-label="Previous paragraph"
+                className="focus-ring pressable grid size-10 place-items-center rounded-full text-label transition-colors hover:bg-fill-tertiary disabled:opacity-30"
+              >
+                <SkipBack className="size-5 fill-current" strokeWidth={1.5} />
+              </button>
+              <motion.button
+                onClick={mainAction}
+                disabled={isSynthesizing}
+                aria-label={mainLabel}
+                title={mainLabel}
+                whileTap={reduceMotion ? undefined : { scale: 0.92 }}
+                transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                className="focus-ring relative grid size-14 place-items-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)] transition-[filter] hover:brightness-110 disabled:cursor-wait"
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.span
+                    key={isSynthesizing ? "load" : isPlaying ? "pause" : "play"}
+                    initial={{ scale: 0.5, opacity: 0, rotate: -30 }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                    exit={{ scale: 0.5, opacity: 0, rotate: 30 }}
+                    transition={{ type: "spring", stiffness: 520, damping: 28 }}
+                    className="grid place-items-center"
+                  >
+                    {isSynthesizing ? (
+                      <Loader2 className="size-6 animate-spin" strokeWidth={2} />
+                    ) : isPlaying ? (
+                      <Pause className="size-6 fill-current" strokeWidth={1.5} />
+                    ) : (
+                      <Play className="ml-0.5 size-6 fill-current" strokeWidth={1.5} />
+                    )}
+                  </motion.span>
+                </AnimatePresence>
+              </motion.button>
+              <button
+                onClick={onSkipNext}
+                disabled={!isActive}
+                aria-label="Next paragraph"
+                className="focus-ring pressable grid size-10 place-items-center rounded-full text-label transition-colors hover:bg-fill-tertiary disabled:opacity-30"
+              >
+                <SkipForward className="size-5 fill-current" strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <div className="flex justify-end">
+              <span className="rounded-full bg-fill-tertiary px-2 py-1 text-2xs font-semibold tabular-nums text-label-secondary">
+                {rate.toFixed(2).replace(/0$/, "")}×
+              </span>
+            </div>
+          </div>
+
+          {/* ── Voice ───────────────────────────────── */}
+          <div className="mt-4 overflow-hidden rounded-lg bg-fill-quaternary">
+            <button
+              onClick={() => { setShowVoicePicker((v) => !v); setVoiceSearch(""); }}
+              aria-expanded={showVoicePicker}
+              className="focus-ring flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-quaternary"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-2xs text-label-tertiary">Voice</span>
+                <span className="block truncate text-sm leading-tight text-label">{voiceLabel}</span>
+              </span>
+              {voice && <span className="shrink-0 text-2xs text-label-tertiary">{voice.gender}</span>}
+              <ChevronDown
+                className={cn("size-4 shrink-0 text-label-tertiary transition-transform duration-300 ease-apple", showVoicePicker && "rotate-180")}
+                strokeWidth={1.75}
+              />
+            </button>
+
+            <AnimatePresence initial={false}>
+              {showVoicePicker && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ type: "spring", bounce: 0, duration: 0.35 }}
+                  className="overflow-hidden"
+                >
+                  <div className="border-t border-separator p-1.5">
+                    <label className="flex h-7 items-center gap-2 rounded-full bg-fill-tertiary px-2.5">
+                      <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+                      <input
+                        type="text"
+                        value={voiceSearch}
+                        onChange={(e) => setVoiceSearch(e.target.value)}
+                        placeholder="Search voices"
+                        autoFocus
+                        className="min-w-0 flex-1 bg-transparent text-xs text-label outline-none placeholder:text-label-tertiary"
+                      />
+                    </label>
+                    <div className="mt-1 max-h-52 overflow-y-auto">
+                      {filteredVoices.map((v) => {
+                        const selected = v.shortName === selectedVoice;
+                        return (
+                          <button
+                            key={v.shortName}
+                            onClick={() => { onVoiceChange(v.shortName); setShowVoicePicker(false); setVoiceSearch(""); }}
+                            className={cn(
+                              "focus-ring flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition-colors",
+                              selected ? "bg-brand text-brand-fg" : "text-label hover:bg-fill-tertiary",
+                            )}
+                          >
+                            <Check className={cn("size-3.5 shrink-0", !selected && "invisible")} strokeWidth={2} />
+                            <span className="min-w-0 flex-1 truncate">{voiceName(v)}</span>
+                            <span className={cn("shrink-0 text-2xs", selected ? "opacity-80" : "text-label-tertiary")}>{v.gender}</span>
+                            <span className={cn("w-12 shrink-0 text-right text-2xs", selected ? "opacity-80" : "text-label-tertiary")}>{v.locale}</span>
+                          </button>
+                        );
+                      })}
+                      {voices.length === 0 && (
+                        <p className="px-2 py-3 text-center text-xs text-label-tertiary">Loading voices…</p>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* ── Speed & volume ──────────────────────── */}
+          <div className="mt-3 space-y-1">
+            <div className="flex h-8 items-center gap-3">
+              <span className="w-12 shrink-0 text-xs text-label-secondary">Speed</span>
+              <Slider className="flex-1" aria-label="Speed" value={[rate]} min={0.5} max={3} step={0.25} onValueChange={([v]) => onRateChange(v)} />
+              <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-label-tertiary">{rate.toFixed(2).replace(/0$/, "")}×</span>
+            </div>
+            <div className="flex h-8 items-center gap-3">
+              <span className="w-12 shrink-0 text-xs text-label-secondary">Volume</span>
+              <Volume1 className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+              <Slider className="flex-1" aria-label="Volume" value={[volume]} min={0} max={100} step={5} onValueChange={([v]) => onVolumeChange(v)} />
+              <Volume2 className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+            </div>
+          </div>
+
+          <div className="my-3 h-px bg-separator" />
+
+          {/* ── Highlight & behaviour ───────────────── */}
+          <div className="space-y-3">
+            <div className="flex h-8 items-center justify-between gap-3">
+              <span className="text-sm text-label">Highlight</span>
+              <SegmentedControl
+                size="sm"
+                value={highlightMode}
+                onValueChange={onHighlightModeChange}
+                options={[
+                  { value: "none", label: "Off" },
+                  { value: "word", label: "Word" },
+                  { value: "paragraph", label: "Para" },
+                  { value: "both", label: "Both" },
+                ]}
+              />
+            </div>
+            <div className="flex h-8 items-center justify-between gap-3">
+              <span className="text-sm text-label">Auto-advance chapters</span>
+              <Switch checked={autoAdvance} onCheckedChange={onAutoAdvanceChange} aria-label="Auto-advance chapters" />
+            </div>
+            <div className="flex h-8 items-center justify-between gap-3">
+              <span className="text-sm text-label">Dim read paragraphs</span>
+              <Switch checked={showReadMark} onCheckedChange={onShowReadMarkChange} aria-label="Dim read paragraphs" />
+            </div>
           </div>
         </div>
-
-        {/* Read mark toggle */}
-        <div className="flex items-center justify-between">
-          <span className={`text-xs ${theme.muted}`}>Dim read paragraphs</span>
-          <button
-            onClick={() => onShowReadMarkChange(!showReadMark)}
-            className={`relative h-5 w-9 rounded-full transition-colors ${showReadMark ? "bg-[var(--accent-brand)]" : theme.subtle}`}
-          >
-            <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${showReadMark ? "translate-x-4" : ""}`} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SliderRow({ label, value, min, max, step, format, onChange, theme }: {
-  label: string; value: number; min: number; max: number; step: number;
-  format: (v: number) => string; onChange: (v: number) => void; theme: ThemeClasses;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className={`w-10 text-xs ${theme.muted}`}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
-      />
-      <span className={`w-[36px] text-right text-xs tabular-nums ${theme.text}`}>{format(value)}</span>
+      </motion.div>
     </div>
   );
 }

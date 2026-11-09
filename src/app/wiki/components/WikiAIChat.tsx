@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   Sparkles, ChevronDown, Maximize2, Minimize2,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export function WikiAIChat({ filePath, bookTitle, onEntryClick, chapterLabels = 
   const [isExpanded, setIsExpanded] = useState(false);
   const [totalChapters, setTotalChapters] = useState(0);
   const [wikiEntryCount, setWikiEntryCount] = useState(0);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     onOpenChange?.(isOpen, isExpanded);
@@ -37,58 +39,67 @@ export function WikiAIChat({ filePath, bookTitle, onEntryClick, chapterLabels = 
     });
   }, [filePath]);
 
-  // Closed state: floating pill button
+  // Closed state: floating glass pill
   if (!isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-white/[0.08] px-4 py-2.5 text-xs font-medium text-white/50 transition-all hover:border-white/[0.12] hover:text-white/70 hover:shadow-lg hover:shadow-black/20"
-        style={{
-          background: "var(--bg-surface)",
-          boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)",
-        }}
-      >
-        <Sparkles className="h-3.5 w-3.5" strokeWidth={1.5} />
-        Ask about this book
-      </button>
+      <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center">
+        <motion.button
+          onClick={() => setIsOpen(true)}
+          initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
+          className="glass focus-ring pressable pointer-events-auto group flex h-10 items-center gap-2.5 rounded-full pl-1.5 pr-4 text-sm font-medium text-label-secondary hover:text-label"
+        >
+          <span className="flex size-7 items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]">
+            <Sparkles className="size-3.5" strokeWidth={2} />
+          </span>
+          Ask about this book
+        </motion.button>
+      </div>
     );
   }
 
-  // Open state: chat panel using shared AIChat
+  // Open state: floating glass sheet hosting the shared AIChat
   return (
-    <div
-      className={`absolute z-20 flex flex-col border-t border-white/[0.06] transition-all duration-200 ${
-        isExpanded ? "inset-0 border-t-0" : "bottom-0 left-0 right-0"
+    <motion.div
+      layout
+      initial={reduceMotion ? false : { opacity: 0, y: 24, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", bounce: 0.18, duration: 0.5 }}
+      className={`glass-thick absolute z-20 flex flex-col overflow-hidden rounded-2xl ${
+        isExpanded ? "inset-2" : "bottom-2 left-2 right-2"
       }`}
       style={{
-        height: isExpanded ? "100%" : "clamp(280px, 45%, 420px)",
-        background: "var(--bg-surface)",
+        height: isExpanded ? undefined : "clamp(280px, 45%, 420px)",
       }}
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-          <span className="text-xs font-medium text-white/60">Wiki AI</span>
-          <span className="text-xs text-white/25">{bookTitle}</span>
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-separator pl-4 pr-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex size-6 items-center justify-center rounded-full bg-brand/15 text-brand">
+            <Sparkles className="size-3.5" strokeWidth={2} />
+          </span>
+          <span className="text-headline text-label">Wiki AI</span>
+          <span className="truncate text-xs text-label-tertiary">{bookTitle}</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+            className="focus-ring pressable flex size-7 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label"
             title={isExpanded ? "Collapse" : "Expand"}
           >
             {isExpanded ? (
-              <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+              <Minimize2 className="size-3.5" strokeWidth={1.75} />
             ) : (
-              <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+              <Maximize2 className="size-3.5" strokeWidth={1.75} />
             )}
           </button>
           <button
             onClick={() => { setIsOpen(false); setIsExpanded(false); }}
-            className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+            className="focus-ring pressable flex size-7 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary hover:bg-fill-secondary hover:text-label"
+            title="Close"
           >
-            <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <ChevronDown className="size-3.5" strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -103,6 +114,6 @@ export function WikiAIChat({ filePath, bookTitle, onEntryClick, chapterLabels = 
         variant="panel"
         maxWidth="100%"
       />
-    </div>
+    </motion.div>
   );
 }
