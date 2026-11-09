@@ -330,7 +330,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
       <div className="flex min-h-0 flex-1 gap-8 pl-8">
         {/* ── Pane rail (System Settings sidebar) ──── */}
         <nav aria-label="Settings sections" className="w-56 shrink-0 self-start">
-          <div className="glass-thin grain rounded-2xl p-2">
+          <div className="glass-thin grain relative rounded-2xl p-2">
             {/* App card — like the account card atop System Settings */}
             <button
               type="button"

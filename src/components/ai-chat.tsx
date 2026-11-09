@@ -11,7 +11,7 @@
  *  - ShimmerText  ← "Text Shimmer" (ibelick, id 1641)
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   Loader2, Sparkles, Check, XCircle, Plus, Pencil, Trash,

@@ -339,7 +339,7 @@ function renderBody(body: string) {
 function Skeleton() {
   return (
     <div className="flex flex-col gap-10" aria-busy="true" aria-label="Loading history">
-      <div className="glass grain flex flex-col gap-4 rounded-2xl p-6">
+      <div className="glass grain relative flex flex-col gap-4 rounded-2xl p-6">
         <div className="flex gap-2">
           <div className="h-5 w-16 animate-pulse rounded-full bg-fill-tertiary" />
           <div className="h-5 w-12 animate-pulse rounded-full bg-fill-quaternary" />

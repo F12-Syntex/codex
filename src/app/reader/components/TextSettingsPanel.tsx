@@ -105,7 +105,7 @@ export function TextSettingsPanel({
                         />
                       )}
                       <span
-                        className="pressable grid size-12 place-items-center rounded-full font-display text-base font-semibold shadow-sm hairline transition-transform duration-300 ease-spring group-hover:scale-105"
+                        className="pressable grid size-12 place-items-center rounded-full font-display text-base font-semibold hairline transition-transform duration-300 ease-spring group-hover:scale-105"
                         style={{ backgroundColor: s.paper, color: s.ink }}
                       >
                         Aa
