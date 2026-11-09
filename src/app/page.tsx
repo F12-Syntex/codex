@@ -19,7 +19,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
-import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
+import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut, shouldIgnoreShortcut } from "@/lib/shortcuts";
 import { groupByView, libraryItemToMockItem, type LibraryData, type MockItem } from "@/lib/mock-data";
 import { DEFAULT_THEME, FONT_FAMILY_CSS, type ThemeConfig } from "@/lib/theme";
 import { BookDetailsModal } from "@/components/content/book-details-modal";
@@ -35,6 +35,9 @@ const viewLabelMap: Record<NavView, string> = {
   changelog: "What's New",
   installer: "Discover",
 };
+
+/** Full-page views that are not a library shelf (no import / filter there). */
+const PAGE_VIEWS = new Set<NavView>(["settings", "changelog", "installer"]);
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>("books");
@@ -52,6 +55,9 @@ export default function Home() {
   const [isDev, setIsDev] = useState(false);
   const [readingProgress, setReadingProgress] = useState<Record<string, { chapter: number; totalChapters: number }>>({});
   const [detailsItem, setDetailsItem] = useState<MockItem | null>(null);
+  // Kept separate from the item so the modal stays mounted and its exit
+  // animation plays; the item is swapped (and the modal re-keyed) on open.
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const lastSelectedIdRef = useRef<number | null>(null);
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -273,6 +279,12 @@ export default function Home() {
     setComicData(updateData);
   }, [bookData, comicData]);
 
+  /** Open the details modal for an item */
+  const handleViewDetails = useCallback((item: MockItem) => {
+    setDetailsItem(item);
+    setDetailsOpen(true);
+  }, []);
+
   /** Open a book in the reader window */
   const handleOpenItem = useCallback((item: MockItem) => {
     window.electronAPI?.openReader({
@@ -288,6 +300,7 @@ export default function Home() {
   /** Import files via Electron file dialog */
   const handleImport = useCallback(async () => {
     if (!window.electronAPI?.importFiles) return;
+    if (PAGE_VIEWS.has(activeView)) return;
     const defaultView = activeView;
     const items = await window.electronAPI.importFiles(activeSection, defaultView);
     if (!items || items.length === 0) return;
@@ -318,8 +331,8 @@ export default function Home() {
     }));
 
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      // Not while typing, and not behind a modal (it owns the keyboard).
+      if (shouldIgnoreShortcut(e)) return;
 
       // Escape clears selection
       if (e.key === "Escape" && selectedIds.size > 0) {
@@ -334,6 +347,9 @@ export default function Home() {
           switch (s.id) {
             case "search":
               setSearchOpen(true);
+              break;
+            case "import":
+              void handleImport();
               break;
             case "toggle-sidebar":
               setSidebarCollapsed((v) => !v);
@@ -358,7 +374,7 @@ export default function Home() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleSectionChange, selectedIds]);
+  }, [handleSectionChange, handleImport, selectedIds]);
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
@@ -457,6 +473,9 @@ export default function Home() {
     const fontFamily = FONT_FAMILY_CSS[theme.fontFamily] ?? FONT_FAMILY_CSS.system;
     const vars: Record<string, string> = {
       "--radius": `${theme.borderRadius / 16}rem`,
+      // "Surface glass" (50–100%): globals.css multiplies every material's
+      // alpha by this.
+      "--surface-opacity": String(Math.min(100, Math.max(50, theme.surfaceOpacity ?? 100)) / 100),
       // `font-sans` (body, and so every portal) resolves to --font-ui.
       "--font-ui": fontFamily,
     };
@@ -490,6 +509,7 @@ export default function Home() {
     theme.fontFamily,
     theme.borderRadius,
     theme.customAccentColor,
+    theme.surfaceOpacity,
   ]);
 
   const contentStyle = useMemo(() => {
@@ -522,10 +542,9 @@ export default function Home() {
             <div className="absolute inset-0" style={overlayStyle} />
           </div>
         ) : showInk ? (
-          <InkCanvas
-            className="absolute inset-0"
-            accentKey={`${theme.accent}-${theme.appearance}-${theme.tintSurfaces}-${theme.customAccentColor}`}
-          />
+          // Theme changes reach the canvas through <html> (it observes the
+          // attributes / vars mirrored above) — no remount, no re-init.
+          <InkCanvas className="absolute inset-0" />
         ) : null}
 
         <ResizablePanelGroup orientation="horizontal" className="relative z-10 h-full overflow-hidden">
@@ -560,7 +579,7 @@ export default function Home() {
               <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="flex h-full min-h-0 flex-col">
                   {activeView === "settings" ? (
-                    <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} theme={theme} onThemeChange={handleThemeChange} />
+                    <SettingsPage onImportItems={handleImportItems} onLibraryCleared={refreshLibrary} activeSection={activeSection} theme={theme} onThemeChange={handleThemeChange} />
                   ) : activeView === "changelog" ? (
                     <ChangelogPage />
                   ) : activeView === "installer" ? (
@@ -576,7 +595,7 @@ export default function Home() {
                         onDeleteItem={handleDeleteItem}
                         onTransferItem={handleTransferItem}
                         onOpenItem={handleOpenItem}
-                        onViewDetails={setDetailsItem}
+                        onViewDetails={handleViewDetails}
                         activeView={activeView}
                         section={activeSection}
                         selectedIds={selectedIds}
@@ -586,6 +605,8 @@ export default function Home() {
                         onBatchMove={handleBatchMove}
                         readingProgress={readingProgress}
                         onImport={handleImport}
+                        filterLabel={formatFilter !== "all" ? formatFilter : undefined}
+                        onClearFilter={() => setFormatFilter("all")}
                         header={
                         <ContentToolbar
                           viewMode={viewMode}
@@ -624,8 +645,10 @@ export default function Home() {
         />
         {detailsItem && (
           <BookDetailsModal
+            key={detailsItem.id}
             item={detailsItem}
-            onClose={() => setDetailsItem(null)}
+            open={detailsOpen}
+            onClose={() => setDetailsOpen(false)}
             onSave={handleSaveDetails}
           />
         )}

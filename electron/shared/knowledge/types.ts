@@ -100,6 +100,9 @@ export interface KnowledgeContextRequest {
   /** Pre-scanned for mentioned names/aliases → relevance boost. */
   focusText?: string;
   focusEntityIds?: string[];
+  /** Additive (Phase 1): first chapter whose summary to include (recap windows). Default: as many
+   *  recent summaries as the budget allows. */
+  summaryFrom?: number;
 }
 
 export interface ChapterSummaryItem {

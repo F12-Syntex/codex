@@ -16,6 +16,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from "motion/react";
 import {
   Search,
@@ -43,6 +44,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tilt } from "@/components/ui/tilt";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -65,60 +67,97 @@ function SourceDropdown({
   onChange: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // Set on first open (client only). The menu is portaled to <body> so it is
+  // not glass nested inside the search pill's glass (conventions §2).
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const selected = sources.find((s) => s.id === value);
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 8, left: rect.left });
+    }
+    setOpen(!open);
+  };
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    // The menu is fixed-positioned: close it rather than let it drift from its trigger.
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
   }, [open]);
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={toggle}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="focus-ring pressable flex h-8 items-center gap-1.5 rounded-full bg-fill-tertiary pr-2 pl-2.5 text-xs font-medium text-label-secondary hover:bg-fill-secondary hover:text-label"
       >
         <Globe className="size-3.5 text-label-tertiary" strokeWidth={2} />
         <span>{selected?.name ?? "Source"}</span>
-        <ChevronsUpDown className="size-3 text-label-tertiary" strokeWidth={2} />
+        <ChevronsUpDown className="size-3.5 text-label-tertiary" strokeWidth={2} />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            role="listbox"
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -2, scale: 0.98 }}
-            transition={SPRING}
-            style={{ transformOrigin: "top left" }}
-            className="glass-thick absolute top-full left-0 z-50 mt-2 min-w-44 rounded-xl p-1"
-          >
-            {sources.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                role="option"
-                aria-selected={s.id === value}
-                onClick={() => { onChange(s.id); setOpen(false); }}
-                className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label hover:bg-brand hover:text-brand-fg"
+      {pos &&
+        createPortal(
+          <AnimatePresence>
+            {open && (
+              <motion.div
+                ref={menuRef}
+                role="listbox"
+                aria-label="Source"
+                initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -2, scale: 0.98 }}
+                transition={SPRING}
+                style={{ position: "fixed", top: pos.top, left: pos.left, transformOrigin: "top left" }}
+                className="glass-menu z-50 min-w-44 rounded-xl p-1"
               >
-                <span className="inline-flex size-3.5 shrink-0 items-center justify-center">
-                  {s.id === value && <Check className="size-3.5" strokeWidth={2.5} />}
-                </span>
-                <span className="truncate">{s.name}</span>
-              </button>
-            ))}
-          </motion.div>
+                {sources.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="option"
+                    aria-selected={s.id === value}
+                    onClick={() => { onChange(s.id); setOpen(false); }}
+                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label outline-none hover:bg-brand hover:text-brand-fg focus-visible:bg-brand focus-visible:text-brand-fg"
+                  >
+                    <span className="inline-flex size-3.5 shrink-0 items-center justify-center">
+                      {s.id === value && <Check className="size-3.5" strokeWidth={2.5} />}
+                    </span>
+                    <span className="truncate">{s.name}</span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -146,7 +185,7 @@ function ProxiedImage({ src, alt, className }: { src: string; alt: string; class
     return (
       <div className={cn("absolute inset-0 flex items-center justify-center bg-fill-quaternary", className)}>
         {failed ? (
-          <BookOpen className="size-8 text-label-quaternary" strokeWidth={1.5} />
+          <BookOpen className="size-10 text-label-quaternary" strokeWidth={1.25} />
         ) : (
           <div className="absolute inset-0 animate-pulse bg-fill-quaternary" />
         )}
@@ -273,7 +312,7 @@ function DownloadCard({
       {isActive && progress && (
         <div className="mt-3 pl-12">
           <ProgressTrack value={(progress.current / progress.total) * 100} />
-          <div className="mt-1.5 flex items-center justify-between text-2xs text-label-tertiary tabular-nums">
+          <div className="mt-1.5 flex items-center justify-between text-2xs text-label-secondary tabular-nums">
             <span>
               {progress.current}/{progress.total} chapters
             </span>
@@ -545,15 +584,19 @@ export function InstallerPage() {
     return (!isNaN(from) && !isNaN(to) && to >= from) ? to - from + 1 : novelInfo.totalChapters;
   })();
 
-  // ── Search field (shared between hero and docked positions) ──
+  // ── Search field ──
+  // One element for both the hero and the docked position. It moves with
+  // `layout`, so the <input> is never remounted and keeps focus when results
+  // arrive (QA P2-6).
 
-  const searchField = (size: "hero" | "docked") => (
+  const size: "hero" | "docked" = hasResults ? "docked" : "hero";
+  const searchField = (
     <motion.div
-      layoutId="installer-search"
+      layout
       transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
       className={cn(
         "glass flex w-full items-center gap-2 rounded-full transition-shadow duration-200 focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_25%,transparent)]",
-        size === "hero" ? "h-14 max-w-2xl pr-2 pl-3" : "h-11 max-w-xl pr-1.5 pl-1.5",
+        size === "hero" ? "h-14 max-w-2xl pr-2 pl-3" : "h-10 max-w-xl pr-1 pl-1",
       )}
     >
       {sources.length > 0 && (
@@ -566,7 +609,7 @@ export function InstallerPage() {
       <Search className={cn("shrink-0 text-label-tertiary", size === "hero" ? "size-5" : "size-4", sources.length > 0 && "ml-1")} strokeWidth={1.75} />
       <input
         ref={inputRef}
-        autoFocus={size === "hero"}
+        autoFocus
         type="text"
         placeholder="Search novels..."
         value={query}
@@ -642,94 +685,107 @@ export function InstallerPage() {
 
   const searchView = (
     <LayoutGroup>
-      {!hasResults ? (
-        /* 1 — Discover hero */
-        <div className="relative flex h-full flex-col items-center overflow-y-auto px-8 pt-[16vh] pb-32">
-          <div aria-hidden className="pointer-events-none absolute top-[8vh] left-1/2 size-96 -translate-x-1/2 rounded-full bg-brand/15 blur-3xl" />
-          <BlurFade className="relative flex flex-col items-center text-center">
-            <span className="mb-5 inline-flex size-14 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-[0_0_32px_-6px_var(--accent-brand)]">
-              <Compass className="size-7" strokeWidth={1.5} />
-            </span>
-            <h1 className="text-large-title font-display text-label">Find your next story</h1>
-            <p className="mt-2 max-w-md text-sm text-label-secondary">
-              Search {sourceName ?? "online sources"} and download novels straight to your bookshelf.
-            </p>
-          </BlurFade>
-          <div className="relative mt-8 flex w-full justify-center">{searchField("hero")}</div>
-          <div className="relative mt-4 flex w-full max-w-2xl flex-col items-center gap-3">
-            {errorBanner}
-            {query && !searching && (
-              <p className="text-xs text-label-tertiary">No results found</p>
-            )}
+      <div className="relative flex h-full flex-col overflow-y-auto">
+        {/* 1 — Discover hero (above the field until results arrive) */}
+        {!hasResults && (
+          <div className="relative flex flex-col items-center px-8 pt-[16vh] text-center">
+            <div aria-hidden className="pointer-events-none absolute top-[8vh] left-1/2 size-96 -translate-x-1/2 rounded-full bg-brand/15 blur-3xl" />
+            <BlurFade className="relative flex flex-col items-center">
+              <span className="mb-5 inline-flex size-12 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-[0_0_32px_-6px_var(--accent-brand)]">
+                <Compass className="size-5" strokeWidth={1.75} />
+              </span>
+              <h1 className="text-large-title font-display text-label">Find your next story</h1>
+              <p className="mt-2 max-w-md text-sm text-label-secondary">
+                Search {sourceName ?? "online sources"} and download novels straight to your bookshelf.
+              </p>
+            </BlurFade>
           </div>
-        </div>
-      ) : (
-        /* 2 — Results wall */
-        <div className="flex h-full flex-col overflow-y-auto">
-          <div className="sticky top-0 z-20 flex items-center gap-3 px-8 pt-6 pb-4">
-            {searchField("docked")}
-            <span className="ml-auto text-xs text-label-tertiary tabular-nums">
+        )}
+
+        {/* The search field keeps this tree position in both layouts. */}
+        <div
+          className={cn(
+            "z-20 flex w-full items-center gap-3 px-8",
+            hasResults ? "sticky top-0 pt-6 pb-4" : "relative mt-8 justify-center",
+          )}
+        >
+          {searchField}
+          {hasResults && (
+            <span className="ml-auto shrink-0 text-xs text-label-secondary tabular-nums">
               {results.length} results{totalPages > 1 ? ` · page ${page} of ${totalPages}` : ""}
             </span>
-          </div>
-          {errorBanner && <div className="px-8 pb-3">{errorBanner}</div>}
-          <div
-            className={cn(
-              "grid grid-cols-[repeat(auto-fill,minmax(136px,1fr))] gap-x-6 gap-y-8 px-8 pt-2 transition-opacity duration-200",
-              searching && "opacity-50",
-            )}
-          >
-            {results.map((r, i) => (
-              <BlurFade key={`${r.slug}-${i}`} delay={Math.min(i, 12) * 0.025}>
-                <button
-                  type="button"
-                  onClick={() => handleSelectNovel(r)}
-                  className="group focus-ring flex w-full flex-col gap-2.5 rounded-lg text-left"
-                >
-                  <Tilt maxTilt={6} glare className="relative aspect-[2/3] w-full overflow-hidden rounded-lg shadow-cover hairline">
-                    <ProxiedImage src={r.thumbnail} alt={r.title} />
-                  </Tilt>
-                  <div className="flex flex-col gap-0.5 px-0.5">
-                    <span className="line-clamp-2 text-headline leading-snug text-label">{r.title}</span>
-                    <span className="line-clamp-1 text-xs text-label-tertiary">{r.author || "Unknown"}</span>
-                  </div>
-                </button>
-              </BlurFade>
-            ))}
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex justify-center px-8 pt-10 pb-32">
-              <div className="glass flex h-9 items-center gap-1 rounded-full px-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => handleSearch(page - 1)}
-                  disabled={page <= 1 || searching}
-                  aria-label="Previous page"
-                  className="rounded-full"
-                >
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <span className="min-w-16 text-center text-xs text-label-secondary tabular-nums">
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => handleSearch(page + 1)}
-                  disabled={page >= totalPages || searching}
-                  aria-label="Next page"
-                  className="rounded-full"
-                >
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-            </div>
           )}
-          {totalPages <= 1 && <div className="h-32 shrink-0" />}
         </div>
-      )}
+
+        {!hasResults ? (
+          <div className="relative mx-auto mt-4 flex w-full max-w-2xl flex-col items-center gap-3 px-8 pb-32">
+            {errorBanner}
+            {query && !searching && (
+              <p className="text-xs text-label-secondary">No results found</p>
+            )}
+          </div>
+        ) : (
+          /* 2 — Results wall */
+          <>
+            {errorBanner && <div className="px-8 pb-3">{errorBanner}</div>}
+            <div
+              className={cn(
+                "grid grid-cols-[repeat(auto-fill,minmax(136px,1fr))] gap-x-6 gap-y-8 px-8 pt-2 transition-opacity duration-200",
+                searching && "opacity-50",
+              )}
+            >
+              {results.map((r, i) => (
+                <BlurFade key={`${r.slug}-${i}`} delay={Math.min(i, 12) * 0.025}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectNovel(r)}
+                    className="group focus-ring flex w-full flex-col gap-2.5 rounded-lg text-left"
+                  >
+                    <Tilt maxTilt={6} glare className="relative aspect-[2/3] w-full overflow-hidden rounded-lg shadow-cover hairline">
+                      <ProxiedImage src={r.thumbnail} alt={r.title} />
+                    </Tilt>
+                    <div className="flex flex-col gap-0.5 px-0.5">
+                      <span className="line-clamp-2 text-headline leading-snug text-label">{r.title}</span>
+                      <span className="line-clamp-1 text-xs text-label-secondary">{r.author || "Unknown"}</span>
+                    </div>
+                  </button>
+                </BlurFade>
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex justify-center px-8 pt-10 pb-32">
+                <div className="glass flex h-10 items-center gap-1 rounded-full px-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleSearch(page - 1)}
+                    disabled={page <= 1 || searching}
+                    aria-label="Previous page"
+                    className="rounded-full"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <span className="min-w-16 text-center text-xs text-label-secondary tabular-nums">
+                    {page} / {totalPages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => handleSearch(page + 1)}
+                    disabled={page >= totalPages || searching}
+                    aria-label="Next page"
+                    className="rounded-full"
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            {totalPages <= 1 && <div className="h-32 shrink-0" />}
+          </>
+        )}
+      </div>
     </LayoutGroup>
   );
 
@@ -749,7 +805,7 @@ export function InstallerPage() {
         <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label="Back to results" className="glass rounded-full">
           <ArrowLeft className="size-4" />
         </Button>
-        <span className="truncate text-xs text-label-tertiary">
+        <span className="truncate text-xs text-label-secondary">
           {sourceName ? `${sourceName} · ` : ""}
           {novelInfo?.title ?? "Loading..."}
         </span>
@@ -760,7 +816,7 @@ export function InstallerPage() {
       {loadingInfo ? (
         <div className="relative flex flex-1 flex-col items-center justify-center gap-3">
           <Loader2 className="size-5 animate-spin text-label-tertiary" />
-          <span className="text-xs text-label-tertiary">Fetching details…</span>
+          <span className="text-xs text-label-secondary">Fetching details…</span>
         </div>
       ) : novelInfo ? (
         <BlurFade className="relative flex max-w-4xl gap-8 px-8 pt-2 pb-32">
@@ -802,7 +858,7 @@ export function InstallerPage() {
               <div className="min-w-0 flex-1">
                 <p className="text-headline text-label">Chapters</p>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={novelInfo.totalChapters}
@@ -812,8 +868,8 @@ export function InstallerPage() {
                     aria-label="From chapter"
                     className={RANGE_FIELD}
                   />
-                  <span className="text-xs text-label-tertiary">to</span>
-                  <input
+                  <span className="text-xs text-label-secondary">to</span>
+                  <Input
                     type="number"
                     min={1}
                     max={novelInfo.totalChapters}
@@ -823,7 +879,7 @@ export function InstallerPage() {
                     aria-label="To chapter"
                     className={RANGE_FIELD}
                   />
-                  <span className="text-xs text-label-tertiary tabular-nums">of {novelInfo.totalChapters}</span>
+                  <span className="text-xs text-label-secondary tabular-nums">of {novelInfo.totalChapters}</span>
                 </div>
               </div>
               <Button
@@ -894,8 +950,8 @@ export function InstallerPage() {
 
 // ── Helper ──────────────────────────────────────────────
 
-const RANGE_FIELD =
-  "h-8 w-20 rounded-md bg-fill-tertiary px-2.5 text-sm text-label tabular-nums outline-none transition-[background-color,box-shadow] duration-150 placeholder:text-label-quaternary hover:bg-fill-secondary focus:bg-fill-secondary focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_35%,transparent)]";
+/** Chapter-range fields: the shared <Input>, narrowed for 4-digit numbers. */
+const RANGE_FIELD = "w-20 px-2.5 tabular-nums";
 
 function MetaRow({ icon: Icon, label, value }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -905,7 +961,7 @@ function MetaRow({ icon: Icon, label, value }: {
   return (
     <div className="flex items-center gap-1.5 text-xs">
       <Icon className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
-      <span className="text-label-tertiary">{label}</span>
+      <span className="text-label-secondary">{label}</span>
       <span className="font-medium text-label">{value}</span>
     </div>
   );

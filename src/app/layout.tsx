@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Source_Serif_4 } from "next/font/google";
+import { MotionConfig } from "motion/react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,17 +41,22 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Theme attributes (data-accent / data-appearance / data-tint, color-scheme)
-  // are mirrored onto <html> at runtime by the main window, so portals inherit them.
+  // Theme attributes (data-accent / data-appearance / data-tint / data-cursor),
+  // the custom-accent / radius / font / surface-opacity vars and color-scheme
+  // are set on <html> at runtime by each window, so portals inherit them.
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable} ${inter.variable}`}
     >
       <body className="bg-canvas font-sans text-sm text-label antialiased select-none">
-        <div className="flex h-screen flex-col overflow-hidden">
-          {children}
-        </div>
+        {/* Every window: motion (incl. exits and portaled overlays) honours
+            prefers-reduced-motion, not just components that check it. */}
+        <MotionConfig reducedMotion="user">
+          <div className="flex h-screen flex-col overflow-hidden">
+            {children}
+          </div>
+        </MotionConfig>
       </body>
     </html>
   );

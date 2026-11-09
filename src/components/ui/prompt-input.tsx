@@ -33,6 +33,11 @@ export interface PromptInputProps {
   actions?: React.ReactNode;
   /** Right side meta, before the send hint (counts…). */
   meta?: React.ReactNode;
+  /**
+   * `glass` (default) floats on content; `inset` is a plain fill for hosts
+   * that are already glass (sidebars, panels) — no glass-in-glass.
+   */
+  variant?: "glass" | "inset";
   className?: string;
 }
 
@@ -48,6 +53,7 @@ export function PromptInput({
   maxRows = 6,
   actions,
   meta,
+  variant = "glass",
   className,
 }: PromptInputProps) {
   const reduce = useReducedMotion();
@@ -79,7 +85,8 @@ export function PromptInput({
     <div
       data-slot="prompt-input"
       className={cn(
-        "glass rounded-2xl transition-shadow duration-200 ease-apple",
+        variant === "inset" ? "rounded-2xl bg-fill-quaternary hairline" : "glass rounded-2xl",
+        "transition-shadow duration-200 ease-apple",
         "focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_22%,transparent),0_8px_32px_-12px_var(--accent-brand)]",
         disabled && "opacity-80",
         className,

@@ -13,13 +13,14 @@ import {
   FolderOpen,
   Info,
   Library,
+  ListFilter,
   Plus,
 } from "lucide-react";
-import { BookCard, coverRadius, extractDominantColor, SPINE_STYLE } from "./book-card";
+import { BLOOM_MASK, BookCard, coverRadius, extractDominantColor, SPINE_STYLE } from "./book-card";
 import { SelectionBar } from "./selection-bar";
 import { ToolbarScrollContext } from "./content-toolbar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { BlurFade } from "@/components/ui/blur-fade";
+import { BLUR_FADE_LIMIT, BlurFade, blurFadeDelay } from "@/components/ui/blur-fade";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GlassModal } from "@/components/ui/glass-modal";
@@ -60,6 +61,10 @@ interface ContentGridProps {
   readingProgress?: Record<string, { chapter: number; totalChapters: number }>;
   /** Optional — shows an Import action in the Bookshelf / Series empty state. */
   onImport?: () => void;
+  /** Active format filter (e.g. "PDF"); the empty state then talks about it. */
+  filterLabel?: string;
+  /** Clears the format filter (offered by the filtered empty state). */
+  onClearFilter?: () => void;
   /**
    * Optional page header (pass `<ContentToolbar … />`). When given it renders
    * inside the scroll area: the title scrolls away and the toolbar's control
@@ -89,11 +94,16 @@ const comicMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] =
 const COVER_GRID =
   "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-6 gap-y-8";
 const PAGE_PAD = "px-8 pt-3 pb-36";
-/** Content dissolves under the header instead of hard-clipping. */
-const FADE_MASK = "[mask-image:linear-gradient(to_bottom,transparent,black_16px)]";
+/* No `mask-image` on the scroller: a masked ancestor is a Backdrop Root and
+   would kill the glass inside it (cards, badges). The pinned toolbar's Edge
+   Blur strip softens content as it slides under the header instead. */
 
-/** Stagger entrance 30ms per item, capped at 12 items (conventions §8). */
-const stagger = (i: number) => Math.min(i, 12) * 0.03;
+/**
+ * Entrance props for the i-th item: 30ms stagger capped at 12 (conventions
+ * §8); past BLUR_FADE_LIMIT items render static, so a 1,000-book library
+ * doesn't start 1,000 filter animations on every view switch.
+ */
+const fade = (i: number) => ({ delay: blurFadeDelay(i), skip: i >= BLUR_FADE_LIMIT });
 
 /** Small thumbnail radius: rounded covers → rounded-sm, sharp → rounded-xs. */
 const thumbRadius = (coverStyle: CoverStyle) => (coverStyle === "rounded" ? "rounded-sm" : "rounded-xs");
@@ -156,21 +166,17 @@ function SelectCheck({ selected }: { selected: boolean }) {
         selected ? "bg-brand text-brand-fg" : "shadow-[inset_0_0_0_1.5px_var(--separator-strong)]",
       )}
     >
-      {selected && <Check className="size-2.5" strokeWidth={3.5} />}
+      {selected && <Check className="size-3" strokeWidth={3} />}
     </span>
   );
 }
 
+/** List-row progress: the shared ProgressBar plus a percentage. */
 function ProgressBarInline({ pct, className }: { pct: number; className?: string }) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <div className="h-1 flex-1 overflow-hidden rounded-full bg-fill-tertiary">
-        <div
-          className="h-full rounded-full bg-brand transition-[width] duration-500 ease-apple"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="w-8 text-right text-2xs text-label-tertiary tabular-nums">{Math.round(pct)}%</span>
+      <ProgressBar value={pct} className="flex-1" />
+      <span className="w-8 text-right text-2xs text-label-secondary tabular-nums">{Math.round(pct)}%</span>
     </div>
   );
 }
@@ -209,7 +215,7 @@ function LibraryScroll({
   const ctx = useMemo(() => ({ scrolled }), [scrolled]);
 
   return (
-    <ScrollArea ref={ref} className={cn("min-h-0 flex-1", FADE_MASK)}>
+    <ScrollArea ref={ref} className="min-h-0 flex-1">
       {hasHeader && <ToolbarScrollContext.Provider value={ctx}>{header}</ToolbarScrollContext.Provider>}
       {children}
     </ScrollArea>
@@ -326,7 +332,7 @@ function ContinueCard({
           </div>
           <Button
             size="sm"
-            className="ml-auto rounded-md"
+            className="ml-auto"
             disabled={!onResume}
             onClick={(e) => {
               e.stopPropagation();
@@ -439,8 +445,8 @@ function GroupCard({
       <div className="relative">
         <div
           aria-hidden
-          className="group-card-glow pointer-events-none absolute inset-x-3 -bottom-1 h-10 rounded-full opacity-0 blur-2xl transition-opacity duration-300"
-          style={{ background: items[0].gradient }}
+          className="group-card-glow pointer-events-none absolute -inset-x-2 -bottom-5 h-16 opacity-0 transition-opacity duration-300"
+          style={{ background: items[0].gradient, ...BLOOM_MASK }}
         />
 
         <div className="relative aspect-[2/3]">
@@ -497,7 +503,7 @@ function GroupCard({
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {}, onImport, header }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {}, onImport, filterLabel, onClearFilter, header }: ContentGridProps) {
   const hasSelection = selectedIds.size > 0;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -519,7 +525,14 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
   }, [hasSelection, onOpenItem]);
 
   if (items.length === 0) {
-    const empty = emptyStateFor(activeView, section);
+    const empty = filterLabel
+      ? {
+          icon: ListFilter,
+          title: `No ${filterLabel} files`,
+          description: `Nothing here matches the ${filterLabel} filter.`,
+          canImport: false,
+        }
+      : emptyStateFor(activeView, section);
     const EmptyIcon = empty.icon;
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -532,8 +545,12 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             title={empty.title}
             description={empty.description}
             action={
-              empty.canImport && onImport ? (
-                <Button size="sm" onClick={onImport} className="rounded-md">
+              filterLabel && onClearFilter ? (
+                <Button variant="secondary" size="sm" onClick={onClearFilter}>
+                  Clear Filter
+                </Button>
+              ) : empty.canImport && onImport ? (
+                <Button size="sm" onClick={onImport}>
                   <Plus strokeWidth={2.25} />
                   Import
                 </Button>
@@ -572,13 +589,12 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         hideClose
       >
         <GlassModal.Footer className="border-t-0 pt-2 pb-5">
-          <Button variant="secondary" size="sm" className="rounded-md" onClick={() => setConfirmDelete(false)}>
+          <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
             Cancel
           </Button>
           <Button
             variant="destructive"
             size="sm"
-            className="rounded-md"
             autoFocus
             onClick={() => { onBatchDelete(selectedIds); setConfirmDelete(false); }}
           >
@@ -612,7 +628,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
               const isSelected = selectedIds.has(item.id);
               const pct = getPct(item.filePath);
               return (
-                <BlurFade key={item.id} delay={stagger(i)} yOffset={4}>
+                <BlurFade key={item.id} {...fade(i)} yOffset={4}>
                   <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                     <div
                       onClick={(e) => handleItemClick(e, item)}
@@ -664,7 +680,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             const caption = progressCaption(readingProgress, item.filePath);
             const done = pct != null && pct >= 100;
             return (
-              <BlurFade key={item.id} delay={stagger(i)}>
+              <BlurFade key={item.id} {...fade(i)}>
                 <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                   <div
                     onClick={(e) => handleItemClick(e, item)}
@@ -743,7 +759,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
               <SectionHeader title="Continue Reading" />
               <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-4">
                 {inProgress.map((item, i) => (
-                  <BlurFade key={item.id} delay={stagger(i)} className="h-full">
+                  <BlurFade key={item.id} {...fade(i)} className="h-full">
                     <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                       <div
                         onClick={(e) => handleItemClick(e, item)}
@@ -770,7 +786,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             {items.map((item, i) => {
               const pct = getPct(item.filePath);
               return (
-                <BlurFade key={item.id} delay={stagger(i)}>
+                <BlurFade key={item.id} {...fade(i)}>
                   <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
                     <div
                       onClick={(e) => handleItemClick(e, item)}
@@ -851,7 +867,7 @@ function GroupView({
   const renderBook = (item: MockItem, i: number) => {
     const pct = bookPct(readingProgress, item.filePath);
     return (
-    <BlurFade key={item.id} delay={stagger(i)}>
+    <BlurFade key={item.id} {...fade(i)}>
       <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
         <div
           onClick={(e) => onItemClick(e, item)}
@@ -905,7 +921,7 @@ function GroupView({
           groupItems.length === 1 ? (
             renderBook(groupItems[0], i)
           ) : (
-            <BlurFade key={author} delay={stagger(i)}>
+            <BlurFade key={author} {...fade(i)}>
               <button
                 type="button"
                 onClick={() => setExpandedGroup(author)}

@@ -13,6 +13,11 @@ import type { MockItem } from "@/lib/mock-data";
 
 interface BookDetailsModalProps {
   item: MockItem;
+  /**
+   * Keep the modal mounted and toggle this so the exit animation plays
+   * (remount with a `key` per item to reset its state). Default true.
+   */
+  open?: boolean;
   onClose: () => void;
   onSave: (id: number, fields: { title?: string; author?: string; cover?: string }, meta?: { description?: string; genres?: string[] }) => void;
 }
@@ -28,7 +33,7 @@ interface FetchedDetails {
   alternativeNames?: string[];
 }
 
-export function BookDetailsModal({ item, onClose, onSave }: BookDetailsModalProps) {
+export function BookDetailsModal({ item, open = true, onClose, onSave }: BookDetailsModalProps) {
   const [fetched, setFetched] = useState<FetchedDetails | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -173,7 +178,7 @@ Return ONLY valid JSON:
       />
       <Pencil
         aria-hidden
-        className="pointer-events-none absolute right-2 size-3 text-label-tertiary opacity-40 transition-opacity duration-150 group-hover/edit:opacity-100 group-focus-within/edit:opacity-100"
+        className="pointer-events-none absolute right-2 size-3.5 text-label-tertiary opacity-40 transition-opacity duration-150 group-hover/edit:opacity-100 group-focus-within/edit:opacity-100"
         strokeWidth={2}
       />
     </label>
@@ -199,7 +204,7 @@ Return ONLY valid JSON:
 
   return (
     <GlassModal
-      open
+      open={open}
       onClose={onClose}
       width={640}
       title={trimmedTitle || item.title}
@@ -243,7 +248,7 @@ Return ONLY valid JSON:
             </Tilt>
             {fetched && (
               <p className="mt-3 flex animate-fade-up items-center justify-center gap-1.5 text-2xs text-label-tertiary">
-                <Check className="size-3 text-success" strokeWidth={2.5} />
+                <Check className="size-3.5 text-success" strokeWidth={2.25} />
                 Preview — not saved yet
               </p>
             )}
@@ -298,7 +303,7 @@ Return ONLY valid JSON:
       </GlassModal.Body>
 
       <GlassModal.Footer className="relative justify-between px-5 py-3.5">
-        <Button variant="secondary" size="sm" className="rounded-md" onClick={handleFetch} disabled={fetching}>
+        <Button variant="secondary" size="sm" onClick={handleFetch} disabled={fetching}>
           {fetching ? (
             <Loader2 className="animate-spin" strokeWidth={1.75} />
           ) : (
@@ -308,12 +313,11 @@ Return ONLY valid JSON:
         </Button>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" className="rounded-md" onClick={onClose}>
+          <Button variant="secondary" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button
             size="sm"
-            className="rounded-md"
             onClick={handleApply}
             disabled={!dirty}
             title={dirty ? undefined : "Edit the title or author, or fetch details"}

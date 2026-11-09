@@ -104,7 +104,7 @@ export function WindowChrome({ icon, title, subtitle, zoomKey, zoom: controlledZ
             title="Zoom out"
             className="focus-ring pressable flex size-6 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label disabled:opacity-30 disabled:hover:bg-transparent"
           >
-            <Minus className="size-3" strokeWidth={2} />
+            <Minus className="size-3.5" strokeWidth={2} />
           </button>
           <button
             onClick={() => setZoom(DEFAULT_ZOOM)}
@@ -119,7 +119,7 @@ export function WindowChrome({ icon, title, subtitle, zoomKey, zoom: controlledZ
             title="Zoom in"
             className="focus-ring pressable flex size-6 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label disabled:opacity-30 disabled:hover:bg-transparent"
           >
-            <Plus className="size-3" strokeWidth={2} />
+            <Plus className="size-3.5" strokeWidth={2} />
           </button>
         </div>
       )}

@@ -23,12 +23,17 @@ const ICON_TINTS = {
   yellow: "bg-[var(--system-yellow)]",
   green: "bg-[var(--system-green)]",
   teal: "bg-[var(--system-teal)]",
-  gray: "bg-[#8e8e93]",
+  // `--system-gray` is not a token yet; the fallback is macOS systemGray.
+  gray: "bg-[var(--system-gray,#8e8e93)]",
   accent: "bg-brand",
 } as const;
 
 export type ListIconTint = keyof typeof ICON_TINTS;
 
+/**
+ * Coloured navigation tile. The glyph is white on every system hue (like the
+ * macOS Settings tiles), so it is a fixed colour by design (conventions §1).
+ */
 export function ListIcon({ tint = "accent", children, className }: { tint?: ListIconTint; children: React.ReactNode; className?: string }) {
   return (
     <span
@@ -60,7 +65,7 @@ export function ListGroup({
       <div className="overflow-hidden rounded-lg bg-fill-quaternary hairline [&>*+*]:border-t [&>*+*]:border-separator">
         {children}
       </div>
-      {footer && <p className="px-3 text-xs text-label-tertiary">{footer}</p>}
+      {footer && <p className="px-3 text-xs text-label-secondary">{footer}</p>}
     </section>
   );
 }
@@ -98,7 +103,7 @@ export function ListRow({
       {icon && (iconTint ? <ListIcon tint={iconTint}>{icon}</ListIcon> : <span className="text-label-secondary [&_svg]:size-4">{icon}</span>)}
       <div className="min-w-0 flex-1">
         <div className={cn("text-sm", destructive ? "text-danger" : "text-label")}>{label}</div>
-        {description && <div className="mt-0.5 text-xs text-label-tertiary">{description}</div>}
+        {description && <div className="mt-0.5 text-xs text-label-secondary">{description}</div>}
       </div>
       {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
     </Comp>

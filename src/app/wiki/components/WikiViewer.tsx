@@ -15,6 +15,7 @@ import { ShimmerText } from "@/components/ui/shimmer-text";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
+import { SearchField } from "@/components/ui/search-field";
 import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
 import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
@@ -937,17 +938,18 @@ function EntryPage({
                 style={{ transformOrigin: "top right" }}
                 className="glass-menu absolute right-0 top-full z-30 mt-2 w-72 rounded-xl p-1"
               >
-                <div className="flex h-8 items-center gap-2 rounded-md bg-fill-tertiary px-2.5">
-                  <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={2} />
-                  <input
-                    type="text"
+                <div className="flex items-center gap-1">
+                  <SearchField
                     autoFocus
                     value={mergeSearch}
-                    onChange={(e) => setMergeSearch(e.target.value)}
+                    onChange={setMergeSearch}
                     placeholder={`Search ${TYPE_META[entry.type].plural.toLowerCase()}…`}
-                    className="min-w-0 flex-1 bg-transparent text-sm text-label outline-none placeholder:text-label-tertiary"
                   />
-                  <button onClick={() => setShowMergePicker(false)} className="focus-ring rounded-full text-label-tertiary hover:text-label" aria-label="Close">
+                  <button
+                    onClick={() => setShowMergePicker(false)}
+                    className="focus-ring flex size-7 shrink-0 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label"
+                    aria-label="Close"
+                  >
                     <X className="size-3.5" strokeWidth={2} />
                   </button>
                 </div>

@@ -38,7 +38,9 @@ export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
     <label
       className={cn(
         "relative flex h-8 w-full cursor-text items-center gap-2 overflow-hidden rounded-full bg-fill-tertiary px-3 transition-[background-color,box-shadow] duration-150",
-        focused ? "bg-fill-secondary shadow-[0_0_0_3px_var(--accent-brand-dim)]" : "hover:bg-fill-secondary",
+        focused
+          ? "bg-fill-secondary shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_18%,transparent)]"
+          : "hover:bg-fill-secondary",
         className,
       )}
     >
@@ -72,9 +74,9 @@ export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
             onChange("");
             innerRef.current?.focus();
           }}
-          className="pressable flex size-4 shrink-0 items-center justify-center rounded-full bg-label-tertiary text-canvas hover:bg-label-secondary"
+          className="focus-ring pressable flex size-4 shrink-0 items-center justify-center rounded-full bg-label-tertiary text-canvas hover:bg-label-secondary"
         >
-          <X className="size-2.5" strokeWidth={3} />
+          <X className="size-3" strokeWidth={2.75} />
         </button>
       ) : (
         trailing

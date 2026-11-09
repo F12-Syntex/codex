@@ -40,3 +40,21 @@ export function matchesShortcut(event: KeyboardEvent, parsed: ParsedKeys): boole
     event.key.toLowerCase() === parsed.key
   );
 }
+
+/**
+ * True when window-level shortcuts should stand down: the user is typing in a
+ * field, or a modal (GlassModal, Spotlight, a dock panel) owns the keyboard.
+ */
+export function shouldIgnoreShortcut(event: KeyboardEvent): boolean {
+  const target = event.target as HTMLElement | null;
+  if (
+    target &&
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT" ||
+      target.isContentEditable)
+  ) {
+    return true;
+  }
+  return document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]') !== null;
+}

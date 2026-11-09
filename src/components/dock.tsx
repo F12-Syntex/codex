@@ -12,11 +12,11 @@
  * out of the dock (conventions §7) and hug their content.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Palette, Keyboard, X, PanelLeft } from "lucide-react";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
-import { Kbd } from "@/components/ui/kbd";
+import { Keys } from "@/components/ui/kbd";
 import { ThemeTabContent, ThemeTabControl, type ThemeTab } from "@/components/theme-panel";
 import { SHORTCUT_REGISTRY } from "@/lib/shortcuts";
 import type { ThemeConfig } from "@/lib/theme";
@@ -36,19 +36,55 @@ interface DockProps {
 
 const SHEET_SPRING = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 } as const;
 
-/* ═══ Shortcut keys → keycaps ═════════════════════════════════════════ */
-
-function Keys({ keys, className }: { keys: string; className?: string }) {
-  return (
-    <span className={cn("inline-flex items-center gap-0.5", className)}>
-      {keys.split("+").map((k) => (
-        <Kbd key={k}>{k}</Kbd>
-      ))}
-    </span>
-  );
-}
-
 const keysFor = (id: string) => SHORTCUT_REGISTRY.find((s) => s.id === id)?.keys;
+
+/* ═══ Focus management ════════════════════════════════════════════════ */
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Keeps keyboard focus inside an open panel: focuses its first control on
+ * open, wraps Tab / Shift+Tab, and hands focus back to the opener on close.
+ * (The panel floats over the dock, so it can't be a portaled Radix dialog.)
+ */
+function useFocusTrap(ref: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusables = () =>
+      Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.getClientRects().length > 0);
+
+    (focusables()[0] ?? node).focus({ preventScroll: true });
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (list.length === 0) {
+        e.preventDefault();
+        node.focus({ preventScroll: true });
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      const outside = !node.contains(active);
+      if (e.shiftKey && (active === first || outside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || outside)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [ref]);
+}
 
 /* ═══ Panel shell ═════════════════════════════════════════════════════ */
 
@@ -66,11 +102,16 @@ function DockPanel({
   children: React.ReactNode;
 }) {
   const reduce = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
   return (
     <motion.div
+      ref={ref}
       role="dialog"
+      aria-modal="true"
       aria-label={title}
-      className="glass-thick grain relative flex origin-bottom flex-col overflow-hidden rounded-2xl text-label"
+      tabIndex={-1}
+      className="glass-thick grain relative flex origin-bottom flex-col overflow-hidden rounded-2xl text-label outline-none"
       style={{ width: 404, height: "auto", maxHeight: "min(540px, calc(100vh - 150px))" }}
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.94, filter: "blur(6px)" }}
       animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}

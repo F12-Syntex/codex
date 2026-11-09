@@ -58,7 +58,9 @@ export function TitleBar({ showIdentity = true, onSearchOpen }: TitleBarProps) {
   const reduce = useReducedMotion();
 
   return (
-    <header className="app-drag-region relative z-20 grid h-13 shrink-0 select-none grid-cols-[1fr_auto_1fr] items-center">
+    // z-45: above the dock's panel scrim (z-40) so window controls and the
+    // drag region keep working while a dock panel is open; below the dock (z-50).
+    <header className="app-drag-region relative z-45 grid h-13 shrink-0 select-none grid-cols-[1fr_auto_1fr] items-center">
       {/* Identity */}
       <div className="flex h-full min-w-0 items-center pl-8">
         <AnimatePresence initial={false}>

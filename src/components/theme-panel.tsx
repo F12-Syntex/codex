@@ -302,8 +302,8 @@ export function ThemeTabContent({ tab, theme, onThemeChange }: ThemePanelProps &
                       </span>
                       <span className="text-2xs font-medium">{f.label}</span>
                       {selected && (
-                        <span className="absolute top-2 right-2 inline-flex size-4 items-center justify-center rounded-full bg-brand text-brand-fg">
-                          <Check className="size-2.5" strokeWidth={3} />
+                        <span className="absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full bg-brand text-brand-fg">
+                          <Check className="size-3.5" strokeWidth={2.5} />
                         </span>
                       )}
                     </button>
@@ -372,7 +372,8 @@ export function ThemeTabContent({ tab, theme, onThemeChange }: ThemePanelProps &
                   className="relative flex aspect-video w-full items-end overflow-hidden rounded-lg bg-cover bg-center hairline"
                   style={{ backgroundImage: `url(${theme.backgroundImage})` }}
                 >
-                  <div className="glass-thin flex w-full items-center justify-end gap-1.5 p-2">
+                  {/* Plain material, not glass: it already sits inside a glass sheet. */}
+                  <div className="flex w-full items-center justify-end gap-1.5 bg-[var(--material-thin)] p-2">
                     <label className="focus-ring pressable inline-flex h-7 cursor-pointer items-center rounded-md bg-fill-secondary px-3 text-xs font-medium text-label hover:bg-fill">
                       Change…
                       <input
@@ -429,7 +430,7 @@ export function ThemeTabContent({ tab, theme, onThemeChange }: ThemePanelProps &
                 <SliderRow
                   label="Surface glass"
                   value={theme.surfaceOpacity}
-                  min={30}
+                  min={50}
                   max={100}
                   suffix="%"
                   onChange={(v) => onThemeChange({ surfaceOpacity: v })}

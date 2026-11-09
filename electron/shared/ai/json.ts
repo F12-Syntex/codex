@@ -109,7 +109,13 @@ type FrameType = "{" | "[";
 type FrameState = "key" | "colon" | "value" | "comma";
 interface Frame { type: FrameType; state: FrameState }
 
-export interface RepairResult { text: string; truncated: boolean; notes: string[] }
+export interface RepairResult {
+  text: string;
+  truncated: boolean;
+  notes: string[];
+  /** Index in the input just past the consumed top-level value. */
+  end: number;
+}
 
 const WS = /\s/;
 const TOKEN_CHAR = /[A-Za-z0-9_+\-.$]/;
@@ -369,19 +375,18 @@ export function repairJson(text: string): RepairResult {
     i++;
   }
 
-  if (finished) return { text: out, truncated: false, notes: [...notes] };
-  if (stack.length === 0) return { text: out, truncated: false, notes: [...notes] };
+  if (finished || stack.length === 0) return { text: out, truncated: false, notes: [...notes], end: i };
 
   // Truncated: cut back to the last complete value and close what was open there.
   notes.add("truncated");
   const s = safe as { len: number; frames: FrameType[] } | null;
   if (!s) {
     const first = stack[0].type;
-    return { text: first === "{" ? "{}" : "[]", truncated: true, notes: [...notes] };
+    return { text: first === "{" ? "{}" : "[]", truncated: true, notes: [...notes], end: n };
   }
   let text2 = out.slice(0, s.len).replace(/[\s,]+$/, "");
   for (let k = s.frames.length - 1; k >= 0; k--) text2 += s.frames[k] === "{" ? "}" : "]";
-  return { text: text2, truncated: true, notes: [...notes] };
+  return { text: text2, truncated: true, notes: [...notes], end: n };
 }
 
 function normaliseLiteral(tok: string): string | undefined {

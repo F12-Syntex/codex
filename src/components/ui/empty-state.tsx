@@ -29,7 +29,7 @@ export function EmptyState({ icon, title, description, action, className, ...pro
       {icon && (
         <div className="relative mb-5">
           <div aria-hidden className="absolute -inset-5 rounded-full bg-brand/10 blur-2xl" />
-          <div className="glass-thin relative grid size-14 place-items-center rounded-full text-label-tertiary transition-transform duration-500 ease-spring group-hover/empty:-translate-y-0.5 [&_svg]:size-6 [&_svg]:shrink-0">
+          <div className="glass-thin relative grid size-14 place-items-center rounded-full text-label-tertiary transition-transform duration-500 ease-spring group-hover/empty:-translate-y-0.5 [&_svg]:size-5 [&_svg]:shrink-0">
             {icon}
           </div>
         </div>

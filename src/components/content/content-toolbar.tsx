@@ -67,10 +67,6 @@ const sortOptions: { field: SortField; label: string }[] = [
 
 const formatOptions: FormatFilter[] = ["all", "EPUB", "PDF", "CBZ", "CBR", "MOBI"];
 
-/** Compact toolbar pill — 32px tall, rounded-full (conventions §6). */
-const pillClass =
-  "focus-ring pressable inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors duration-150 [&_svg]:size-3.5 [&_svg]:shrink-0";
-
 export function ContentToolbar({
   viewMode,
   onViewModeChange,
@@ -112,19 +108,21 @@ export function ContentToolbar({
       {/* Format filter */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          {/* Toolbar pill — 32px capsule (conventions §6) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="pill"
             aria-label="Filter by format"
             className={cn(
-              pillClass,
-              filtered
-                ? "bg-brand/15 text-brand hover:bg-brand/20"
-                : "text-label-secondary hover:bg-fill-tertiary hover:text-label data-[state=open]:bg-fill-tertiary data-[state=open]:text-label",
+              "h-8",
+              filtered &&
+                "bg-brand/15 text-brand hover:bg-brand/20 hover:text-brand data-[state=open]:bg-brand/20 data-[state=open]:text-brand",
             )}
           >
             <ListFilter strokeWidth={2} />
             {filtered ? formatFilter : "Filter"}
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
           <DropdownMenuLabel>Format</DropdownMenuLabel>
@@ -143,17 +141,16 @@ export function ContentToolbar({
       {/* Sort — the pill shows the field and its direction */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="pill"
             aria-label={`Sort by ${activeSort?.label ?? "title"}, ${sortDir === "asc" ? "ascending" : "descending"}`}
-            className={cn(
-              pillClass,
-              "text-label-secondary hover:bg-fill-tertiary hover:text-label data-[state=open]:bg-fill-tertiary data-[state=open]:text-label",
-            )}
+            className="h-8"
           >
             <SortDirIcon strokeWidth={2} />
             {activeSort?.label ?? "Sort"}
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
           <DropdownMenuLabel>Sort by</DropdownMenuLabel>
@@ -201,7 +198,7 @@ export function ContentToolbar({
       />
 
       {/* Primary action */}
-      <Button size="sm" onClick={onImport} className="ml-1 rounded-md">
+      <Button size="sm" onClick={onImport} className="ml-1">
         <Plus strokeWidth={2.25} />
         Import
       </Button>
