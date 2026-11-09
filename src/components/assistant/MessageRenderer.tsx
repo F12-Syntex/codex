@@ -8,7 +8,7 @@
 
 import * as React from "react";
 import type { Citation } from "@shared/assistant/types";
-import { parseMarkdown, type MdBlock, type MdInline } from "@shared/assistant/markdown";
+import { parseInline, parseMarkdown, type MdBlock, type MdInline } from "@shared/assistant/markdown";
 import { applyLexiconText } from "@shared/pipeline/lexicon";
 import { useLexicon } from "@/lib/book/lexicon";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,7 @@ export function EntityMention({ id, name: rawName }: { id: string; name: string 
   );
 }
 
-function Inline({ nodes, citations }: { nodes: MdInline[]; citations: Citation[] }) {
+function Inline({ nodes, citations = [] }: { nodes: MdInline[]; citations?: Citation[] }) {
   const lex = useLexicon();
   return (
     <>
@@ -51,8 +51,9 @@ function Inline({ nodes, citations }: { nodes: MdInline[]; citations: Citation[]
           case "entity":
             return <EntityMention key={i} id={n.id} name={n.name} />;
           case "cite": {
+            // In prose a citation is a small numbered chip; "Ch 1 ¶3" lives in its tooltip.
             const c = citations[n.n - 1];
-            return c ? <CitationChip key={i} citation={c} /> : null;
+            return c ? <CitationChip key={i} citation={c} n={n.n} compact /> : null;
           }
         }
       })}
@@ -89,6 +90,16 @@ function Block({ b, citations }: { b: MdBlock; citations: Citation[] }) {
     case "code":
       return <pre className="overflow-x-auto rounded-sm bg-fill-tertiary p-2.5 font-mono text-xs leading-relaxed">{b.v}</pre>;
   }
+}
+
+/**
+ * One line of model text with inline Markdown (emphasis, code, entities): for bullets and
+ * captions outside a message, so a stray `**` from the model never prints.
+ */
+export function InlineMarkdown({ text, citations }: { text: string; citations?: Citation[] }) {
+  // A bullet may arrive with its own "- " marker; parse just the inline content.
+  const nodes = React.useMemo(() => parseInline(text.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim()), [text]);
+  return <Inline nodes={nodes} citations={citations} />;
 }
 
 export interface MessageRendererProps {

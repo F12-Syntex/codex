@@ -57,10 +57,17 @@ import { useEntityIndex, useFrontier } from "@/lib/knowledge/useKnowledge";
 import { buildChapterLabels, fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
 
-/** Side panels push the text column aside instead of covering it (conventions §13.6). */
-const TOC_INSET = 336; // TOC 320 + 16
-const AI_INSET = 336; // AI Tools 320 + 16
-const ASSISTANT_INSET = 444; // Assistant panel 420 + 20 right + 4
+/** Side panels push the text column aside instead of covering it (conventions §13.6). The right
+ *  edge is ONE inspector slot (§13.11): AI Tools and the Assistant take turns in it, never both. */
+const TOC_INSET = 336; // TOC 320 + 12 left + 4
+const AI_INSET = 336; // AI Tools 320 + 8 right + 8
+const ASSISTANT_INSET = 444; // Assistant panel 420 + 8 right + 16
+
+/** Elevation over light paper (White, Sepia): same shape as the tokens, a fraction of the ink. */
+const LIGHT_PAPER_SHADOWS = {
+  "--shadow-lg": "0 10px 32px -10px rgb(0 0 0 / 0.20), 0 3px 10px -4px rgb(0 0 0 / 0.10)",
+  "--shadow-xl": "0 16px 48px -16px rgb(0 0 0 / 0.24), 0 6px 16px -8px rgb(0 0 0 / 0.12)",
+} as const;
 
 type Rect = { top: number; left: number; bottom: number; right: number; width: number; height: number };
 const rectOf = (r: { x: number; y: number; width: number; height: number }): Rect => ({
@@ -815,7 +822,8 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
   // Side panels never occlude the text column (conventions §13.6): the TOC and the Read Aloud
   // panel take the left gutter, AI tools and the assistant the right.
   const tocInset = (showTOC && totalChapters > 1) || (showTTS && !isImageBook) ? TOC_INSET : 0;
-  const rightInset = Math.max(showAI ? AI_INSET : 0, assistantOpen ? ASSISTANT_INSET : 0);
+  const rightInset = showAI ? AI_INSET : assistantOpen ? ASSISTANT_INSET : 0;
+  const anyPanelOpen = tocInset > 0 || showAI || assistantOpen;
 
   const simulateMode = branchHere;
   const branchEntityName = sim.active?.entityName;
@@ -824,7 +832,12 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
     <div
       className={`relative flex h-screen flex-col ${theme.bg} transition-colors duration-500 ease-apple`}
       data-appearance={settings.readingTheme === "dark" ? undefined : "light"}
-      style={{ "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw } as React.CSSProperties}
+      style={{
+        "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw,
+        // Paper is light on White and Sepia: the canvas-tuned elevation (0.6 black over 80px)
+        // reads as a grey slab there. Panels over the page cast a paper-weight shadow instead.
+        ...(settings.readingTheme === "dark" ? {} : LIGHT_PAPER_SHADOWS),
+      } as React.CSSProperties}
     >
       {/* Header — floating pills on the paper, no bar */}
       <header className="relative shrink-0">
@@ -873,45 +886,48 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
         </AnimatePresence>
       </header>
 
+      {/* Side panels live on the reader root, outside the overflow-hidden content wrappers, so
+          their glass shadows are never clipped (a hard grey slab on White and Sepia). They sit
+          between the header and the footer row: top 52 + 8, bottom 60 + 8. */}
+      <AnimatePresence>
+      {showTOC && totalChapters > 1 && (
+        <TOCSidebar
+          key="toc"
+          chapters={chapters} currentChapter={currentChapter}
+          bookmarks={bookmarkState.bookmarks} theme={theme}
+          chapterLabels={chapterLabels}
+          titles={displayTitles}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onSelectChapter={(i) => handleChapterChange(i, { via: "jump" })}
+          onJumpToBookmark={(bm) => {
+            const a = bookmarkState.anchorOf.get(String(bm.id));
+            if (a) navigateToRef(a, bm.chapterIndex);
+            else handleChapterChange(bm.chapterIndex, { via: "jump" });
+          }}
+          onDeleteBookmark={bookmarkState.removeBookmark}
+          onClose={() => setShowTOC(false)}
+        />
+      )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+      {showAI && (
+        <AIToolsPanel
+          key="ai-tools"
+          filePath={filePath}
+          chapterIndex={currentChapter}
+          totalChapters={totalChapters || undefined}
+          chapterLabel={chapterLabel}
+          onClose={() => setShowAI(false)}
+          onOpenWiki={() => openWiki()}
+          onOpenStyleDictionary={() => window.electronAPI?.openStyleDictionary({ filePath, title })}
+        />
+      )}
+      </AnimatePresence>
+
       <div className="flex flex-1 flex-col overflow-hidden">
         <div ref={readerContentRef} className="relative flex-1 overflow-hidden">
-          <AnimatePresence>
-          {showTOC && totalChapters > 1 && (
-            <TOCSidebar
-              key="toc"
-              chapters={chapters} currentChapter={currentChapter}
-              bookmarks={bookmarkState.bookmarks} theme={theme}
-              chapterLabels={chapterLabels}
-              titles={displayTitles}
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onSelectChapter={(i) => handleChapterChange(i, { via: "jump" })}
-              onJumpToBookmark={(bm) => {
-                const a = bookmarkState.anchorOf.get(String(bm.id));
-                if (a) navigateToRef(a, bm.chapterIndex);
-                else handleChapterChange(bm.chapterIndex, { via: "jump" });
-              }}
-              onDeleteBookmark={bookmarkState.removeBookmark}
-              onClose={() => setShowTOC(false)}
-            />
-          )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-          {showAI && (
-            <AIToolsPanel
-              key="ai-tools"
-              filePath={filePath}
-              chapterIndex={currentChapter}
-              totalChapters={totalChapters || undefined}
-              chapterLabel={chapterLabel}
-              onClose={() => setShowAI(false)}
-              onOpenWiki={() => openWiki()}
-              onOpenStyleDictionary={() => window.electronAPI?.openStyleDictionary({ filePath, title })}
-            />
-          )}
-          </AnimatePresence>
-
           <motion.div
             className="h-full"
             initial={false}
@@ -1016,12 +1032,17 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
           />
         </div>
 
-        {/* Bulk progress (orchestrator status), left of the assistant pill */}
-        <div className="pointer-events-none absolute bottom-17 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4 pr-32">
-          <div className="pointer-events-auto">
-            <BulkDock filePath={filePath} chapterLabel={chapterLabel} />
-          </div>
-        </div>
+        {/* Bulk progress (orchestrator status). One bottom row on the footer's centre line:
+            progress · page controls · Ask. Floating pills hide while a panel is open (§13.11);
+            AI Tools shows the run itself ("Bulk run in progress…"). */}
+        {!anyPanelOpen && (
+          <BulkDock
+            filePath={filePath}
+            chapterLabel={chapterLabel}
+            // Never reaches the centred footer pill (~526px): half of it + this inset + a 12px gap.
+            className="absolute bottom-2.5 left-4 z-40 max-w-[min(26rem,calc(50vw-292px))]"
+          />
+        )}
 
         {!isImageBook && book && (
           <AssistantLauncher
@@ -1034,6 +1055,7 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
             onOpenEntity={showEntityFromAssistant}
             onReveal={(ref) => navigateToRef(ref)}
             hidePill={speedReaderActive}
+            yieldSlot={showAI}
           />
         )}
 

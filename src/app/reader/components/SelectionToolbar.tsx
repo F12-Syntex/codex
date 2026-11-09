@@ -46,8 +46,9 @@ const looksLikeName = (s: string) =>
 
 /**
  * Floating glass pill above the text selection (macOS-style). Labels over glyphs:
- * Copy · Define · Read · Ask · Explain · Who's this? · Quote · Save word — only the actions that
- * make sense for the selection are shown. Payloads carry a ParaRef, never an index.
+ * Copy · Define · Read · Ask · Quote, plus Who's this? on names — only the actions that make sense
+ * for the selection are shown. Ask with a selection seeds "Explain this passage"; Save word lives
+ * in the DefinePopover. Payloads carry a ParaRef, never an index.
  * Motion + mousedown-preserves-selection adapted from 21st.dev "Selection Bubble Menu"
  * (laziekiki, id 26926). `theme` is kept in the props contract; the pill is app-chrome glass.
  */
@@ -177,10 +178,8 @@ export function SelectionToolbar({ containerRef, filePath, chapterId, chapterInd
   const show = {
     define: !!p && !!actions.onDefine && words <= 4,
     ask: !!p && !!actions.onAsk,
-    explain: !!p && !!actions.onExplain,
     whoIs: !!p && !!actions.onWhoIs && looksLikeName(state.text),
     quote: !!p && !!actions.onSaveQuote,
-    word: !!p && !!actions.onSaveWord && words <= 3,
   };
 
   // Clamp the pill to the container (estimate until the first measure lands).
@@ -232,10 +231,8 @@ export function SelectionToolbar({ containerRef, filePath, chapterId, chapterInd
             <ToolbarButton label="Read" hint="Read aloud from here" onClick={handlePlay} />
           )}
           {show.ask && <ToolbarButton label="Ask" hint="Ask the assistant about this" onClick={run(actions.onAsk)} />}
-          {show.explain && <ToolbarButton label="Explain" hint="Explain this passage" onClick={run(actions.onExplain)} />}
           {show.whoIs && <ToolbarButton label="Who’s this?" hint="What the book has said so far" onClick={run(actions.onWhoIs)} />}
           {show.quote && <ToolbarButton label="Quote" hint="Save to quotes" onClick={run(actions.onSaveQuote)} />}
-          {show.word && <ToolbarButton label="Save word" hint="Add to your vocabulary" onClick={run(actions.onSaveWord)} />}
         </motion.div>
       </TooltipProvider>
     </div>

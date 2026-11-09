@@ -39,7 +39,8 @@ function describe(e: WikiEdit, name: (id: string) => string): { icon: React.Reac
     case "alias":
       return { icon: <Tag />, text: <>Also call {b(name(e.id))} {e.aliases.map((a) => `“${a}”`).join(", ")}</> };
     case "relate":
-      return { icon: <Link2 />, text: <>{b(name(e.sourceId))} is {e.relation} of {b(name(e.targetId))}</> };
+      // The relation is free text from the model ("tested", "mother of"): never build a sentence.
+      return { icon: <Link2 />, text: <>{b(name(e.sourceId))} <span className="text-label-tertiary">—</span> {e.relation} <span className="text-label-tertiary">→</span> {b(name(e.targetId))}</> };
     case "merge":
       return { icon: <GitMerge />, text: <>Merge {b(name(e.sourceId))} into {b(name(e.targetId))}</> };
   }

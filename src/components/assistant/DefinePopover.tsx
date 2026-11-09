@@ -63,14 +63,20 @@ export function DefinePopover({
   }, [tab, look]);
 
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Capture phase + preventDefault: Esc dismisses this popover and stops there (§13.9), even
+    // over the assistant panel or the reader's own Esc chain.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      onClose();
+    };
     const onDown = (e: PointerEvent) => {
       if (panel.current && !panel.current.contains(e.target as Node)) onClose();
     };
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     window.addEventListener("pointerdown", onDown, true);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("pointerdown", onDown, true);
     };
   }, [onClose]);

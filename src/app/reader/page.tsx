@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { FONT_FAMILY_CSS, type ThemeConfig } from "@/lib/theme";
+import { useAppTheme } from "@/lib/use-app-theme";
 import { Reader } from "./components/Reader";
 
 function LoadingScreen() {
@@ -17,68 +17,10 @@ function LoadingScreen() {
   );
 }
 
-type SavedTheme = Partial<Pick<ThemeConfig,
-  "accent" | "customAccentColor" | "tintSurfaces" | "cursorStyle" | "fontFamily" | "borderRadius"
->>;
-
-/**
- * Mirror the library's theme onto <html> in the reader window, as the main
- * window does (src/app/page.tsx), so portals (modals, menus, tooltips) get it
- * too: accent (custom accent included), tint, cursor, radius and UI font.
- * `data-appearance` follows the reading paper and is set by <Reader>.
- */
-function useAppTheme() {
-  const [theme, setTheme] = useState<SavedTheme | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    window.electronAPI?.getSetting?.("theme").then((raw) => {
-      if (cancelled || !raw) return;
-      try {
-        setTheme(JSON.parse(raw) as SavedTheme);
-      } catch { /* ignore invalid JSON */ }
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!theme) return;
-    const root = document.documentElement;
-    const custom = theme.accent === "custom" && !!theme.customAccentColor;
-    const attrs: Record<string, string | undefined> = {
-      "data-accent": theme.accent,
-      "data-tint": theme.tintSurfaces ? "true" : undefined,
-      "data-cursor": theme.cursorStyle && theme.cursorStyle !== "default" ? theme.cursorStyle : undefined,
-    };
-    const fontFamily = theme.fontFamily ? FONT_FAMILY_CSS[theme.fontFamily] : undefined;
-    const vars: Record<string, string> = {};
-    if (typeof theme.borderRadius === "number") vars["--radius"] = `${theme.borderRadius / 16}rem`;
-    if (fontFamily) vars["--font-ui"] = fontFamily;
-    if (custom) {
-      const hex = theme.customAccentColor!;
-      vars["--accent-brand"] = hex;
-      vars["--accent-brand-dim"] = `${hex}26`;
-      vars["--accent-brand-subtle"] = `${hex}14`;
-      vars["--accent-brand-fg"] = "#fafafa";
-    }
-
-    for (const [name, value] of Object.entries(attrs)) {
-      if (value === undefined) root.removeAttribute(name);
-      else root.setAttribute(name, value);
-    }
-    for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
-    if (fontFamily) root.style.fontFamily = fontFamily;
-
-    return () => {
-      for (const name of Object.keys(attrs)) root.removeAttribute(name);
-      for (const name of Object.keys(vars)) root.style.removeProperty(name);
-      root.style.removeProperty("font-family");
-    };
-  }, [theme]);
-}
-
 function ReaderPage() {
   const searchParams = useSearchParams();
+  // The library's accent, tint, cursor, radius and UI font (conventions §13.13). Appearance is
+  // not taken from the library: it follows the reading paper (<Reader> sets it).
   useAppTheme();
 
   const title = searchParams.get("title") || "Untitled";

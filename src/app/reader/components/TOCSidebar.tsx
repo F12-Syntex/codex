@@ -148,7 +148,7 @@ export function TOCSidebar({
       exit={{ opacity: 0, x: -14, scale: 0.98, filter: "blur(2px)", transition: { duration: 0.16 } }}
       transition={PANEL_SPRING}
       onKeyDown={stopNavKeys}
-      className="glass-thick grain absolute bottom-3 left-3 top-1 z-20 flex w-80 origin-left flex-col overflow-hidden rounded-2xl shadow-lg"
+      className="glass-thick grain absolute top-15 bottom-17 left-3 z-30 flex w-80 origin-left flex-col overflow-hidden rounded-2xl shadow-lg"
     >
       {/* ── Header ─────────────────────────────────── */}
       <div className="relative shrink-0 px-4 pb-3 pt-4">

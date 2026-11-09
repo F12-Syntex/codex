@@ -180,27 +180,28 @@ export function EntityCard({
           <UnknownEntity name={lookupName} state={lookup} t={t} label={label} added={added} />
         )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {/* One row of equal ghost actions: Ask · Wiki · Simulate (or Ask · Add to wiki). */}
+        <div className="mt-3 flex items-center gap-1">
           {onAsk && (entity || lookupName) && (
-            <Button size="sm" variant="secondary" onClick={() => onAsk({ id: entity?.id ?? null, name: entity?.name ?? lookupName })}>
+            <Button size="sm" variant="ghost" className="flex-1" aria-label={`Ask about ${entity?.name ?? lookupName}`} onClick={() => onAsk({ id: entity?.id ?? null, name: entity?.name ?? lookupName })}>
               <MessageCircle strokeWidth={1.75} />
-              Ask about…
+              Ask
             </Button>
           )}
           {entity && (
-            <Button size="sm" variant="secondary" onClick={() => openWiki(entity.id)}>
+            <Button size="sm" variant="ghost" className="flex-1" aria-label="Open in Wiki" onClick={() => openWiki(entity.id)}>
               <BookOpen strokeWidth={1.75} />
-              Open in Wiki
+              Wiki
             </Button>
           )}
           {entity && onSimulate && entity.type === "character" && (
-            <Button size="sm" variant="ghost" onClick={() => onSimulate({ id: entity.id, name: entity.name })}>
+            <Button size="sm" variant="ghost" className="flex-1" aria-label={`Simulate ${entity.name}`} onClick={() => onSimulate({ id: entity.id, name: entity.name })}>
               <GitBranch strokeWidth={1.75} />
-              Simulate…
+              Simulate
             </Button>
           )}
           {!entityId && lookup.result && lookup.result.confidence > 0 && !added && (
-            <Button size="sm" variant="secondary" onClick={() => void addToWiki()}>
+            <Button size="sm" variant="ghost" className="flex-1" onClick={() => void addToWiki()}>
               <Plus strokeWidth={1.75} />
               Add to wiki
             </Button>
@@ -219,6 +220,15 @@ export function EntityCard({
     </AnimatePresence>,
     document.body,
   );
+}
+
+/** Danger only for the dead or destroyed, warning only for the missing or unknown; anything
+ *  else ("alive", "exiled"…) is a neutral fact. */
+function statusVariant(status: string): "danger" | "warning" | undefined {
+  const s = status.toLowerCase();
+  if (s === "deceased" || s === "dead" || s === "destroyed") return "danger";
+  if (s === "missing" || s === "unknown") return "warning";
+  return undefined;
 }
 
 function KnownEntity({
@@ -241,7 +251,7 @@ function KnownEntity({
       </p>
       {(status || entity.significance >= 3) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {status && <Badge variant={status === "deceased" || status === "destroyed" ? "danger" : "warning"} className="capitalize">{status}</Badge>}
+          {status && <Badge variant={statusVariant(status)} className="capitalize">{status}</Badge>}
           {entity.significance >= 4 ? <Badge variant="accent">Main character</Badge> : entity.significance >= 3 ? <Badge variant="accent">Major</Badge> : null}
         </div>
       )}

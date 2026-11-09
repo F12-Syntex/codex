@@ -92,9 +92,12 @@ interface TextContentProps {
  *
  * Layout:
  *   outerRef   — full-height container with padding, overflow:hidden
- *   └─ clipper — overflow:hidden, exactly pageWidth × contentHeight, mx-auto
+ *   └─ clipper — clipped to exactly pageWidth × contentHeight (plus the badge gutter on the right), mx-auto
  *      └─ slider — position:absolute, column-width layout, translateX with CSS transition
  */
+
+/** Comment badges sit this far into the column gap / page margin (badge 10px off the column + up to 34px). */
+const BADGE_GUTTER = 44;
 
 // Selection highlight colors per reading theme
 const SELECTION_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -446,7 +449,7 @@ export function TextContent({
                 setCommentInput("");
               }}
               style={{
-                position: "absolute", right: "4px", top: "0",
+                position: "absolute", left: "calc(100% + 10px)", right: "auto", top: "2px",
                 display: "inline-flex", alignItems: "center", gap: "2px",
                 cursor: "pointer", opacity: 0.7, transition: "opacity 0.15s ease",
                 zIndex: 5,
@@ -474,7 +477,7 @@ export function TextContent({
                 setCommentInput("");
               }}
               style={{
-                position: "absolute", right: "4px", top: "0",
+                position: "absolute", left: "calc(100% + 10px)", right: "auto", top: "2px",
                 display: "inline-flex", alignItems: "center",
                 cursor: "pointer", opacity: 0, transition: "opacity 0.15s ease",
                 zIndex: 5,
@@ -972,7 +975,9 @@ export function TextContent({
         style={{
           width: `${pageWidth}px`,
           height: `${contentHeight}px`,
-          overflow: "hidden",
+          // Clip to the page, but let the right column's comment badges sit in the margin beside
+          // it (they live in the gutter, never on glyphs). The next page starts a 48px gap away.
+          clipPath: `inset(0 -${BADGE_GUTTER}px 0 0)`,
           position: "relative",
         }}
       >

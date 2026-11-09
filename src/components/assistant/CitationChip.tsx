@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * CitationChip — inline "Ch 12 ¶4" pill that jumps the reader to the cited paragraph.
+ * CitationChip — inline pill that jumps the reader to the cited paragraph: "Ch 12 ¶4", or just
+ * its number when `compact` (in prose; the label is in the hover card).
  * Adapted from 21st.dev "AI Citations" (kokonutd, id 39090): inline source chips with a hover
  * preview card of the cited passage; restyled with Codex tokens (`rounded-full bg-fill-tertiary
  * text-2xs h-5`, glass-menu preview) and Radix Tooltip for positioning/escape handling.
@@ -33,7 +34,8 @@ export function CitationChip({ citation, n, compact = false, className }: Citati
             onClick={() => reveal(citation.ref)}
             aria-label={`Go to ${citation.label}`}
             className={cn(
-              "focus-ring pressable mx-0.5 inline-flex h-5 -translate-y-px items-center gap-1 rounded-full bg-fill-tertiary px-2 align-middle text-2xs font-medium whitespace-nowrap text-label-secondary tabular-nums transition-colors duration-150 hover:bg-brand/15 hover:text-brand",
+              "focus-ring pressable mr-0 ml-0.5 inline-flex h-5 -translate-y-px items-center justify-center gap-1 rounded-full bg-fill-tertiary align-middle text-2xs font-medium whitespace-nowrap text-label-secondary tabular-nums transition-colors duration-150 hover:bg-brand/15 hover:text-brand",
+              compact ? "min-w-5 px-1.5" : "px-2",
               className,
             )}
           >

@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * BulkDock — a glass pill above the reader footer showing the book's bulk run (`BulkStatus` from
+ * BulkDock — a 40px glass pill in the reader's bottom row (left, on the footer's centre line) showing
+ * the book's bulk run (`BulkStatus` from
  * main via `useBulkRun`). Collapsed: overall ring, current kind/chapter, ETA, Stop. Expanded:
  * per-kind progress. Status comes from the orchestrator's job graph, never from UI flags, so it
  * always reaches "done" (AI_AUDIT S2-5) and Stop cancels only this run (S2-3).
@@ -57,7 +58,7 @@ export function BulkDock({ filePath, chapterLabel = defaultLabel, className }: B
           role="status"
           aria-live="polite"
           className={cn("glass flex flex-col overflow-hidden text-label", expanded ? "w-80" : "w-auto max-w-[min(100%,26rem)]", className)}
-          style={{ borderRadius: expanded ? 20 : 28 }}
+          style={{ borderRadius: 20 }}
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.92, filter: "blur(6px)" }}
           animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96 }}
@@ -107,8 +108,8 @@ function Pill({
   const kinds = bulkKinds(status);
 
   return (
-    <motion.div layout="position" className="flex h-14 items-center gap-3 pr-2 pl-2.5">
-      <ProgressRing size={36} stroke={3.5} value={pct} color={ringColor} aria-label="Bulk progress">
+    <motion.div layout="position" className="flex h-10 items-center gap-2.5 pr-1.5 pl-1.5">
+      <ProgressRing size={30} stroke={3} value={pct} color={ringColor} aria-label="Bulk progress">
         {running ? (
           <span className="text-2xs font-semibold tabular-nums text-label">
             <NumberTicker value={Math.round(pct * 100)} />
@@ -121,7 +122,7 @@ function Pill({
       </ProgressRing>
 
       <div className="min-w-0 flex-1 pr-1">
-        <div className="truncate text-headline text-label">
+        <div className="truncate text-xs font-semibold leading-4 text-label">
           {running ? <ShimmerText>{headline(status)}</ShimmerText> : headline(status)}
         </div>
         <AnimatePresence mode="wait" initial={false}>
@@ -131,7 +132,7 @@ function Pill({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -3 }}
             transition={{ duration: 0.15 }}
-            className="flex items-center gap-1.5 truncate text-xs text-label-tertiary"
+            className="flex items-center gap-1.5 truncate text-2xs leading-4 text-label-tertiary"
           >
             {running && activeMeta ? (
               <>

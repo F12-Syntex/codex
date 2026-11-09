@@ -116,8 +116,8 @@ export function BulkSheet({
             return (
               <ListRow
                 key={k}
-                icon={<meta.Icon />}
-                iconTint={checked ? meta.tint : undefined}
+                // Plain glyph in the 24px slot, tinted while selected: one left text edge (§13.4).
+                icon={<meta.Icon strokeWidth={1.75} style={checked ? { color: meta.color } : undefined} />}
                 label={meta.label}
                 description={
                   on ? (

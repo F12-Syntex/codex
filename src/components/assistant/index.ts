@@ -14,7 +14,7 @@ export { VocabularyDeck, type VocabularyDeckProps } from "./VocabularyDeck";
 export { DefinePopover, type DefinePopoverProps } from "./DefinePopover";
 export { ProposalCard } from "./ProposalCard";
 export { CitationChip } from "./CitationChip";
-export { MessageRenderer, EntityMention } from "./MessageRenderer";
+export { MessageRenderer, EntityMention, InlineMarkdown } from "./MessageRenderer";
 export { Composer } from "./Composer";
 export { QuickActions } from "./QuickActions";
 export { Thread } from "./Thread";

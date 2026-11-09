@@ -21,6 +21,7 @@ import { applyLexiconText } from "@shared/pipeline/lexicon";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { Button } from "@/components/ui/button";
 import { ShimmerText } from "@/components/ui/shimmer-text";
+import { InlineMarkdown } from "@/components/assistant/MessageRenderer";
 import { chapters as chaptersBridge } from "@/lib/ai/bridge";
 import { useLexicon } from "@/lib/book/lexicon";
 import { useEntityIndex, useRecap } from "@/lib/knowledge/useKnowledge";
@@ -114,7 +115,8 @@ export function RecapSheet({ filePath, bookTitle, open, onClose, onEntityClick, 
                   transition={{ delay: reduce ? 0 : i * 0.03, type: "spring", stiffness: 400, damping: 32 }}
                 >
                   <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-brand" />
-                  <span>{t(b)}</span>
+                  {/* Inline Markdown (lexicon applied per text node): a stray ** never prints. */}
+                  <span><InlineMarkdown text={b} /></span>
                 </motion.li>
               ))}
             </ul>
@@ -155,7 +157,8 @@ export function RecapSheet({ filePath, bookTitle, open, onClose, onEntityClick, 
         <Button variant="ghost" size="sm" onClick={() => void disable()}>
           Don’t show for this book
         </Button>
-        <Button onClick={close}>Continue reading</Button>
+        {/* Initial focus: the default action, not ✕ (GlassModal keeps an autoFocus child's focus). */}
+        <Button onClick={close} autoFocus>Continue reading</Button>
       </GlassModal.Footer>
     </GlassModal>
   );

@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { BookOpen, KeyRound, Layers, Palette, Sparkles, X } from "lucide-react";
+import { BookOpen, FastForward, KeyRound, Layers, Palette, Settings, Sparkles, X } from "lucide-react";
 import type { BookAIPrefs, ChapterKind } from "@shared/ai/types";
 import { cn } from "@/lib/utils";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -22,6 +22,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { ProgressRing } from "@/components/ui/progress-ring";
+import { GlassModal } from "@/components/ui/glass-modal";
+import { IntelligencePane } from "@/components/settings/intelligence-pane";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { rpc } from "@/lib/ai/rpc";
 import { hasRpc } from "@/lib/ai/bridge";
@@ -76,6 +78,7 @@ export function AIToolsPanel({
   const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [hasKey, setHasKey] = useState<boolean | null>(null);
 
   const { prefs, setPrefs } = useBookAIPrefs(filePath);
@@ -83,19 +86,20 @@ export function AIToolsPanel({
   const { status: book } = useBookAIStatus(filePath);
   const bulk = useBulkRun(filePath);
 
+  // Re-read after the Intelligence settings sheet closes (the key may have just been added).
   useEffect(() => {
-    if (!hasRpc()) return;
+    if (!hasRpc() || settingsOpen) return;
     let alive = true;
     rpc("ai:settings:get").then((s) => alive && setHasKey(s.hasKey), () => alive && setHasKey(null));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [settingsOpen]);
 
-  // The BulkSheet is portaled; clicks in it are not "outside" the panel.
+  // The BulkSheet and the settings sheet are portaled; clicks in them are not "outside" the panel.
   const onOutside = useCallback(() => {
-    if (!bulkOpen) onClose();
-  }, [bulkOpen, onClose]);
+    if (!bulkOpen && !settingsOpen) onClose();
+  }, [bulkOpen, settingsOpen, onClose]);
   useClickOutside(ref, onOutside, ignoreOutsideSelector);
 
   const noKey = hasKey === false;
@@ -110,7 +114,7 @@ export function AIToolsPanel({
       ref={ref}
       aria-label="AI tools"
       className={cn(
-        "glass-thick grain absolute top-2 right-2 bottom-2 z-20 flex w-80 flex-col overflow-hidden rounded-2xl text-label",
+        "glass-thick grain absolute top-15 right-2 bottom-17 z-30 flex w-80 flex-col overflow-hidden rounded-2xl text-label",
         className,
       )}
       initial={reduce ? { opacity: 0 } : { opacity: 0, x: 24, scale: 0.98 }}
@@ -137,9 +141,15 @@ export function AIToolsPanel({
       {noKey && (
         <div className="mx-2 mb-1 flex items-start gap-2.5 rounded-lg bg-warning/10 px-3 py-2.5">
           <KeyRound className="mt-px size-4 shrink-0 text-warning" strokeWidth={1.75} />
-          <p className="text-xs leading-relaxed text-label-secondary">
-            Add an <span className="font-medium text-warning">OpenRouter API key</span> in Settings → Intelligence to use AI tools.
-          </p>
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-xs leading-relaxed text-label-secondary">
+              Add an <span className="font-medium text-warning">OpenRouter API key</span> to use AI tools.
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => setSettingsOpen(true)}>
+              <Settings strokeWidth={1.75} />
+              Open Settings
+            </Button>
+          </div>
         </div>
       )}
 
@@ -185,9 +195,8 @@ export function AIToolsPanel({
             <>
               <FeatureSwitch kind="knowledge" checked={prefs.knowledge} onChange={(v) => void setPrefs(patchFor("knowledge", v))} />
               <ListRow
-                icon={<KIND_META.rewrite.Icon />}
-                iconTint={prefs.rewrite !== "off" ? KIND_META.rewrite.tint : undefined}
-                label="Rewrite"
+                icon={<FeatureGlyph kind="rewrite" on={prefs.rewrite !== "off"} />}
+                label={KIND_META.rewrite.label}
                 description={prefs.rewrite === "polish" ? "Fixes errors, keeps every word" : prefs.rewrite === "concise" ? "Tighter prose, same story" : undefined}
                 className="flex-wrap"
               >
@@ -206,7 +215,7 @@ export function AIToolsPanel({
               <FeatureSwitch kind="format" checked={prefs.formatting} onChange={(v) => void setPrefs(patchFor("format", v))} />
               <FeatureSwitch kind="title" checked={prefs.titles} onChange={(v) => void setPrefs(patchFor("title", v))} />
               <FeatureSwitch kind="comments" checked={prefs.comments} onChange={(v) => void setPrefs(patchFor("comments", v))} />
-              <ListRow label="Prepare next chapter" description="Process ahead while you read">
+              <ListRow icon={<FastForward />} label="Prepare next chapter" description="Process ahead while you read">
                 <Switch size="sm" checked={prefs.prefetchNext} onCheckedChange={(v) => void setPrefs({ prefetchNext: v })} aria-label="Prepare next chapter" />
               </ListRow>
             </>
@@ -276,14 +285,27 @@ export function AIToolsPanel({
         totalChapters={total}
         chapterLabel={chapterLabel}
       />
+
+      <GlassModal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Intelligence" width={560}>
+        <GlassModal.Body className="space-y-6">
+          <IntelligencePane />
+        </GlassModal.Body>
+      </GlassModal>
     </motion.aside>
   );
+}
+
+/** A plain glyph in the list's 24px icon slot (no colour tiles on content rows, §13.4), tinted
+ *  with the kind's colour only while the feature is on. Every label then starts at one x. */
+function FeatureGlyph({ kind, on }: { kind: ChapterKind; on: boolean }) {
+  const meta = KIND_META[kind];
+  return <meta.Icon strokeWidth={1.75} style={on ? { color: meta.color } : undefined} />;
 }
 
 function FeatureSwitch({ kind, checked, onChange }: { kind: Exclude<ChapterKind, "rewrite">; checked: boolean; onChange: (v: boolean) => void }) {
   const meta = KIND_META[kind];
   return (
-    <ListRow icon={<meta.Icon />} iconTint={checked ? meta.tint : undefined} label={meta.label} description={meta.description}>
+    <ListRow icon={<FeatureGlyph kind={kind} on={checked} />} label={meta.label} description={meta.description}>
       <Switch size="sm" checked={checked} onCheckedChange={onChange} aria-label={meta.label} />
     </ListRow>
   );

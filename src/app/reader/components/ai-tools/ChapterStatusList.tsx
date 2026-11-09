@@ -61,6 +61,7 @@ export function ChapterStatusList({ status, onRetry, onClear, disabled, classNam
               kind={kind}
               state={status.kinds[kind]}
               error={status.errors?.[kind]?.message}
+              retryable={!!status.errors?.[kind]?.retryable}
               disabled={disabled}
               onRetry={() => onRetry(kind)}
               onClear={() => onClear(kind)}
@@ -72,7 +73,7 @@ export function ChapterStatusList({ status, onRetry, onClear, disabled, classNam
   );
 }
 
-function StateGlyph({ state, color, label }: { state: KindState; color: string; label: string }) {
+function StateGlyph({ state, color, label, retrying }: { state: KindState; color: string; label: string; retrying?: boolean }) {
   switch (state) {
     case "running":
       return <ProgressRing size={16} stroke={2} indeterminate color={color} aria-label={`${label}: working`} />;
@@ -87,7 +88,9 @@ function StateGlyph({ state, color, label }: { state: KindState; color: string; 
     case "stale":
       return <RefreshCw className="size-4 text-warning" strokeWidth={1.75} aria-label={`${label}: outdated`} />;
     case "error":
-      return <AlertTriangle className="size-4 text-danger" strokeWidth={1.75} aria-label={`${label}: failed`} />;
+      return retrying
+        ? <RotateCw className="size-3.5 text-warning" strokeWidth={2} aria-label={`${label}: retrying`} />
+        : <AlertTriangle className="size-4 text-danger" strokeWidth={1.75} aria-label={`${label}: failed`} />;
     case "skipped":
       return <Minus className="size-4 text-label-quaternary" strokeWidth={1.75} aria-label={`${label}: not needed`} />;
     default:
@@ -96,16 +99,19 @@ function StateGlyph({ state, color, label }: { state: KindState; color: string; 
 }
 
 function StatusRow({
-  kind, state, error, disabled, onRetry, onClear,
+  kind, state, error, retryable, disabled, onRetry, onClear,
 }: {
   kind: ChapterKind;
   state: KindState;
   error?: string;
+  /** A transient error the orchestrator will retry by itself: "Retrying" (warning), not "Failed". */
+  retryable?: boolean;
   disabled?: boolean;
   onRetry: () => void;
   onClear: () => void;
 }) {
   const meta = KIND_META[kind];
+  const retrying = state === "error" && !!retryable;
   const busy = state === "queued" || state === "running";
   const hasData = state === "ready" || state === "stale" || (kind === "knowledge" && state === "error");
   const actionable = !busy && !disabled && (state !== "skipped" || hasData);
@@ -132,17 +138,17 @@ function StatusRow({
       title={state === "error" && error ? error : undefined}
     >
       <span className="inline-flex size-4 shrink-0 items-center justify-center">
-        <StateGlyph state={state} color={meta.color} label={meta.label} />
+        <StateGlyph state={state} color={meta.color} label={meta.label} retrying={retrying} />
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-label">{meta.short}</span>
       <span
         className={cn(
           "shrink-0 text-2xs tabular-nums",
-          state === "error" ? "text-danger" : state === "stale" ? "text-warning" : "text-label-tertiary",
+          retrying || state === "stale" ? "text-warning" : state === "error" ? "text-danger" : "text-label-tertiary",
           actionable && "group-hover:hidden group-focus-within:hidden",
         )}
       >
-        {STATE_LABEL[state]}
+        {retrying ? "Retrying" : STATE_LABEL[state]}
       </span>
       {actionable && (
         <div className="hidden shrink-0 items-center gap-1 group-hover:flex group-focus-within:flex">

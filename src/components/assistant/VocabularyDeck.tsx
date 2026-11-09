@@ -81,7 +81,7 @@ function Flashcard({ item, revealed, onReveal }: { item: VocabItem; revealed: bo
           )}
           {item.translation && <p className="font-display text-base text-brand">{item.translation}</p>}
           {item.context && (
-            <p className="line-clamp-2 max-w-sm text-xs leading-relaxed text-label-tertiary">
+            <p className="line-clamp-2 max-w-sm font-display text-xs leading-relaxed text-label-tertiary italic">
               <Highlighted text={item.context} term={item.term} />
             </p>
           )}
@@ -156,6 +156,10 @@ export function VocabularyDeck({ open, onClose, filePath, scopeLabel }: Vocabula
   }, [open, view, card, revealed, grade]);
 
   const previews = card && !turn?.drill ? previewIntervals(card.srs, now) : null;
+  // A new card graded Again or Hard comes back in this session, not "in 1 d".
+  const isNew = !!card && card.srs.reps === 0 && card.srs.intervalDays === 0;
+  const gradeHint = (g: SrsGrade) =>
+    !previews ? "repeat" : isNew && (g === "again" || g === "hard") ? "Again soon" : formatInterval(previews[g]);
   const total = queue ? done + queue.length : 0;
   const subtitle = `${deck.stats.due} due · ${deck.stats.total} ${deck.stats.total === 1 ? "word" : "words"}${scopeLabel ? ` · ${scopeLabel}` : ""}`;
 
@@ -223,7 +227,7 @@ export function VocabularyDeck({ open, onClose, filePath, scopeLabel }: Vocabula
                         )}
                       >
                         {GRADE_LABEL[g]}
-                        <span className="text-2xs tabular-nums opacity-75">{previews ? formatInterval(previews[g]) : "repeat"}</span>
+                        <span className="text-2xs tabular-nums opacity-75">{gradeHint(g)}</span>
                       </button>
                     ))}
                   </motion.div>
@@ -251,7 +255,9 @@ export function VocabularyDeck({ open, onClose, filePath, scopeLabel }: Vocabula
                     ? "Select a word while reading and choose Define → Save word."
                     : queue
                       ? `You reviewed ${done} ${done === 1 ? "card" : "cards"}.`
-                      : "Come back later; cards return on their SM-2 schedule."}
+                      : deck.due.length > 0
+                        ? "Review them now, or come back any time."
+                        : "Come back later; cards return when they’re due."}
                 </p>
               </div>
               {deck.due.length > 0 && <Button onClick={startSession}>{queue ? "Review again" : "Start review"}</Button>}

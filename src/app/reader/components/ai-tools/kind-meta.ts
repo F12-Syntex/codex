@@ -9,7 +9,7 @@ import type { ListIconTint } from "@/components/ui/list-group";
 
 export interface KindMeta {
   label: string;
-  /** Shorter label for compact rows (dock, chips). */
+  /** Label for compact rows (dock, chips). One name per kind: the same as `label`. */
   short: string;
   description: string;
   Icon: React.ElementType;
@@ -30,15 +30,15 @@ export const KIND_META: Record<ChapterKind, KindMeta> = {
     Icon: Minimize2, tint: "blue", color: "var(--system-blue)",
   },
   format: {
-    label: "Formatting", short: "Format", description: "Dialogue, system messages and stats styled",
+    label: "Formatting", short: "Formatting", description: "Dialogue, system messages and stats styled",
     Icon: Paintbrush, tint: "purple", color: "var(--system-purple)",
   },
   title: {
-    label: "Chapter titles", short: "Titles", description: "Name untitled chapters from their content",
+    label: "Titles", short: "Titles", description: "Name untitled chapters from their content",
     Icon: Type, tint: "green", color: "var(--system-green)",
   },
   comments: {
-    label: "Reader comments", short: "Comments", description: "A few reactions from a fellow reader",
+    label: "Comments", short: "Comments", description: "A few reactions from a fellow reader",
     Icon: MessageCircle, tint: "teal", color: "var(--system-teal)",
   },
 };
