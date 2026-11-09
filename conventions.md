@@ -20,7 +20,7 @@ classes (they adapt to dark / dim / light appearances):
 |---|---|
 | Primary text | `text-label` |
 | Secondary text (descriptions, meta) | `text-label-secondary` |
-| Tertiary text (hints, placeholders, icons at rest) | `text-label-tertiary` |
+| Tertiary text (placeholders, decoration, icons at rest — never meaningful info) | `text-label-tertiary` |
 | Quaternary (disabled, faint decoration) | `text-label-quaternary` |
 | Strong fill (pressed, selected control bg) | `bg-fill` |
 | Secondary fill (hover on fill controls, inputs) | `bg-fill-secondary` |
@@ -123,7 +123,7 @@ System font stack (`--font-ui`): SF Pro on macOS, Inter elsewhere. macOS density
 
 ## 6. Controls
 
-- **Primary button**: `bg-brand text-brand-fg rounded-md h-8 px-3.5 font-medium` (via `<Button>`).
+- **Primary button**: `bg-brand text-brand-fg rounded-md h-8 px-3.5 font-medium` (via `<Button>`). Toolbar pills use `<Button shape="pill">`; icon buttons are round.
 - **Secondary**: `bg-fill-tertiary hover:bg-fill-secondary`.
 - **Toolbar / icon buttons**: `<Button variant="ghost" size="icon-sm">` → `size-8 rounded-md text-label-secondary hover:bg-fill-tertiary hover:text-label`.
 - **Search fields & toolbar pills**: `rounded-full bg-fill-tertiary h-8 px-3`.

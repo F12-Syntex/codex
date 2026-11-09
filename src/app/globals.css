@@ -157,7 +157,7 @@
   /* Labels */
   --label: rgb(255 255 255 / 0.92);
   --label-secondary: rgb(235 235 245 / 0.62);
-  --label-tertiary: rgb(235 235 245 / 0.38);
+  --label-tertiary: rgb(235 235 245 / 0.46);
   --label-quaternary: rgb(235 235 245 / 0.2);
 
   /* Fills (for controls, hover, selection) */
@@ -171,11 +171,11 @@
   --separator-strong: rgb(255 255 255 / 0.14);
 
   /* Materials (translucent glass backgrounds — pair with backdrop blur) */
-  --material-ultrathin: rgb(30 30 34 / 0.38);
-  --material-thin: rgb(30 30 34 / 0.55);
-  --material-regular: rgb(28 28 32 / 0.68);
-  --material-thick: rgb(26 26 30 / 0.82);
-  --material-chrome: rgb(22 22 26 / 0.9);
+  --material-ultrathin: rgb(30 30 34 / calc(0.38 * var(--surface-opacity, 1)));
+  --material-thin: rgb(30 30 34 / calc(0.55 * var(--surface-opacity, 1)));
+  --material-regular: rgb(28 28 32 / calc(0.68 * var(--surface-opacity, 1)));
+  --material-thick: rgb(26 26 30 / calc(0.82 * var(--surface-opacity, 1)));
+  --material-chrome: rgb(22 22 26 / calc(0.9 * var(--surface-opacity, 1)));
   --glass-edge: rgb(255 255 255 / 0.1);
   --glass-highlight: rgb(255 255 255 / 0.07);
   --glass-blur: 40px;
@@ -251,10 +251,10 @@
   --canvas: var(--canvas-base);
   --bg-surface: var(--surface-base);
   --bg-elevated: var(--elevated-base);
-  --material-thin: rgb(44 44 48 / 0.55);
-  --material-regular: rgb(42 42 46 / 0.7);
-  --material-thick: rgb(40 40 44 / 0.84);
-  --material-chrome: rgb(36 36 40 / 0.92);
+  --material-thin: rgb(44 44 48 / calc(0.55 * var(--surface-opacity, 1)));
+  --material-regular: rgb(42 42 46 / calc(0.7 * var(--surface-opacity, 1)));
+  --material-thick: rgb(40 40 44 / calc(0.84 * var(--surface-opacity, 1)));
+  --material-chrome: rgb(36 36 40 / calc(0.92 * var(--surface-opacity, 1)));
 }
 
 [data-appearance="light"] {
@@ -275,8 +275,8 @@
   --canvas-glow-1: color-mix(in srgb, var(--accent-brand) 14%, transparent);
   --canvas-glow-2: color-mix(in srgb, var(--accent-brand) 6%, transparent);
   --label: rgb(0 0 0 / 0.88);
-  --label-secondary: rgb(60 60 67 / 0.66);
-  --label-tertiary: rgb(60 60 67 / 0.4);
+  --label-secondary: rgb(60 60 67 / 0.78);
+  --label-tertiary: rgb(60 60 67 / 0.55);
   --label-quaternary: rgb(60 60 67 / 0.22);
   --fill: rgb(120 120 128 / 0.2);
   --fill-secondary: rgb(120 120 128 / 0.16);
@@ -284,11 +284,11 @@
   --fill-quaternary: rgb(116 116 128 / 0.08);
   --separator: rgb(0 0 0 / 0.08);
   --separator-strong: rgb(0 0 0 / 0.14);
-  --material-ultrathin: rgb(255 255 255 / 0.4);
-  --material-thin: rgb(255 255 255 / 0.55);
-  --material-regular: rgb(250 250 252 / 0.7);
-  --material-thick: rgb(248 248 250 / 0.84);
-  --material-chrome: rgb(246 246 248 / 0.92);
+  --material-ultrathin: rgb(255 255 255 / calc(0.4 * var(--surface-opacity, 1)));
+  --material-thin: rgb(255 255 255 / calc(0.55 * var(--surface-opacity, 1)));
+  --material-regular: rgb(250 250 252 / calc(0.7 * var(--surface-opacity, 1)));
+  --material-thick: rgb(248 248 250 / calc(0.84 * var(--surface-opacity, 1)));
+  --material-chrome: rgb(246 246 248 / calc(0.92 * var(--surface-opacity, 1)));
   --glass-edge: rgb(0 0 0 / 0.08);
   --glass-highlight: rgb(255 255 255 / 0.7);
   --bg-surface: var(--surface-base);

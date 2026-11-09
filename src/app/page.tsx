@@ -560,25 +560,13 @@ export default function Home() {
               <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="flex h-full min-h-0 flex-col">
                   {activeView === "settings" ? (
-                    <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} />
+                    <SettingsPage onImportItems={handleImportItems} activeSection={activeSection} theme={theme} onThemeChange={handleThemeChange} />
                   ) : activeView === "changelog" ? (
                     <ChangelogPage />
                   ) : activeView === "installer" ? (
                     <InstallerPage />
                   ) : (
                     <>
-                      <ContentToolbar
-                        viewMode={viewMode}
-                        onViewModeChange={setViewMode}
-                        viewLabel={viewLabel}
-                        itemCount={processedItems.length}
-                        sortField={sortField}
-                        sortDir={sortDir}
-                        onSortChange={handleSortChange}
-                        formatFilter={formatFilter}
-                        onFormatFilterChange={setFormatFilter}
-                        onImport={handleImport}
-                      />
                       <ContentGrid
                         items={processedItems}
                         viewMode={viewMode}
@@ -598,6 +586,20 @@ export default function Home() {
                         onBatchMove={handleBatchMove}
                         readingProgress={readingProgress}
                         onImport={handleImport}
+                        header={
+                        <ContentToolbar
+                          viewMode={viewMode}
+                          onViewModeChange={setViewMode}
+                          viewLabel={viewLabel}
+                          itemCount={processedItems.length}
+                          sortField={sortField}
+                          sortDir={sortDir}
+                          onSortChange={handleSortChange}
+                          formatFilter={formatFilter}
+                          onFormatFilterChange={setFormatFilter}
+                          onImport={handleImport}
+                        />
+                        }
                       />
                     </>
                   )}

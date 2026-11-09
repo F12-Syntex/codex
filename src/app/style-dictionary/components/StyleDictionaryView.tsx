@@ -182,16 +182,15 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
           <div className="m-auto grid w-full max-w-5xl grid-cols-1 items-center gap-12 px-10 py-12 lg:grid-cols-[1fr_1.1fr]">
             {/* Copy */}
             <div className="animate-fade-up">
-              <p className="text-section">Style Dictionary</p>
-              <h1 className="mt-2 text-large-title text-label text-balance">A house style, learned from your book.</h1>
+              <h1 className="text-large-title font-display text-label text-balance">A house style, learned from your book.</h1>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-label-secondary">
                 When Codex formats chapters with AI, it remembers how each recurring element looks — status screens,
                 system messages, dialogue — so every chapter of <span className="text-label">{bookTitle}</span> stays consistent.
               </p>
               <ListGroup className="mt-8 max-w-md">
-                <ListRow icon={<BookOpen />} iconTint="blue" label="Format a chapter" description="Turn on AI formatting in the reader." />
-                <ListRow icon={<Sparkles />} iconTint="purple" label="Codex learns the patterns" description="Each element becomes a reusable rule." />
-                <ListRow icon={<RefreshCw />} iconTint="orange" label="Refine them here" description="Regenerate any rule with your own instructions." />
+                <ListRow icon={<BookOpen />} label="Format a chapter" description="Turn on AI formatting in the reader." />
+                <ListRow icon={<Sparkles />} label="Codex learns the patterns" description="Each element becomes a reusable rule." />
+                <ListRow icon={<RefreshCw />} label="Refine them here" description="Regenerate any rule with your own instructions." />
               </ListGroup>
             </div>
 
@@ -204,7 +203,7 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
               ].map((card, i) => (
                 <motion.div
                   key={i}
-                  className={cn("glass-thin grain absolute rounded-2xl p-4", card.w)}
+                  className={cn("grain absolute rounded-2xl bg-elevated p-4 shadow-lg hairline", card.w)}
                   style={{ left: card.x, top: card.y }}
                   initial={reduceMotion ? false : { opacity: 0, y: 24, rotate: 0 }}
                   animate={{ opacity: 1, y: 0, rotate: card.rot }}
@@ -273,11 +272,11 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                     <motion.span
                       layoutId="style-dict-selection"
                       transition={reduceMotion ? { duration: 0 } : { type: "spring", bounce: 0.2, duration: 0.45 }}
-                      className="absolute inset-0 rounded-md bg-brand/20 ring-[0.5px] ring-brand/30"
+                      className="absolute inset-0 rounded-md bg-fill-secondary"
                     />
                   )}
                   <span className={cn("relative [&_svg]:size-4", active ? "text-brand" : "text-label-tertiary")}>{item.icon}</span>
-                  <span className="relative min-w-0 flex-1 truncate">{item.label}</span>
+                  <span className={cn("relative min-w-0 flex-1 truncate", active && "font-medium")}>{item.label}</span>
                   <span className="relative text-2xs tabular-nums text-label-tertiary">{item.count}</span>
                 </button>
               );
@@ -294,8 +293,9 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
         <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl">
           <div className="mx-auto w-full max-w-3xl px-8 pt-8 pb-16">
             <header className="mb-8">
-              <p className="text-section">{activeCategory === "all" ? "Every category" : getCategoryMeta(activeCategory).label}</p>
-              <h1 className="mt-1.5 text-large-title text-label">Style Dictionary</h1>
+              <h1 className="text-large-title font-display text-label">
+                {activeCategory === "all" ? "Style Dictionary" : getCategoryMeta(activeCategory).label}
+              </h1>
               <p className="mt-2 text-sm text-label-secondary">
                 <NumberTicker value={dictionary.rules.length} className="tabular-nums text-label" /> {dictionary.rules.length === 1 ? "rule" : "rules"} learned across{" "}
                 {categories.length} {categories.length === 1 ? "category" : "categories"}

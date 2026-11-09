@@ -867,7 +867,7 @@ export function InstallerPage() {
             key={view}
             className="min-h-0 flex-1"
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, filter: "blur(6px)" }}
-            animate={{ opacity: 1, filter: "blur(0px)" }}
+            animate={{ opacity: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, filter: "blur(4px)" }}
             transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
           >
