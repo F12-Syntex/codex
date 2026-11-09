@@ -9,10 +9,10 @@ import {
   Settings,
   Gift,
   Download,
+  Plus,
 } from "lucide-react";
 import { useState, useEffect, useId } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Plus } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Badge } from "@/components/ui/badge";

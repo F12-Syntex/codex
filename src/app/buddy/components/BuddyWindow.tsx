@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Sparkles } from "lucide-react";
 import type { BuddyMessage, ChapterReader } from "@/lib/ai-buddy";
 import { AIChat } from "@/components/ai-chat";
-import { WindowHeader } from "@/components/window-header";
+import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
+import { Badge } from "@/components/ui/badge";
 
 interface BuddyWindowProps {
   filePath: string;
@@ -58,16 +59,18 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
 
   if (initialMessages === undefined) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[var(--bg-inset)]">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-[var(--accent-brand)]" />
-      </div>
+      <WindowShell>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="size-5 animate-spin rounded-full border-2 border-fill-secondary border-t-brand" />
+        </div>
+      </WindowShell>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-      <WindowHeader
-        icon={<Sparkles className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />}
+    <WindowShell>
+      <WindowChrome
+        icon={<Sparkles strokeWidth={1.75} />}
         title="AI Buddy"
         subtitle={bookTitle}
         zoomKey="buddy"
@@ -75,24 +78,29 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
         onZoomChange={setZoom}
       >
         {wikiEntryCount > 0 && (
-          <span className="ml-2 text-xs text-white/15">{wikiEntryCount} wiki entries</span>
+          <Badge variant="outline" className="shrink-0 tabular-nums">{wikiEntryCount} wiki entries</Badge>
         )}
-      </WindowHeader>
+      </WindowChrome>
 
-      <div className="flex flex-1 flex-col overflow-hidden" style={{ zoom: zoom / 100 }}>
-        <AIChat
-          filePath={filePath}
-          bookTitle={bookTitle}
-          currentChapter={currentChapter}
-          totalChapters={totalChapters}
-          initialMessages={initialMessages}
-          onMessagesChange={handleMessagesChange}
-          readChapter={readChapter}
-          wikiEntryCount={wikiEntryCount}
-          variant="window"
-          maxWidth="700px"
-        />
+      {/* Floating companion panel */}
+      <div className="flex min-h-0 flex-1 p-2">
+        <div className="glass-thin grain relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl animate-sheet-in">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ zoom: zoom / 100 }}>
+            <AIChat
+              filePath={filePath}
+              bookTitle={bookTitle}
+              currentChapter={currentChapter}
+              totalChapters={totalChapters}
+              initialMessages={initialMessages}
+              onMessagesChange={handleMessagesChange}
+              readChapter={readChapter}
+              wikiEntryCount={wikiEntryCount}
+              variant="window"
+              maxWidth="700px"
+            />
+          </div>
+        </div>
       </div>
-    </div>
+    </WindowShell>
   );
 }

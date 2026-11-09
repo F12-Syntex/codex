@@ -18,7 +18,7 @@ export default function WikiLayout({
 }>) {
   return (
     <div
-      className={`${geistSans.variable} ${geistMono.variable} flex h-screen flex-col overflow-hidden antialiased select-none`}
+      className={`${geistSans.variable} ${geistMono.variable} app-canvas flex h-screen flex-col overflow-hidden text-label antialiased select-none`}
     >
       {children}
     </div>

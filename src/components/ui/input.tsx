@@ -2,15 +2,19 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** Input — h-8 rounded-md fill field with an accent focus ring (conventions §6). */
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       type={type}
       data-slot="input"
       className={cn(
-        "h-9 w-full min-w-0 rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] px-3 py-1 text-sm text-foreground shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.2)] transition-all duration-150 outline-none placeholder:text-white/30 selection:bg-[var(--accent-brand)]/30 selection:text-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40",
-        "focus-visible:border-[var(--accent-brand)]/50 focus-visible:shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.2),0_0_0_3px_var(--accent-brand-subtle)]",
-        "aria-invalid:border-red-500/50 aria-invalid:shadow-[inset_0_1px_3px_0_rgba(0,0,0,0.2),0_0_0_3px_rgba(239,68,68,0.15)]",
+        "h-8 w-full min-w-0 rounded-md bg-fill-tertiary px-3 text-sm text-label shadow-[inset_0_0_0_0.5px_var(--separator)] outline-none transition-[background-color,box-shadow] duration-150 ease-apple",
+        "placeholder:text-label-tertiary selection:bg-brand/30 hover:bg-fill-secondary",
+        "file:mr-2 file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-label",
+        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-40",
+        "focus-visible:bg-fill-tertiary focus-visible:shadow-[inset_0_0_0_0.5px_var(--accent-brand),0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_35%,transparent)]",
+        "aria-invalid:shadow-[inset_0_0_0_0.5px_var(--system-red),0_0_0_3px_color-mix(in_srgb,var(--system-red)_25%,transparent)]",
         className
       )}
       {...props}

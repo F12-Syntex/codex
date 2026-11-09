@@ -2,26 +2,43 @@
 
 import { useState } from "react";
 import {
-  FolderOpen,
-  HardDrive,
-  Info,
+  Folder,
   RefreshCw,
+  ScanSearch,
   Trash2,
   Download,
   BookOpen,
   Key,
-  Eye,
-  EyeOff,
   ExternalLink,
-  Cpu,
   RotateCcw,
   Replace,
   Plus,
   X,
+  Info,
+  Code2,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+  Feather,
+  Type,
+  Wand2,
+  Library,
+  Settings2,
+  BookText,
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ListGroup, ListRow, ListIcon, type ListIconTint } from "@/components/ui/list-group";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { GlassModal } from "@/components/ui/glass-modal";
+import { SecureInput } from "@/components/ui/secure-input";
+import { BlurFade } from "@/components/ui/blur-fade";
 import { APP_VERSION } from "@/lib/version";
 import { testApiKey } from "@/lib/openrouter";
 import { ModelCombobox } from "@/components/ui/model-combobox";
@@ -36,7 +53,6 @@ import {
 import {
   loadReplacements,
   saveReplacements,
-  getDefaultReplacements,
   type WordReplacement,
 } from "@/lib/word-replacements";
 
@@ -46,57 +62,35 @@ interface SettingsPageProps {
   activeSection: string;
 }
 
-/* ── Setting row helpers ─────────────────────────────────── */
+/* ── Presentational helpers ───────────────────────────────── */
 
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-3">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm text-white/70">{label}</span>
-        {description && (
-          <span className="text-xs text-white/25">{description}</span>
-        )}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
-}
+/** Text field styled like a macOS inset field (fixed height, accent focus ring). */
+const FIELD =
+  "h-8 rounded-md bg-fill-tertiary px-3 text-sm text-label outline-none transition-[background-color,box-shadow] duration-150 placeholder:text-label-quaternary hover:bg-fill-secondary focus:bg-fill-secondary focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_35%,transparent)]";
 
-function SettingSection({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-1">
-        <Icon className="h-3.5 w-3.5 text-white/20" strokeWidth={1.5} />
-        <span className="text-xs font-medium uppercase tracking-wider text-white/20">{title}</span>
-      </div>
-      <div className="rounded-lg border border-white/[0.06] bg-[var(--bg-surface)]">
-        <div className="flex flex-col divide-y divide-white/[0.04] px-4">
-          {children}
-        </div>
-      </div>
-    </section>
-  );
-}
+const PRESET_ICONS: Record<string, { icon: React.ReactNode; tint: ListIconTint }> = {
+  quick: { icon: <Zap />, tint: "orange" },
+  creative: { icon: <Feather />, tint: "pink" },
+  format: { icon: <Type />, tint: "blue" },
+  "format-regen": { icon: <Wand2 />, tint: "teal" },
+};
 
 /* ── Tab types ────────────────────────────────────────────── */
 
 type SettingsTab = "general" | "books" | "ai";
+
+const CONFIRM_COPY: Record<string, { title: string; body: string; action: string }> = {
+  wiki: {
+    title: "Clear all wiki data?",
+    body: "Every wiki entry, relationship, arc and summary for every book will be permanently deleted. This can't be undone.",
+    action: "Clear Wiki Data",
+  },
+  formatting: {
+    title: "Clear formatting cache?",
+    body: "All AI-formatted chapter data will be deleted. Chapters will be reformatted the next time you open them.",
+    action: "Clear Cache",
+  },
+};
 
 /* ── Settings page ───────────────────────────────────────── */
 
@@ -302,322 +296,396 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     saveReplacements(next);
   };
 
-  const tabs: { id: SettingsTab; label: string }[] = [
-    { id: "general", label: "General" },
-    { id: "books", label: "Books" },
-    { id: "ai", label: "AI" },
+  const tabs: { value: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { value: "general", label: "General", icon: <Settings2 className="size-3.5" /> },
+    { value: "books", label: "Books", icon: <BookText className="size-3.5" /> },
+    { value: "ai", label: "AI", icon: <Sparkles className="size-3.5" /> },
   ];
+
+  const confirmCopy = confirmAction ? CONFIRM_COPY[confirmAction] : null;
+  const runConfirmed = () => {
+    if (confirmAction === "wiki") handleClearWiki();
+    else if (confirmAction === "formatting") handleClearFormatting();
+  };
+
+  const testDescription = testResult
+    ? testResult.ok
+      ? "API key is valid"
+      : testResult.error ?? "Invalid key"
+    : "Verify your key works";
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <div className="px-6 pt-5 pb-1">
-        <h1 className="text-sm font-medium text-white/80">Settings</h1>
-        <p className="mt-1 text-xs text-white/25">Manage your library, updates, and preferences.</p>
+      {/* ── Header ─────────────────────────────────── */}
+      <header className="px-8 pt-6 pb-4">
+        <h1 className="text-large-title font-display text-label">Settings</h1>
+        <p className="mt-1 text-sm text-label-secondary">Manage your library, updates, and preferences.</p>
+      </header>
+
+      <div className="px-8 pb-2">
+        <SegmentedControl<SettingsTab>
+          value={activeTab}
+          onValueChange={setActiveTab}
+          options={tabs}
+          size="md"
+        />
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-4 px-6 pt-3">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "pb-2 text-xs font-medium uppercase tracking-wider transition-colors",
-              activeTab === tab.id
-                ? "border-b-2 border-[var(--accent-brand)] text-white/70"
-                : "text-white/25 hover:text-white/40"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {activeTab === "general" && (
-        <div className="flex max-w-[560px] flex-col gap-5 p-6">
-          {/* ── Library ──────────────────────────────── */}
-          <SettingSection icon={FolderOpen} title="Library">
-            <SettingRow
-              label="Library folder"
-              description={libraryPath ?? "No folder selected"}
-            >
-              <button
-                onClick={handleSelectFolder}
-                className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/50 transition-colors hover:bg-white/[0.10] hover:text-white/70"
-              >
-                Browse
-              </button>
-            </SettingRow>
-
-            <SettingRow
-              label="Auto-scan on launch"
-              description="Automatically import new files when the app starts"
-            >
-              <Switch checked={autoScan} onCheckedChange={handleAutoScanChange} />
-            </SettingRow>
-
-            {libraryPath && (
-              <div className="py-3">
-                <button
-                  onClick={handleScan}
-                  disabled={scanning}
-                  className={cn(
-                    "flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium transition-colors",
-                    scanning
-                      ? "bg-white/[0.04] text-white/20"
-                      : "bg-white/[0.06] text-white/50 hover:bg-white/[0.10] hover:text-white/70"
-                  )}
+      {/* ── Tab content ─────────────────────────────── */}
+      <div key={activeTab} className="flex w-full max-w-2xl flex-col gap-7 px-8 pt-5 pb-32">
+        {activeTab === "general" && (
+          <>
+            <BlurFade>
+              <ListGroup title="Library">
+                <ListRow
+                  icon={<Folder />}
+                  iconTint="blue"
+                  label="Library folder"
+                  description={
+                    <span className="block truncate" title={libraryPath ?? undefined}>
+                      {libraryPath ?? "No folder selected"}
+                    </span>
+                  }
                 >
-                  <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
-                  {scanning ? "Scanning..." : "Scan Library Now"}
-                </button>
-                {lastScanCount !== null && (
-                  <p className="mt-2 text-center text-xs text-white/25">
-                    {lastScanCount === 0 ? "No new files found" : `Imported ${lastScanCount} file${lastScanCount !== 1 ? "s" : ""}`}
-                  </p>
+                  <Button size="sm" variant="secondary" onClick={handleSelectFolder} className="w-24">
+                    {libraryPath ? "Change…" : "Browse…"}
+                  </Button>
+                </ListRow>
+
+                <ListRow
+                  icon={<RefreshCw />}
+                  iconTint="teal"
+                  label="Auto-scan on launch"
+                  description="Automatically import new files when the app starts"
+                >
+                  <Switch checked={autoScan} onCheckedChange={handleAutoScanChange} />
+                </ListRow>
+
+                {libraryPath && (
+                  <ListRow
+                    icon={<ScanSearch />}
+                    iconTint="green"
+                    label="Scan library"
+                    description={
+                      lastScanCount !== null ? (
+                        <span className={cn(lastScanCount > 0 && "text-success")}>
+                          {lastScanCount === 0
+                            ? "No new files found"
+                            : `Imported ${lastScanCount} file${lastScanCount !== 1 ? "s" : ""}`}
+                        </span>
+                      ) : (
+                        "Look for new books and comics in your library folder"
+                      )
+                    }
+                  >
+                    <Button size="sm" variant="secondary" onClick={handleScan} disabled={scanning} className="w-24">
+                      <RefreshCw className={cn("size-3.5", scanning && "animate-spin")} />
+                      {scanning ? "Scanning" : "Scan Now"}
+                    </Button>
+                  </ListRow>
                 )}
+              </ListGroup>
+            </BlurFade>
+
+            <BlurFade delay={0.03}>
+              <ListGroup title="Updates">
+                <ListRow
+                  icon={<Download />}
+                  iconTint="indigo"
+                  label="Software update"
+                  description={updateStatus ?? `Current version: ${APP_VERSION}`}
+                >
+                  <Button size="sm" variant="secondary" onClick={handleCheckUpdates} disabled={checkingUpdates} className="w-24">
+                    <RefreshCw className={cn("size-3.5", checkingUpdates && "animate-spin")} />
+                    {checkingUpdates ? "Checking" : "Check Now"}
+                  </Button>
+                </ListRow>
+              </ListGroup>
+            </BlurFade>
+
+            <BlurFade delay={0.06}>
+              <ListGroup title="About">
+                <ListRow icon={<Info />} iconTint="gray" label="Version">
+                  <Badge variant="outline">v{APP_VERSION}</Badge>
+                </ListRow>
+                <ListRow icon={<Code2 />} iconTint="gray" label="Source code">
+                  <button
+                    type="button"
+                    onClick={() => window.open("https://github.com/F12-Syntex/codex", "_blank")}
+                    className="focus-ring inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
+                  >
+                    github.com/F12-Syntex/codex
+                    <ExternalLink className="size-3" strokeWidth={2} />
+                  </button>
+                </ListRow>
+              </ListGroup>
+            </BlurFade>
+
+            <BlurFade delay={0.09}>
+              <ListGroup
+                title={
+                  <span className="inline-flex items-center gap-1.5 text-danger">
+                    <AlertTriangle className="size-3.5" strokeWidth={2} />
+                    Danger Zone
+                  </span>
+                }
+                footer={
+                  clearStatus ? (
+                    <span className={cn("inline-flex items-center gap-1.5", clearStatus.startsWith("Failed") ? "text-danger" : "text-success")}>
+                      {clearStatus.startsWith("Failed") ? <X className="size-3" strokeWidth={2.5} /> : <Check className="size-3" strokeWidth={2.5} />}
+                      {clearStatus}
+                    </span>
+                  ) : (
+                    "Files on disk are never touched."
+                  )
+                }
+              >
+                <ListRow
+                  icon={<Library />}
+                  iconTint="red"
+                  label="Clear library"
+                  description="Remove all items from your library. Files on disk are not affected."
+                  destructive
+                >
+                  <DangerButton onClick={handleClearLibrary}>Clear…</DangerButton>
+                </ListRow>
+                <ListRow
+                  icon={<BookOpen />}
+                  iconTint="red"
+                  label="Clear wiki data"
+                  description="Delete all wiki entries, relationships, arcs, and summaries for every book."
+                  destructive
+                >
+                  <DangerButton onClick={handleClearWiki}>Clear…</DangerButton>
+                </ListRow>
+                <ListRow
+                  icon={<Trash2 />}
+                  iconTint="red"
+                  label="Clear formatting cache"
+                  description="Delete all AI-formatted chapter data. Chapters will reformat on next visit."
+                  destructive
+                >
+                  <DangerButton onClick={handleClearFormatting}>Clear…</DangerButton>
+                </ListRow>
+              </ListGroup>
+            </BlurFade>
+          </>
+        )}
+
+        {activeTab === "books" && (
+          <BlurFade>
+            <ListGroup
+              title="Word Replacements"
+              footer="Replace specific words when rendering books. Case is preserved automatically."
+            >
+              <div className="flex h-11 items-center gap-3 px-3">
+                <ListIcon tint="purple">
+                  <Replace />
+                </ListIcon>
+                <span className="flex-1 text-sm text-label">Replacements</span>
+                <Badge>{wordReplacements.length}</Badge>
               </div>
-            )}
-          </SettingSection>
 
-          {/* ── Storage ─────────────────────────────── */}
-          <SettingSection icon={HardDrive} title="Data">
-            <SettingRow
-              label="Clear library"
-              description="Remove all items from your library. Files on disk are not affected."
-            >
-              <button
-                onClick={handleClearLibrary}
-                className="flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-400"
-              >
-                <Trash2 className="h-3 w-3" />
-                Clear
-              </button>
-            </SettingRow>
-
-            <SettingRow
-              label="Clear wiki data"
-              description={clearStatus ?? "Delete all wiki entries, relationships, arcs, and summaries for every book."}
-            >
-              <button
-                onClick={handleClearWiki}
-                onBlur={() => { if (confirmAction === "wiki") setConfirmAction(null); }}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                  confirmAction === "wiki"
-                    ? "bg-red-500/15 text-red-400"
-                    : "bg-white/[0.06] text-white/40 hover:bg-red-500/10 hover:text-red-400"
-                )}
-              >
-                <BookOpen className="h-3 w-3" />
-                {confirmAction === "wiki" ? "Confirm?" : "Clear"}
-              </button>
-            </SettingRow>
-
-            <SettingRow
-              label="Clear formatting cache"
-              description="Delete all AI-formatted chapter data. Chapters will reformat on next visit."
-            >
-              <button
-                onClick={handleClearFormatting}
-                onBlur={() => { if (confirmAction === "formatting") setConfirmAction(null); }}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                  confirmAction === "formatting"
-                    ? "bg-red-500/15 text-red-400"
-                    : "bg-white/[0.06] text-white/40 hover:bg-red-500/10 hover:text-red-400"
-                )}
-              >
-                <Trash2 className="h-3 w-3" />
-                {confirmAction === "formatting" ? "Confirm?" : "Clear"}
-              </button>
-            </SettingRow>
-          </SettingSection>
-
-          {/* ── Updates ─────────────────────────────── */}
-          <SettingSection icon={Download} title="Updates">
-            <SettingRow
-              label="Check for updates"
-              description={updateStatus ?? `Current version: ${APP_VERSION}`}
-            >
-              <button
-                onClick={handleCheckUpdates}
-                disabled={checkingUpdates}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium transition-colors",
-                  checkingUpdates
-                    ? "text-white/20"
-                    : "text-white/50 hover:bg-white/[0.10] hover:text-white/70"
-                )}
-              >
-                <RefreshCw className={cn("h-3 w-3", checkingUpdates && "animate-spin")} />
-                {checkingUpdates ? "Checking..." : "Check Now"}
-              </button>
-            </SettingRow>
-          </SettingSection>
-
-          {/* ── About ──────────────────────────────── */}
-          <SettingSection icon={Info} title="About">
-            <SettingRow label="Version">
-              <span className="text-xs text-white/30">{APP_VERSION}</span>
-            </SettingRow>
-            <SettingRow label="Source">
-              <button
-                onClick={() => window.open("https://github.com/F12-Syntex/codex", "_blank")}
-                className="text-xs text-white/30 transition-colors hover:text-white/50"
-              >
-                github.com/F12-Syntex/codex
-              </button>
-            </SettingRow>
-          </SettingSection>
-        </div>
-      )}
-
-      {activeTab === "books" && (
-        <div className="flex max-w-[560px] flex-col gap-5 p-6">
-          <SettingSection icon={Replace} title="Word Replacements">
-            <div className="flex flex-col gap-2 py-3">
-              <span className="text-xs text-white/30">
-                Replace specific words when rendering books. Case is preserved automatically.
-              </span>
               {wordReplacements.map((r, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className="group/row flex h-12 items-center gap-2 pr-2 pl-12">
                   <input
                     type="text"
                     value={r.from}
                     onChange={(e) => handleReplacementChange(i, "from", e.target.value)}
                     placeholder="Original word"
-                    className="w-36 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
+                    aria-label="Original word"
+                    className={cn(FIELD, "min-w-0 flex-1")}
                   />
-                  <span className="text-xs text-white/20">→</span>
+                  <ArrowRight className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={2} />
                   <input
                     type="text"
                     value={r.to}
                     onChange={(e) => handleReplacementChange(i, "to", e.target.value)}
                     placeholder="Replacement"
-                    className="w-36 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
+                    aria-label="Replacement"
+                    className={cn(FIELD, "min-w-0 flex-1")}
                   />
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => handleRemoveReplacement(i)}
-                    className="rounded-lg p-1.5 text-white/20 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+                    aria-label="Remove replacement"
+                    title="Remove"
+                    className="text-label-tertiary hover:text-danger"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
+                    <X className="size-3.5" />
+                  </Button>
                 </div>
               ))}
-              <button
+
+              <ListRow
                 onClick={handleAddReplacement}
-                className="flex w-fit items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/40 transition-colors hover:bg-white/[0.10] hover:text-white/60"
-              >
-                <Plus className="h-3 w-3" />
-                Add Replacement
-              </button>
-            </div>
-          </SettingSection>
-        </div>
-      )}
+                icon={
+                  <span className="inline-flex size-6 items-center justify-center text-brand">
+                    <Plus strokeWidth={2.25} />
+                  </span>
+                }
+                label={<span className="font-medium text-brand">Add Replacement</span>}
+              />
+            </ListGroup>
+          </BlurFade>
+        )}
 
-      {activeTab === "ai" && (
-        <div className="flex max-w-[560px] flex-col gap-5 p-6">
-          <SettingSection icon={Key} title="OpenRouter">
-            <SettingRow
-              label="API Key"
-              description="Used for AI-powered features like recommendations"
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => handleApiKeyChange(e.target.value)}
-                  placeholder="sk-or-..."
-                  className="w-44 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-white/70 placeholder-white/15 outline-none transition-colors focus:bg-white/[0.08]"
-                />
-                <button
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="rounded-lg p-1.5 text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+        {activeTab === "ai" && (
+          <>
+            <BlurFade>
+              <ListGroup
+                title="OpenRouter"
+                footer="Your key is stored locally and only sent to OpenRouter."
+              >
+                <ListRow
+                  icon={<Key />}
+                  iconTint="orange"
+                  label="API key"
+                  description="Used for AI-powered features like recommendations"
                 >
-                  {showApiKey ? (
-                    <EyeOff className="h-3 w-3" />
-                  ) : (
-                    <Eye className="h-3 w-3" />
-                  )}
-                </button>
-              </div>
-            </SettingRow>
-            <SettingRow
-              label="Test connection"
-              description={
-                testResult
-                  ? testResult.ok
-                    ? "API key is valid"
-                    : testResult.error ?? "Invalid key"
-                  : "Verify your key works"
-              }
-            >
-              <button
-                onClick={handleTestKey}
-                disabled={testingKey || !apiKey.trim()}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs font-medium transition-colors",
-                  testingKey || !apiKey.trim()
-                    ? "text-white/20"
-                    : testResult?.ok
-                      ? "text-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-400"
-                      : testResult && !testResult.ok
-                        ? "text-red-400/70 hover:bg-red-500/10 hover:text-red-400"
-                        : "text-white/50 hover:bg-white/[0.10] hover:text-white/70"
-                )}
-              >
-                <RefreshCw className={cn("h-3 w-3", testingKey && "animate-spin")} />
-                {testingKey ? "Testing..." : testResult?.ok ? "Valid" : testResult && !testResult.ok ? "Failed" : "Test"}
-              </button>
-            </SettingRow>
-            <SettingRow label="Get an API key">
-              <button
-                onClick={() => window.open("https://openrouter.ai/keys", "_blank")}
-                className="flex items-center gap-1.5 text-xs text-white/30 transition-colors hover:text-white/50"
-              >
-                openrouter.ai/keys
-                <ExternalLink className="h-3 w-3" />
-              </button>
-            </SettingRow>
-          </SettingSection>
-
-          {/* ── Model Presets ─────────────────────────── */}
-          <SettingSection icon={Cpu} title="Model Presets">
-            {DEFAULT_PRESETS.map((preset) => {
-              const isOverridden = !!presetOverrides[preset.id];
-              const effectiveModel = getEffectiveModel(preset, presetOverrides);
-
-              return (
-                <SettingRow
-                  key={preset.id}
-                  label={preset.label}
-                  description={preset.description}
+                  <SecureInput
+                    value={apiKey}
+                    onChange={(e) => handleApiKeyChange(e.target.value)}
+                    placeholder="sk-or-..."
+                    revealed={showApiKey}
+                    onRevealedChange={setShowApiKey}
+                    containerClassName="w-60"
+                    aria-label="OpenRouter API key"
+                  />
+                </ListRow>
+                <ListRow
+                  icon={<ShieldCheck />}
+                  iconTint="green"
+                  label="Test connection"
+                  description={
+                    <span className={cn(testResult?.ok && "text-success", testResult && !testResult.ok && "text-danger")}>
+                      {testDescription}
+                    </span>
+                  }
                 >
-                  <div className="flex items-center gap-2">
-                    <ModelCombobox
-                      value={effectiveModel}
-                      onChange={(model) => handlePresetModelChange(preset.id, model)}
-                      placeholder={preset.defaultModel}
-                    />
-                    {isOverridden && (
-                      <button
-                        onClick={() => handlePresetReset(preset.id)}
-                        title="Reset to default"
-                        className="rounded-lg p-1.5 text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleTestKey}
+                    disabled={testingKey || !apiKey.trim()}
+                    className={cn(
+                      "w-24",
+                      testResult?.ok && "text-success",
+                      testResult && !testResult.ok && "text-danger",
                     )}
-                  </div>
-                </SettingRow>
-              );
-            })}
-          </SettingSection>
-        </div>
-      )}
+                  >
+                    {testingKey ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : testResult?.ok ? (
+                      <Check className="size-3.5" strokeWidth={2.5} />
+                    ) : testResult && !testResult.ok ? (
+                      <X className="size-3.5" strokeWidth={2.5} />
+                    ) : (
+                      <RefreshCw className="size-3.5" />
+                    )}
+                    {testingKey ? "Testing" : testResult?.ok ? "Valid" : testResult && !testResult.ok ? "Failed" : "Test"}
+                  </Button>
+                </ListRow>
+                <ListRow
+                  icon={<ExternalLink />}
+                  iconTint="gray"
+                  label="Get an API key"
+                  description="openrouter.ai/keys"
+                  onClick={() => window.open("https://openrouter.ai/keys", "_blank")}
+                >
+                  <ArrowRight className="size-4 text-label-tertiary" strokeWidth={1.75} />
+                </ListRow>
+              </ListGroup>
+            </BlurFade>
+
+            <BlurFade delay={0.04}>
+              <ListGroup title="Model Presets" footer="Pick which model powers each AI feature. Overridden presets can be reset to their default.">
+                {DEFAULT_PRESETS.map((preset) => {
+                  const isOverridden = !!presetOverrides[preset.id];
+                  const effectiveModel = getEffectiveModel(preset, presetOverrides);
+                  const meta = PRESET_ICONS[preset.id] ?? { icon: <Sparkles />, tint: "purple" as ListIconTint };
+
+                  return (
+                    <ListRow
+                      key={preset.id}
+                      icon={meta.icon}
+                      iconTint={meta.tint}
+                      label={
+                        <span className="inline-flex items-center gap-2">
+                          {preset.label}
+                          {isOverridden && <Badge variant="accent">Custom</Badge>}
+                        </span>
+                      }
+                      description={preset.description}
+                    >
+                      <ModelCombobox
+                        value={effectiveModel}
+                        onChange={(model) => handlePresetModelChange(preset.id, model)}
+                        placeholder={preset.defaultModel}
+                      />
+                      {/* Fixed-width slot keeps every combobox aligned */}
+                      <span className="inline-flex size-7 items-center justify-center">
+                        {isOverridden && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => handlePresetReset(preset.id)}
+                            title="Reset to default"
+                            aria-label={`Reset ${preset.label} to default`}
+                            className="text-label-tertiary hover:text-label"
+                          >
+                            <RotateCcw className="size-3.5" />
+                          </Button>
+                        )}
+                      </span>
+                    </ListRow>
+                  );
+                })}
+              </ListGroup>
+            </BlurFade>
+          </>
+        )}
+      </div>
+
+      {/* ── Destructive confirmation ─────────────────── */}
+      <GlassModal
+        open={!!confirmCopy}
+        onClose={() => setConfirmAction(null)}
+        title={confirmCopy?.title}
+        width={420}
+        icon={
+          <span className="inline-flex size-10 items-center justify-center rounded-lg bg-danger/15 text-danger">
+            <AlertTriangle className="size-5" strokeWidth={1.75} />
+          </span>
+        }
+      >
+        <GlassModal.Body>
+          <p className="text-sm leading-relaxed text-label-secondary">{confirmCopy?.body}</p>
+        </GlassModal.Body>
+        <GlassModal.Footer>
+          <Button variant="secondary" size="sm" onClick={() => setConfirmAction(null)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" size="sm" onClick={runConfirmed} autoFocus>
+            <Trash2 className="size-3.5" />
+            {confirmCopy?.action}
+          </Button>
+        </GlassModal.Footer>
+      </GlassModal>
     </div>
+  );
+}
+
+function DangerButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={onClick}
+      className="w-24 text-danger hover:bg-danger/15 hover:text-danger"
+    >
+      {children}
+    </Button>
   );
 }

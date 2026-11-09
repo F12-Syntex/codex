@@ -7,8 +7,8 @@ import { WikiViewer } from "./components/WikiViewer";
 
 function LoadingScreen() {
   return (
-    <div className="flex h-screen items-center justify-center bg-[var(--bg-inset)]">
-      <Loader2 className="h-6 w-6 animate-spin text-white/40" strokeWidth={1.5} />
+    <div className="app-canvas flex h-screen items-center justify-center">
+      <Loader2 className="size-5 animate-spin text-label-tertiary" strokeWidth={1.75} />
     </div>
   );
 }
