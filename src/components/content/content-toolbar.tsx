@@ -9,7 +9,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   Plus,
-  Search,
   ListFilter,
   Check,
 } from "lucide-react";
@@ -22,7 +21,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { BookFormat } from "@/lib/mock-data";
@@ -45,7 +43,6 @@ interface ContentToolbarProps {
   onFormatFilterChange: (f: FormatFilter) => void;
   onImport: () => void;
   /** Opens global search. Falls back to the registered Ctrl+K shortcut. */
-  onSearch?: () => void;
 }
 
 const viewModes: { id: ViewMode; icon: typeof List; tip: string }[] = [
@@ -67,11 +64,6 @@ const formatOptions: FormatFilter[] = ["all", "EPUB", "PDF", "CBZ", "CBR", "MOBI
 const pillClass =
   "focus-ring pressable inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors duration-150 [&_svg]:size-3.5 [&_svg]:shrink-0";
 
-function openSearch() {
-  // The search overlay listens for the registered Ctrl+K shortcut on window.
-  window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
-}
-
 export function ContentToolbar({
   viewMode,
   onViewModeChange,
@@ -83,7 +75,6 @@ export function ContentToolbar({
   formatFilter,
   onFormatFilterChange,
   onImport,
-  onSearch,
 }: ContentToolbarProps) {
   const activeSort = sortOptions.find((o) => o.field === sortField);
   const filtered = formatFilter !== "all";
@@ -103,20 +94,6 @@ export function ContentToolbar({
 
       {/* Control cluster — bottom-aligned with the title's baseline row */}
       <div className="flex h-9 shrink-0 items-center gap-2">
-        {/* Search pill */}
-        <button
-          type="button"
-          onClick={onSearch ?? openSearch}
-          className={cn(
-            pillClass,
-            "w-44 bg-fill-tertiary pr-1.5 pl-3 text-label-tertiary hover:bg-fill-secondary hover:text-label-secondary",
-          )}
-        >
-          <Search strokeWidth={2} />
-          <span className="flex-1 text-left font-normal">Search</span>
-          <Kbd>Ctrl K</Kbd>
-        </button>
-
         {/* Format filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

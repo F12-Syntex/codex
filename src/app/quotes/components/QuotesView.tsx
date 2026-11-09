@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles, LayoutGrid } from "lucide-react";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { SearchField } from "@/components/ui/search-field";
@@ -113,91 +114,144 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* Header */}
-        <header className="mx-auto w-full max-w-6xl px-8 pt-6 pb-4">
-          <div className="flex items-end justify-between gap-6">
-            <div className="min-w-0">
-              <h1 className="truncate text-large-title text-label">{title}</h1>
-              <p className="mt-1 text-sm text-label-secondary">
-                {loading ? "Loading…" : (
+        {!loading && quotes.length === 0 ? (
+          <EmptyQuotes title={title} />
+        ) : (
+          <>
+            {/* Hero */}
+            <header className="mx-auto w-full max-w-6xl px-8 pt-10 pb-6 text-center">
+              <p className="text-section">Commonplace book</p>
+              <h1 className="mx-auto mt-2 max-w-2xl truncate text-large-title text-label">{title}</h1>
+              <p className="mt-2 text-sm text-label-secondary">
+                {loading ? "Gathering your quotes…" : (
                   <>
-                    <NumberTicker value={quotes.length} className="tabular-nums" /> saved {quotes.length === 1 ? "quote" : "quotes"}
+                    <NumberTicker value={quotes.length} className="tabular-nums text-label" /> saved {quotes.length === 1 ? "passage" : "passages"}
                     {filtered.length !== quotes.length && (
                       <span className="text-label-tertiary"> · {filtered.length} shown</span>
                     )}
                   </>
                 )}
               </p>
-            </div>
-          </div>
+            </header>
 
-          {/* Toolbar */}
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <SearchField
-              value={search}
-              onChange={setSearch}
-              placeholder="Search quotes, speakers, chapters…"
-              className="w-72"
-            />
-            <SegmentedControl
-              value={filterKind}
-              onValueChange={setFilterKind}
-              options={kindOptions}
-              aria-label="Filter by kind"
-            />
-            {filterKind !== "all" && (
-              <span className="animate-fade-in text-xs text-label-tertiary">{KIND_LABELS[filterKind]?.label}</span>
-            )}
-            {!filePath && uniqueBooks.length > 1 && (
-              <div className="relative ml-auto">
-                <select
-                  value={filterBook}
-                  onChange={(e) => setFilterBook(e.target.value)}
-                  className="focus-ring h-8 max-w-48 cursor-pointer appearance-none truncate rounded-full bg-fill-tertiary pl-3.5 pr-8 text-xs font-medium text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
-                >
-                  <option value="all">All books</option>
-                  {uniqueBooks.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-label-tertiary" strokeWidth={2} />
+            {/* Floating toolbar */}
+            <div className="sticky top-3 z-20 flex justify-center px-8 pb-6">
+              <div className="glass flex items-center gap-1.5 rounded-full p-1 animate-pop-in">
+                <SearchField
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search quotes, speakers, chapters…"
+                  className="w-64"
+                />
+                <SegmentedControl
+                  value={filterKind}
+                  onValueChange={setFilterKind}
+                  options={kindOptions}
+                  aria-label="Filter by kind"
+                />
+                {!filePath && uniqueBooks.length > 1 && (
+                  <div className="relative">
+                    <select
+                      value={filterBook}
+                      onChange={(e) => setFilterBook(e.target.value)}
+                      className="focus-ring h-8 max-w-44 cursor-pointer appearance-none truncate rounded-full bg-fill-tertiary pl-3.5 pr-8 text-xs font-medium text-label-secondary transition-colors hover:bg-fill-secondary hover:text-label"
+                    >
+                      <option value="all">All books</option>
+                      {uniqueBooks.map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-label-tertiary" strokeWidth={2} />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </header>
-
-        {/* Gallery */}
-        <div className="mx-auto w-full max-w-6xl px-8 pb-10">
-          {loading ? (
-            <div className="flex items-center justify-center py-24">
-              <Loader2 className="size-5 animate-spin text-label-tertiary" strokeWidth={1.75} />
             </div>
-          ) : filtered.length === 0 ? (
-            <EmptyState
-              icon={<QuoteIcon className="size-10" strokeWidth={1.25} />}
-              title={quotes.length === 0 ? "No quotes yet" : "Nothing matches"}
-              description={quotes.length === 0
-                ? "Highlight text in the reader and tap Quote to keep it here."
-                : "Try a different search or filter."}
-            />
-          ) : (
-            <MasonryGrid
-              items={filtered}
-              getKey={(q) => q.id}
-              className="columns-1 md:columns-2 xl:columns-3"
-              renderItem={(quote) => (
-                <QuoteCard
-                  quote={quote}
-                  showBook={!filePath}
-                  onDelete={handleDelete}
-                  deleting={deletingId === quote.id}
+
+            {/* Gallery */}
+            <div className="mx-auto w-full max-w-6xl px-8 pb-12">
+              {loading ? (
+                <div className="columns-1 gap-4 md:columns-2 xl:columns-3">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="glass-thin mb-4 break-inside-avoid space-y-2.5 rounded-2xl p-5" style={{ opacity: 1 - i * 0.12 }}>
+                      <span className="block h-5 w-20 animate-pulse rounded-full bg-fill-tertiary" />
+                      {Array.from({ length: 2 + (i % 3) }).map((_, j) => (
+                        <span key={j} className="block h-3 animate-pulse rounded-full bg-fill-tertiary" style={{ width: `${92 - j * 14}%` }} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : filtered.length === 0 ? (
+                <EmptyState
+                  icon={<QuoteIcon />}
+                  title="Nothing matches"
+                  description="Try a different search or filter."
+                />
+              ) : (
+                <MasonryGrid
+                  items={filtered}
+                  getKey={(q) => q.id}
+                  className="columns-1 md:columns-2 xl:columns-3"
+                  renderItem={(quote) => (
+                    <QuoteCard
+                      quote={quote}
+                      showBook={!filePath}
+                      onDelete={handleDelete}
+                      deleting={deletingId === quote.id}
+                    />
+                  )}
                 />
               )}
-            />
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </WindowShell>
+  );
+}
+
+/** Empty state — a fanned stack of blank glass quote cards. */
+function EmptyQuotes({ title }: { title: string }) {
+  const reduceMotion = useReducedMotion();
+  const cards = [
+    { rot: -8, x: -120, y: 18, lines: [88, 72, 54] },
+    { rot: 7, x: 120, y: 24, lines: [80, 90, 40] },
+    { rot: -1, x: 0, y: 0, lines: [94, 86, 78, 50] },
+  ];
+  return (
+    <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center">
+      <div className="relative mb-10 h-56 w-[30rem] max-w-full" aria-hidden>
+        {cards.map((c, i) => (
+          <motion.div
+            key={i}
+            className="glass-thin grain absolute left-1/2 top-0 w-64 rounded-2xl p-5 text-left"
+            style={{ marginLeft: -128 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 40, x: 0, rotate: 0 }}
+            animate={{ opacity: i === 2 ? 1 : 0.7, y: c.y, x: c.x, rotate: c.rot }}
+            transition={{ type: "spring", bounce: 0.3, duration: 0.9, delay: 0.08 * i }}
+          >
+            <span className="block font-display text-2xl leading-none text-brand">&ldquo;</span>
+            <div className="mt-2 space-y-2">
+              {c.lines.map((w, j) => (
+                <span key={j} className="block h-2 rounded-full bg-fill-secondary" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <span className="h-px w-5 bg-separator-strong" />
+              <span className="h-1.5 w-16 rounded-full bg-fill-tertiary" />
+            </div>
+          </motion.div>
+        ))}
+      </div>
+      <p className="text-section">Commonplace book</p>
+      <h1 className="mt-2 text-large-title text-label">{title}</h1>
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-label-secondary">
+        Lines worth keeping live here. Select a passage in the reader and choose{" "}
+        <span className="inline-flex h-5 items-center gap-1 rounded-full bg-fill-tertiary px-2 align-middle text-xs text-label">
+          <QuoteIcon className="size-3" strokeWidth={2} /> Quote
+        </span>{" "}
+        to start your collection.
+      </p>
+    </div>
   );
 }
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, BookOpen, Library } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import type { BuddyMessage, ChapterReader } from "@/lib/ai-buddy";
 import { AIChat } from "@/components/ai-chat";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
-import { Badge } from "@/components/ui/badge";
+import { ShimmerText } from "@/components/ui/shimmer-text";
 
 interface BuddyWindowProps {
   filePath: string;
@@ -21,6 +22,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
 
   // Restore messages from the pop-out source (persisted in settings)
   const [initialMessages, setInitialMessages] = useState<BuddyMessage[] | undefined>(undefined);
+  const reduceMotion = useReducedMotion();
 
   // Load book content once on mount so readChapter can be sync
   useEffect(() => {
@@ -57,11 +59,41 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
     window.electronAPI?.setSetting(`buddyMessages:${filePath}`, JSON.stringify(msgs));
   }, [filePath]);
 
+  const chrome = (
+    <WindowChrome
+      icon={<Sparkles strokeWidth={1.75} />}
+      title="AI Buddy"
+      subtitle={bookTitle}
+      zoomKey="buddy"
+      zoom={zoom}
+      onZoomChange={setZoom}
+    />
+  );
+
+  const progress = totalChapters > 0 ? Math.min(1, (currentChapter + 1) / totalChapters) : 0;
+
+  /** Living ink orb — the buddy's face. */
+  const orb = (size: "md" | "lg") => (
+    <span className={`relative flex items-center justify-center ${size === "lg" ? "size-20" : "size-10"}`}>
+      <motion.span
+        aria-hidden
+        className="absolute inset-0 rounded-full bg-brand/40 blur-xl"
+        animate={reduceMotion ? undefined : { scale: [1, 1.15, 1], opacity: [0.6, 0.9, 0.6] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <span className="relative flex size-full items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)] ring-[0.5px] ring-separator-strong ring-inset">
+        <Sparkles className={size === "lg" ? "size-8" : "size-4"} strokeWidth={1.75} />
+      </span>
+    </span>
+  );
+
   if (initialMessages === undefined) {
     return (
       <WindowShell>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="size-5 animate-spin rounded-full border-2 border-fill-secondary border-t-brand" />
+        {chrome}
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          {orb("lg")}
+          <ShimmerText className="text-sm">Waking your reading buddy…</ShimmerText>
         </div>
       </WindowShell>
     );
@@ -69,22 +101,63 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
 
   return (
     <WindowShell>
-      <WindowChrome
-        icon={<Sparkles strokeWidth={1.75} />}
-        title="AI Buddy"
-        subtitle={bookTitle}
-        zoomKey="buddy"
-        zoom={zoom}
-        onZoomChange={setZoom}
-      >
-        {wikiEntryCount > 0 && (
-          <Badge variant="outline" className="shrink-0 tabular-nums">{wikiEntryCount} wiki entries</Badge>
-        )}
-      </WindowChrome>
+      {chrome}
 
-      {/* Floating companion panel */}
-      <div className="flex min-h-0 flex-1 p-2">
-        <div className="glass-thin grain relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl animate-sheet-in">
+      <div className="flex min-h-0 flex-1 gap-2 p-2">
+        {/* Companion card */}
+        <aside className="glass-thin grain relative hidden w-64 shrink-0 flex-col overflow-hidden rounded-2xl p-5 animate-slide-in-left lg:flex">
+          <div className="flex flex-col items-center pt-6 text-center">
+            {orb("lg")}
+            <p className="mt-5 text-section">Reading with you</p>
+            <h2 className="mt-1.5 line-clamp-3 font-display text-xl font-semibold text-label text-balance">{bookTitle}</h2>
+          </div>
+
+          <div className="mt-8 space-y-4">
+            <div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-label-secondary">
+                  <BookOpen className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
+                  Chapter {currentChapter + 1}
+                </span>
+                <span className="tabular-nums text-label-tertiary">of {totalChapters}</span>
+              </div>
+              <div className="mt-2 h-1 overflow-hidden rounded-xs bg-fill-tertiary">
+                <motion.div
+                  className="h-full rounded-xs bg-brand"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress * 100}%` }}
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.9 }}
+                />
+              </div>
+            </div>
+            {wikiEntryCount > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-label-secondary">
+                  <Library className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
+                  Wiki knowledge
+                </span>
+                <span className="tabular-nums text-label-tertiary">{wikiEntryCount} entries</span>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-auto text-2xs leading-relaxed text-label-tertiary">
+            Spoiler-safe: your buddy only knows what you&rsquo;ve read up to chapter {currentChapter + 1}.
+          </p>
+        </aside>
+
+        {/* Conversation */}
+        <div className="glass-thin grain relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl animate-sheet-in">
+          {/* Compact identity strip (narrow windows) */}
+          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-separator px-4 lg:hidden">
+            {orb("md")}
+            <div className="min-w-0">
+              <p className="truncate text-headline text-label">Reading buddy</p>
+              <p className="truncate text-2xs tabular-nums text-label-tertiary">
+                Ch. {currentChapter + 1} of {totalChapters}{wikiEntryCount > 0 && ` · ${wikiEntryCount} wiki entries`}
+              </p>
+            </div>
+          </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ zoom: zoom / 100 }}>
             <AIChat
               filePath={filePath}

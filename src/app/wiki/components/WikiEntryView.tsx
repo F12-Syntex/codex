@@ -15,31 +15,31 @@ interface WikiEntryViewProps {
 
 const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
   character: {
-    icon: <User className="h-4 w-4" strokeWidth={1.5} />,
+    icon: <User className="size-4" strokeWidth={1.75} />,
     label: "Character",
     color: "rgb(147, 197, 253)",
     bg: "rgba(96, 165, 250, 0.12)",
   },
   item: {
-    icon: <Swords className="h-4 w-4" strokeWidth={1.5} />,
+    icon: <Swords className="size-4" strokeWidth={1.75} />,
     label: "Item",
     color: "rgb(252, 211, 77)",
     bg: "rgba(251, 191, 36, 0.12)",
   },
   location: {
-    icon: <MapPin className="h-4 w-4" strokeWidth={1.5} />,
+    icon: <MapPin className="size-4" strokeWidth={1.75} />,
     label: "Location",
     color: "rgb(110, 231, 183)",
     bg: "rgba(52, 211, 153, 0.12)",
   },
   event: {
-    icon: <Flame className="h-4 w-4" strokeWidth={1.5} />,
+    icon: <Flame className="size-4" strokeWidth={1.75} />,
     label: "Event",
     color: "rgb(253, 164, 175)",
     bg: "rgba(251, 113, 133, 0.12)",
   },
   concept: {
-    icon: <Lightbulb className="h-4 w-4" strokeWidth={1.5} />,
+    icon: <Lightbulb className="size-4" strokeWidth={1.75} />,
     label: "Concept",
     color: "rgb(196, 181, 253)",
     bg: "rgba(167, 139, 250, 0.12)",
@@ -76,46 +76,43 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
       <div className="mb-6">
         <div className="mb-3 flex items-center gap-2">
           <span
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium"
+            className="inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium"
             style={{ background: typeMeta.bg, color: typeMeta.color }}
           >
             {typeMeta.icon}
             {typeMeta.label}
           </span>
-          <span
-            className="rounded-lg px-1.5 py-0.5 text-xs capitalize"
-            style={{ background: "var(--bg-surface)", color: "var(--text-muted)" }}
-          >
+          <span className="inline-flex h-6 items-center rounded-full bg-fill-tertiary px-2.5 text-xs capitalize text-label-secondary">
             {entry.status}
           </span>
           {entry.significance >= 3 && (
-            <span className="text-xs text-amber-400/60">
+            <span className="text-xs text-warning">
               {"★".repeat(entry.significance)}
             </span>
           )}
           {entry.aliases.length > 0 && (
-            <span className="text-xs text-white/30">
+            <span className="text-xs text-label-tertiary">
               aka {entry.aliases.join(", ")}
             </span>
           )}
         </div>
 
-        <h1 className="text-[24px] font-bold tracking-tight text-white/90">
+        <h1 className="text-large-title text-label">
           {entry.name}
         </h1>
 
-        <p className="mt-2 text-sm leading-relaxed text-white/60">
+        <p className="mt-3 text-base leading-relaxed text-label-secondary">
           {entry.shortDescription}
         </p>
 
         {/* Chapter appearances */}
         <div className="mt-4 flex items-center gap-2">
-          <Clock className="h-3.5 w-3.5 text-white/25" strokeWidth={1.5} />
-          <span className="text-xs text-white/30">
+          <Clock className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
+          <span className="text-xs text-label-tertiary">
             First: Ch. {entry.firstAppearance + 1}
           </span>
-          <span className="text-xs text-white/20">·</span>
-          <span className="text-xs text-white/30">
+          <span className="text-xs text-label-quaternary">·</span>
+          <span className="text-xs text-label-tertiary">
             Appears in {entry.chapterAppearances.length} {entry.chapterAppearances.length === 1 ? "chapter" : "chapters"}
           </span>
         </div>
@@ -124,7 +121,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
           {entry.chapterAppearances.map((ch) => (
             <span
               key={ch}
-              className="rounded-lg px-1.5 py-0.5 text-xs tabular-nums font-medium"
+              className="inline-flex h-5 items-center rounded-full px-1.5 text-2xs tabular-nums font-medium"
               style={{ background: typeMeta.bg, color: typeMeta.color }}
             >
               {ch + 1}
@@ -133,13 +130,13 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
         </div>
       </div>
 
-      <div className="h-px bg-white/[0.06]" />
+      <div className="h-px bg-separator" />
 
       {/* Description */}
       {entry.description && (
         <div className="mt-6">
           <SectionTitle>Overview</SectionTitle>
-          <div className="mt-2 text-sm leading-relaxed text-white/60 whitespace-pre-wrap">
+          <div className="mt-3 text-sm leading-relaxed text-label-secondary whitespace-pre-wrap">
             {entry.description}
           </div>
         </div>
@@ -155,13 +152,12 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
                 {items.map((item, i) => (
                   <div
                     key={i}
-                    className="flex gap-3 rounded-lg px-3 py-2"
-                    style={{ background: "var(--bg-surface)" }}
+                    className="flex gap-3 rounded-lg bg-fill-quaternary px-3.5 py-2.5 hairline"
                   >
-                    <span className="shrink-0 text-xs tabular-nums text-white/25">
+                    <span className="shrink-0 text-2xs tabular-nums text-label-tertiary">
                       Ch. {item.chapterIndex + 1}
                     </span>
-                    <p className="text-xs leading-relaxed text-white/60">
+                    <p className="text-sm leading-relaxed text-label-secondary">
                       {item.content}
                     </p>
                   </div>
@@ -235,7 +231,7 @@ function RelationshipsSection({
       <div className="mt-2 space-y-3">
         {groups.map((group) => (
           <div key={group.label}>
-            <span className="text-xs font-medium text-white/25 px-1">
+            <span className="text-section px-1">
               {group.label}
             </span>
             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -245,14 +241,13 @@ function RelationshipsSection({
                   <button
                     key={rel.targetId}
                     onClick={() => onEntryClick(rel.targetId)}
-                    className="group flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
-                    style={{ background: "var(--bg-surface)" }}
+                    className="focus-ring pressable group inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-tertiary px-3 text-left hover:bg-fill-secondary"
                     title={`${rel.relation} (Ch. ${rel.since + 1})`}
                   >
-                    <span className="text-xs font-medium text-white/70 group-hover:text-white/90">
+                    <span className="text-xs font-medium text-label">
                       {targetName}
                     </span>
-                    <span className="text-xs text-white/25">{rel.relation}</span>
+                    <span className="text-xs text-label-tertiary">{rel.relation}</span>
                   </button>
                 );
               })}
@@ -268,7 +263,7 @@ function RelationshipsSection({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-xs font-medium uppercase tracking-wider text-white/30">
+    <h3 className="text-headline text-label">
       {children}
     </h3>
   );

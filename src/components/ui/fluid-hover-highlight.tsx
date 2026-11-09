@@ -7,8 +7,8 @@
  * measuring hook is rewritten to read offsets lazily (cheap for long lists:
  * rows stay plain elements, only one motion node exists).
  *
- *   const hover = useFluidHover<HTMLDivElement>();
- *   <div ref={hover.ref} {...hover.handlers} className="relative">
+ *   const hover = useFluidHover();
+ *   <div {...hover.handlers} className="relative">
  *     <FluidHoverHighlight hover={hover} className="rounded-md bg-fill-quaternary" />
  *     {rows.map(r => <div data-fluid-item className="relative">…</div>)}
  *   </div>
@@ -25,8 +25,7 @@ export interface FluidRect {
   height: number;
 }
 
-export interface FluidHover<T extends HTMLElement> {
-  ref: React.RefObject<T | null>;
+export interface FluidHover {
   rect: FluidRect | null;
   session: number;
   handlers: {
@@ -35,15 +34,15 @@ export interface FluidHover<T extends HTMLElement> {
   };
 }
 
-export function useFluidHover<T extends HTMLElement = HTMLDivElement>(): FluidHover<T> {
-  const ref = React.useRef<T>(null);
+export function useFluidHover(): FluidHover {
   const [rect, setRect] = React.useState<FluidRect | null>(null);
   const [session, setSession] = React.useState(0);
   const rectRef = React.useRef<FluidRect | null>(null);
 
   const onPointerOver = React.useCallback((e: React.PointerEvent) => {
     const item = (e.target as Element).closest<HTMLElement>("[data-fluid-item]");
-    if (!item || !ref.current?.contains(item)) return;
+    // The element carrying the handlers is the positioned container.
+    if (!item || !(e.currentTarget as Element).contains(item)) return;
     const next = { x: item.offsetLeft, y: item.offsetTop, width: item.offsetWidth, height: item.offsetHeight };
     const prev = rectRef.current;
     if (prev && prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) return;
@@ -57,14 +56,14 @@ export function useFluidHover<T extends HTMLElement = HTMLDivElement>(): FluidHo
     setRect(null);
   }, []);
 
-  return { ref, rect, session, handlers: { onPointerOver, onPointerLeave } };
+  return { rect, session, handlers: { onPointerOver, onPointerLeave } };
 }
 
-export function FluidHoverHighlight<T extends HTMLElement>({
+export function FluidHoverHighlight({
   hover,
   className,
 }: {
-  hover: Pick<FluidHover<T>, "rect" | "session">;
+  hover: Pick<FluidHover, "rect" | "session">;
   className?: string;
 }) {
   const reduceMotion = useReducedMotion();

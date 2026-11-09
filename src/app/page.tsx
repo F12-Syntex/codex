@@ -537,7 +537,6 @@ export default function Home() {
                     activeView={activeView}
                     onViewChange={(v: NavView) => { setActiveView(v); setSelectedIds(new Set()); }}
                     data={data}
-                    onImport={handleImport}
                     isDev={isDev}
                   />
                 </div>

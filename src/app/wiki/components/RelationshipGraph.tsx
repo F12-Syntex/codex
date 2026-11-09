@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   User, Swords, MapPin, Flame, Lightbulb,
-  ChevronRight, ArrowLeft, ZoomIn, ZoomOut, Home,
+  ChevronRight, ArrowLeft, Home, Network,
 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import type { ChapterLabels } from "@/lib/chapter-labels";
 
@@ -125,6 +127,7 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
 
   // Fetch all relationships
   useEffect(() => {
@@ -192,8 +195,8 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
 
   if (entries.length === 0 || !focusedEntry) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-white/30">
-        No entities to graph
+      <div className="flex h-full items-center justify-center">
+        <EmptyState icon={<Network strokeWidth={1.25} />} title="No entities to graph" description="Connections appear once the wiki knows a few characters." />
       </div>
     );
   }
@@ -201,131 +204,151 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
   const focusMeta = TYPE_META[focusedEntry.type];
   const FocusIcon = focusMeta.icon;
   const totalRelations = groupedRelations.reduce((sum, g) => sum + g.entries.length, 0);
+  const spring = reduceMotion ? { duration: 0 } : { type: "spring" as const, bounce: 0.25, duration: 0.5 };
 
   return (
-    <div ref={containerRef} className="relative flex h-full w-full flex-col overflow-hidden" style={{ background: "var(--bg-inset)" }}>
-      {/* Navigation bar */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
-        <button
-          onClick={goBack}
-          disabled={history.length === 0}
-          className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50 disabled:opacity-20"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={goHome}
-          className="flex h-6 w-6 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white/50"
-        >
-          <Home className="h-3.5 w-3.5" strokeWidth={1.5} />
-        </button>
-        <div className="h-4 w-px bg-white/[0.06]" />
-        <div className="flex items-center gap-1.5 text-xs text-white/40">
-          {history.length > 0 && (
-            <>
-              <span className="text-white/20">
-                {entries.find(e => e.id === history[history.length - 1])?.name ?? "..."}
-              </span>
-              <ChevronRight className="h-3 w-3 text-white/15" />
-            </>
-          )}
-          <span style={{ color: focusMeta.color }} className="font-medium">{focusedEntry.name}</span>
+    <div ref={containerRef} className="relative flex h-full w-full flex-col overflow-hidden">
+      {/* Floating controls */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-between gap-2 p-3">
+        <div className="glass pointer-events-auto flex h-9 items-center gap-0.5 rounded-full px-1">
+          <button
+            onClick={goBack}
+            disabled={history.length === 0}
+            title="Back"
+            className="focus-ring pressable flex size-7 items-center justify-center rounded-full text-label-secondary hover:bg-fill-tertiary hover:text-label disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            <ArrowLeft className="size-3.5" strokeWidth={2} />
+          </button>
+          <button
+            onClick={goHome}
+            title="Center on protagonist"
+            className="focus-ring pressable flex size-7 items-center justify-center rounded-full text-label-secondary hover:bg-fill-tertiary hover:text-label"
+          >
+            <Home className="size-3.5" strokeWidth={1.75} />
+          </button>
+          <span aria-hidden className="mx-1 h-4 w-px bg-separator-strong" />
+          <div className="flex items-center gap-1.5 pr-2 text-xs">
+            {history.length > 0 && (
+              <>
+                <span className="max-w-32 truncate text-label-tertiary">
+                  {entries.find(e => e.id === history[history.length - 1])?.name ?? "..."}
+                </span>
+                <ChevronRight className="size-3 text-label-quaternary" strokeWidth={2} />
+              </>
+            )}
+            <span className="max-w-48 truncate font-medium text-label">{focusedEntry.name}</span>
+            <span className="ml-1 rounded-full bg-fill-tertiary px-1.5 text-2xs tabular-nums text-label-secondary">{totalRelations}</span>
+          </div>
         </div>
-        <span className="ml-auto text-xs text-white/20">{totalRelations} connections</span>
+
+        {/* Legend */}
+        <div className="glass-thin pointer-events-auto flex h-9 items-center gap-3 rounded-full px-3.5">
+          {(Object.entries(TYPE_META) as [WikiEntryType, typeof TYPE_META[WikiEntryType]][]).map(([type, meta]) => (
+            <div key={type} className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full" style={{ background: meta.color }} />
+              <span className="text-2xs capitalize text-label-secondary">{type}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Graph content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col items-center py-8 px-6">
+        <div className="flex flex-col items-center px-8 pt-20 pb-28">
           {/* ── Central node ── */}
-          <button
-            onClick={() => onNavigate(focusedEntry.id)}
-            className="group relative flex flex-col items-center gap-2 mb-8"
-          >
-            <div
-              className="flex h-20 w-20 items-center justify-center rounded-lg transition-all group-hover:scale-105"
-              style={{
-                background: focusMeta.bg,
-                border: `2px solid ${focusMeta.color}`,
-                boxShadow: `0 0 24px ${focusMeta.color}25`,
-              }}
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.button
+              key={focusedEntry.id}
+              onClick={() => onNavigate(focusedEntry.id)}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              transition={spring}
+              className="focus-ring group relative mb-10 flex flex-col items-center gap-3 rounded-2xl p-2"
+              title="Open wiki entry"
             >
-              <FocusIcon className="h-8 w-8" style={{ color: focusMeta.color }} strokeWidth={1.5} />
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-semibold" style={{ color: focusMeta.color }}>{focusedEntry.name}</div>
-              <div className="text-xs text-white/30 capitalize">{focusedEntry.type}</div>
-            </div>
-          </button>
+              <span aria-hidden className="absolute top-2 size-24 rounded-full blur-2xl" style={{ background: focusMeta.bg }} />
+              <div
+                className="relative flex size-24 items-center justify-center rounded-full transition-transform duration-300 ease-spring group-hover:scale-105"
+                style={{
+                  background: focusMeta.bg,
+                  boxShadow: `inset 0 0 0 1.5px ${focusMeta.color}, 0 0 40px ${focusMeta.color}30`,
+                }}
+              >
+                <FocusIcon className="size-9" style={{ color: focusMeta.color }} strokeWidth={1.5} />
+              </div>
+              <div className="relative text-center">
+                <div className="font-display text-xl font-semibold text-label">{focusedEntry.name}</div>
+                <div className="mt-0.5 text-xs capitalize text-label-tertiary">{focusedEntry.type} · {totalRelations} connections</div>
+              </div>
+            </motion.button>
+          </AnimatePresence>
 
           {/* ── Category branches ── */}
           {groupedRelations.length === 0 ? (
-            <p className="text-xs text-white/25 mt-4">No connections found</p>
+            <p className="mt-2 text-sm text-label-tertiary">No connections found</p>
           ) : (
-            <div className="w-full max-w-[600px] space-y-2">
-              {groupedRelations.map((group) => {
+            <div className="grid w-full max-w-3xl grid-cols-1 gap-3 lg:grid-cols-2">
+              {groupedRelations.map((group, gi) => {
                 const isExpanded = expandedCategories.has(group.category);
                 const visibleEntries = isExpanded ? group.entries : group.entries.slice(0, 4);
                 const hasMore = group.entries.length > 4;
 
                 return (
-                  <div key={group.category} className="rounded-lg border border-white/[0.06] overflow-hidden">
+                  <motion.div
+                    key={`${focusedEntry.id}:${group.category}`}
+                    initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ ...spring, delay: reduceMotion ? 0 : 0.04 * gi }}
+                    className="glass-thin overflow-hidden rounded-2xl p-1.5"
+                  >
                     {/* Category header */}
                     <button
                       onClick={() => toggleCategory(group.category)}
-                      className="flex w-full items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-white/[0.02]"
+                      className="focus-ring flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-fill-quaternary"
                     >
-                      {/* Branch line */}
-                      <div className="h-4 w-1 rounded-full" style={{ background: group.color }} />
-                      <span className="text-xs font-semibold text-white/60">{group.category}</span>
-                      <span className="text-xs text-white/25">{group.entries.length}</span>
+                      <span className="size-2 rounded-full" style={{ background: group.color }} />
+                      <span className="text-headline text-label">{group.category}</span>
+                      <span className="text-2xs tabular-nums text-label-tertiary">{group.entries.length}</span>
                       <ChevronRight
-                        className={`ml-auto h-3 w-3 text-white/20 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                        strokeWidth={1.5}
+                        className={`ml-auto size-3.5 text-label-tertiary transition-transform duration-200 ease-apple ${isExpanded ? "rotate-90" : ""}`}
+                        strokeWidth={2}
                       />
                     </button>
 
                     {/* Entity nodes */}
-                    <div className="border-t border-white/[0.04] px-2 py-1.5 space-y-0.5">
+                    <div className="mt-0.5 space-y-0.5">
                       {visibleEntries.map((entry) => {
                         const meta = TYPE_META[entry.type];
                         const EntryIcon = meta.icon;
                         return (
                           <div
                             key={entry.id}
-                            className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.03] cursor-pointer"
+                            className="group flex h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-fill-quaternary"
                             onClick={() => navigateTo(entry.id)}
                           >
                             {/* Connection line */}
-                            <div className="flex items-center gap-1.5">
-                              <div className="h-px w-4" style={{ background: group.color, opacity: 0.3 }} />
-                              <div
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all group-hover:scale-110"
-                                style={{ background: meta.bg }}
-                              >
-                                <EntryIcon className="h-3.5 w-3.5" style={{ color: meta.color }} strokeWidth={1.5} />
-                              </div>
+                            <span className="h-px w-3 shrink-0" style={{ background: group.color, opacity: 0.4 }} />
+                            <div
+                              className="flex size-8 shrink-0 items-center justify-center rounded-full transition-transform duration-200 ease-spring group-hover:scale-110"
+                              style={{ background: meta.bg }}
+                            >
+                              <EntryIcon className="size-3.5" style={{ color: meta.color }} strokeWidth={1.75} />
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium text-white/70 group-hover:text-white/90 truncate transition-colors">
-                                {entry.name}
-                              </div>
-                              <div className="text-xs text-white/25 truncate">
-                                {entry.relation}
-                              </div>
+                              <div className="truncate text-sm font-medium text-label">{entry.name}</div>
+                              <div className="truncate text-xs text-label-tertiary">{entry.relation}</div>
                             </div>
 
                             {/* Navigate arrow */}
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onNavigate(entry.id); }}
-                                className="flex h-6 w-6 items-center justify-center rounded-lg text-white/15 opacity-0 group-hover:opacity-100 transition-all hover:bg-white/[0.06] hover:text-white/40"
-                                title="View wiki entry"
-                              >
-                                <ChevronRight className="h-3 w-3" strokeWidth={1.5} />
-                              </button>
-                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onNavigate(entry.id); }}
+                              className="focus-ring flex size-7 shrink-0 items-center justify-center rounded-full text-label-tertiary opacity-0 transition-opacity hover:bg-fill-tertiary hover:text-label group-hover:opacity-100 focus-visible:opacity-100"
+                              title="View wiki entry"
+                            >
+                              <ChevronRight className="size-3.5" strokeWidth={2} />
+                            </button>
                           </div>
                         );
                       })}
@@ -334,31 +357,18 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
                       {hasMore && !isExpanded && (
                         <button
                           onClick={() => toggleCategory(group.category)}
-                          className="w-full py-1.5 text-xs text-white/25 hover:text-white/40 transition-colors"
+                          className="focus-ring h-8 w-full rounded-lg text-xs text-label-tertiary transition-colors hover:bg-fill-quaternary hover:text-label-secondary"
                         >
                           +{group.entries.length - 4} more
                         </button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
           )}
         </div>
-      </div>
-
-      {/* Legend */}
-      <div className="shrink-0 flex items-center justify-center gap-4 border-t border-white/[0.06] px-4 py-2">
-        {(Object.entries(TYPE_META) as [WikiEntryType, typeof TYPE_META[WikiEntryType]][]).map(([type, meta]) => {
-          const Icon = meta.icon;
-          return (
-            <div key={type} className="flex items-center gap-1">
-              <Icon className="h-3 w-3" style={{ color: meta.color, opacity: 0.6 }} strokeWidth={1.5} />
-              <span className="text-xs capitalize text-white/30">{type}</span>
-            </div>
-          );
-        })}
       </div>
     </div>
   );

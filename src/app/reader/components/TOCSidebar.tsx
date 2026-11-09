@@ -58,7 +58,7 @@ export function TOCSidebar({
   onClose,
 }: TOCSidebarProps) {
   const reduceMotion = useReducedMotion();
-  const hover = useFluidHover<HTMLDivElement>();
+  const hover = useFluidHover();
   const sidebarRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -226,7 +226,7 @@ export function TOCSidebar({
 
       {/* ── Content ────────────────────────────────── */}
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div ref={hover.ref} {...hover.handlers} className="relative p-2">
+        <div {...hover.handlers} className="relative p-2">
           <FluidHoverHighlight hover={hover} className="rounded-md" />
           {tab === "chapters" ? (
             filteredChapters.length === 0 ? (

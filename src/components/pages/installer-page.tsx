@@ -1,6 +1,22 @@
 "use client";
 
+/**
+ * Installer — discover & download novels.
+ *
+ * Re-composed around three moments:
+ *  1. Discover: a centred serif hero with one large glass search field.
+ *  2. Results: the field docks to the top (shared layout animation) above a
+ *     cover wall with 3D tilt.
+ *  3. Detail: a blurred-cover backdrop, a lifted cover and a download card.
+ * Downloads live in a right-hand column of glass cards.
+ *
+ * Download cards adapted from 21st.dev "Progress Card" (kavikatiyar, id 7790):
+ * icon tile + title + progress track + stats row + trailing action, rebuilt
+ * on Codex tokens with a spring progress fill (motion/react).
+ */
+
 import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from "motion/react";
 import {
   Search,
   ArrowLeft,
@@ -10,7 +26,6 @@ import {
   ChevronRight,
   BookOpen,
   Star,
-  User,
   Tag,
   Loader2,
   Globe,
@@ -20,11 +35,24 @@ import {
   PanelRightClose,
   PanelRightOpen,
   ChevronsUpDown,
+  Clock,
+  AlertTriangle,
+  Library,
+  CircleSlash,
 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import { Tilt } from "@/components/ui/tilt";
+import { BlurFade } from "@/components/ui/blur-fade";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type InstallerView = "search" | "detail";
 type SourceOption = { id: string; name: string; url: string };
+
+const SPRING = { type: "spring", stiffness: 400, damping: 32 } as const;
+const LAYOUT_SPRING = { type: "spring", bounce: 0.2, duration: 0.45 } as const;
 
 // ── Custom source dropdown ──────────────────────────────
 
@@ -53,38 +81,52 @@ function SourceDropdown({
   return (
     <div ref={ref} className="relative shrink-0">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] py-1.5 pl-2.5 pr-2 text-xs text-white/40 outline-none hover:bg-white/[0.07] transition-colors cursor-pointer"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="focus-ring pressable flex h-8 items-center gap-1.5 rounded-full bg-fill-tertiary pr-2 pl-2.5 text-xs font-medium text-label-secondary hover:bg-fill-secondary hover:text-label"
       >
-        <Globe className="h-3 w-3 text-white/15" />
+        <Globe className="size-3.5 text-label-tertiary" strokeWidth={2} />
         <span>{selected?.name ?? "Source"}</span>
-        <ChevronsUpDown className="h-3 w-3 text-white/15" />
+        <ChevronsUpDown className="size-3 text-label-tertiary" strokeWidth={2} />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-white/[0.06] bg-[var(--bg-overlay)] shadow-lg shadow-black/30 backdrop-blur-xl">
-          {sources.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => { onChange(s.id); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
-                s.id === value
-                  ? "bg-white/[0.08] text-white/60"
-                  : "text-white/35 hover:bg-white/[0.05] hover:text-white/50"
-              }`}
-            >
-              {s.id === value && <Check className="h-3 w-3 shrink-0" />}
-              <span className={s.id === value ? "" : "pl-5"}>{s.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="listbox"
+            initial={{ opacity: 0, y: -4, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -2, scale: 0.98 }}
+            transition={SPRING}
+            style={{ transformOrigin: "top left" }}
+            className="glass-thick absolute top-full left-0 z-50 mt-2 min-w-44 rounded-xl p-1"
+          >
+            {sources.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="option"
+                aria-selected={s.id === value}
+                onClick={() => { onChange(s.id); setOpen(false); }}
+                className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label hover:bg-brand hover:text-brand-fg"
+              >
+                <span className="inline-flex size-3.5 shrink-0 items-center justify-center">
+                  {s.id === value && <Check className="size-3.5" strokeWidth={2.5} />}
+                </span>
+                <span className="truncate">{s.name}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // ── Proxied image component ─────────────────────────────
 
-function ProxiedImage({ src, alt }: { src: string; alt: string }) {
+function ProxiedImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -103,13 +145,27 @@ function ProxiedImage({ src, alt }: { src: string; alt: string }) {
 
   if (failed || !dataUrl) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-white/[0.02]">
-        <BookOpen className="h-8 w-8 text-white/10" />
+      <div className={cn("absolute inset-0 flex items-center justify-center bg-fill-quaternary", className)}>
+        {failed ? (
+          <BookOpen className="size-8 text-label-quaternary" strokeWidth={1.5} />
+        ) : (
+          <div className="absolute inset-0 animate-pulse bg-fill-quaternary" />
+        )}
       </div>
     );
   }
 
-  return <img src={dataUrl} alt={alt} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />;
+  return (
+    <motion.img
+      src={dataUrl}
+      alt={alt}
+      className={cn("absolute inset-0 h-full w-full object-cover", className)}
+      loading="lazy"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    />
+  );
 }
 
 // ── Format ETA ──────────────────────────────────────────
@@ -123,7 +179,114 @@ function formatEta(seconds: number | null): string {
   return `~${h}h ${m % 60}m`;
 }
 
-// ── Download Queue Sidebar ──────────────────────────────
+// ── Progress track (spring fill) ────────────────────────
+
+function ProgressTrack({ value, className }: { value: number; className?: string }) {
+  const pct = Math.min(100, Math.max(0, value));
+  return (
+    <div className={cn("h-1 w-full overflow-hidden rounded-xs bg-fill-tertiary", className)}>
+      <motion.div
+        className="h-full rounded-xs bg-brand shadow-[0_0_8px_var(--accent-brand)]"
+        initial={false}
+        animate={{ width: `${pct}%` }}
+        transition={{ type: "spring", stiffness: 120, damping: 24 }}
+      />
+    </div>
+  );
+}
+
+// ── Download card ───────────────────────────────────────
+
+const STATUS_META = {
+  downloading: { label: "Downloading", badge: "accent", tile: "bg-brand/15 text-brand", icon: Loader2 },
+  queued: { label: "Queued", badge: "default", tile: "bg-fill-tertiary text-label-secondary", icon: Clock },
+  completed: { label: "On bookshelf", badge: "success", tile: "bg-success/15 text-success", icon: Check },
+  failed: { label: "Failed", badge: "danger", tile: "bg-danger/15 text-danger", icon: AlertTriangle },
+  cancelled: { label: "Cancelled", badge: "default", tile: "bg-fill-tertiary text-label-tertiary", icon: CircleSlash },
+} as const;
+
+function DownloadCard({
+  dl,
+  progress,
+  onCancel,
+  onRetry,
+  onRemove,
+}: {
+  dl: InstallerDownloadRow;
+  progress: InstallerDownloadProgress | undefined;
+  onCancel: (id: number) => void;
+  onRetry: (id: number) => void;
+  onRemove: (id: number) => void;
+}) {
+  const isActive = dl.status === "downloading";
+  const isQueued = dl.status === "queued";
+  const isCompleted = dl.status === "completed";
+  const isFailed = dl.status === "failed";
+  const isCancelled = dl.status === "cancelled";
+  const meta = STATUS_META[dl.status as keyof typeof STATUS_META] ?? STATUS_META.queued;
+  const Icon = meta.icon;
+
+  return (
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+      transition={LAYOUT_SPRING}
+      className="glass-thin rounded-xl p-3"
+    >
+      <div className="flex items-start gap-3">
+        <span className={cn("inline-flex size-9 shrink-0 items-center justify-center rounded-lg", meta.tile)}>
+          <Icon className={cn("size-4", isActive && "animate-spin")} strokeWidth={2} />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-headline leading-snug text-label">{dl.novel_title}</p>
+          <div className="mt-1 flex items-center gap-1.5">
+            <Badge variant={meta.badge}>{meta.label}</Badge>
+            {isFailed && (
+              <span className="truncate text-2xs text-danger" title={dl.error || undefined}>
+                {dl.error || "Failed"}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="-mt-0.5 -mr-1 flex shrink-0 items-center">
+          {(isActive || isQueued) && (
+            <Button variant="ghost" size="icon-xs" onClick={() => onCancel(dl.id)} title="Cancel" aria-label="Cancel download">
+              <X className="size-3.5" />
+            </Button>
+          )}
+          {isFailed && (
+            <Button variant="ghost" size="icon-xs" onClick={() => onRetry(dl.id)} title="Retry" aria-label="Retry download">
+              <RotateCcw className="size-3.5" />
+            </Button>
+          )}
+          {(isCompleted || isFailed || isCancelled) && (
+            <Button variant="ghost" size="icon-xs" onClick={() => onRemove(dl.id)} title="Remove" aria-label="Remove download">
+              <Trash2 className="size-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {isActive && progress && (
+        <div className="mt-3 pl-12">
+          <ProgressTrack value={(progress.current / progress.total) * 100} />
+          <div className="mt-1.5 flex items-center justify-between text-2xs text-label-tertiary tabular-nums">
+            <span>
+              {progress.current}/{progress.total} chapters
+            </span>
+            {progress.eta ? <span>{formatEta(progress.eta)}</span> : null}
+          </div>
+        </div>
+      )}
+    </motion.li>
+  );
+}
+
+// ── Download Queue column ───────────────────────────────
 
 function DownloadQueueSidebar({
   downloads,
@@ -145,140 +308,47 @@ function DownloadQueueSidebar({
   const completedCount = downloads.filter((d) => d.status === "completed").length;
 
   return (
-    <div className="flex h-full w-64 shrink-0 flex-col border-l border-white/[0.06] bg-[var(--bg-surface)]">
+    <motion.aside
+      initial={{ opacity: 0, x: 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 24 }}
+      transition={SPRING}
+      className="flex h-full w-80 shrink-0 flex-col pt-6 pr-6"
+      aria-label="Downloads"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.04]">
-        <div className="flex items-center gap-2">
-          <Download className="h-3.5 w-3.5 text-white/25" />
-          <span className="text-xs font-medium text-white/40">Downloads</span>
-          <span className="rounded-lg bg-white/[0.06] px-1.5 py-0.5 text-xs text-white/25 tabular-nums">
-            {downloads.length}
-          </span>
-        </div>
-        <button
-          onClick={onClose}
-          className="rounded-lg p-1 text-white/20 hover:bg-white/[0.06] hover:text-white/40"
-        >
-          <PanelRightClose className="h-3.5 w-3.5" />
-        </button>
+      <div className="flex h-8 items-center gap-2 pl-1">
+        <h2 className="text-headline text-label">Downloads</h2>
+        <Badge>{downloads.length}</Badge>
+        <div className="flex-1" />
+        {completedCount > 0 && (
+          <Button variant="ghost" size="xs" onClick={onClearCompleted} className="text-label-secondary">
+            Clear completed
+          </Button>
+        )}
+        <Button variant="ghost" size="icon-sm" onClick={onClose} title="Hide downloads" aria-label="Hide downloads">
+          <PanelRightClose className="size-4" />
+        </Button>
       </div>
 
       {/* Download list */}
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-0.5 p-2">
-          {downloads.map((dl) => {
-            const progress = liveProgress.get(dl.id);
-            const isActive = dl.status === "downloading";
-            const isQueued = dl.status === "queued";
-            const isCompleted = dl.status === "completed";
-            const isFailed = dl.status === "failed";
-            const isCancelled = dl.status === "cancelled";
-
-            return (
-              <div
+      <div className="scrollbar-none -mx-2 mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-28">
+        <ul className="flex flex-col gap-2">
+          <AnimatePresence initial={false}>
+            {downloads.map((dl) => (
+              <DownloadCard
                 key={dl.id}
-                className="rounded-lg px-2.5 py-2 hover:bg-white/[0.03] group"
-              >
-                <div className="flex items-start gap-2">
-                  {/* Status icon */}
-                  <div className="shrink-0 mt-0.5">
-                    {isActive && <Loader2 className="h-3.5 w-3.5 animate-spin text-white/30" />}
-                    {isQueued && <div className="h-3.5 w-3.5 rounded-full border border-white/10" />}
-                    {isCompleted && <Check className="h-3.5 w-3.5 text-green-400/60" />}
-                    {isFailed && <X className="h-3.5 w-3.5 text-red-400/60" />}
-                    {isCancelled && <X className="h-3.5 w-3.5 text-white/15" />}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs text-white/50 line-clamp-2 leading-snug">{dl.novel_title}</span>
-
-                    {isQueued && (
-                      <span className="mt-1 inline-block rounded-lg bg-white/[0.05] px-1.5 py-0.5 text-xs text-white/20">
-                        Queued
-                      </span>
-                    )}
-
-                    {isCompleted && (
-                      <span className="mt-0.5 block text-xs text-white/15">Added to bookshelf</span>
-                    )}
-
-                    {isFailed && (
-                      <span className="mt-0.5 block text-xs text-red-400/50 line-clamp-1">
-                        {dl.error || "Failed"}
-                      </span>
-                    )}
-
-                    {/* Progress bar */}
-                    {isActive && progress && (
-                      <div className="mt-1.5">
-                        <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
-                          <div
-                            className="h-full rounded-full bg-white/20 transition-all duration-300"
-                            style={{ width: `${(progress.current / progress.total) * 100}%` }}
-                          />
-                        </div>
-                        <div className="mt-1 flex items-center justify-between">
-                          <span className="text-xs text-white/15 tabular-nums">
-                            {progress.current}/{progress.total}
-                          </span>
-                          {progress.eta ? (
-                            <span className="text-xs text-white/15">{formatEta(progress.eta)}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {(isActive || isQueued) && (
-                      <button
-                        onClick={() => onCancel(dl.id)}
-                        className="rounded-lg p-1 text-white/20 hover:bg-white/[0.06] hover:text-white/40"
-                        title="Cancel"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                    {isFailed && (
-                      <button
-                        onClick={() => onRetry(dl.id)}
-                        className="rounded-lg p-1 text-white/20 hover:bg-white/[0.06] hover:text-white/40"
-                        title="Retry"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </button>
-                    )}
-                    {(isCompleted || isFailed || isCancelled) && (
-                      <button
-                        onClick={() => onRemove(dl.id)}
-                        className="rounded-lg p-1 text-white/20 hover:bg-white/[0.06] hover:text-white/40"
-                        title="Remove"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </ScrollArea>
-
-      {/* Clear completed footer */}
-      {completedCount > 0 && (
-        <div className="border-t border-white/[0.04] px-3 py-2">
-          <button
-            onClick={onClearCompleted}
-            className="w-full text-center text-xs text-white/15 hover:text-white/30 transition-colors"
-          >
-            Clear completed
-          </button>
-        </div>
-      )}
-    </div>
+                dl={dl}
+                progress={liveProgress.get(dl.id)}
+                onCancel={onCancel}
+                onRetry={onRetry}
+                onRemove={onRemove}
+              />
+            ))}
+          </AnimatePresence>
+        </ul>
+      </div>
+    </motion.aside>
   );
 }
 
@@ -297,6 +367,7 @@ export function InstallerPage() {
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
 
   // Chapter range state
   const [rangeFrom, setRangeFrom] = useState<string>("");
@@ -465,292 +536,383 @@ export function InstallerPage() {
   const hasDownloads = downloads.length > 0;
   const activeDownload = downloads.find((d) => d.status === "downloading");
   const activeProgress = activeDownload ? liveProgress.get(activeDownload.id) : null;
+  const sourceName = sources.find((s) => s.id === sourceId)?.name;
+  const hasResults = results.length > 0;
 
-  // ── Toolbar ────────────────────────────────────────
+  const chapterCount = (() => {
+    if (!novelInfo) return 0;
+    const from = rangeFrom ? Math.max(1, parseInt(rangeFrom, 10)) : 1;
+    const to = rangeTo ? Math.min(novelInfo.totalChapters, parseInt(rangeTo, 10)) : novelInfo.totalChapters;
+    return (!isNaN(from) && !isNaN(to) && to >= from) ? to - from + 1 : novelInfo.totalChapters;
+  })();
 
-  const toolbar = (
-    <div className="flex items-center gap-3 border-b border-white/[0.04] px-4 py-2">
-      {view !== "search" && (
-        <button
-          onClick={handleBack}
-          className="rounded-lg p-1.5 text-white/30 hover:bg-white/[0.06] hover:text-white/50"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
+  // ── Search field (shared between hero and docked positions) ──
+
+  const searchField = (size: "hero" | "docked") => (
+    <motion.div
+      layoutId="installer-search"
+      transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
+      className={cn(
+        "glass flex w-full items-center gap-2 rounded-full transition-shadow duration-200 focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_25%,transparent)]",
+        size === "hero" ? "h-14 max-w-2xl pr-2 pl-3" : "h-11 max-w-xl pr-1.5 pl-1.5",
       )}
-      {view === "search" ? (
-        <>
-          {sources.length > 0 && (
-            <SourceDropdown
-              sources={sources}
-              value={sourceId}
-              onChange={(id) => { setSourceId(id); setResults([]); }}
-            />
-          )}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/20" />
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Search novels..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSearch(1); }}
-              className="w-full rounded-lg bg-white/[0.05] py-1.5 pl-9 pr-3 text-sm text-white/70 placeholder:text-white/15 outline-none focus:bg-white/[0.07] transition-colors"
-            />
-          </div>
-          <button
-            onClick={() => handleSearch(1)}
-            disabled={searching || !query.trim()}
-            className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-sm text-white/40 hover:bg-white/[0.09] hover:text-white/60 transition-colors disabled:opacity-30"
-          >
-            {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Search"}
-          </button>
-        </>
-      ) : (
-        <span className="flex-1 text-sm text-white/40 truncate">
-          {novelInfo?.title ?? "Loading..."}
-        </span>
-      )}
-
-      {/* Download queue toggle */}
-      {hasDownloads && (
-        <button
-          onClick={() => setQueueOpen(!queueOpen)}
-          className="relative rounded-lg p-1.5 text-white/25 hover:bg-white/[0.06] hover:text-white/40 transition-colors"
-          title="Downloads"
-        >
-          {queueOpen ? (
-            <PanelRightClose className="h-4 w-4" />
-          ) : (
-            <PanelRightOpen className="h-4 w-4" />
-          )}
-          {/* Active indicator dot */}
-          {activeDownload && (
-            <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-white/40" />
-          )}
-        </button>
-      )}
-    </div>
-  );
-
-  // ── Compact progress indicator in toolbar area when sidebar closed ──
-
-  const compactProgress = !queueOpen && activeDownload && activeProgress ? (
-    <button
-      onClick={() => setQueueOpen(true)}
-      className="flex items-center gap-2.5 border-b border-white/[0.04] px-4 py-1.5 hover:bg-white/[0.02] transition-colors"
     >
-      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-white/25" />
-      <div className="flex-1 min-w-0">
-        <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
-          <div
-            className="h-full rounded-full bg-white/20 transition-all duration-300"
-            style={{ width: `${(activeProgress.current / activeProgress.total) * 100}%` }}
-          />
-        </div>
-      </div>
-      <span className="shrink-0 text-xs text-white/20 tabular-nums">
-        {activeProgress.current}/{activeProgress.total}
-        {activeProgress.eta ? ` · ${formatEta(activeProgress.eta)}` : ""}
-      </span>
-    </button>
-  ) : null;
-
-  // ── Layout: main content + optional sidebar ────────
-
-  const mainContent = (
-    <div className="flex min-w-0 flex-1 flex-col">
-      {toolbar}
-      {compactProgress}
-
-      {error && (
-        <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-          {error}
-        </div>
-      )}
-
-      {view === "search" ? (
-        <>
-          <ScrollArea className="flex-1 p-4">
-            {results.length === 0 && !searching && (
-              <div className="flex h-full items-center justify-center text-white/15 text-sm">
-                {query ? "No results found" : "Search for a novel to get started"}
-              </div>
-            )}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3">
-              {results.map((r, i) => (
-                <button
-                  key={`${r.slug}-${i}`}
-                  onClick={() => handleSelectNovel(r)}
-                  className="group flex flex-col overflow-hidden rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-colors text-left"
-                >
-                  <div className="relative aspect-[3/4] w-full overflow-hidden bg-white/[0.02]">
-                    <ProxiedImage src={r.thumbnail} alt={r.title} />
-                  </div>
-                  <div className="flex flex-col gap-0.5 p-2 pb-2.5">
-                    <span className="text-xs text-white/60 line-clamp-2 leading-snug group-hover:text-white/80">
-                      {r.title}
-                    </span>
-                    <span className="text-xs text-white/20 line-clamp-1">
-                      {r.author || "Unknown"}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-
-          {totalPages > 1 && results.length > 0 && (
-            <div className="flex items-center justify-center gap-3 border-t border-white/[0.04] px-4 py-2">
-              <button
-                onClick={() => handleSearch(page - 1)}
-                disabled={page <= 1 || searching}
-                className="rounded-lg p-1 text-white/30 hover:bg-white/[0.06] hover:text-white/50 disabled:opacity-20"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <span className="text-xs text-white/20 tabular-nums">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => handleSearch(page + 1)}
-                disabled={page >= totalPages || searching}
-                className="rounded-lg p-1 text-white/30 hover:bg-white/[0.06] hover:text-white/50 disabled:opacity-20"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          {loadingInfo ? (
-            <div className="flex flex-1 items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-white/20" />
-            </div>
-          ) : novelInfo ? (
-            <ScrollArea className="flex-1 p-4">
-              <div className="flex gap-5">
-                <div className="relative shrink-0 w-44 aspect-[3/4] overflow-hidden rounded-lg bg-white/[0.03]">
-                  <ProxiedImage src={novelInfo.thumbnail} alt={novelInfo.title} />
-                </div>
-
-                <div className="flex flex-1 flex-col gap-3">
-                  <h2 className="text-sm font-medium text-white/70">
-                    {novelInfo.title}
-                  </h2>
-
-                  <div className="flex flex-col gap-1.5">
-                    <MetaRow icon={User} label="Author" value={novelInfo.author || "Unknown"} />
-                    <MetaRow icon={Star} label="Rating" value={novelInfo.rating} />
-                    <MetaRow icon={BookOpen} label="Chapters" value={String(novelInfo.totalChapters)} />
-                    <MetaRow icon={Tag} label="Status" value={novelInfo.status || "Unknown"} />
-                    {novelInfo.genres.length > 0 && (
-                      <div className="flex items-start gap-2 mt-1">
-                        <div className="flex flex-wrap gap-1">
-                          {novelInfo.genres.map((g) => (
-                            <span key={g} className="rounded-lg bg-white/[0.05] px-2 py-0.5 text-xs text-white/30">
-                              {g}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {novelInfo.description && (
-                    <p className="text-xs text-white/25 leading-relaxed line-clamp-5">
-                      {novelInfo.description}
-                    </p>
-                  )}
-
-                  {/* Chapter range */}
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-white/20 shrink-0">Chapters</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={novelInfo.totalChapters}
-                      placeholder="1"
-                      value={rangeFrom}
-                      onChange={(e) => setRangeFrom(e.target.value)}
-                      className="w-16 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-white/60 placeholder:text-white/15 outline-none focus:bg-white/[0.07] transition-colors tabular-nums"
-                    />
-                    <span className="text-xs text-white/15">—</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={novelInfo.totalChapters}
-                      placeholder={String(novelInfo.totalChapters)}
-                      value={rangeTo}
-                      onChange={(e) => setRangeTo(e.target.value)}
-                      className="w-16 rounded-lg bg-white/[0.05] px-2 py-1 text-xs text-white/60 placeholder:text-white/15 outline-none focus:bg-white/[0.07] transition-colors tabular-nums"
-                    />
-                    <span className="text-xs text-white/15">of {novelInfo.totalChapters}</span>
-                  </div>
-
-                  <button
-                    onClick={handleQueueDownload}
-                    disabled={!!isNovelQueued}
-                    className="mt-1 flex w-fit items-center gap-2 rounded-lg bg-white/[0.07] px-4 py-2 text-sm text-white/50 hover:bg-white/[0.10] hover:text-white/70 transition-colors disabled:opacity-30"
-                  >
-                    {isNovelQueued ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Queued
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-3.5 w-3.5" />
-                        Download ({(() => {
-                          const from = rangeFrom ? Math.max(1, parseInt(rangeFrom, 10)) : 1;
-                          const to = rangeTo ? Math.min(novelInfo.totalChapters, parseInt(rangeTo, 10)) : novelInfo.totalChapters;
-                          const count = (!isNaN(from) && !isNaN(to) && to >= from) ? to - from + 1 : novelInfo.totalChapters;
-                          return count;
-                        })()} ch)
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </ScrollArea>
-          ) : null}
-        </>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="flex h-full">
-      {mainContent}
-      {queueOpen && hasDownloads && (
-        <DownloadQueueSidebar
-          downloads={downloads}
-          liveProgress={liveProgress}
-          onCancel={handleCancel}
-          onRetry={handleRetry}
-          onRemove={handleRemove}
-          onClearCompleted={handleClearCompleted}
-          onClose={() => setQueueOpen(false)}
+      {sources.length > 0 && (
+        <SourceDropdown
+          sources={sources}
+          value={sourceId}
+          onChange={(id) => { setSourceId(id); setResults([]); }}
         />
       )}
+      <Search className={cn("shrink-0 text-label-tertiary", size === "hero" ? "size-5" : "size-4", sources.length > 0 && "ml-1")} strokeWidth={1.75} />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Search novels..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleSearch(1); }}
+        aria-label="Search novels"
+        className={cn(
+          "min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-label-tertiary",
+          size === "hero" ? "text-base" : "text-sm",
+        )}
+      />
+      <Button
+        onClick={() => handleSearch(1)}
+        disabled={searching || !query.trim()}
+        size={size === "hero" ? "default" : "sm"}
+        className="rounded-full px-4"
+      >
+        {searching ? <Loader2 className="size-4 animate-spin" /> : "Search"}
+      </Button>
+    </motion.div>
+  );
+
+  // ── Downloads toggle pill (with live progress when the column is hidden) ──
+
+  const downloadsPill = hasDownloads && !queueOpen ? (
+    <motion.button
+      type="button"
+      onClick={() => setQueueOpen(true)}
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={SPRING}
+      title="Downloads"
+      className="glass focus-ring pressable flex h-9 shrink-0 items-center gap-2.5 rounded-full pr-3.5 pl-2.5 text-xs text-label-secondary hover:text-label"
+    >
+      {activeDownload ? (
+        <Loader2 className="size-4 animate-spin text-brand" strokeWidth={2} />
+      ) : (
+        <PanelRightOpen className="size-4" strokeWidth={1.75} />
+      )}
+      {activeDownload && activeProgress ? (
+        <>
+          <ProgressTrack value={(activeProgress.current / activeProgress.total) * 100} className="w-24" />
+          <span className="tabular-nums">
+            {activeProgress.current}/{activeProgress.total}
+            {activeProgress.eta ? ` · ${formatEta(activeProgress.eta)}` : ""}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="font-medium">Downloads</span>
+          <Badge>{downloads.length}</Badge>
+        </>
+      )}
+    </motion.button>
+  ) : null;
+
+  const errorBanner = error ? (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-2 rounded-md bg-danger/15 px-3 py-2 text-xs text-danger"
+      role="alert"
+    >
+      <AlertTriangle className="size-3.5 shrink-0" strokeWidth={2} />
+      <span className="min-w-0 flex-1">{error}</span>
+      <button type="button" onClick={() => setError(null)} aria-label="Dismiss" className="focus-ring rounded-xs opacity-70 hover:opacity-100">
+        <X className="size-3.5" />
+      </button>
+    </motion.div>
+  ) : null;
+
+  // ── Views ───────────────────────────────────────────
+
+  const searchView = (
+    <LayoutGroup>
+      {!hasResults ? (
+        /* 1 — Discover hero */
+        <div className="relative flex h-full flex-col items-center overflow-y-auto px-8 pt-[16vh] pb-32">
+          <div aria-hidden className="pointer-events-none absolute top-[8vh] left-1/2 size-96 -translate-x-1/2 rounded-full bg-brand/15 blur-3xl" />
+          <BlurFade className="relative flex flex-col items-center text-center">
+            <span className="mb-5 inline-flex size-14 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-[0_0_32px_-6px_var(--accent-brand)]">
+              <Library className="size-7" strokeWidth={1.5} />
+            </span>
+            <h1 className="text-large-title font-display text-label">Find your next story</h1>
+            <p className="mt-2 max-w-md text-sm text-label-secondary">
+              Search {sourceName ?? "online sources"} and download novels straight to your bookshelf.
+            </p>
+          </BlurFade>
+          <div className="relative mt-8 flex w-full justify-center">{searchField("hero")}</div>
+          <div className="relative mt-4 flex w-full max-w-2xl flex-col items-center gap-3">
+            {errorBanner}
+            <p className="flex items-center gap-1.5 text-xs text-label-tertiary">
+              {query && !searching ? (
+                "No results found"
+              ) : (
+                <>
+                  Press <Kbd>⏎</Kbd> to search
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* 2 — Results wall */
+        <div className="flex h-full flex-col overflow-y-auto">
+          <div className="sticky top-0 z-20 flex items-center gap-3 px-8 pt-6 pb-4">
+            {searchField("docked")}
+            <span className="ml-auto text-xs text-label-tertiary tabular-nums">
+              {results.length} results{totalPages > 1 ? ` · page ${page} of ${totalPages}` : ""}
+            </span>
+          </div>
+          {errorBanner && <div className="px-8 pb-3">{errorBanner}</div>}
+          <div
+            className={cn(
+              "grid grid-cols-[repeat(auto-fill,minmax(136px,1fr))] gap-x-6 gap-y-8 px-8 pt-2 transition-opacity duration-200",
+              searching && "opacity-50",
+            )}
+          >
+            {results.map((r, i) => (
+              <BlurFade key={`${r.slug}-${i}`} delay={Math.min(i, 12) * 0.025}>
+                <button
+                  type="button"
+                  onClick={() => handleSelectNovel(r)}
+                  className="group focus-ring flex w-full flex-col gap-2.5 rounded-lg text-left"
+                >
+                  <Tilt maxTilt={6} glare className="relative aspect-[2/3] w-full overflow-hidden rounded-lg shadow-cover hairline">
+                    <ProxiedImage src={r.thumbnail} alt={r.title} />
+                  </Tilt>
+                  <div className="flex flex-col gap-0.5 px-0.5">
+                    <span className="line-clamp-2 text-headline leading-snug text-label">{r.title}</span>
+                    <span className="line-clamp-1 text-xs text-label-tertiary">{r.author || "Unknown"}</span>
+                  </div>
+                </button>
+              </BlurFade>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex justify-center px-8 pt-10 pb-32">
+              <div className="glass flex h-9 items-center gap-1 rounded-full px-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => handleSearch(page - 1)}
+                  disabled={page <= 1 || searching}
+                  aria-label="Previous page"
+                  className="rounded-full"
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className="min-w-16 text-center text-xs text-label-secondary tabular-nums">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => handleSearch(page + 1)}
+                  disabled={page >= totalPages || searching}
+                  aria-label="Next page"
+                  className="rounded-full"
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+          {totalPages <= 1 && <div className="h-32 shrink-0" />}
+        </div>
+      )}
+    </LayoutGroup>
+  );
+
+  const detailView = (
+    <div className="relative flex h-full flex-col overflow-y-auto">
+      {/* Blurred cover backdrop */}
+      {novelInfo && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-80 overflow-hidden opacity-50 [mask-image:linear-gradient(to_bottom,black,transparent)]"
+        >
+          <ProxiedImage src={novelInfo.thumbnail} alt="" className="scale-125 blur-3xl saturate-150" />
+        </div>
+      )}
+
+      <div className="relative flex items-center gap-3 px-8 pt-6 pb-4">
+        <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label="Back to results" className="glass rounded-full">
+          <ArrowLeft className="size-4" />
+        </Button>
+        <span className="truncate text-xs text-label-tertiary">
+          {sourceName ? `${sourceName} · ` : ""}
+          {novelInfo?.title ?? "Loading..."}
+        </span>
+      </div>
+
+      {errorBanner && <div className="relative max-w-3xl px-8 pb-3">{errorBanner}</div>}
+
+      {loadingInfo ? (
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-3">
+          <Loader2 className="size-5 animate-spin text-label-tertiary" />
+          <span className="text-xs text-label-tertiary">Fetching details…</span>
+        </div>
+      ) : novelInfo ? (
+        <BlurFade className="relative flex max-w-4xl gap-8 px-8 pt-2 pb-32">
+          <Tilt maxTilt={6} glare className="relative aspect-[2/3] w-48 shrink-0 self-start overflow-hidden rounded-lg shadow-cover hairline">
+            <ProxiedImage src={novelInfo.thumbnail} alt={novelInfo.title} />
+          </Tilt>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <div>
+              <h1 className="text-large-title font-display text-label text-balance">{novelInfo.title}</h1>
+              <p className="mt-1.5 text-sm text-label-secondary">by {novelInfo.author || "Unknown"}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              <MetaRow icon={Star} label="Rating" value={novelInfo.rating} />
+              <MetaRow icon={BookOpen} label="Chapters" value={String(novelInfo.totalChapters)} />
+              <MetaRow icon={Tag} label="Status" value={novelInfo.status || "Unknown"} />
+            </div>
+
+            {novelInfo.genres.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {novelInfo.genres.map((g) => (
+                  <Badge key={g} variant="outline">{g}</Badge>
+                ))}
+              </div>
+            )}
+
+            {novelInfo.description && (
+              <p className="line-clamp-5 max-w-prose text-sm leading-relaxed text-label-secondary">
+                {novelInfo.description}
+              </p>
+            )}
+
+            {/* Download card */}
+            <div className="glass-thin mt-2 flex max-w-xl items-center gap-4 rounded-xl p-4">
+              <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand">
+                <Download className="size-5" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-headline text-label">Chapters</p>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={novelInfo.totalChapters}
+                    placeholder="1"
+                    value={rangeFrom}
+                    onChange={(e) => setRangeFrom(e.target.value)}
+                    aria-label="From chapter"
+                    className={RANGE_FIELD}
+                  />
+                  <span className="text-xs text-label-tertiary">to</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={novelInfo.totalChapters}
+                    placeholder={String(novelInfo.totalChapters)}
+                    value={rangeTo}
+                    onChange={(e) => setRangeTo(e.target.value)}
+                    aria-label="To chapter"
+                    className={RANGE_FIELD}
+                  />
+                  <span className="text-xs text-label-tertiary tabular-nums">of {novelInfo.totalChapters}</span>
+                </div>
+              </div>
+              <Button
+                onClick={handleQueueDownload}
+                disabled={!!isNovelQueued}
+                className="shrink-0 shadow-[0_0_24px_-6px_var(--accent-brand)]"
+              >
+                {isNovelQueued ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Queued
+                  </>
+                ) : (
+                  <>
+                    <Download className="size-4" />
+                    Download ({chapterCount} ch)
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </BlurFade>
+      ) : (
+        !error && (
+          <EmptyState icon={<BookOpen />} title="Nothing to show" description="Go back and pick a novel." />
+        )
+      )}
+    </div>
+  );
+
+  // ── Layout: main content + optional downloads column ──
+
+  return (
+    <div className="relative flex h-full">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="pointer-events-none absolute top-6 right-8 z-30 flex">
+          <div className="pointer-events-auto">{downloadsPill}</div>
+        </div>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={view}
+            className="min-h-0 flex-1"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, filter: "blur(6px)" }}
+            animate={{ opacity: 1, filter: "blur(0px)" }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, filter: "blur(4px)" }}
+            transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
+          >
+            {view === "search" ? searchView : detailView}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <AnimatePresence>
+        {queueOpen && hasDownloads && (
+          <DownloadQueueSidebar
+            downloads={downloads}
+            liveProgress={liveProgress}
+            onCancel={handleCancel}
+            onRetry={handleRetry}
+            onRemove={handleRemove}
+            onClearCompleted={handleClearCompleted}
+            onClose={() => setQueueOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // ── Helper ──────────────────────────────────────────────
 
+const RANGE_FIELD =
+  "h-8 w-20 rounded-md bg-fill-tertiary px-2.5 text-sm text-label tabular-nums outline-none transition-[background-color,box-shadow] duration-150 placeholder:text-label-quaternary hover:bg-fill-secondary focus:bg-fill-secondary focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_35%,transparent)]";
+
 function MetaRow({ icon: Icon, label, value }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Icon className="h-3.5 w-3.5 shrink-0 text-white/20" />
-      <span className="text-xs text-white/20 w-14">{label}</span>
-      <span className="text-xs text-white/45">{value}</span>
+    <div className="flex items-center gap-1.5 text-xs">
+      <Icon className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+      <span className="text-label-tertiary">{label}</span>
+      <span className="font-medium text-label">{value}</span>
     </div>
   );
 }

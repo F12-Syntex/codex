@@ -9,7 +9,6 @@ import {
   Settings,
   Gift,
   Download,
-  Plus,
 } from "lucide-react";
 import { useState, useEffect, useId } from "react";
 import { motion, useReducedMotion } from "motion/react";
@@ -40,7 +39,6 @@ interface AppSidebarProps {
   activeView: NavView;
   onViewChange: (view: NavView) => void;
   data: LibraryData;
-  onImport: () => void;
   isDev?: boolean;
 }
 
@@ -161,7 +159,6 @@ export function AppSidebar({
   activeView,
   onViewChange,
   data,
-  onImport,
   isDev,
 }: AppSidebarProps) {
   const navItems = sectionNavItems[activeSection];
@@ -216,15 +213,6 @@ export function AppSidebar({
 
       {/* ── Footer ───────────────────────────────── */}
       <div className="flex shrink-0 flex-col gap-0.5 border-t border-separator p-2">
-        <button
-          type="button"
-          onClick={onImport}
-          className="focus-ring pressable mb-1.5 flex h-8 w-full items-center gap-2.5 rounded-md bg-brand px-2.5 text-sm font-medium text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)] hover:brightness-110"
-        >
-          <Plus className="size-4 shrink-0" strokeWidth={2} />
-          <span className="flex-1 text-left">Import</span>
-        </button>
-
         {updateVersion && (
           <button
             type="button"

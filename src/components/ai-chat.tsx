@@ -3,99 +3,114 @@
 /**
  * Unified AI Chat component — used by both AI Buddy (reader) and Wiki Chat (database).
  * Supports conversation history, wiki actions, plans, entity links, and detachable windows.
+ *
+ * Glass redesign built from adapted 21st.dev pieces:
+ *  - ChatBubble   ← "Message Bubble" (framecn, id 34988)
+ *  - PromptInput  ← "Prompt Input" (tinkerers-labs, id 31882)
+ *  - TypingDots   ← "Typing" (loading-ui, id 19978)
+ *  - ShimmerText  ← "Text Shimmer" (ibelick, id 1641)
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
-  Send, Loader2, Sparkles, Trash2, Check, XCircle, Plus, Pencil, Trash,
-  GitMerge, Link, Eye, ListChecks, BookOpen, ArrowUp, X, Clock, History,
-  ChevronDown, ChevronRight,
+  Loader2, Sparkles, Check, XCircle, Plus, Pencil, Trash,
+  GitMerge, Link, Eye, ListChecks, BookOpen, X, Clock, History,
+  ScrollText, Users, HeartHandshake, Milestone, Wrench,
 } from "lucide-react";
 import type { BuddyMessage, WikiAction, BuddyPlan, ChapterReader } from "@/lib/ai-buddy";
 import { sendBuddyMessage, buildBuddyWikiContext, executeWikiAction, describeWikiAction, executePlanStep } from "@/lib/ai-buddy";
 import { AI_FORMATTING_STYLES } from "@/lib/ai-formatting-css";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ChatBubble } from "@/components/ui/chat-bubble";
+import { PromptInput } from "@/components/ui/prompt-input";
+import { TypingDots } from "@/components/ui/typing-dots";
+import { ShimmerText } from "@/components/ui/shimmer-text";
 
-/* ── Buddy CSS ── */
+/* ── Buddy CSS (AI-generated HTML) — semantic tokens so it follows the appearance ── */
 
 const BUDDY_STYLES = `
-.buddy-content { font-size: 14px; line-height: 1.85; color: oklch(0.78 0 0); }
-.buddy-content p { margin: 0.65rem 0; }
+.buddy-content { font-size: 13.5px; line-height: 1.75; color: var(--label); }
+.buddy-content p { margin: 0.6rem 0; }
 .buddy-content p:first-child { margin-top: 0; }
 .buddy-content p:last-child { margin-bottom: 0; }
-.buddy-content strong { color: oklch(0.92 0 0); font-weight: 600; }
-.buddy-content em { color: oklch(0.68 0 0); font-style: italic; }
-.buddy-content a { color: var(--accent-brand, oklch(0.65 0.20 264)); text-decoration: none; }
-.buddy-content ul, .buddy-content ol { margin: 0.65rem 0; padding-left: 1.5rem; }
-.buddy-content li { margin: 0.35rem 0; line-height: 1.75; }
+.buddy-content strong { color: var(--label); font-weight: 600; }
+.buddy-content em { color: var(--label-secondary); font-style: italic; }
+.buddy-content a { color: var(--accent-brand); text-decoration: none; }
+.buddy-content ul, .buddy-content ol { margin: 0.6rem 0; padding-left: 1.4rem; }
+.buddy-content li { margin: 0.3rem 0; line-height: 1.7; }
 
-.buddy-section { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid oklch(1 0 0 / 5%); }
+.buddy-section { padding-top: 0.9rem; margin-top: 0.9rem; border-top: 0.5px solid var(--separator); }
 .buddy-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
-.buddy-heading { font-size: 14px; font-weight: 600; color: oklch(0.92 0 0); margin-bottom: 0.65rem; letter-spacing: -0.01em; }
-.buddy-subheading { font-size: 12px; font-weight: 600; color: oklch(0.78 0 0); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.buddy-text { font-size: 14px; line-height: 1.85; color: oklch(0.72 0 0); margin-bottom: 0.5rem; }
+.buddy-heading { font-family: var(--font-display, serif); font-size: 15px; font-weight: 600; color: var(--label); margin-bottom: 0.55rem; letter-spacing: -0.01em; }
+.buddy-subheading { font-size: 11px; font-weight: 600; color: var(--label-tertiary); margin-bottom: 0.45rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.buddy-text { font-size: 13.5px; line-height: 1.75; color: var(--label); margin-bottom: 0.5rem; }
 .buddy-text:last-child { margin-bottom: 0; }
-.buddy-muted { font-size: 12px; color: oklch(0.48 0 0); }
+.buddy-muted { font-size: 12px; color: var(--label-tertiary); }
 .buddy-quote {
-  border-left: 2px solid var(--accent-brand, oklch(0.65 0.20 264));
-  padding: 0.65rem 1rem;
-  margin: 0.75rem 0;
-  background: oklch(1 0 0 / 2%);
-  border-radius: 0 8px 8px 0;
+  border-left: 2px solid var(--accent-brand);
+  padding: 0.55rem 0.9rem;
+  margin: 0.7rem 0;
+  background: var(--fill-quaternary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-display, serif);
   font-style: italic;
   font-size: 14px;
-  color: oklch(0.62 0 0);
-  line-height: 1.85;
+  color: var(--label-secondary);
+  line-height: 1.75;
 }
 .buddy-list { list-style: none; padding: 0; margin: 0.5rem 0; }
 .buddy-list > div, .buddy-list > li {
-  font-size: 14px; line-height: 1.85; color: oklch(0.72 0 0);
-  padding: 0.2rem 0 0.2rem 1.2rem; position: relative;
+  font-size: 13.5px; line-height: 1.75; color: var(--label);
+  padding: 0.15rem 0 0.15rem 1.1rem; position: relative;
 }
 .buddy-list > div::before, .buddy-list > li::before {
-  content: ""; position: absolute; left: 0; top: 0.75rem;
-  width: 4px; height: 4px; border-radius: 50%; background: oklch(1 0 0 / 18%);
+  content: ""; position: absolute; left: 0.2rem; top: 0.72rem;
+  width: 4px; height: 4px; border-radius: 50%; background: var(--label-quaternary);
 }
 .buddy-grid {
   display: grid; grid-template-columns: auto 1fr;
-  gap: 0.3rem 1rem; font-size: 14px; line-height: 1.75; margin: 0.5rem 0;
+  gap: 0.3rem 1rem; font-size: 13.5px; line-height: 1.7; margin: 0.5rem 0;
 }
 .buddy-card {
-  border: 1px solid oklch(1 0 0 / 6%); background: oklch(1 0 0 / 2.5%);
-  border-radius: 8px; padding: 1rem; margin: 0.75rem 0;
+  box-shadow: inset 0 0 0 0.5px var(--separator); background: var(--fill-quaternary);
+  border-radius: var(--radius-lg); padding: 0.9rem; margin: 0.7rem 0;
 }
 .buddy-card:first-child { margin-top: 0; }
 .buddy-card-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 0.65rem; font-size: 14px;
+  margin-bottom: 0.6rem; font-size: 13px; font-weight: 600;
 }
 .buddy-tag, .buddy-tag-accent, .buddy-tag-positive, .buddy-tag-negative, .buddy-tag-neutral {
-  display: inline-block; font-size: 12px; font-weight: 500;
-  padding: 0.15rem 0.55rem; border-radius: 8px; vertical-align: middle;
+  display: inline-flex; align-items: center; height: 20px; font-size: 11px; font-weight: 500;
+  padding: 0 0.5rem; border-radius: 999px; vertical-align: middle;
 }
-.buddy-tag { background: oklch(1 0 0 / 6%); color: oklch(0.58 0 0); }
-.buddy-tag-accent { background: var(--accent-brand, oklch(0.65 0.20 264)); color: oklch(0.98 0 0); opacity: 0.85; }
-.buddy-tag-positive { background: oklch(0.65 0.14 150 / 15%); color: oklch(0.65 0.14 150); }
-.buddy-tag-negative { background: oklch(0.65 0.18 25 / 15%); color: oklch(0.65 0.18 25); }
-.buddy-tag-neutral { background: oklch(1 0 0 / 6%); color: oklch(0.52 0 0); }
-.buddy-divider { height: 1px; background: oklch(1 0 0 / 5%); margin: 0.75rem 0; }
+.buddy-tag { background: var(--fill-tertiary); color: var(--label-secondary); }
+.buddy-tag-accent { background: color-mix(in srgb, var(--accent-brand) 16%, transparent); color: var(--accent-brand); }
+.buddy-tag-positive { background: color-mix(in srgb, var(--system-green) 15%, transparent); color: var(--system-green); }
+.buddy-tag-negative { background: color-mix(in srgb, var(--system-red) 15%, transparent); color: var(--system-red); }
+.buddy-tag-neutral { background: var(--fill-tertiary); color: var(--label-tertiary); }
+.buddy-divider { height: 0.5px; background: var(--separator); margin: 0.75rem 0; }
 .buddy-highlight {
-  background: oklch(0.65 0.20 264 / 10%); padding: 0.02rem 0.3rem;
-  border-radius: 4px; color: oklch(0.88 0 0);
+  background: color-mix(in srgb, var(--accent-brand) 14%, transparent); padding: 0.02rem 0.3rem;
+  border-radius: var(--radius-xs); color: var(--label);
 }
 .buddy-spoiler-warning {
-  border: 1px solid oklch(0.75 0.12 80 / 18%);
-  background: oklch(0.75 0.12 80 / 5%);
-  padding: 0.65rem 1rem; border-radius: 8px;
-  font-size: 12px; color: oklch(0.75 0.12 80); font-weight: 500; margin: 0.75rem 0;
+  background: color-mix(in srgb, var(--system-orange) 10%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--system-orange) 30%, transparent);
+  padding: 0.6rem 0.9rem; border-radius: var(--radius-md);
+  font-size: 12px; color: var(--system-orange); font-weight: 500; margin: 0.7rem 0;
 }
 .buddy-entity-link {
-  display: inline; background: oklch(0.65 0.20 264 / 8%);
-  color: var(--accent-brand, oklch(0.65 0.20 264));
-  padding: 0.02rem 0.4rem; border-radius: 4px;
+  display: inline; background: color-mix(in srgb, var(--accent-brand) 12%, transparent);
+  color: var(--accent-brand);
+  padding: 0.02rem 0.35rem; border-radius: var(--radius-xs);
   font-size: inherit; font-weight: 500; cursor: pointer;
   text-decoration: none; transition: background 0.15s;
 }
-.buddy-entity-link:hover { background: oklch(0.65 0.20 264 / 16%); }
+.buddy-entity-link:hover { background: color-mix(in srgb, var(--accent-brand) 22%, transparent); }
 `;
 
 /* ── Conversation History Types ── */
@@ -117,10 +132,17 @@ const QUICK_ACTIONS = [
   { label: "Story arcs", prompt: "What are the active story arcs and where do they stand?" },
 ];
 
+const QUICK_ICONS: Record<string, React.ReactNode> = {
+  "Recap so far": <ScrollText />,
+  Characters: <Users />,
+  Relationships: <HeartHandshake />,
+  "Story arcs": <Milestone />,
+};
+
 /* ── Sub-components ── */
 
 function ActionIcon({ action }: { action: WikiAction["action"] }) {
-  const cls = "h-3.5 w-3.5 shrink-0";
+  const cls = "size-3.5 shrink-0";
   switch (action) {
     case "create_entry": return <Plus className={cls} />;
     case "update_entry": return <Pencil className={cls} />;
@@ -132,47 +154,70 @@ function ActionIcon({ action }: { action: WikiAction["action"] }) {
   }
 }
 
+const ACTION_TONE = {
+  green: "bg-success/15 text-success",
+  yellow: "bg-warning/15 text-warning",
+  red: "bg-danger/15 text-danger",
+} as const;
+
+/** Header strip shared by the inline action / plan cards. */
+function CardHeader({ icon, tone, title, done }: { icon: React.ReactNode; tone: string; title: React.ReactNode; done?: boolean }) {
+  return (
+    <div className="flex h-10 items-center gap-2.5 px-3">
+      <span className={cn("inline-flex size-6 items-center justify-center rounded-sm [&_svg]:size-3.5", tone)}>{icon}</span>
+      <span className="flex-1 text-headline text-label">{title}</span>
+      {done && (
+        <Badge variant="success">
+          <Check strokeWidth={2.5} />
+          Done
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 function WikiActionCard({ actions, onApprove, onReject, resolved }: {
   actions: WikiAction[]; onApprove: () => void; onReject: () => void; resolved: boolean;
 }) {
   const descriptions = actions.map(describeWikiAction);
-  const colorMap = {
-    green: "border-emerald-400/10 bg-emerald-400/[0.03]",
-    yellow: "border-amber-400/10 bg-amber-400/[0.03]",
-    red: "border-red-400/10 bg-red-400/[0.03]",
-  };
 
   return (
-    <div className="mt-5 overflow-hidden rounded-lg border border-white/[0.06]">
-      <div className="flex items-center gap-2 border-b border-white/[0.04] bg-white/[0.02] px-3 py-2">
-        <Pencil className="h-3.5 w-3.5 text-amber-400/80" strokeWidth={1.5} />
-        <span className="text-xs font-medium text-white/60">
-          {actions.length} wiki {actions.length === 1 ? "change" : "changes"}
-        </span>
-        {resolved && <span className="ml-auto text-xs text-white/20">done</span>}
-      </div>
-      <div className="space-y-px bg-white/[0.01] p-1.5">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+      className="mt-3 overflow-hidden rounded-xl bg-fill-quaternary hairline"
+    >
+      <CardHeader
+        icon={<Pencil strokeWidth={2} />}
+        tone="bg-warning/15 text-warning"
+        title={`${actions.length} wiki ${actions.length === 1 ? "change" : "changes"}`}
+        done={resolved}
+      />
+      <ul className="flex flex-col gap-1 px-2 pb-2">
         {descriptions.map((desc, i) => (
-          <div key={i} className={`flex items-start gap-2 rounded-lg border ${colorMap[desc.color]} px-2.5 py-2`}>
-            <div className="mt-px text-white/30"><ActionIcon action={actions[i].action} /></div>
+          <li key={i} className="flex items-start gap-2.5 rounded-md px-2 py-2 transition-colors hover:bg-fill-quaternary">
+            <span className={cn("mt-px inline-flex size-6 shrink-0 items-center justify-center rounded-sm", ACTION_TONE[desc.color])}>
+              <ActionIcon action={actions[i].action} />
+            </span>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-white/75">{desc.label}</div>
-              <div className="text-xs leading-relaxed text-white/35">{desc.detail}</div>
+              <div className="text-sm font-medium text-label">{desc.label}</div>
+              <div className="text-xs leading-relaxed text-label-secondary">{desc.detail}</div>
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
       {!resolved && (
-        <div className="flex gap-2 border-t border-white/[0.04] px-3 py-2">
-          <button onClick={onApprove} className="flex items-center gap-1.5 rounded-lg bg-emerald-500/12 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20">
-            <Check className="h-3 w-3" strokeWidth={2.5} /> Apply
-          </button>
-          <button onClick={onReject} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
-            <XCircle className="h-3 w-3" strokeWidth={2} /> Skip
-          </button>
+        <div className="flex items-center justify-end gap-2 border-t border-separator px-3 py-2.5">
+          <Button variant="ghost" size="sm" onClick={onReject}>
+            <XCircle className="size-3.5" /> Skip
+          </Button>
+          <Button size="sm" onClick={onApprove}>
+            <Check className="size-3.5" strokeWidth={2.5} /> Apply
+          </Button>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -180,50 +225,89 @@ function PlanCard({ plan, onApprove, onReject, resolved, executingStep }: {
   plan: BuddyPlan; onApprove: () => void; onReject: () => void; resolved: boolean; executingStep: number | null;
 }) {
   return (
-    <div className="mt-5 overflow-hidden rounded-lg border border-white/[0.06]">
-      <div className="flex items-center gap-2 border-b border-white/[0.04] bg-white/[0.02] px-3 py-2">
-        <ListChecks className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
-        <span className="text-xs font-medium text-white/60">Plan — {plan.steps.length} steps</span>
-        {resolved && executingStep === null && <span className="ml-auto text-xs text-white/20">done</span>}
-      </div>
-      <div className="px-3 py-2.5">
-        <p className="mb-2.5 text-sm text-white/45">{plan.goal}</p>
-        <div className="space-y-1.5">
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+      className="mt-3 overflow-hidden rounded-xl bg-fill-quaternary hairline"
+    >
+      <CardHeader
+        icon={<ListChecks strokeWidth={2} />}
+        tone="bg-brand/15 text-brand"
+        title={<>Plan <span className="font-normal text-label-tertiary">· {plan.steps.length} steps</span></>}
+        done={resolved && executingStep === null}
+      />
+      <div className="px-3 pb-3">
+        <p className="mb-3 font-display text-base leading-snug text-label">{plan.goal}</p>
+        <ol className="relative flex flex-col gap-1">
           {plan.steps.map((step, i) => {
             const active = executingStep === i;
             const done = executingStep !== null && i < executingStep;
             const toolCount = step.toolCalls?.length ?? 0;
             const actionCount = step.wikiActions?.length ?? 0;
             return (
-              <div key={i} className={`flex items-start gap-2.5 rounded-lg px-2.5 py-2 ${active ? "bg-[var(--accent-brand)]/[0.06]" : done ? "bg-emerald-500/[0.03]" : ""}`}>
-                <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${done ? "bg-emerald-500/15 text-emerald-400" : active ? "bg-[var(--accent-brand)]/15 text-[var(--accent-brand)]" : "bg-white/[0.04] text-white/25"}`}>
-                  {done ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : active ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <span>{i + 1}</span>}
-                </div>
+              <li
+                key={i}
+                className={cn(
+                  "flex items-start gap-2.5 rounded-md px-2 py-2 transition-colors duration-200",
+                  active && "bg-brand/10",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-px flex size-5 shrink-0 items-center justify-center rounded-full text-2xs font-semibold tabular-nums transition-colors",
+                    done ? "bg-success text-brand-fg" : active ? "bg-brand text-brand-fg" : "bg-fill-tertiary text-label-tertiary",
+                  )}
+                >
+                  {done ? <Check className="size-3" strokeWidth={3} /> : active ? <Loader2 className="size-3 animate-spin" strokeWidth={2.5} /> : <span>{i + 1}</span>}
+                </span>
                 <div className="min-w-0 flex-1">
-                  <div className={`text-sm ${active ? "text-white/75" : done ? "text-white/45" : "text-white/50"}`}>{step.description}</div>
+                  <div className={cn("text-sm", active ? "text-label" : done ? "text-label-tertiary" : "text-label-secondary")}>
+                    {step.description}
+                  </div>
                   {(toolCount > 0 || actionCount > 0) && (
-                    <div className="mt-1 flex gap-2.5 text-xs text-white/20">
-                      {toolCount > 0 && <span className="flex items-center gap-1"><BookOpen className="h-3 w-3" /> {toolCount}</span>}
-                      {actionCount > 0 && <span className="flex items-center gap-1"><Pencil className="h-3 w-3" /> {actionCount}</span>}
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {toolCount > 0 && (
+                        <Badge variant="outline">
+                          <Wrench strokeWidth={2} />
+                          {toolCount} {toolCount === 1 ? "tool" : "tools"}
+                        </Badge>
+                      )}
+                      {actionCount > 0 && (
+                        <Badge variant="outline">
+                          <Pencil strokeWidth={2} />
+                          {actionCount} {actionCount === 1 ? "edit" : "edits"}
+                        </Badge>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ol>
       </div>
       {!resolved && executingStep === null && (
-        <div className="flex gap-2 border-t border-white/[0.04] px-3 py-2">
-          <button onClick={onApprove} className="flex items-center gap-1.5 rounded-lg bg-[var(--accent-brand)]/12 px-3 py-1.5 text-xs font-medium text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/20">
-            <Check className="h-3 w-3" strokeWidth={2.5} /> Execute
-          </button>
-          <button onClick={onReject} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/50">
-            <XCircle className="h-3 w-3" strokeWidth={2} /> Cancel
-          </button>
+        <div className="flex items-center justify-end gap-2 border-t border-separator px-3 py-2.5">
+          <Button variant="ghost" size="sm" onClick={onReject}>
+            <XCircle className="size-3.5" /> Cancel
+          </Button>
+          <Button size="sm" onClick={onApprove}>
+            <Check className="size-3.5" strokeWidth={2.5} /> Execute
+          </Button>
         </div>
       )}
-    </div>
+    </motion.div>
+  );
+}
+
+/* ── Assistant avatar ── */
+
+function AssistantAvatar() {
+  return (
+    <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_16px_-4px_var(--accent-brand)]">
+      <Sparkles className="size-3.5" strokeWidth={2} />
+    </span>
   );
 }
 
@@ -241,46 +325,62 @@ function ConversationHistory({
   onClose: () => void;
 }) {
   return (
-    <div className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06]" style={{ background: "var(--bg-inset)" }}>
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/[0.06]">
-        <span className="text-xs font-medium text-white/50">History</span>
-        <button
-          onClick={onClose}
-          className="flex h-5 w-5 items-center justify-center rounded-lg text-white/20 hover:bg-white/[0.06] hover:text-white/40"
-        >
-          <X className="h-3 w-3" strokeWidth={1.5} />
-        </button>
+    <motion.div
+      initial={{ opacity: 0, x: -16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -16 }}
+      transition={{ type: "spring", stiffness: 400, damping: 34 }}
+      className="flex h-full w-60 shrink-0 flex-col border-r border-separator bg-fill-quaternary"
+    >
+      <div className="flex h-11 shrink-0 items-center gap-2 pr-2 pl-4">
+        <History className="size-3.5 text-label-tertiary" strokeWidth={2} />
+        <span className="flex-1 text-headline text-label">History</span>
+        <Badge>{conversations.length}</Badge>
+        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close history">
+          <X className="size-3.5" />
+        </Button>
       </div>
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="scrollbar-none flex-1 overflow-y-auto px-2 pb-2">
         {conversations.length === 0 ? (
-          <p className="px-3 py-4 text-xs text-white/20 text-center">No conversations yet</p>
+          <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
+            <Clock className="size-5 text-label-quaternary" strokeWidth={1.5} />
+            <p className="text-xs text-label-tertiary">No conversations yet</p>
+          </div>
         ) : (
-          conversations.map((conv) => (
-            <div
-              key={conv.id}
-              className="group flex items-start gap-2 px-3 py-2 hover:bg-white/[0.03] cursor-pointer transition-colors"
-              onClick={() => onSelect(conv.id)}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium text-white/60 truncate">{conv.title}</div>
-                <div className="text-xs text-white/25 truncate">{conv.firstMessage}</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-white/15">
-                  <Clock className="h-2.5 w-2.5" />
-                  {new Date(conv.timestamp).toLocaleDateString()}
-                  <span>&middot; {conv.messageCount} msgs</span>
+          <ul className="flex flex-col gap-0.5">
+            {conversations.map((conv) => (
+              <li key={conv.id}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="group focus-ring flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-2 transition-colors hover:bg-fill-tertiary"
+                  onClick={() => onSelect(conv.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(conv.id); } }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-label">{conv.title}</div>
+                    <div className="truncate text-xs text-label-secondary">{conv.firstMessage}</div>
+                    <div className="mt-1 flex items-center gap-1.5 text-2xs text-label-tertiary tabular-nums">
+                      <Clock className="size-3" strokeWidth={2} />
+                      {new Date(conv.timestamp).toLocaleDateString()}
+                      <span>&middot; {conv.messageCount} msgs</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+                    aria-label="Delete conversation"
+                    className="focus-ring flex size-6 shrink-0 items-center justify-center rounded-sm text-label-tertiary opacity-0 transition-all group-hover:opacity-100 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100"
+                  >
+                    <Trash className="size-3" strokeWidth={2} />
+                  </button>
                 </div>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
-                className="opacity-0 group-hover:opacity-100 flex h-5 w-5 items-center justify-center rounded-lg text-white/15 hover:bg-red-500/15 hover:text-red-400 transition-all"
-              >
-                <Trash className="h-2.5 w-2.5" strokeWidth={1.5} />
-              </button>
-            </div>
-          ))
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -340,6 +440,7 @@ export function AIChat({
   const conversationIdRef = useRef<string>(`conv-${Date.now()}`);
 
   const isPanel = variant === "panel";
+  const reduceMotion = useReducedMotion();
 
   // Sync messages up to parent
   useEffect(() => {
@@ -447,7 +548,7 @@ export function AIChat({
       setMessages((p) => p.map((m) => m.id === msgId ? { ...m, actionsResolved: true } : m));
       await refreshWikiContext();
     } catch (err) {
-      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:oklch(0.65 0.18 25)">Failed: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
+      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:var(--system-red)">Failed: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
     } finally { setApplyingActions(null); }
   }, [messages, filePath, refreshWikiContext]);
 
@@ -476,7 +577,7 @@ export function AIChat({
       }
       setMessages((p) => p.map((m) => m.id === msgId ? { ...m, planResolved: true } : m));
     } catch (err) {
-      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:oklch(0.65 0.18 25)">Plan failed: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
+      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:var(--system-red)">Plan failed: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
     } finally { setExecutingPlanMsgId(null); setExecutingPlanStep(null); }
   }, [messages, bookTitle, currentChapter, totalChapters, wikiContext, readChapter, filePath, refreshWikiContext]);
 
@@ -512,7 +613,7 @@ export function AIChat({
         return updated;
       });
     } catch (err) {
-      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:oklch(0.65 0.18 25)">Error: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
+      setMessages((p) => [...p, { id: `err-${Date.now()}`, role: "assistant", content: `<p class="buddy-text" style="color:var(--system-red)">Error: ${err instanceof Error ? err.message : "Unknown"}</p>`, timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
       setLoadingStatus(null);
@@ -539,138 +640,180 @@ export function AIChat({
 
       <div className="flex flex-1 overflow-hidden">
         {/* History sidebar */}
-        {showHistory && (
-          <ConversationHistory
-            conversations={conversations}
-            onSelect={loadConversation}
-            onDelete={deleteConversation}
-            onClose={() => setShowHistory(false)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {showHistory && (
+            <ConversationHistory
+              key="history"
+              conversations={conversations}
+              onSelect={loadConversation}
+              onDelete={deleteConversation}
+              onClose={() => setShowHistory(false)}
+            />
+          )}
+        </AnimatePresence>
 
         {/* Main chat area */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="relative flex flex-1 flex-col overflow-hidden">
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto">
             {messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center px-12">
-                <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-brand)]/8">
-                  <Sparkles className="h-6 w-6 text-[var(--accent-brand)]/60" strokeWidth={1.5} />
-                </div>
-                <p className="mb-1.5 text-sm font-medium text-white/50">What would you like to know?</p>
-                <p className="mb-8 text-center text-xs leading-relaxed text-white/20">
-                  Ask about characters, plot, relationships, or anything about the story.
+              <div className={cn("relative flex min-h-full flex-col items-center justify-center", isPanel ? "px-5 py-6" : "px-12 py-10")}>
+                <div aria-hidden className="pointer-events-none absolute top-1/2 left-1/2 size-72 -translate-x-1/2 -translate-y-2/3 rounded-full bg-brand/10 blur-3xl" />
+                <motion.div
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 22 }}
+                  className="relative mb-5"
+                >
+                  {!reduceMotion && (
+                    <motion.span
+                      aria-hidden
+                      className="absolute inset-0 rounded-full bg-brand"
+                      animate={{ scale: [1, 1.6], opacity: [0.35, 0] }}
+                      transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
+                    />
+                  )}
+                  <span className="relative inline-flex size-14 items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_32px_-4px_var(--accent-brand)]">
+                    <Sparkles className="size-6" strokeWidth={1.75} />
+                  </span>
+                </motion.div>
+                <h2 className="relative text-center text-title font-display text-label text-balance">
+                  What would you like to know?
+                </h2>
+                <p className="relative mt-1.5 max-w-sm text-center text-sm text-label-secondary">
+                  Ask about characters, plot, relationships, or anything about{" "}
+                  <span className="font-display italic text-label">{bookTitle || "the story"}</span>.
                 </p>
-                <div className="flex flex-wrap justify-center gap-2.5">
-                  {QUICK_ACTIONS.map((a) => (
-                    <button key={a.label} onClick={() => sendMessage(a.prompt)}
-                      className="rounded-lg border border-white/[0.05] px-4 py-2.5 text-xs text-white/30 transition-all hover:border-white/[0.1] hover:bg-white/[0.03] hover:text-white/50">
-                      {a.label}
-                    </button>
+                <div className={cn("relative mt-7 grid w-full gap-2", isPanel ? "max-w-md grid-cols-2" : "max-w-lg grid-cols-2")}>
+                  {QUICK_ACTIONS.map((a, i) => (
+                    <motion.button
+                      key={a.label}
+                      type="button"
+                      onClick={() => sendMessage(a.prompt)}
+                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.08 + i * 0.04, type: "spring", stiffness: 400, damping: 30 }}
+                      className="group glass-thin focus-ring pressable flex items-start gap-2.5 rounded-xl p-3 text-left"
+                    >
+                      <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-brand transition-colors duration-150 group-hover:bg-brand group-hover:text-brand-fg [&_svg]:size-3.5">
+                        {QUICK_ICONS[a.label] ?? <Sparkles />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-headline text-label">{a.label}</span>
+                        <span className="mt-0.5 line-clamp-2 block text-xs leading-snug text-label-tertiary">{a.prompt}</span>
+                      </span>
+                    </motion.button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="mx-auto px-6 py-5" style={{ maxWidth }}>
-                {messages.map((msg, idx) => (
-                  <div key={msg.id} className={idx > 0 ? "mt-6" : ""}>
+              <div className={cn("mx-auto flex flex-col gap-5", isPanel ? "px-4 py-4" : "px-6 py-6")} style={{ maxWidth }}>
+                {messages.map((msg) => (
+                  <div key={msg.id}>
                     {msg.role === "user" ? (
-                      <div className="flex justify-end">
-                        <div className="max-w-[80%] rounded-lg rounded-br-sm bg-[var(--accent-brand)]/12 px-4 py-3 text-sm leading-relaxed text-white/75">
-                          {msg.content}
-                        </div>
-                      </div>
+                      <ChatBubble variant="outgoing" maxWidth="85%">
+                        <span className="whitespace-pre-wrap">{msg.content}</span>
+                      </ChatBubble>
                     ) : (
-                      <div>
-                        <div
-                          className="buddy-content"
-                          data-reading-theme="dark"
-                          dangerouslySetInnerHTML={{ __html: msg.content }}
-                        />
-                        {msg.pendingActions && msg.pendingActions.length > 0 && (
-                          <WikiActionCard actions={msg.pendingActions} onApprove={() => approveActions(msg.id)} onReject={() => rejectActions(msg.id)} resolved={msg.actionsResolved ?? false} />
-                        )}
-                        {msg.pendingPlan && (
-                          <PlanCard plan={msg.pendingPlan} onApprove={() => doExecutePlan(msg.id)} onReject={() => rejectPlan(msg.id)} resolved={msg.planResolved ?? false} executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null} />
-                        )}
-                        {applyingActions === msg.id && (
-                          <div className="mt-3 flex items-center gap-2">
-                            <Loader2 className="h-3 w-3 animate-spin text-emerald-400" strokeWidth={2} />
-                            <span className="text-xs text-emerald-400/60">Applying...</span>
-                          </div>
-                        )}
+                      <div className="flex items-start gap-2.5">
+                        <AssistantAvatar />
+                        <div className="min-w-0 flex-1">
+                          <ChatBubble variant="incoming" maxWidth="100%" bubbleClassName="px-4 py-3">
+                            <div
+                              className="buddy-content"
+                              data-reading-theme="dark"
+                              dangerouslySetInnerHTML={{ __html: msg.content }}
+                            />
+                          </ChatBubble>
+                          {msg.pendingActions && msg.pendingActions.length > 0 && (
+                            <WikiActionCard actions={msg.pendingActions} onApprove={() => approveActions(msg.id)} onReject={() => rejectActions(msg.id)} resolved={msg.actionsResolved ?? false} />
+                          )}
+                          {msg.pendingPlan && (
+                            <PlanCard plan={msg.pendingPlan} onApprove={() => doExecutePlan(msg.id)} onReject={() => rejectPlan(msg.id)} resolved={msg.planResolved ?? false} executingStep={executingPlanMsgId === msg.id ? executingPlanStep : null} />
+                          )}
+                          {applyingActions === msg.id && (
+                            <div className="mt-2.5 flex items-center gap-2">
+                              <Loader2 className="size-3.5 animate-spin text-success" strokeWidth={2} />
+                              <ShimmerText className="text-xs">Applying changes…</ShimmerText>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
                 ))}
 
                 {isLoading && (
-                  <div className="mt-6 flex items-center gap-3">
-                    <div className="flex gap-1.5">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "0ms" }} />
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "150ms" }} />
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent-brand)]/50" style={{ animationDelay: "300ms" }} />
-                    </div>
-                    {loadingStatus && <span className="text-xs text-white/20">{loadingStatus}</span>}
+                  <div className="flex items-start gap-2.5">
+                    <AssistantAvatar />
+                    <ChatBubble variant="incoming" bubbleClassName="flex items-center gap-2.5 px-3.5 py-2.5">
+                      <TypingDots className="text-brand" />
+                      <ShimmerText className="text-xs">Thinking…</ShimmerText>
+                    </ChatBubble>
+                    <AnimatePresence mode="popLayout">
+                      {loadingStatus && (
+                        <motion.span
+                          key={loadingStatus}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.18 }}
+                          className="mt-2"
+                        >
+                          <Badge variant="outline" className="max-w-56">
+                            <Wrench strokeWidth={2} />
+                            <span className="truncate">{loadingStatus}</span>
+                          </Badge>
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Input area */}
-          <div className="shrink-0 border-t border-white/[0.04] px-4 pb-4 pt-3">
+          {/* Composer */}
+          <div className={cn("shrink-0", isPanel ? "px-3 pt-1 pb-3" : "px-4 pt-2 pb-4")}>
             <div className="mx-auto" style={{ maxWidth }}>
-              {/* Action buttons row */}
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setShowHistory(!showHistory)}
-                    className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/20 transition-colors hover:bg-white/[0.04] hover:text-white/40"
-                  >
-                    <History className="h-3 w-3" strokeWidth={1.5} />
-                    History
-                  </button>
-                  {messages.length > 0 && (
-                    <button
-                      onClick={startNewChat}
-                      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/20 transition-colors hover:bg-white/[0.04] hover:text-white/40"
+              <PromptInput
+                value={input}
+                onValueChange={setInput}
+                onSend={() => sendMessage(input)}
+                onKeyDown={handleKeyDown}
+                textareaRef={inputRef}
+                placeholder="Ask anything about the story..."
+                disabled={busy}
+                canSend={!!input.trim() && !busy}
+                actions={
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setShowHistory(!showHistory)}
+                      aria-pressed={showHistory}
+                      className={cn("rounded-full text-label-secondary", showHistory && "bg-fill-tertiary text-label")}
                     >
-                      <Plus className="h-3 w-3" strokeWidth={1.5} />
-                      New
-                    </button>
-                  )}
-                </div>
-                {wikiEntryCount > 0 && (
-                  <span className="text-xs text-white/15">{wikiEntryCount} wiki entries</span>
-                )}
-              </div>
-
-              {/* Input field */}
-              <div className="flex items-end gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3.5 py-3 transition-colors focus-within:border-white/[0.1] focus-within:bg-white/[0.04]">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask anything about the story..."
-                  rows={1}
-                  disabled={busy}
-                  className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-white/80 outline-none placeholder:text-white/20"
-                  style={{ maxHeight: "120px" }}
-                />
-                <button
-                  onClick={() => sendMessage(input)}
-                  disabled={!input.trim() || busy}
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all ${
-                    input.trim() && !busy
-                      ? "bg-[var(--accent-brand)] text-white shadow-sm shadow-black/20"
-                      : "text-white/10"
-                  }`}
-                >
-                  <ArrowUp className="h-3.5 w-3.5" strokeWidth={2} />
-                </button>
-              </div>
+                      <History className="size-3.5" strokeWidth={2} />
+                      History
+                    </Button>
+                    {messages.length > 0 && (
+                      <Button variant="ghost" size="xs" onClick={startNewChat} className="rounded-full text-label-secondary">
+                        <Plus className="size-3.5" strokeWidth={2} />
+                        New
+                      </Button>
+                    )}
+                  </>
+                }
+                meta={
+                  wikiEntryCount > 0 ? (
+                    <Badge className="mr-1">
+                      <BookOpen strokeWidth={2} />
+                      {wikiEntryCount} wiki entries
+                    </Badge>
+                  ) : null
+                }
+              />
             </div>
           </div>
         </div>

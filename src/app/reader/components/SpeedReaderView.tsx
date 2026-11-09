@@ -1,17 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   Play,
   Pause,
   SkipBack,
   SkipForward,
   X,
-  ChevronUp,
-  ChevronDown,
-  Gauge,
+  Minus,
+  Plus,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ProgressRing } from "@/components/ui/progress-ring";
 import type { ThemeClasses } from "../lib/types";
+import { ChromeButton, PillDivider, PANEL_SPRING } from "./chrome";
 import type { SpeedReaderChunk } from "@/lib/speed-reader-engine";
 import { calculateChunkDuration } from "@/lib/speed-reader-engine";
 
@@ -37,6 +40,7 @@ export function SpeedReaderView({
   onReadProgress,
   onChunkChange,
 }: SpeedReaderViewProps) {
+  const reduceMotion = useReducedMotion();
   const [playing, setPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [targetWpm, setTargetWpm] = useState(400);
@@ -157,12 +161,6 @@ export function SpeedReaderView({
     return () => document.removeEventListener("keydown", handler);
   }, [handlePlayPause, handleRewind, handleSkipForward, onExit]);
 
-  const progressBlocks = useMemo(() => {
-    const total = 8;
-    const filled = Math.round((progressPercent / 100) * total);
-    return { filled, total };
-  }, [progressPercent]);
-
   const displayText = useMemo(() => {
     if (!chunk) return "";
     if (chunk.contentType === "scene-break") return "\u00B7 \u00B7 \u00B7";
@@ -173,21 +171,33 @@ export function SpeedReaderView({
     if (!chunk) return {};
     switch (chunk.contentType) {
       case "thought": return { fontStyle: "italic" };
-      case "sfx": return { fontSize: "42px", fontWeight: 700 };
-      case "system": return { fontFamily: "monospace", fontSize: "28px" };
-      case "scene-break": return { opacity: 0.4 };
+      case "sfx": return { fontSize: "48px", fontWeight: 700 };
+      case "system": return { fontFamily: "var(--font-mono)", fontSize: "30px" };
       default: return {};
     }
   }, [chunk]);
 
   const chunkColorClass = useMemo(() => {
-    if (!chunk) return "text-white";
+    if (!chunk) return theme.text;
     switch (chunk.contentType) {
-      case "sfx": return "text-red-400";
-      case "system": return "text-[var(--accent-brand)]";
-      default: return "text-white";
+      case "sfx": return "text-danger";
+      case "system": return "text-brand";
+      case "scene-break": return "text-label-tertiary";
+      default: return theme.text;
     }
-  }, [chunk]);
+  }, [chunk, theme.text]);
+
+  // Optimal Recognition Point — the letter the eye should land on.
+  const orp = useMemo(() => {
+    const text = displayText;
+    if (!chunk || chunk.contentType === "scene-break" || !/\p{L}/u.test(text)) {
+      return null;
+    }
+    const len = text.length;
+    let idx = len <= 1 ? 0 : len <= 5 ? 1 : len <= 9 ? 2 : len <= 13 ? 3 : Math.floor(len * 0.3);
+    while (idx < len - 1 && !/[\p{L}\p{N}]/u.test(text[idx])) idx++;
+    return { pre: text.slice(0, idx), pivot: text[idx], post: text.slice(idx + 1) };
+  }, [chunk, displayText]);
 
   // Paragraph-level progress
   const paraChunks = useMemo(() => {
@@ -201,108 +211,122 @@ export function SpeedReaderView({
   }, [paraChunks, chunks, currentIndex]);
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col select-none">
-      {/* Dark scrim over the background page */}
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+      className="absolute inset-0 z-20 flex select-none flex-col"
+    >
+      {/* Paper veil — the page dissolves behind the focus word */}
       <div
-        className="absolute inset-0 pointer-events-none"
-        style={{ background: "rgba(0, 0, 0, 0.80)" }}
+        className="pointer-events-none absolute inset-0 backdrop-blur-xl"
+        style={{ backgroundColor: "color-mix(in srgb, var(--reader-paper, var(--canvas)) 92%, transparent)" }}
       />
 
-      {/* Header */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-2 shrink-0">
-        <span className="text-xs text-white/40">{chapterTitle}</span>
-        <button
-          onClick={onExit}
-          className="p-1.5 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors"
-          title="Exit speed reader (Esc)"
-        >
-          <X className="h-4 w-4" />
-        </button>
+      {/* Top: chapter + exit */}
+      <div className="relative z-10 flex h-12 shrink-0 items-center justify-center px-14">
+        <span className="truncate text-xs text-label-tertiary">{chapterTitle}</span>
+        <ChromeButton onClick={onExit} title="Exit speed reader (Esc)" aria-label="Exit speed reader" className="absolute right-3 top-2">
+          <X strokeWidth={1.75} />
+        </ChromeButton>
       </div>
 
-      {/* Focal area — RSVP at 40% from top (slightly above centre) */}
-      <div className="relative z-10 flex-1 flex flex-col items-center px-4 overflow-hidden">
-        {/* Top spacer: 40% of focal area */}
+      {/* Focal area — RSVP slightly above centre */}
+      <div className="relative z-10 flex flex-1 flex-col items-center overflow-hidden px-8">
         <div style={{ flex: "2 1 0" }} />
 
         {/* Speaker label */}
-        {chunk?.speakerName && (
-          <div
-            className="text-xs font-medium mb-2"
-            style={{ color: chunk.speakerColor || "var(--accent-brand)" }}
-          >
-            {chunk.speakerName}
-          </div>
-        )}
-
-        {/* Active chunk */}
-        <div
-          key={currentIndex}
-          className={`text-center max-w-[60%] px-4 ${chunkColorClass}`}
-          style={{ fontSize: "32px", lineHeight: 1.4, ...chunkStyle }}
-        >
-          {displayText}
+        <div className="mb-3 h-4 text-xs font-semibold tracking-wide" style={{ color: chunk?.speakerColor || "var(--accent-brand)" }}>
+          {chunk?.speakerName ?? ""}
         </div>
 
-        {/* Paragraph progress bar */}
-        <div className="mt-6 w-48 h-0.5 rounded-full overflow-hidden bg-white/10">
+        {/* Reticle */}
+        <div className="relative w-full max-w-3xl">
+          <div className="mx-auto mb-3 flex w-72 items-end justify-center">
+            <span className="h-px flex-1 bg-separator-strong" />
+            <span className="h-3 w-px bg-brand/60" />
+            <span className="h-px flex-1 bg-separator-strong" />
+          </div>
+
           <div
-            className="h-full bg-[var(--accent-brand)] transition-all duration-200"
-            style={{ width: `${paraProgress * 100}%` }}
+            className={cn("flex w-full items-baseline font-display", chunkColorClass)}
+            style={{ fontSize: "40px", lineHeight: 1.3, ...chunkStyle }}
+          >
+            {orp ? (
+              <>
+                <span className="min-w-0 flex-1 overflow-hidden whitespace-pre text-right">{orp.pre}</span>
+                <span className="text-brand">{orp.pivot}</span>
+                <span className="min-w-0 flex-1 overflow-hidden whitespace-pre text-left">{orp.post}</span>
+              </>
+            ) : (
+              <span className="w-full text-center">{displayText}</span>
+            )}
+          </div>
+
+          <div className="mx-auto mt-3 flex w-72 items-start justify-center">
+            <span className="h-px flex-1 bg-separator-strong" />
+            <span className="h-3 w-px bg-brand/60" />
+            <span className="h-px flex-1 bg-separator-strong" />
+          </div>
+        </div>
+
+        {/* Paragraph progress */}
+        <div className="mt-8 h-1 w-40 overflow-hidden rounded-full bg-fill-secondary">
+          <div
+            className="h-full origin-left rounded-full bg-brand transition-transform duration-200 ease-apple"
+            style={{ transform: `scaleX(${paraProgress})` }}
           />
         </div>
 
-        {/* Bottom spacer: 60% of focal area */}
         <div style={{ flex: "3 1 0" }} />
       </div>
 
-      {/* Control bar */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-3 shrink-0">
-        {/* Left: playback */}
-        <div className="flex items-center gap-1">
-          <button onClick={handleRewind} className="p-2 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Previous paragraph (Left)">
-            <SkipBack className="h-4 w-4" />
-          </button>
-          <button onClick={handlePlayPause} className="p-2 rounded-lg bg-white/[0.08] text-white/60 hover:bg-white/[0.12] transition-colors" title={playing ? "Pause (Space)" : "Play (Space)"}>
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </button>
-          <button onClick={handleSkipForward} className="p-2 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Next paragraph (Right)">
-            <SkipForward className="h-4 w-4" />
-          </button>
-        </div>
+      {/* Control pill */}
+      <div className="relative z-10 flex shrink-0 justify-center pb-4">
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ ...PANEL_SPRING, delay: 0.05 }}
+          className="glass flex h-12 items-center gap-1 rounded-full p-1.5"
+        >
+          <ChromeButton onClick={handleRewind} title="Previous paragraph (←)" aria-label="Previous paragraph">
+            <SkipBack className="fill-current" strokeWidth={1.5} />
+          </ChromeButton>
+          <motion.button
+            onClick={handlePlayPause}
+            whileTap={reduceMotion ? undefined : { scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 500, damping: 28 }}
+            title={playing ? "Pause (Space)" : "Play (Space)"}
+            aria-label={playing ? "Pause" : "Play"}
+            className="focus-ring grid size-9 place-items-center rounded-full bg-brand text-brand-fg shadow-[0_0_20px_-6px_var(--accent-brand)] transition-[filter] hover:brightness-110"
+          >
+            {playing ? <Pause className="size-4 fill-current" strokeWidth={1.5} /> : <Play className="ml-0.5 size-4 fill-current" strokeWidth={1.5} />}
+          </motion.button>
+          <ChromeButton onClick={handleSkipForward} title="Next paragraph (→)" aria-label="Next paragraph">
+            <SkipForward className="fill-current" strokeWidth={1.5} />
+          </ChromeButton>
 
-        {/* Center: WPM */}
-        <div className="flex items-center gap-2">
-          <Gauge className="h-3.5 w-3.5 text-white/20" />
-          <button onClick={() => setTargetWpm((w) => Math.max(200, w - 25))} className="p-1 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Decrease WPM (Down)">
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-          <span className="text-sm font-medium tabular-nums min-w-[4ch] text-center text-white/60">
-            {effectiveWpm}
-          </span>
-          <span className="text-xs text-white/30">WPM</span>
-          <button onClick={() => setTargetWpm((w) => Math.min(800, w + 25))} className="p-1 rounded-lg text-white/30 hover:bg-white/[0.06] hover:text-white/50 transition-colors" title="Increase WPM (Up)">
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-        </div>
+          <PillDivider />
 
-        {/* Right: progress */}
-        <div className="flex items-center gap-2">
-          <div className="flex gap-px">
-            {Array.from({ length: progressBlocks.total }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-1.5 h-3 rounded-sm ${
-                  i < progressBlocks.filled ? "bg-[var(--accent-brand)]" : "bg-white/10"
-                }`}
-              />
-            ))}
+          <ChromeButton compact onClick={() => setTargetWpm((w) => Math.max(200, w - 25))} title="Slower (↓)" aria-label="Decrease words per minute">
+            <Minus strokeWidth={2} />
+          </ChromeButton>
+          <div className="flex w-16 flex-col items-center leading-none" title={`Target ${targetWpm} wpm`}>
+            <span className="text-sm font-semibold tabular-nums text-label">{effectiveWpm}</span>
+            <span className="mt-0.5 text-2xs uppercase tracking-wide text-label-tertiary">wpm</span>
           </div>
-          <span className="text-xs tabular-nums text-white/30">
-            {progressPercent}%
-          </span>
-        </div>
+          <ChromeButton compact onClick={() => setTargetWpm((w) => Math.min(800, w + 25))} title="Faster (↑)" aria-label="Increase words per minute">
+            <Plus strokeWidth={2} />
+          </ChromeButton>
+
+          <PillDivider />
+
+          <div className="flex items-center gap-2 pl-1 pr-2.5">
+            <ProgressRing value={progressPercent / 100} size={22} stroke={2.5} aria-label="Chapter progress" />
+            <span className="w-8 text-xs tabular-nums text-label-secondary">{progressPercent}%</span>
+          </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }

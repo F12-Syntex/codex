@@ -3,6 +3,8 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Search, X, ChevronRight } from "lucide-react";
 import type { TocEntry, ThemeClasses } from "../lib/types";
+import { cn } from "@/lib/utils";
+import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
 
 interface BookTableOfContentsProps {
   toc: TocEntry[];
@@ -35,6 +37,7 @@ export function BookTableOfContents({
   const [search, setSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const hover = useFluidHover();
 
   // Use enriched names when available
   const entries = useMemo(() => {
@@ -67,120 +70,95 @@ export function BookTableOfContents({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Decorative header */}
-      <div className="relative shrink-0 overflow-hidden pb-5 pt-4">
-        {/* Accent gradient glow behind title */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-0 h-[120px] w-[400px] -translate-x-1/2 opacity-[0.04]"
-          style={{
-            background: "radial-gradient(ellipse at center, var(--accent-brand), transparent 70%)",
-          }}
-        />
-
-        <div className="relative mx-auto max-w-[640px]">
-          {/* Small accent line */}
-          <div
-            className="mx-auto mb-4 h-[2px] w-12 rounded-full"
-            style={{ backgroundColor: "var(--accent-brand)", opacity: 0.5 }}
-          />
-
-          <h2 className={`text-center text-sm font-medium tracking-wide uppercase ${theme.text}`}
-            style={{ letterSpacing: "0.15em" }}
-          >
-            Contents
-          </h2>
-
-          <p className={`mt-1.5 text-center text-xs ${theme.muted}`}>
-            {entries.length} chapters
-          </p>
-
-          {/* Search bar */}
-          {entries.length > 10 && (
-            <div className={`mx-auto mt-4 flex max-w-[320px] items-center gap-2 rounded-lg px-3 py-2 ${theme.input} border ${theme.border}`}>
-              <Search className={`h-3.5 w-3.5 shrink-0 ${theme.muted}`} strokeWidth={1.5} />
-              <input
-                ref={inputRef}
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search chapters..."
-                className={`w-full bg-transparent text-xs outline-none placeholder:opacity-40 ${theme.text}`}
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-                >
-                  <X className="h-2.5 w-2.5" strokeWidth={2} />
-                </button>
-              )}
-            </div>
-          )}
+      {/* ── Title page ─────────────────────────────── */}
+      <div className="relative mx-auto w-full max-w-2xl shrink-0 pb-6 pt-6 text-center">
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-32 w-96 -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" />
+        <p className="relative text-section text-brand">Table of Contents</p>
+        <h2 className={cn("relative mt-2 text-large-title", theme.text)}>Contents</h2>
+        <div className="relative mx-auto mt-3 flex items-center justify-center gap-3">
+          <span className="h-px w-10 bg-separator-strong" />
+          <span className="text-xs tabular-nums text-label-tertiary">{entries.length} chapters</span>
+          <span className="h-px w-10 bg-separator-strong" />
         </div>
+
+        {entries.length > 10 && (
+          <label className="relative mx-auto mt-5 flex h-8 max-w-72 items-center gap-2 rounded-full bg-fill-tertiary px-3 transition-shadow duration-150 focus-within:ring-2 focus-within:ring-brand/40">
+            <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search chapters"
+              className="min-w-0 flex-1 bg-transparent text-sm text-label outline-none placeholder:text-label-tertiary"
+            />
+            {search ? (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="focus-ring flex size-4 shrink-0 items-center justify-center rounded-full bg-label-tertiary text-canvas transition-colors hover:bg-label-secondary"
+              >
+                <X className="size-2.5" strokeWidth={3} />
+              </button>
+            ) : (
+              <kbd className="shrink-0 rounded-xs bg-fill-tertiary px-1.5 py-px text-2xs font-medium text-label-tertiary">Ctrl F</kbd>
+            )}
+          </label>
+        )}
       </div>
 
-      {/* Divider */}
-      <div>
-        <div className={`mx-auto max-w-[640px] h-px ${theme.subtle}`} />
-      </div>
-
-      {/* Entries list */}
-      <div ref={listRef} className="flex-1 overflow-y-auto py-4">
-        <div className="mx-auto max-w-[640px]">
+      {/* ── Entries ────────────────────────────────── */}
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
+        <div {...hover.handlers} className="relative mx-auto max-w-2xl">
+          <FluidHoverHighlight hover={hover} className="rounded-md" />
           {filtered.length === 0 ? (
-            <div className={`flex flex-col items-center py-12 ${theme.muted}`}>
-              <Search className="mb-3 h-8 w-8 opacity-20" strokeWidth={1.5} />
-              <p className="text-xs">
-                {search ? "No matching entries" : "No entries found"}
-              </p>
+            <div className="flex flex-col items-center py-12 text-label-tertiary">
+              <Search className="mb-3 size-8 opacity-40" strokeWidth={1.5} />
+              <p className="text-xs">{search ? "No matching entries" : "No entries found"}</p>
             </div>
           ) : (
-            <div className="space-y-[2px]">
-              {filtered.map((entry, i) => (
+            filtered.map((entry, i) => {
+              const isCurrent = entry.chapterIndex === currentChapter;
+              return (
                 <button
                   key={i}
+                  data-fluid-item
                   onClick={() => onSelectChapter(entry.chapterIndex)}
-                  className="group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-150"
+                  className="focus-ring group relative flex h-10 w-full items-center gap-3 rounded-md px-3 text-left"
                 >
-                  {/* Accent left bar on hover */}
-                  <div
-                    className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                    style={{ backgroundColor: "var(--accent-brand)" }}
-                  />
-
-                  {/* Hover background */}
-                  <div className={`absolute inset-0 rounded-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100 ${theme.subtle}`} />
-
-                  {/* Number */}
-                  <span className={`relative z-[1] w-6 shrink-0 text-right tabular-nums text-xs transition-colors ${theme.muted} group-hover:opacity-80`}>
+                  <span
+                    className={cn(
+                      "w-7 shrink-0 text-right text-xs tabular-nums transition-colors duration-150",
+                      isCurrent ? "font-semibold text-brand" : "text-label-tertiary group-hover:text-label-secondary",
+                    )}
+                  >
                     {i + 1}
                   </span>
-
-                  {/* Title */}
-                  <span className={`relative z-[1] min-w-0 flex-1 text-sm transition-colors ${theme.text} opacity-80 group-hover:opacity-100`}>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate font-display text-base transition-opacity duration-150",
+                      isCurrent ? "font-semibold text-brand" : cn(theme.text, "opacity-85 group-hover:opacity-100"),
+                    )}
+                  >
                     {entry.displayLabel}
                   </span>
-
-                  {/* Current chapter indicator */}
-                  {entry.chapterIndex === currentChapter && (
-                    <span
-                      className="relative z-[1] h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: "var(--accent-brand)" }}
+                  {/* Dotted leader */}
+                  <span aria-hidden className="mx-1 h-px min-w-6 flex-1 translate-y-1 border-b border-dotted border-separator-strong" />
+                  {isCurrent ? (
+                    <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand/15 px-2 py-0.5 text-2xs font-semibold text-brand">
+                      <span className="size-1.5 rounded-full bg-brand" />
+                      Reading
+                    </span>
+                  ) : (
+                    <ChevronRight
+                      className="size-4 shrink-0 -translate-x-1 text-label-tertiary opacity-0 transition-all duration-200 ease-apple group-hover:translate-x-0 group-hover:opacity-100"
+                      strokeWidth={1.75}
                     />
                   )}
-
-                  {/* Arrow indicator */}
-                  <ChevronRight
-                    className={`relative z-[1] h-3.5 w-3.5 shrink-0 translate-x-0 opacity-0 transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-60 ${theme.muted}`}
-                    strokeWidth={1.5}
-                  />
                 </button>
-              ))}
-            </div>
+              );
+            })
           )}
-
-          {/* Bottom padding for scroll */}
-          <div className="h-6" />
         </div>
       </div>
     </div>

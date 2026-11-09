@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   Loader2, RefreshCw, BarChart3, Tag, MessageCircle, Package,
-  Monitor, Wand2, Send,
+  Monitor, Wand2, ArrowUp, Plus, Layers, Sparkles, BookOpen, Paintbrush,
 } from "lucide-react";
-import { WindowHeader } from "@/components/window-header";
+import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
+import { SearchField } from "@/components/ui/search-field";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ShimmerText } from "@/components/ui/shimmer-text";
+import { NumberTicker } from "@/components/ui/number-ticker";
+import { ListGroup, ListRow } from "@/components/ui/list-group";
+import { cn } from "@/lib/utils";
 import type { StyleDictionary, StyleRule } from "@/lib/ai-style-dictionary";
 import { loadDictionary, saveDictionary, extractRulesFromFormatted } from "@/lib/ai-style-dictionary";
 import { regenerateRule } from "@/lib/ai-formatting";
@@ -17,15 +25,15 @@ interface StyleDictionaryViewProps {
 }
 
 const CATEGORY_META: Record<string, { icon: React.ReactNode; label: string }> = {
-  stat: { icon: <BarChart3 className="h-4 w-4" strokeWidth={1.5} />, label: "Stats" },
-  badge: { icon: <Tag className="h-4 w-4" strokeWidth={1.5} />, label: "Badges" },
-  dialogue: { icon: <MessageCircle className="h-4 w-4" strokeWidth={1.5} />, label: "Dialogue" },
-  item: { icon: <Package className="h-4 w-4" strokeWidth={1.5} />, label: "Items" },
-  system: { icon: <Monitor className="h-4 w-4" strokeWidth={1.5} />, label: "System" },
-  effect: { icon: <Wand2 className="h-4 w-4" strokeWidth={1.5} />, label: "Effects" },
+  stat: { icon: <BarChart3 strokeWidth={1.75} />, label: "Stats" },
+  badge: { icon: <Tag strokeWidth={1.75} />, label: "Badges" },
+  dialogue: { icon: <MessageCircle strokeWidth={1.75} />, label: "Dialogue" },
+  item: { icon: <Package strokeWidth={1.75} />, label: "Items" },
+  system: { icon: <Monitor strokeWidth={1.75} />, label: "System" },
+  effect: { icon: <Wand2 strokeWidth={1.75} />, label: "Effects" },
 };
 
-const DEFAULT_CATEGORY_META = { icon: <Wand2 className="h-4 w-4" strokeWidth={1.5} />, label: "Other" };
+const DEFAULT_CATEGORY_META = { icon: <Wand2 strokeWidth={1.75} />, label: "Other" };
 
 function getCategoryMeta(cat: string) {
   return CATEGORY_META[cat] ?? { ...DEFAULT_CATEGORY_META, label: cat.charAt(0).toUpperCase() + cat.slice(1) };
@@ -36,6 +44,9 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
   const [isLoading, setIsLoading] = useState(true);
   const [regeneratingRule, setRegeneratingRule] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!filePath) { setIsLoading(false); return; }
@@ -128,91 +139,206 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
     }
   }, [filePath, bookTitle, dictionary]);
 
+  // View-only: category list + text filter
+  const grouped = useMemo(() => (dictionary?.rules ?? []).reduce<Record<string, StyleRule[]>>((acc, rule) => {
+    if (!acc[rule.category]) acc[rule.category] = [];
+    acc[rule.category].push(rule);
+    return acc;
+  }, {}), [dictionary]);
+  const categories = Object.keys(grouped);
+
+  const visibleGroups = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    return categories
+      .filter((cat) => activeCategory === "all" || cat === activeCategory)
+      .map((cat) => ({
+        cat,
+        rules: grouped[cat].filter((r) => !q || r.pattern.toLowerCase().includes(q) || r.component.toLowerCase().includes(q)),
+      }))
+      .filter((g) => g.rules.length > 0);
+  }, [categories, grouped, activeCategory, query]);
+
+  const chrome = (
+    <WindowChrome icon={<Paintbrush strokeWidth={1.75} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
+  );
+
   if (isLoading) {
     return (
-      <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <WindowHeader icon={<BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-white/40" strokeWidth={1.5} />
+      <WindowShell>
+        {chrome}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <Loader2 className="size-5 animate-spin text-label-tertiary" strokeWidth={1.75} />
+          <ShimmerText className="text-sm">Reading the style dictionary…</ShimmerText>
         </div>
-      </div>
+      </WindowShell>
     );
   }
 
   if (!dictionary || dictionary.rules.length === 0) {
     return (
-      <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-        <WindowHeader icon={<BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
-        <div className="flex flex-1 flex-col items-center justify-center gap-2">
-          <BarChart3 className="h-8 w-8 text-white/20" strokeWidth={1.5} />
-          <p className="text-sm text-white/40">No style rules learned yet</p>
-          <p className="text-xs text-white/25">Format some chapters first to populate the style dictionary</p>
+      <WindowShell>
+        {chrome}
+        <div className="flex min-h-0 flex-1 overflow-y-auto" style={{ zoom: zoom / 100 }}>
+          <div className="m-auto grid w-full max-w-5xl grid-cols-1 items-center gap-12 px-10 py-12 lg:grid-cols-[1fr_1.1fr]">
+            {/* Copy */}
+            <div className="animate-fade-up">
+              <p className="text-section">Style Dictionary</p>
+              <h1 className="mt-2 text-large-title text-label text-balance">A house style, learned from your book.</h1>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-label-secondary">
+                When Codex formats chapters with AI, it remembers how each recurring element looks — status screens,
+                system messages, dialogue — so every chapter of <span className="text-label">{bookTitle}</span> stays consistent.
+              </p>
+              <ListGroup className="mt-8 max-w-md">
+                <ListRow icon={<BookOpen />} iconTint="blue" label="Format a chapter" description="Turn on AI formatting in the reader." />
+                <ListRow icon={<Sparkles />} iconTint="purple" label="Codex learns the patterns" description="Each element becomes a reusable rule." />
+                <ListRow icon={<RefreshCw />} iconTint="orange" label="Refine them here" description="Regenerate any rule with your own instructions." />
+              </ListGroup>
+            </div>
+
+            {/* Specimen sheet */}
+            <div className="relative h-80" aria-hidden>
+              {[
+                { rot: -6, x: "4%", y: "6%", delay: 0.1, w: "w-64" },
+                { rot: 4, x: "34%", y: "0%", delay: 0.18, w: "w-60" },
+                { rot: -1.5, x: "16%", y: "38%", delay: 0.26, w: "w-72" },
+              ].map((card, i) => (
+                <motion.div
+                  key={i}
+                  className={cn("glass-thin grain absolute rounded-2xl p-4", card.w)}
+                  style={{ left: card.x, top: card.y }}
+                  initial={reduceMotion ? false : { opacity: 0, y: 24, rotate: 0 }}
+                  animate={{ opacity: 1, y: 0, rotate: card.rot }}
+                  transition={{ type: "spring", bounce: 0.3, duration: 0.8, delay: card.delay }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="h-2 w-20 rounded-full bg-fill-secondary" />
+                    <span className="font-mono text-2xs text-label-quaternary">.{["status-window", "system-msg", "skill-card"][i]}</span>
+                  </div>
+                  <div className="mt-3 space-y-2 rounded-md bg-fill-quaternary p-3">
+                    {i === 1 ? (
+                      <div className="flex gap-1.5">
+                        <span className="h-5 w-14 rounded-full bg-brand/25" />
+                        <span className="h-5 w-10 rounded-full bg-fill-tertiary" />
+                        <span className="h-5 w-12 rounded-full bg-fill-tertiary" />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between"><span className="h-1.5 w-12 rounded-full bg-label-quaternary" /><span className="h-1.5 w-6 rounded-full bg-brand/60" /></div>
+                        <div className="flex items-center justify-between"><span className="h-1.5 w-16 rounded-full bg-label-quaternary" /><span className="h-1.5 w-8 rounded-full bg-brand/40" /></div>
+                        <div className="flex items-center justify-between"><span className="h-1.5 w-10 rounded-full bg-label-quaternary" /><span className="h-1.5 w-5 rounded-full bg-brand/50" /></div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      </WindowShell>
     );
   }
 
-  // Group by category
-  const grouped = dictionary.rules.reduce<Record<string, StyleRule[]>>((acc, rule) => {
-    if (!acc[rule.category]) acc[rule.category] = [];
-    acc[rule.category].push(rule);
-    return acc;
-  }, {});
-
-  const categories = Object.keys(grouped);
+  const sidebarItems = [
+    { id: "all", label: "All rules", icon: <Layers strokeWidth={1.75} />, count: dictionary.rules.length },
+    ...categories.map((cat) => ({ id: cat, label: getCategoryMeta(cat).label, icon: getCategoryMeta(cat).icon, count: grouped[cat].length })),
+  ];
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--bg-inset)]">
-      <WindowHeader icon={<BarChart3 className="h-3 w-3 text-[var(--accent-brand)]" strokeWidth={1.5} />} title="Style Dictionary" subtitle={bookTitle} zoomKey="style-dictionary" zoom={zoom} onZoomChange={setZoom} />
+    <WindowShell>
+      {chrome}
 
       {/* Inject AI formatting CSS so examples render correctly */}
       <style>{AI_FORMATTING_STYLES}</style>
 
-      <div className="flex-1 overflow-y-auto" style={{ zoom: zoom / 100 }}>
-        <div className="mx-auto max-w-[1000px] px-8 py-6">
-          {/* Summary bar */}
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15">
-              <BarChart3 className="h-4 w-4 text-[var(--accent-brand)]" strokeWidth={1.5} />
-            </div>
-            <div>
-              <h2 className="text-sm font-medium text-white/85">Style Dictionary</h2>
-              <p className="text-xs text-white/40">
-                {dictionary.rules.length} {dictionary.rules.length === 1 ? "rule" : "rules"} learned across {categories.length} {categories.length === 1 ? "category" : "categories"}
-              </p>
-            </div>
+      <div className="flex min-h-0 flex-1 gap-2 p-2" style={{ zoom: zoom / 100 }}>
+        {/* Category source list */}
+        <aside className="glass-thin grain relative flex w-60 shrink-0 flex-col overflow-hidden rounded-2xl animate-slide-in-left">
+          <div className="p-2">
+            <SearchField value={query} onChange={setQuery} placeholder="Filter rules" />
           </div>
-
-          {/* Category groups */}
-          <div className="space-y-6">
-            {categories.map((cat) => (
-              <div key={cat}>
-                {/* Category header */}
-                <div className="mb-3 flex items-center gap-2 text-white/40">
-                  {getCategoryMeta(cat).icon}
-                  <span className="text-xs font-medium uppercase tracking-wider">
-                    {getCategoryMeta(cat).label}
-                  </span>
-                  <span className="text-xs text-white/25">({grouped[cat].length})</span>
-                </div>
-
-                {/* Rules grid */}
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  {grouped[cat].map((rule) => (
-                    <RuleCard
-                      key={rule.id}
-                      rule={rule}
-                      isRegenerating={regeneratingRule === rule.component}
-                      onRegenerate={(instruction) => handleRegenerate(rule.component, instruction)}
+          <div className="px-4.5 pt-2 pb-1.5 text-section">Categories</div>
+          <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            {sidebarItems.map((item) => {
+              const active = activeCategory === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveCategory(item.id)}
+                  className={cn(
+                    "focus-ring relative flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition-colors",
+                    active ? "text-label" : "text-label-secondary hover:bg-fill-quaternary hover:text-label",
+                  )}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="style-dict-selection"
+                      transition={reduceMotion ? { duration: 0 } : { type: "spring", bounce: 0.2, duration: 0.45 }}
+                      className="absolute inset-0 rounded-md bg-brand/20 ring-[0.5px] ring-brand/30"
                     />
-                  ))}
-                </div>
-              </div>
-            ))}
+                  )}
+                  <span className={cn("relative [&_svg]:size-4", active ? "text-brand" : "text-label-tertiary")}>{item.icon}</span>
+                  <span className="relative min-w-0 flex-1 truncate">{item.label}</span>
+                  <span className="relative text-2xs tabular-nums text-label-tertiary">{item.count}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="flex h-9 shrink-0 items-center border-t border-separator px-4 text-2xs text-label-tertiary">
+            {dictionary.updatedAt && !isNaN(Date.parse(dictionary.updatedAt))
+              ? `Updated ${new Date(dictionary.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+              : `${categories.length} ${categories.length === 1 ? "category" : "categories"}`}
           </div>
-        </div>
+        </aside>
+
+        {/* Rules */}
+        <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl">
+          <div className="mx-auto w-full max-w-3xl px-8 pt-8 pb-16">
+            <header className="mb-8">
+              <p className="text-section">{activeCategory === "all" ? "Every category" : getCategoryMeta(activeCategory).label}</p>
+              <h1 className="mt-1.5 text-large-title text-label">Style Dictionary</h1>
+              <p className="mt-2 text-sm text-label-secondary">
+                <NumberTicker value={dictionary.rules.length} className="tabular-nums text-label" /> {dictionary.rules.length === 1 ? "rule" : "rules"} learned across{" "}
+                {categories.length} {categories.length === 1 ? "category" : "categories"}
+              </p>
+            </header>
+
+            <AnimatePresence mode="popLayout" initial={false}>
+              {visibleGroups.length === 0 ? (
+                <motion.div key="none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <EmptyState icon={<Wand2 />} title="No rules match" description="Try another word or category." />
+                </motion.div>
+              ) : visibleGroups.map(({ cat, rules }) => (
+                <motion.section
+                  key={cat}
+                  layout={!reduceMotion}
+                  initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.45 }}
+                  className="mb-8"
+                >
+                  <div className="mb-2 flex items-center gap-2 px-1">
+                    <span className="text-label-tertiary [&_svg]:size-3.5">{getCategoryMeta(cat).icon}</span>
+                    <span className="text-section">{getCategoryMeta(cat).label}</span>
+                    <Badge variant="outline" className="tabular-nums">{rules.length}</Badge>
+                  </div>
+                  <div className="overflow-hidden rounded-lg bg-fill-quaternary hairline [&>*+*]:border-t [&>*+*]:border-separator">
+                    {rules.map((rule) => (
+                      <RuleCard
+                        key={rule.id}
+                        rule={rule}
+                        isRegenerating={regeneratingRule === rule.component}
+                        onRegenerate={(instruction) => handleRegenerate(rule.component, instruction)}
+                      />
+                    ))}
+                  </div>
+                </motion.section>
+              ))}
+            </AnimatePresence>
+          </div>
+        </main>
       </div>
-    </div>
+    </WindowShell>
   );
 }
 
@@ -238,56 +364,55 @@ function RuleCard({
   };
 
   return (
-    <div
-      className="rounded-lg border border-white/[0.06] p-4"
-      style={{ background: "var(--bg-surface)" }}
-    >
+    <div className="group/rule px-4 py-4">
       {/* Rule header */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-white/85">{rule.pattern}</div>
-          <div className="mt-0.5 font-mono text-xs text-white/30">{rule.component}</div>
+          <div className="text-headline text-label">{rule.pattern}</div>
+          <div className="mt-0.5 font-mono text-2xs text-label-tertiary">.{rule.component}</div>
         </div>
         <button
           onClick={() => onRegenerate()}
           disabled={isRegenerating}
           title="Regenerate with a different style"
-          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+          className={cn(
+            "focus-ring pressable inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium",
             isRegenerating
-              ? "text-[var(--accent-brand)]"
-              : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
-          }`}
+              ? "bg-brand/15 text-brand"
+              : "bg-fill-tertiary text-label-secondary hover:bg-fill-secondary hover:text-label",
+          )}
         >
           {isRegenerating ? (
-            <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+            <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />
           ) : (
-            <RefreshCw className="h-3 w-3" strokeWidth={1.5} />
+            <RefreshCw className="size-3.5" strokeWidth={1.75} />
           )}
-          Regen
+          {isRegenerating ? "Regenerating" : "Regenerate"}
         </button>
       </div>
 
       {/* Live preview — renders exactly like in the reader */}
-      <div
-        className="mt-3 overflow-hidden rounded-lg border border-white/[0.06] p-4"
-        style={{ background: "var(--bg-inset)" }}
-        data-reading-theme="dark"
-        dangerouslySetInnerHTML={{ __html: rule.exampleHtml }}
-      />
+      <div className="relative mt-3">
+        <span className="absolute right-2.5 top-2 z-10 text-2xs font-medium uppercase tracking-wide text-label-quaternary">Preview</span>
+        <div
+          className={cn("overflow-hidden rounded-md bg-inset p-4 hairline transition-opacity", isRegenerating && "animate-pulse opacity-60")}
+          data-reading-theme="dark"
+          dangerouslySetInnerHTML={{ __html: rule.exampleHtml }}
+        />
+      </div>
 
       {/* Instruction input */}
       {!showInput ? (
         <button
           onClick={() => setShowInput(true)}
           disabled={isRegenerating}
-          className={`mt-2 text-xs transition-colors ${
-            isRegenerating ? "text-white/15" : "text-white/30 hover:text-white/50"
-          }`}
+          className="focus-ring mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs text-label-tertiary transition-colors hover:bg-fill-quaternary hover:text-label-secondary disabled:opacity-40"
         >
-          + Add instructions for regeneration
+          <Plus className="size-3.5" strokeWidth={2} />
+          Add instructions for regeneration
         </button>
       ) : (
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className="mt-2.5 flex h-9 items-center gap-1.5 rounded-full bg-fill-tertiary pl-3.5 pr-1 animate-fade-in focus-within:shadow-[0_0_0_3px_var(--accent-brand-dim)]">
           <input
             type="text"
             value={instruction}
@@ -295,14 +420,15 @@ function RuleCard({
             onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") { setShowInput(false); setInstruction(""); } }}
             placeholder='e.g. "use badges instead" or "make it more compact"'
             autoFocus
-            className="flex-1 rounded-lg border border-white/[0.06] bg-[var(--bg-inset)] px-2.5 py-1.5 text-xs text-white/80 placeholder-white/20 outline-none focus:border-[var(--accent-brand)]/40"
+            className="min-w-0 flex-1 bg-transparent text-sm text-label outline-none placeholder:text-label-tertiary select-text"
           />
           <button
             onClick={handleSubmit}
             disabled={isRegenerating}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-brand)]/15 text-[var(--accent-brand)] transition-colors hover:bg-[var(--accent-brand)]/25"
+            title="Regenerate with instructions"
+            className="focus-ring pressable flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg disabled:opacity-40"
           >
-            <Send className="h-3 w-3" strokeWidth={1.5} />
+            <ArrowUp className="size-3.5" strokeWidth={2.25} />
           </button>
         </div>
       )}

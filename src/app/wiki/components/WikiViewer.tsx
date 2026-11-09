@@ -7,7 +7,7 @@ import {
   User, Swords, MapPin, Flame, Lightbulb,
   BookOpen, GitBranch, Clock, ChevronRight, ChevronDown, Hash,
   Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity,
-  Quote, Sparkles,
+  Quote,
 } from "lucide-react";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { Badge } from "@/components/ui/badge";

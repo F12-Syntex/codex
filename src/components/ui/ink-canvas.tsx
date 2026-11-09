@@ -67,7 +67,7 @@ float fbm(vec2 p) {
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   float aspect = u_res.x / u_res.y;
-  vec2 p = (uv - 0.5) * vec2(aspect, 1.0) * 1.6;
+  vec2 p = (uv - 0.5) * vec2(aspect, 1.0) * 0.9;
   float t = u_time;
   p += vec2(t * 0.018, -t * 0.012);
 
@@ -76,19 +76,19 @@ void main() {
   vec2 r = vec2(fbm(p + 2.2 * q + vec2(1.7, 9.2) + t * 0.02),
                 fbm(p + 2.2 * q + vec2(8.3, 2.8) - t * 0.018));
   float f = fbm(p + 2.6 * r);
-  f = clamp(0.5 + (f - 0.5) * 2.2, 0.0, 1.0);
+  f = clamp(0.5 + (f - 0.5) * 1.5, 0.0, 1.0);
 
   // Ink pools concentrate toward the upper-left and lower-right like light.
   float bias = smoothstep(1.25, 0.0, length(uv - vec2(0.08, 1.05)))
              + 0.6 * smoothstep(1.1, 0.0, length(uv - vec2(1.0, -0.05)));
-  float ink = smoothstep(0.35, 0.95, f) * (0.35 + 0.65 * bias);
+  float ink = smoothstep(0.3, 1.0, f) * (0.15 + 0.85 * bias);
 
-  vec3 col = mix(u_base, u_deep, smoothstep(0.0, 0.6, f) * 0.6);
+  vec3 col = mix(u_base, u_deep, (1.0 - smoothstep(0.2, 0.8, f)) * 0.3);
   col = mix(col, u_ink, ink * u_intensity);
 
   // Fine veins where the warp folds over itself.
   float vein = smoothstep(0.012, 0.0, abs(fract(f * 6.0 + length(r)) - 0.5) - 0.48);
-  col = mix(col, u_ink, vein * 0.05 * u_intensity);
+  col = mix(col, u_ink, vein * 0.025 * u_intensity);
 
   // Vignette (darkens in dark mode, lifts nothing in light).
   float vd = length(uv - 0.5) * 1.3;
@@ -96,7 +96,7 @@ void main() {
 
   // Film grain.
   float g = grainHash(gl_FragCoord.xy + fract(t) * 91.0) - 0.5;
-  col += g * mix(0.035, 0.025, u_light);
+  col += g * mix(0.018, 0.012, u_light);
 
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
@@ -123,7 +123,7 @@ const mix = (a: RGB, b: RGB, t: number): RGB => [
   a[2] + (b[2] - a[2]) * t,
 ];
 
-export function InkCanvas({ className, accentKey, intensity = 0.55, still = false }: InkCanvasProps) {
+export function InkCanvas({ className, accentKey, intensity = 0.42, still = false }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {

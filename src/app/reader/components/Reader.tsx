@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { AnimatePresence } from "motion/react";
 import { Loader2, MessageCircle, Quote } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
@@ -1187,11 +1188,18 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const footerHeight = settings.immersiveMode && !immersiveVisible ? 0 : FOOTER_HEIGHT;
 
   return (
-    <div className={`flex h-screen flex-col ${theme.bg} transition-colors duration-300`}>
-      {/* Header */}
-      <header className={`relative shrink-0 border-b ${theme.surface} ${theme.border}`}>
+    <div
+      className={`relative flex h-screen flex-col ${theme.bg} transition-colors duration-500 ease-apple`}
+      // Light/sepia paper: chrome tokens switch to the light appearance so the
+      // glass reads correctly on the page. --reader-paper = solid page colour.
+      data-appearance={settings.readingTheme === "dark" ? undefined : "light"}
+      style={{ "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw } as React.CSSProperties}
+    >
+      {/* Header — floating pills on the paper, no bar */}
+      <header className="relative z-30 shrink-0">
         <ReaderHeader
           title={title} author={author} theme={theme}
+          chapterTitle={bookContent ? chapterTitle : undefined}
           readingTheme={settings.readingTheme} maximized={maximized}
           isFullscreen={isFullscreen} hasMultipleChapters={chapters.length > 1}
           isImageBook={isImageBook} isBookmarked={!!bookmarkState.currentBookmark}
@@ -1208,47 +1216,14 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onOpenQuotes={() => window.electronAPI?.openQuotes({ filePath, title })}
         />
 
-        {/* TTS Panel */}
-        {showTTS && !isImageBook && (
-          <TTSPanel
-            theme={theme}
-            state={tts.state}
-            voices={tts.voices}
-            selectedVoice={settings.ttsVoice}
-            rate={settings.ttsRate}
-            volume={settings.ttsVolume}
-            autoAdvance={settings.ttsAutoAdvance}
-            highlightMode={settings.ttsHighlightMode}
-            showReadMark={settings.ttsShowReadMark}
-            currentParagraph={ttsProgress.current}
-            totalParagraphs={ttsProgress.total}
-            estimatedSeconds={ttsProgress.estimatedSeconds}
-            onPlayFromStart={() => tts.actions.playFrom(0)}
-            onPlayFromCurrent={() => {
-              // Resume from last read position if available, otherwise start from first visible paragraph
-              const persisted = persistedReadMarks[currentChapter] ?? -1;
-              const resumeFrom = persisted >= firstVisiblePara ? persisted + 1 : firstVisiblePara;
-              tts.actions.playFrom(resumeFrom);
-            }}
-            onPause={() => tts.actions.pause()}
-            onResume={() => tts.actions.play()}
-            onStop={() => tts.actions.stop()}
-            onSkipPrev={() => tts.actions.skipPrev()}
-            onSkipNext={() => tts.actions.skipNext()}
-            onVoiceChange={(v) => updateSetting("ttsVoice", v)}
-            onRateChange={(r) => updateSetting("ttsRate", r)}
-            onVolumeChange={(v) => updateSetting("ttsVolume", v)}
-            onAutoAdvanceChange={(a) => updateSetting("ttsAutoAdvance", a)}
-            onHighlightModeChange={(m) => updateSetting("ttsHighlightMode", m)}
-            onShowReadMarkChange={(s) => updateSetting("ttsShowReadMark", s)}
-            onClose={() => setShowTTS(false)}
-          />
-        )}
-
         {/* Text Settings Panel */}
+        <AnimatePresence>
         {showTextSettings && !isImageBook && (
           <TextSettingsPanel
+            key="text-settings"
             theme={theme} fontFamily={settings.fontFamily} fontSize={settings.fontSize}
+            readingTheme={settings.readingTheme}
+            onThemeChange={(t) => updateSetting("readingTheme", t)}
             lineHeight={settings.lineHeight} paraSpacing={settings.paraSpacing}
             textPadding={settings.textPadding} maxTextWidth={settings.maxTextWidth}
             animatedPageTurn={settings.animatedPageTurn} immersiveMode={settings.immersiveMode}
@@ -1264,14 +1239,17 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             onClose={() => setShowTextSettings(false)}
           />
         )}
+        </AnimatePresence>
       </header>
 
       {/* Main area: content + footer as siblings in a column */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Content area — sidebar overlays this, not the footer */}
         <div ref={readerContentRef} className="relative flex-1 overflow-hidden">
+          <AnimatePresence>
           {showTOC && chapters.length > 1 && (
             <TOCSidebar
+              key="toc"
               chapters={chapters} currentChapter={currentChapter}
               bookmarks={bookmarkState.bookmarks} theme={theme}
               chapterLabels={chapterLabels}
@@ -1291,6 +1269,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               onClose={() => setShowTOC(false)}
             />
           )}
+          </AnimatePresence>
 
           {showAI && (
             <AISidebar
@@ -1496,7 +1475,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         )}
 
         {/* Floating row above footer — buddy button + bulk progress dock */}
-        <div className="absolute bottom-14 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4 pointer-events-none">
+        <div className="pointer-events-none absolute bottom-17 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4">
           {/* Bulk progress dock */}
           {bulkRun.showDock && (
             <div className="pointer-events-auto">
@@ -1545,10 +1524,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
                 )}
                 <button
                   onClick={() => setShowBuddy((v) => !v)}
-                  className={`flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.08] bg-[var(--bg-surface)] shadow-lg shadow-black/30 transition-all hover:bg-[var(--bg-elevated)] ${showBuddy ? "bg-white/[0.08]" : ""}`}
-                  style={{ boxShadow: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(0,0,0,0.3)" }}
+                  aria-label="AI reading buddy"
+                  className={`focus-ring pressable flex size-11 items-center justify-center rounded-full transition-colors duration-150 ${showBuddy ? "bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]" : "glass text-brand"}`}
                 >
-                  <MessageCircle className="h-5 w-5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+                  <MessageCircle className="size-5" strokeWidth={1.75} />
                 </button>
               </div>
             </div>
@@ -1557,14 +1536,11 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
         {/* Quote saved toast */}
         <div
-          className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2 transition-all duration-300"
+          className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-spring"
           style={{ opacity: quoteToastVisible ? 1 : 0, transform: `translateX(-50%) translateY(${quoteToastVisible ? "0" : "6px"})` }}
         >
-          <div
-            className="flex items-center gap-2 rounded-lg border border-white/[0.08] px-3.5 py-2 text-xs text-white/80 shadow-lg shadow-black/40 backdrop-blur-xl"
-            style={{ backgroundColor: "var(--bg-overlay)" }}
-          >
-            <Quote className="h-3.5 w-3.5 text-[var(--accent-brand)]" strokeWidth={1.5} />
+          <div className="glass-thick flex h-9 items-center gap-2 rounded-full px-4 text-xs font-medium text-label">
+            <Quote className="size-3.5 text-brand" strokeWidth={2} />
             Quote saved
           </div>
         </div>
@@ -1579,6 +1555,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           canGoNext={!activeBranch && (currentPage < totalPages - 1 || currentChapter < chapters.length - 1)}
           onPrev={goPrevPage}
           onNext={goNextPage}
+          onSeekPage={activeBranch ? undefined : setCurrentPage}
+          showPlayback={!isImageBook}
+          showTTS={showTTS}
+          onTTSToggle={toggleTTS}
+          speedReaderActive={speedReaderActive}
+          onSpeedReaderToggle={handleSpeedReaderToggle}
           ttsStatus={tts.state.status}
           estimatedSeconds={ttsProgress.estimatedSeconds}
           branchMode={!!activeBranch}
@@ -1593,6 +1575,46 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           chapterLabels={chapterLabels}
         />}
       </div>
+
+      {/* TTS Panel — rises above the footer pill */}
+      <AnimatePresence>
+      {showTTS && !isImageBook && (
+        <TTSPanel
+          key="tts"
+          theme={theme}
+          state={tts.state}
+          voices={tts.voices}
+          selectedVoice={settings.ttsVoice}
+          rate={settings.ttsRate}
+          volume={settings.ttsVolume}
+          autoAdvance={settings.ttsAutoAdvance}
+          highlightMode={settings.ttsHighlightMode}
+          showReadMark={settings.ttsShowReadMark}
+          currentParagraph={ttsProgress.current}
+          totalParagraphs={ttsProgress.total}
+          estimatedSeconds={ttsProgress.estimatedSeconds}
+          onPlayFromStart={() => tts.actions.playFrom(0)}
+          onPlayFromCurrent={() => {
+            // Resume from last read position if available, otherwise start from first visible paragraph
+            const persisted = persistedReadMarks[currentChapter] ?? -1;
+            const resumeFrom = persisted >= firstVisiblePara ? persisted + 1 : firstVisiblePara;
+            tts.actions.playFrom(resumeFrom);
+          }}
+          onPause={() => tts.actions.pause()}
+          onResume={() => tts.actions.play()}
+          onStop={() => tts.actions.stop()}
+          onSkipPrev={() => tts.actions.skipPrev()}
+          onSkipNext={() => tts.actions.skipNext()}
+          onVoiceChange={(v) => updateSetting("ttsVoice", v)}
+          onRateChange={(r) => updateSetting("ttsRate", r)}
+          onVolumeChange={(v) => updateSetting("ttsVolume", v)}
+          onAutoAdvanceChange={(a) => updateSetting("ttsAutoAdvance", a)}
+          onHighlightModeChange={(m) => updateSetting("ttsHighlightMode", m)}
+          onShowReadMarkChange={(s) => updateSetting("ttsShowReadMark", s)}
+          onClose={() => setShowTTS(false)}
+        />
+      )}
+      </AnimatePresence>
 
     </div>
   );
