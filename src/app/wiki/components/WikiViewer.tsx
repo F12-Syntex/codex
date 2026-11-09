@@ -10,7 +10,7 @@
  * are undone with `knowledge:edits:undo`. The assistant is the shared `<AssistantPanel host="wiki">`.
  */
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search, ArrowLeft, User,
@@ -28,6 +28,7 @@ import { BlurFade } from "@/components/ui/blur-fade";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { SearchField } from "@/components/ui/search-field";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { hasRpc } from "@/lib/ai/rpc";
 import { knowledge } from "@/lib/knowledge/bridge";
@@ -55,6 +56,16 @@ const TYPE_META = Object.fromEntries(
 ) as Record<WikiEntryType, SidebarTypeMeta>;
 
 const TYPE_ORDER = WIKI_TYPE_ORDER;
+
+const noopSubscribe = () => () => {};
+
+/**
+ * Whether the RPC bridge exists, without a hydration branch (conventions §13.12): `null` on the
+ * server and during hydration (render "Opening the wiki…", as the server did), then the real answer.
+ */
+function useRpcReady(): boolean | null {
+  return useSyncExternalStore<boolean | null>(noopSubscribe, hasRpc, () => null);
+}
 
 /** "Show everything": an ungated read for this window only. */
 const SHOW_ALL: Frontier = { chapterIndex: -1, mode: "off" };
@@ -149,6 +160,8 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
   const [history, setHistory] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<WikiView>("encyclopedia");
   const [showAll, setShowAll] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const rpcReady = useRpcReady();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chapterLabels, setChapterLabels] = useState<ChapterLabels>({});
 
@@ -297,7 +310,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
     </WindowChrome>
   );
 
-  const isLoading = !!filePath && hasRpc() && !snap && !wiki.error;
+  const isLoading = !!filePath && rpcReady !== false && !snap && !wiki.error;
 
   if (isLoading) {
     return (
@@ -374,7 +387,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
 
           {/* Scrollable views */}
           {(selectedEntry || selectedHidden || activeView !== "graph") && (
-            <div ref={scrollRef} className="h-full overflow-y-auto pb-28">
+            <div ref={scrollRef} className={cn("h-full overflow-y-auto pb-28", assistantOpen && "pr-[436px]")}>
               <div key={contentKey} className="animate-blur-in">
                 {selectedEntry ? (
                   <EntryPage
@@ -424,6 +437,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
             bookTitle={bookTitle}
             frontierLabel={frontierLabel}
             onOpenEntity={navigateTo}
+            onOpenChange={setAssistantOpen}
           />
         </main>
       </div>
@@ -761,7 +775,12 @@ function HomePage({
   chapterLabels: ChapterLabels;
 }) {
   const mainCharacters = entries.filter((e) => e.type === "character" && e.significance >= 3).slice(0, 6);
-  const recentEntries = [...entries].sort((a, b) => b.first_appearance - a.first_appearance).slice(0, 8);
+  // Say it once (conventions §13.2): an entry shown under Main Characters isn't repeated here.
+  const mainIds = new Set(mainCharacters.map((e) => e.id));
+  const recentEntries = entries
+    .filter((e) => !mainIds.has(e.id))
+    .sort((a, b) => b.first_appearance - a.first_appearance)
+    .slice(0, 8);
   const arcSpan = Math.max(processedCount, 1, ...arcs.map((a) => (a.endChapter ?? a.startChapter) + 1));
 
   return (
@@ -813,8 +832,8 @@ function HomePage({
               <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {mainCharacters.map((e, i) => (
                   <BlurFade key={e.id} delay={0.03 * i}>
-                    <button onClick={() => onEntryClick(e.id)} className="focus-ring group block h-full w-full rounded-2xl text-left">
-                      <SpotlightCard className="glass-thin relative flex h-full flex-col rounded-2xl p-4 transition-shadow duration-200 group-hover:shadow-md">
+                    <button onClick={() => onEntryClick(e.id)} className="focus-ring group block h-full w-full rounded-lg text-left">
+                      <SpotlightCard className="relative flex h-full flex-col rounded-lg bg-fill-quaternary p-4 hairline transition-colors duration-200 group-hover:bg-fill-tertiary">
                         <div className="flex items-center gap-3">
                           <EntityAvatar name={e.name} type="character" meta={TYPE_META.character} size="lg" />
                           <div className="min-w-0 flex-1">
@@ -1124,19 +1143,22 @@ function EntryPage({
             <span aria-hidden className="absolute -inset-6 rounded-full opacity-60 blur-2xl" style={{ background: meta.bg }} />
             <EntityAvatar name={entry.name} type={entry.type} meta={meta} size="xl" className="relative" />
           </div>
-          {/* Monogram → name → Type · Status. Everything else lives in the info card. */}
+          {/* Monogram → name → type. Status and the rest live in the info card (say it once). */}
           <h1 className="mt-5 text-large-title font-display text-label text-balance">{entry.name}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <Badge className="gap-1.5">
-              <span className="size-1.5 rounded-full" style={{ background: meta.color }} />
+            {/* The type is a tinted label; the aliases below are outlined names — never the same chip. */}
+            <span
+              className="inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium"
+              style={{ background: meta.bg, color: meta.color }}
+            >
+              {meta.icon}
               {meta.label}
-            </Badge>
-            <Badge variant="outline" className="capitalize">{entry.status}</Badge>
+            </span>
           </div>
           {primaryAliases.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Also known as">
               {primaryAliases.map((a) => (
-                <span key={a.alias} className="inline-flex h-6 items-center gap-1.5 rounded-full bg-fill-tertiary px-2.5 text-xs text-label-secondary">
+                <span key={a.alias} className="inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs text-label-secondary ring-[0.5px] ring-separator-strong ring-inset">
                   {a.alias}
                   {a.alias_type !== "name" && <span className="text-2xs text-label-secondary">{a.alias_type}</span>}
                 </span>
@@ -1250,9 +1272,6 @@ function EntryPage({
                 <InfoRow label="First seen" value={`Chapter ${entry.firstAppearance + 1}`} />
                 <InfoRow label="Appearances" value={`${entry.chapterAppearances.length}`} />
                 <InfoRow label="Significance" value={entry.significance >= 3 ? "★".repeat(entry.significance) : `${entry.significance}/5`} />
-                {primaryAliases.length > 0 && (
-                  <InfoRow label="Names" value={primaryAliases.map((a) => a.alias).join(", ")} />
-                )}
                 {historicalAliases.length > 0 && (
                   <InfoRow label="Other refs" value={`${historicalAliases.length} contextual`} />
                 )}

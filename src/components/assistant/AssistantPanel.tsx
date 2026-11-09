@@ -2,11 +2,15 @@
 
 /**
  * AssistantPanel — the one assistant surface (replaces AIBuddyPanel, BuddyWindow chat, WikiAIChat
- * and ExplainPanel; AI_AUDIT §3). Glass `glass rounded-2xl` floating panel, 420×600, detachable.
+ * and ExplainPanel; AI_AUDIT §3). Glass `glass rounded-2xl` floating panel, 420 wide, detachable.
  *
- *   host "reader": floating above the reader footer (positioned by AssistantLauncher)
- *   host "wiki":   floating in the wiki window
- *   host "buddy":  fills the detached Buddy window (no float, no close)
+ *   host "reader": a tenant of the reader's right-hand inspector slot (conventions §13.11): it
+ *                  fills the slot AssistantLauncher positions, so it never reaches the header.
+ *   host "wiki":   floating in the wiki window (420×600)
+ *   host "buddy":  fills the detached Buddy window (no float, no close); text keeps a 672px measure
+ *
+ * A floating panel is one Esc layer (conventions §13.9): Esc dismisses it wherever focus is, and
+ * stops there. The composer takes focus on open, in every host.
  *
  * Spoiler-safe by construction: every answer is produced in main by `assistant.turn`, whose tools
  * and citations are clamped to the reader's frontier.
@@ -102,7 +106,16 @@ export function AssistantPanel({
   const [pendingSeed, setPendingSeed] = React.useState<AssistantSeed | undefined>(seed);
   const [pendingMode, setPendingMode] = React.useState<AssistantMode>("chat");
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const panelRef = React.useRef<HTMLElement>(null);
   const handled = React.useRef<number>(0);
+
+  // Take focus on open, whichever host and however it was opened (pill click, openAssistant…).
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      if (!panelRef.current?.contains(document.activeElement)) inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const ui = React.useMemo(
     () => ({ filePath, reveal: onReveal ?? defaultReveal(filePath), ...(onOpenEntity ? { openEntity: onOpenEntity } : {}) }),
@@ -155,22 +168,53 @@ export function AssistantPanel({
   const empty = a.messages.length === 0;
   const title = a.thread?.title ?? (bookTitle ? `Ask about ${bookTitle}` : "Assistant");
 
+  // One Esc layer (conventions §13.9): while floating, Esc closes the panel wherever focus is
+  // (the pill, the page, the composer), and nothing else. Document capture runs after the
+  // window-capture handlers of surfaces stacked above the panel (EntityCard, selection toolbar,
+  // Define), which claim Esc with preventDefault, and before the host's own window Esc chain,
+  // which bails on defaultPrevented, so Esc never reaches the window.
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+  const dismissible = floating && !!onClose;
+  React.useEffect(() => {
+    if (!dismissible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.isComposing) return;
+      // A menu, popover or modal above the panel (portaled Radix layers) owns this Esc.
+      const target = e.target instanceof Element ? e.target : null;
+      const layer = target?.closest('[role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]');
+      if (layer && layer !== panelRef.current) return;
+      if (document.querySelector('[data-radix-popper-content-wrapper] [role="menu"], [data-radix-popper-content-wrapper] [role="dialog"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onCloseRef.current?.();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [dismissible]);
+
+  const floatingStyle: React.CSSProperties | undefined = !floating
+    ? undefined
+    : host === "reader"
+      ? // The reader's inspector slot (below the header, above the footer row) sizes the panel.
+        { width: 420, height: "100%", transformOrigin: "bottom right" }
+      : { width: 420, height: 600, maxHeight: "calc(100vh - 96px)", transformOrigin: "bottom right" };
+  /** Buddy fills a whole window: keep the conversation to a readable measure (max-w-2xl, 672px). */
+  const measure = floating ? undefined : "mx-auto w-full max-w-2xl";
+
   return (
     <AssistantUIProvider value={ui}>
       <motion.section
+        ref={panelRef}
         role="dialog"
         aria-label="Reading assistant"
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && floating && onClose && !e.defaultPrevented) {
-            e.stopPropagation();
-            onClose();
-          }
-        }}
         initial={floating ? (reduce ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.96 }) : false}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.97 }}
         transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
-        style={floating ? { width: 420, height: 600, maxHeight: "calc(100vh - 96px)", transformOrigin: "bottom right" } : undefined}
+        style={floatingStyle}
         className={cn(
           material, "grain relative flex flex-col overflow-hidden text-label",
           floating ? "rounded-2xl" : "h-full w-full",
@@ -219,26 +263,27 @@ export function AssistantPanel({
             <QuickActions onPick={onQuick} disabled={a.busy} className="mt-2" />
           </div>
         ) : (
-          <Thread messages={a.messages} streamText={a.streamText} onDecide={a.decide} onRetry={(t) => void sendNow(t)} />
+          <Thread messages={a.messages} streamText={a.streamText} onDecide={a.decide} onRetry={(t) => void sendNow(t)} contentClassName={measure} />
         )}
 
         {/* Composer */}
         <footer className="shrink-0 px-3 pt-1 pb-3">
-          {a.error && <p className="mb-1.5 px-1 text-2xs text-danger">{a.error}</p>}
-          {pendingSeed && (pendingSeed.selection || pendingSeed.entityId) && (
-            <SeedChip seed={pendingSeed} filePath={filePath} onClear={() => setPendingSeed(undefined)} />
-          )}
-          <Composer
-            inputRef={inputRef}
-            value={draft}
-            onValueChange={setDraft}
-            onSend={() => void sendNow(draft, pendingSeed)}
-            onStop={a.stop}
-            busy={a.busy}
-            disabled={!a.available}
-            autoFocus={host === "buddy"}
-            placeholder={pendingSeed?.selection ? "Ask about this passage…" : "Ask about the book…"}
-          />
+          <div className={measure}>
+            {a.error && <p className="mb-1.5 px-1 text-2xs text-danger">{a.error}</p>}
+            {pendingSeed && (pendingSeed.selection || pendingSeed.entityId) && (
+              <SeedChip seed={pendingSeed} filePath={filePath} onClear={() => setPendingSeed(undefined)} />
+            )}
+            <Composer
+              inputRef={inputRef}
+              value={draft}
+              onValueChange={setDraft}
+              onSend={() => void sendNow(draft, pendingSeed)}
+              onStop={a.stop}
+              busy={a.busy}
+              disabled={!a.available}
+              placeholder={pendingSeed?.selection ? "Ask about this passage…" : "Ask about the book…"}
+            />
+          </div>
         </footer>
       </motion.section>
     </AssistantUIProvider>

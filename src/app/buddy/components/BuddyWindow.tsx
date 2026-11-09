@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * The detached Buddy window: the unified assistant (`<AssistantPanel host="buddy">`) beside a
- * companion card. Conversations live in main (`assistant_threads`), so opening the window picks up
- * the conversation the reader was having (the `threadId` URL param, or the most recent thread)
- * instead of starting empty — the old window replaced its history with whatever the last panel had
- * written to `buddyMessages:<path>`.
+ * The detached Buddy window: the unified assistant (`<AssistantPanel host="buddy">`) in a centred
+ * reading column (answers keep a ≤ 672px measure). Progress lives once, in the title bar
+ * ("Dune · Chapter 3 of 6"); the panel's empty state carries the spoiler line. Conversations live in
+ * main (`assistant_threads`), so opening the window picks up the conversation the reader was having
+ * (the `threadId` URL param, or the most recent thread) instead of starting empty.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Sparkles, BookOpen, Library } from "lucide-react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Sparkles } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Frontier } from "@shared/knowledge/types";
 import { AssistantPanel } from "@/components/assistant";
@@ -17,7 +17,17 @@ import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { ShimmerText } from "@/components/ui/shimmer-text";
 import { assistant } from "@/lib/assistant/bridge";
 import { hasRpc } from "@/lib/ai/rpc";
-import { useEntityIndex, useFrontier } from "@/lib/knowledge/useKnowledge";
+import { useFrontier } from "@/lib/knowledge/useKnowledge";
+
+const noopSubscribe = () => () => {};
+
+/**
+ * Whether the RPC bridge exists, without a hydration branch (conventions §13.12): `null` on the
+ * server and during hydration (render the "waking" state, like the server did), then the real answer.
+ */
+function useRpcReady(): boolean | null {
+  return useSyncExternalStore<boolean | null>(noopSubscribe, hasRpc, () => null);
+}
 
 interface BuddyWindowProps {
   filePath: string;
@@ -39,13 +49,12 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
   const [zoom, setZoom] = useState(100);
   const reduceMotion = useReducedMotion();
   const frontier = useFrontier(filePath);
-  const entities = useEntityIndex(filePath, frontier);
-  const wikiEntryCount = entities.data?.length ?? 0;
+  const rpcReady = useRpcReady();
 
   // Resolve the conversation to continue BEFORE mounting the panel (it reads `threadId` once).
-  const canResolve = !!filePath && hasRpc();
+  const canResolve = !!filePath && rpcReady === true;
   const [resolvedThread, setResolvedThread] = useState<string | null | undefined>(threadId ?? undefined);
-  const initialThread = canResolve ? resolvedThread : null;
+  const initialThread = rpcReady === null ? undefined : canResolve ? resolvedThread : null;
   useEffect(() => {
     if (resolvedThread !== undefined || !canResolve) return;
     let alive = true;
@@ -64,7 +73,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
 
   const chapter = reachedChapter(frontier, currentChapter);
   const frontierLabel = frontier?.mode === "off" ? undefined : `Chapter ${chapter}`;
-  const progress = totalChapters > 0 ? Math.min(1, chapter / totalChapters) : 0;
+  const subtitle = totalChapters > 0 ? `${bookTitle} · Chapter ${Math.min(chapter, totalChapters)} of ${totalChapters}` : bookTitle;
 
   const openEntity = useMemo(
     () => (entryId: string) => void window.electronAPI?.openWiki({ filePath, title: bookTitle, entryId }),
@@ -75,7 +84,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
     <WindowChrome
       icon={<Sparkles strokeWidth={1.75} />}
       title="AI Buddy"
-      subtitle={bookTitle}
+      subtitle={subtitle}
       zoomKey="buddy"
       zoom={zoom}
       onZoomChange={setZoom}
@@ -108,47 +117,13 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
     <WindowShell>
       {chrome}
 
-      <div className="flex min-h-0 flex-1 gap-2 p-2">
-        {/* Companion card */}
-        <aside className="glass-thin grain relative hidden w-64 shrink-0 flex-col overflow-hidden rounded-2xl p-5 animate-slide-in-left lg:flex">
-          <h2 className="line-clamp-3 text-title font-display text-label text-balance">{bookTitle}</h2>
-
-          <div className="mt-8 space-y-4">
-            <div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-label-secondary">
-                  <BookOpen className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
-                  Chapter {chapter}
-                </span>
-                <span className="tabular-nums text-label-secondary">of {totalChapters}</span>
-              </div>
-              <div className="mt-2 h-1 overflow-hidden rounded-xs bg-fill-tertiary">
-                <motion.div
-                  className="h-full rounded-xs bg-brand"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress * 100}%` }}
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.9 }}
-                />
-              </div>
-            </div>
-            {wikiEntryCount > 0 && (
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-label-secondary">
-                  <Library className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
-                  Wiki knowledge
-                </span>
-                <span className="tabular-nums text-label-secondary">{wikiEntryCount} entries</span>
-              </div>
-            )}
-          </div>
-
-          <p className="mt-auto text-2xs leading-relaxed text-label-secondary">
-            Spoiler-safe: your buddy only knows what you&rsquo;ve read, up to chapter {chapter}.
-          </p>
-        </aside>
-
-        {/* Conversation — the panel is its own glass surface (no glass-in-glass). */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl animate-sheet-in" style={{ zoom: zoom / 100 }}>
+      {/* Conversation — one centred column, so answers keep a readable measure (≤ 672px).
+          The panel is its own glass surface (no glass-in-glass). */}
+      <div className="flex min-h-0 flex-1 justify-center px-2 pb-2">
+        <div
+          className="relative flex min-h-0 w-full max-w-2xl min-w-0 flex-col overflow-hidden rounded-2xl animate-sheet-in"
+          style={{ zoom: zoom / 100 }}
+        >
           <AssistantPanel
             host="buddy"
             filePath={filePath}

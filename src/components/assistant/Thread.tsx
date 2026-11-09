@@ -163,10 +163,12 @@ export interface ThreadProps {
   onDecide: (messageId: string, d: "apply" | "reject") => Promise<unknown>;
   onRetry?: (text: string) => void;
   className?: string;
+  /** Classes for the message column inside the scroller (e.g. Buddy's `mx-auto max-w-2xl` measure). */
+  contentClassName?: string;
   children?: React.ReactNode;
 }
 
-export function Thread({ messages, streamText, onDecide, onRetry, className, children }: ThreadProps) {
+export function Thread({ messages, streamText, onDecide, onRetry, className, contentClassName, children }: ThreadProps) {
   const scroller = React.useRef<HTMLDivElement>(null);
   const stick = React.useRef(true);
 
@@ -191,7 +193,7 @@ export function Thread({ messages, streamText, onDecide, onRetry, className, chi
 
   return (
     <div ref={scroller} onScroll={onScroll} className={cn("min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-3", className)}>
-      <div className="flex flex-col gap-3">
+      <div className={cn("flex flex-col gap-3", contentClassName)}>
         {messages.map((m, i) =>
           m.role === "user" ? (
             <UserTurn key={m.id} m={m} />

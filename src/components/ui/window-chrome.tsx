@@ -5,8 +5,9 @@
  * Wiki, Quotes, AI Buddy and Style Dictionary Electron windows. It matches the
  * main window exactly (conventions S9.5: one window chrome).
  *
- * - `WindowShell`: `app-canvas` body with a quiet, still frame of the
- *   `<InkCanvas>` behind everything, so glass surfaces have something to refract.
+ * - `WindowShell`: boots the window through the one theme hook (`useAppTheme`, conventions
+ *   §13.13: accent, tint, Light/Dim) and paints an `app-canvas` body with a quiet, still frame of
+ *   the `<InkCanvas>` behind everything, so glass surfaces have something to refract.
  * - `WindowChrome`: drag region, window glyph + serif title + `· subtitle`,
  *   optional zoom pill, and the shared `<WindowControls />` caption buttons.
  *
@@ -19,10 +20,12 @@ import { Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InkCanvas } from "@/components/ui/ink-canvas";
 import { WindowControls } from "@/components/window-controls";
+import { useAppTheme } from "@/lib/use-app-theme";
 
 /* ── Shell ─────────────────────────────────────────────────────────── */
 
 export function WindowShell({ children, className }: { children: React.ReactNode; className?: string }) {
+  useAppTheme({ appearance: true });
   return (
     <div className={cn("app-canvas relative isolate flex h-screen flex-col overflow-hidden text-label", className)}>
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">

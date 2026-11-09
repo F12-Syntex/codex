@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * WikiAssistant — the wiki window's one assistant: a glass "Ask about this book" pill that opens
- * the shared `<AssistantPanel host="wiki">` (replaces WikiAIChat). Answers are clamped to the
+ * WikiAssistant — the wiki window's one assistant: the same glass "Ask" pill as the reader
+ * (Sparkles · "Ask", bottom-right) that opens the shared `<AssistantPanel host="wiki">`. Answers are clamped to the
  * reader's frontier in main, whatever the wiki's "Show everything" switch says. Also opens on
  * `openAssistant(seed)` from anywhere in this window.
  */
@@ -20,9 +20,11 @@ interface WikiAssistantProps {
   frontierLabel?: string;
   /** Entity mentions in answers open the wiki article. */
   onOpenEntity: (entityId: string) => void;
+  /** Lets the wiki pad its article column while the panel is open. */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function WikiAssistant({ filePath, bookTitle, frontierLabel, onOpenEntity }: WikiAssistantProps) {
+export function WikiAssistant({ filePath, bookTitle, frontierLabel, onOpenEntity, onOpenChange }: WikiAssistantProps) {
   const [open, setOpen] = useState(false);
   const [request, setRequest] = useState<OpenAssistantRequest | null>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
@@ -38,6 +40,10 @@ export function WikiAssistant({ filePath, bookTitle, frontierLabel, onOpenEntity
     [filePath],
   );
 
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
+
   const close = useCallback(() => {
     setOpen(false);
     requestAnimationFrame(() => pillRef.current?.focus());
@@ -47,29 +53,26 @@ export function WikiAssistant({ filePath, bookTitle, frontierLabel, onOpenEntity
 
   return (
     <>
-      {/* Closed: floating glass pill */}
+      {/* Closed: the reader's floating "Ask" pill, bottom-right (one launcher across windows) */}
       <AnimatePresence>
         {!open && (
-          <motion.div
+          <motion.button
             key="pill"
-            className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center"
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96 }}
+            ref={pillRef}
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-expanded={false}
+            aria-label="Ask about this book"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
-            transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.97 }}
+            whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className="glass focus-ring absolute right-4 bottom-4 z-20 inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium text-label transition-colors duration-150 hover:text-brand"
           >
-            <button
-              ref={pillRef}
-              onClick={() => setOpen(true)}
-              aria-expanded={false}
-              className="glass focus-ring pressable pointer-events-auto group flex h-10 items-center gap-2.5 rounded-full pl-1.5 pr-4 text-sm font-medium text-label-secondary hover:text-label"
-            >
-              <span className="flex size-7 items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]">
-                <Sparkles className="size-3.5" strokeWidth={2} />
-              </span>
-              Ask about this book
-            </button>
-          </motion.div>
+            <Sparkles className="size-4" strokeWidth={1.75} />
+            Ask
+          </motion.button>
         )}
       </AnimatePresence>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles, Layers } from "lucide-react";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
@@ -33,11 +33,19 @@ interface SavedQuote {
 /** Kind chips are neutral (bg-fill-tertiary); only the icon carries the tint. */
 const KIND_LABELS: Record<string, { label: string; short: string; icon: React.ReactNode; tint: string }> = {
   dialogue: { label: "Dialogue", short: "Dialogue", icon: <MessageSquare className="size-3.5" strokeWidth={1.75} />, tint: "text-info" },
-  inner_thought: { label: "Inner Thought", short: "Thought", icon: <Eye className="size-3.5" strokeWidth={1.75} />, tint: "text-brand" },
+  inner_thought: { label: "Thought", short: "Thought", icon: <Eye className="size-3.5" strokeWidth={1.75} />, tint: "text-brand" },
   narration: { label: "Narration", short: "Narration", icon: <BookOpen className="size-3.5" strokeWidth={1.75} />, tint: "text-warning" },
   description: { label: "Description", short: "Description", icon: <Feather className="size-3.5" strokeWidth={1.75} />, tint: "text-success" },
   quote: { label: "Quote", short: "Quote", icon: <QuoteIcon className="size-3.5" strokeWidth={1.75} />, tint: "text-label-secondary" },
 };
+
+const noopSubscribe = () => () => {};
+const noRpcOnServer = () => false;
+
+/** Strip the source's own outer quotation marks; the card draws its own hanging marks. */
+function bareQuote(text: string): string {
+  return text.trim().replace(/^[“"]\s*/, "").replace(/\s*[”"]$/, "");
+}
 
 const ALL_KINDS = ["dialogue", "inner_thought", "narration", "description", "quote"];
 
@@ -57,6 +65,8 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
   const [zoom, setZoom] = useState(100);
   const [wordsOpen, setWordsOpen] = useState(false);
   const [wordsDue, setWordsDue] = useState<{ total: number; due: number } | null>(null);
+  // No hydration branch on hasRpc() (conventions §13.12): false on the server and while hydrating.
+  const rpcReady = useSyncExternalStore(noopSubscribe, hasRpc, noRpcOnServer);
 
   // Saved words (vocabulary deck) live beside the quotes; the pill shows how many are due.
   const loadWordStats = useCallback(() => {
@@ -196,7 +206,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
                 <SearchField
                   value={search}
                   onChange={setSearch}
-                  placeholder="Search quotes, speakers, chapters…"
+                  placeholder="Search quotes"
                   className="w-64"
                 />
                 <SegmentedControl
@@ -229,7 +239,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
               {loading ? (
                 <div className="columns-1 gap-4 md:columns-2 xl:columns-3">
                   {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="glass-thin mb-4 break-inside-avoid space-y-2.5 rounded-2xl p-5" style={{ opacity: 1 - i * 0.12 }}>
+                    <div key={i} className="mb-4 break-inside-avoid space-y-2.5 rounded-lg bg-fill-quaternary p-5 hairline" style={{ opacity: 1 - i * 0.12 }}>
                       <span className="block h-5 w-20 animate-pulse rounded-full bg-fill-tertiary" />
                       {Array.from({ length: 2 + (i % 3) }).map((_, j) => (
                         <span key={j} className="block h-3 animate-pulse rounded-full bg-fill-tertiary" style={{ width: `${92 - j * 14}%` }} />
@@ -254,7 +264,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
                       showBook={!filePath}
                       onDelete={handleDelete}
                       deleting={deletingId === quote.id}
-                      onClassify={hasRpc() ? handleClassify : undefined}
+                      onClassify={rpcReady ? handleClassify : undefined}
                       classifying={classifyingId === quote.id}
                     />
                   )}
@@ -343,7 +353,7 @@ function QuoteCard({
   const long = quote.text.length > 320;
 
   return (
-    <SpotlightCard className="glass-thin group relative rounded-2xl p-5 transition-shadow duration-200 hover:shadow-md">
+    <SpotlightCard className="group relative rounded-lg bg-fill-quaternary p-5 hairline transition-colors duration-200 hover:bg-fill-tertiary">
       <figure className="relative flex flex-col gap-4">
         {/* Meta */}
         <div className="flex h-6 items-center gap-2 pr-8">
@@ -376,7 +386,7 @@ function QuoteCard({
           style={{ textIndent: "-0.45em" }}
         >
           <span aria-hidden className="select-none" style={{ color: QUOTE_MARK }}>&ldquo;</span>
-          <span>{quote.text}</span>
+          <span>{bareQuote(quote.text)}</span>
           <span aria-hidden className="select-none" style={{ color: QUOTE_MARK }}>&rdquo;</span>
         </blockquote>
 
