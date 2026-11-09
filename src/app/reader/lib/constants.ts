@@ -1,37 +1,21 @@
 import type { ReaderSettings, ThemeClasses, CustomFont } from "./types";
+import { READER_FONTS, readerFontFaceCss, DEFAULT_READER_FONT, type ReaderFont } from "@shared/reader-fonts";
 
 export const SETTINGS_KEY = "readerSettings";
 
-// Custom fonts from public/fonts/
-export const CUSTOM_FONTS: CustomFont[] = [
-  { name: "Literata", family: "'Literata', Georgia, serif", file: "Literata.woff2" },
-  { name: "Lora", family: "'Lora', Georgia, serif", file: "Lora.woff2" },
-  { name: "Merriweather", family: "'Merriweather', Georgia, serif", file: "Merriweather.woff2" },
-  { name: "Source Serif", family: "'Source Serif 4', Georgia, serif", file: "SourceSerif4.woff2" },
-  { name: "Crimson Text", family: "'Crimson Text', Georgia, serif", file: "CrimsonText.woff2" },
-  { name: "Inter", family: "'Inter', system-ui, sans-serif", file: "Inter.woff2" },
-];
+// Fonts: one registry (@shared/reader-fonts) for the picker and the @font-face rules.
+const toCustomFont = (f: ReaderFont): CustomFont => ({ name: f.name, family: f.stack, file: f.files[0]?.file ?? "" });
 
-// Built-in system fonts
-export const BUILTIN_FONTS: CustomFont[] = [
-  { name: "Georgia", family: "Georgia, 'Times New Roman', serif", file: "" },
-  { name: "Palatino", family: "'Palatino Linotype', 'Book Antiqua', Palatino, serif", file: "" },
-  { name: "System Sans", family: "system-ui, -apple-system, sans-serif", file: "" },
-];
+/** Bundled faces (public/fonts/). */
+export const CUSTOM_FONTS: CustomFont[] = READER_FONTS.filter((f) => f.files.length > 0).map(toCustomFont);
 
-// All fonts combined
+/** System fonts. */
+export const BUILTIN_FONTS: CustomFont[] = READER_FONTS.filter((f) => f.files.length === 0).map(toCustomFont);
+
 export const ALL_FONTS = [...CUSTOM_FONTS, ...BUILTIN_FONTS];
 
-// Font face CSS for custom fonts
-export const FONT_FACE_CSS = CUSTOM_FONTS.map(font => `
-  @font-face {
-    font-family: '${font.name}';
-    src: url('/fonts/${font.file}') format('woff2');
-    font-weight: 200 900;
-    font-style: normal;
-    font-display: swap;
-  }
-`).join("\n");
+/** `@font-face` rules, injected once by the reader layout. */
+export const FONT_FACE_CSS = readerFontFaceCss();
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
   readingTheme: "dark",
@@ -43,7 +27,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   ttsAutoAdvance: false,
   ttsHighlightMode: "both",
   ttsShowReadMark: true,
-  fontFamily: "'Literata', Georgia, serif",
+  fontFamily: DEFAULT_READER_FONT.stack,
   fontSize: 18,
   lineHeight: 1.8,
   paraSpacing: 16,

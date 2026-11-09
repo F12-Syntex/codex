@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { fmtCh } from "@/lib/chapter-labels";
-import { X, Search, List, Bookmark, Sparkles, Paintbrush, BookMarked, Loader2 } from "lucide-react";
+import { X, Search, List, Bookmark } from "lucide-react";
+import { bookProgress } from "@/lib/reading-progress";
 import { cn } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
@@ -18,16 +19,11 @@ interface TOCSidebarProps {
   currentChapter: number;
   bookmarks: ReaderBookmark[];
   theme: ThemeClasses;
-  enrichedNames?: Record<number, string>;
-  enrichEnabled?: boolean;
-  enrichingChapter?: number | null;
-  onEnrichChapter?: (index: number) => void;
-  formattingEnabled?: boolean;
-  formattedChapters?: Record<number, string[]>;
-  formattingChapter?: number | null;
-  onFormatChapter?: (index: number) => void;
-  wikiEnabled?: boolean;
-  wikiProcessedChapters?: Set<number>;
+  /** AI chapter titles by index (shown instead of the book's when present; already lexicon-applied). */
+  titles?: Record<number, string>;
+  /** Position inside the current chapter, for the progress line. */
+  currentPage?: number;
+  totalPages?: number;
   chapterLabels?: Record<number, number>;
   onSelectChapter: (index: number) => void;
   onJumpToBookmark: (bookmark: ReaderBookmark) => void;
@@ -42,16 +38,9 @@ export function TOCSidebar({
   chapters,
   currentChapter,
   bookmarks,
-  enrichedNames = {},
-  enrichEnabled = false,
-  enrichingChapter = null,
-  onEnrichChapter,
-  formattingEnabled = false,
-  formattedChapters = {},
-  formattingChapter = null,
-  onFormatChapter,
-  wikiEnabled = false,
-  wikiProcessedChapters = new Set(),
+  titles = {},
+  currentPage = 0,
+  totalPages = 0,
   chapterLabels = {},
   onSelectChapter,
   onJumpToBookmark,
@@ -84,13 +73,13 @@ export function TOCSidebar({
   // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
     const mapped = chapters.map((ch, i) => {
-      const displayTitle = enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title;
+      const displayTitle = titles[i] || ch.title;
       return { ch, i, displayTitle, shownNo: visibleChapterNo(displayTitle, fmtCh(i, chapterLabels)) };
     });
     if (!searchQuery.trim()) return mapped;
     const q = searchQuery.toLowerCase();
     return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
-  }, [chapters, searchQuery, enrichedNames, enrichEnabled, chapterLabels]);
+  }, [chapters, searchQuery, titles, chapterLabels]);
 
   // Keep a numeral column only when at least one row still needs its number.
   const showNumbers = useMemo(() => filteredChapters.some((c) => c.shownNo != null), [filteredChapters]);
@@ -148,8 +137,8 @@ export function TOCSidebar({
     inputRef.current?.focus();
   }, []);
 
-  // The one book percentage in the reader — chapter-based, same formula as the library.
-  const progressPct = chapters.length > 0 ? Math.min(((currentChapter + 1) / chapters.length) * 100, 100) : 0;
+  // The one book-progress formula (src/lib/reading-progress.ts), shared with the library.
+  const progressPct = bookProgress({ chapterIndex: currentChapter, totalChapters: chapters.length, page: currentPage, totalPages });
   const labelCount = Object.keys(chapterLabels).length;
   const currentNo = fmtCh(currentChapter, chapterLabels);
 
@@ -253,16 +242,6 @@ export function TOCSidebar({
               </p>
             ) : (
               filteredChapters.slice(0, renderLimit).map(({ i, displayTitle, shownNo }) => {
-                const canEnrich = enrichEnabled;
-                const isEnriching = enrichingChapter === i;
-
-                const canFormat = formattingEnabled && !formattedChapters[i];
-                const isFormatting = formattingChapter === i;
-
-                const isEnriched = !!enrichedNames[i];
-                const isFormatted = !!formattedChapters[i];
-                const isWikiProcessed = wikiProcessedChapters.has(i);
-                const hasIndicators = (enrichEnabled && isEnriched) || (formattingEnabled && isFormatted) || (wikiEnabled && isWikiProcessed);
                 const isCurrent = i === currentChapter;
                 const isRead = i < currentChapter;
 
@@ -273,19 +252,22 @@ export function TOCSidebar({
                     {...(isCurrent ? { "data-active-chapter": true } : {})}
                     className="group relative flex h-8 w-full items-center gap-2 rounded-md pl-1.5 pr-1.5"
                   >
+                    {/* One selection style (conventions §13.3): fill pill, accent only on the marker. */}
                     {isCurrent && (
                       <motion.span
                         layoutId="toc-current-chapter"
                         transition={LAYOUT_SPRING}
-                        className="absolute inset-0 rounded-md bg-brand/15"
-                      />
+                        className="absolute inset-0 rounded-md bg-fill-secondary"
+                      >
+                        <span aria-hidden className="absolute top-2 bottom-2 left-0.5 w-0.5 rounded-full bg-brand" />
+                      </motion.span>
                     )}
 
                     {showNumbers && (
                       <span
                         className={cn(
                           "relative w-6 shrink-0 text-right text-2xs tabular-nums",
-                          isCurrent ? "font-semibold text-brand" : "text-label-secondary",
+                          isCurrent ? "font-semibold text-label" : "text-label-secondary",
                         )}
                       >
                         {shownNo ?? ""}
@@ -296,41 +278,12 @@ export function TOCSidebar({
                       onClick={() => { onSelectChapter(i); onClose(); }}
                       className={cn(
                         "focus-ring relative flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-sm",
-                        isCurrent ? "font-medium text-brand" : isRead ? "text-label-secondary" : "text-label",
+                        isCurrent ? "font-medium text-label" : isRead ? "text-label-secondary" : "text-label",
                       )}
                       title={displayTitle}
                     >
                       <span className="truncate">{displayTitle}</span>
-                      {hasIndicators && (
-                        <span className="inline-flex shrink-0 items-center gap-1 text-brand/60">
-                          {enrichEnabled && isEnriched && <Sparkles className="size-3.5" strokeWidth={1.75} />}
-                          {formattingEnabled && isFormatted && <Paintbrush className="size-3.5" strokeWidth={1.75} />}
-                          {wikiEnabled && isWikiProcessed && <BookMarked className="size-3.5" strokeWidth={1.75} />}
-                        </span>
-                      )}
                     </button>
-
-                    {(isEnriching || isFormatting) && (
-                      <Loader2 className="relative size-3.5 shrink-0 animate-spin text-brand" strokeWidth={1.75} />
-                    )}
-                    {canEnrich && !isEnriching && !isFormatting && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEnrichChapter?.(i); }}
-                        className="focus-ring relative flex size-6 shrink-0 items-center justify-center rounded-full text-brand opacity-0 transition-[opacity,background-color] duration-150 hover:bg-brand/15 focus-visible:opacity-100 group-hover:opacity-100"
-                        title="Rename with AI"
-                      >
-                        <Sparkles className="size-3.5" strokeWidth={1.75} />
-                      </button>
-                    )}
-                    {canFormat && !isEnriching && !isFormatting && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onFormatChapter?.(i); }}
-                        className="focus-ring relative flex size-6 shrink-0 items-center justify-center rounded-full text-brand opacity-0 transition-[opacity,background-color] duration-150 hover:bg-brand/15 focus-visible:opacity-100 group-hover:opacity-100"
-                        title="Format with AI"
-                      >
-                        <Paintbrush className="size-3.5" strokeWidth={1.75} />
-                      </button>
-                    )}
                   </div>
                 );
               })
@@ -362,7 +315,7 @@ export function TOCSidebar({
                 >
                   <span className="truncate text-sm text-label">{bm.label}</span>
                   <span className="text-2xs tabular-nums text-label-secondary">
-                    Chapter {bm.chapterIndex + 1} · Page {bm.paragraphIndex + 1}
+                    Chapter {fmtCh(bm.chapterIndex, chapterLabels) ?? bm.chapterIndex + 1}
                   </span>
                 </button>
                 <button

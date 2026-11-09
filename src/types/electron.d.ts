@@ -323,7 +323,7 @@ interface ElectronAPI {
   openStyleDictionary: (info: { filePath: string; title: string }) => Promise<void>;
 
   // Buddy
-  openBuddy: (info: { filePath: string; title: string; currentChapter: number; totalChapters: number }) => Promise<void>;
+  openBuddy: (info: { filePath: string; title: string; currentChapter: number; totalChapters: number; threadId?: string }) => Promise<void>;
 
   // Wiki
   openWiki: (info: { filePath: string; title: string; entryId?: string }) => Promise<void>;

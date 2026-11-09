@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Loader2, BookOpen, Globe, Check, AlertCircle, Pencil } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Globe, Check, AlertCircle, Pencil, X, Library } from "lucide-react";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { Tilt } from "@/components/ui/tilt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShimmerText } from "@/components/ui/shimmer-text";
 import { cn } from "@/lib/utils";
-import { createOpenRouterClient } from "@/lib/openrouter";
 import type { MockItem } from "@/lib/mock-data";
+import type { BookLookupResult, LibraryTag } from "@shared/library/types";
+import { normalizeGenre } from "@shared/library/types";
+import { hasRpc } from "@/lib/ai/rpc";
+import { libraryAI, lookupBook } from "@/lib/library/bridge";
+import { useLibraryItem, useLibraryTagRun } from "@/lib/library/useLibraryAI";
 
 interface BookDetailsModalProps {
   item: MockItem;
@@ -22,16 +26,9 @@ interface BookDetailsModalProps {
   onSave: (id: number, fields: { title?: string; author?: string; cover?: string }, meta?: { description?: string; genres?: string[] }) => void;
 }
 
-interface FetchedDetails {
-  title?: string;
-  author?: string;
-  description?: string;
-  genres?: string[];
-  coverUrl?: string;
-  source?: string;
-  status?: string;
-  alternativeNames?: string[];
-}
+type FetchedDetails = BookLookupResult;
+
+const KIND_LABEL: Record<LibraryTag["kind"], string> = { genre: "Genre", trope: "Trope", warning: "Content warning" };
 
 export function BookDetailsModal({ item, open = true, onClose, onSave }: BookDetailsModalProps) {
   const [fetched, setFetched] = useState<FetchedDetails | null>(null);
@@ -68,68 +65,56 @@ export function BookDetailsModal({ item, open = true, onClose, onSave }: BookDet
     return () => { cancelled = true; };
   }, [fetched?.coverUrl]);
 
-  const handleFetch = useCallback(async () => {
-    const api = window.electronAPI;
-    if (!api) return;
+  // Smart tags (F5): suggestions from `library.tag`, decided here.
+  const lib = useLibraryItem(item.filePath);
+  const tagRun = useLibraryTagRun();
+  const [suggesting, setSuggesting] = useState(false);
+  const aiAvailable = hasRpc();
 
-    const apiKey = await api.getSetting("openrouterApiKey");
-    if (!apiKey) {
-      setFetchError("No API key configured. Set your OpenRouter API key in settings.");
+  /** "Fetch details": the `book.lookup` task (web model) through the scheduler. */
+  const handleFetch = useCallback(async () => {
+    if (!aiAvailable) {
+      setFetchError("Fetching details needs the Codex app.");
       return;
     }
-
     setFetching(true);
     setFetchError(null);
-
     try {
-      const client = createOpenRouterClient(apiKey);
-
-      const response = await client.chat(
-        [
-          {
-            role: "system",
-            content: `You are a book/novel lookup tool. Search the web for the given book title and return detailed information about it.
-
-Search strategy:
-1. Search for the exact title on NovelUpdates, MyAnimeList, Goodreads, Amazon, or Wikipedia
-2. If the title seems like a web novel or light novel, prioritize NovelUpdates and MyAnimeList
-3. For the cover image, find the ACTUAL cover image URL from the book's page (the src attribute of the cover <img> tag). It must be a real, working URL ending in .jpg, .png, .webp, or from a CDN like novelupdates.com, myanimelist.net, images-na.ssl-images-amazon.com, etc.
-4. Do NOT make up or guess image URLs. If you cannot find a real cover image URL, leave coverUrl as an empty string.
-
-Return ONLY valid JSON:
-{"title": "Official English Title", "author": "Author Name", "description": "Full synopsis (3-5 sentences)", "genres": ["genre1", "genre2", "genre3"], "coverUrl": "https://real-direct-image-url.jpg", "source": "website where found", "status": "Ongoing/Completed/Hiatus/Unknown", "alternativeNames": ["Alt Title 1", "Alt Title 2"]}`,
-          },
-          {
-            role: "user",
-            content: `Search online for this book and return its details:\n\nTitle: "${item.title}"\nAuthor: "${item.author || "Unknown"}"`,
-          },
-        ],
-        "perplexity/sonar",
-        { temperature: 0.1, max_tokens: 1000 },
-      );
-
-      const raw = response.choices?.[0]?.message?.content?.trim() ?? "";
-
-      // Parse JSON from response
-      const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("Could not parse response from search");
-
-      const parsed = JSON.parse(jsonMatch[0]) as FetchedDetails;
-
-      // Validate cover URL looks real
-      if (parsed.coverUrl && !parsed.coverUrl.match(/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)/i) && !parsed.coverUrl.match(/^https?:\/\/(.*\.)?(novelupdates|myanimelist|amazon|goodreads|media\.kitsu|cdn)/i)) {
-        parsed.coverUrl = "";
+      const r = await lookupBook({ title: item.title, author: item.author || undefined }, item.filePath);
+      if (r.state === "done" && r.output) {
+        if (!r.output.description && !r.output.genres?.length && !r.output.coverUrl) throw new Error("Nothing found for this title.");
+        setFetched(r.output);
+      } else if (r.state === "error") {
+        throw new Error(r.error?.message ?? "Failed to fetch details");
       }
-
-      setFetched(parsed);
     } catch (err) {
-      console.error("[fetch-details] Error:", err);
       setFetchError(err instanceof Error ? err.message : "Failed to fetch details");
     } finally {
       setFetching(false);
     }
-  }, [item.title, item.author]);
+  }, [aiAvailable, item.title, item.author, item.filePath]);
+
+  const suggestTags = useCallback(async () => {
+    setSuggesting(true);
+    try {
+      const run = await tagRun.start({ filePaths: [item.filePath], force: !!lib.info?.taggedAt, interactive: true });
+      if (run?.error) setFetchError(run.error);
+    } finally {
+      setSuggesting(false);
+    }
+  }, [tagRun, item.filePath, lib.info?.taggedAt]);
+
+  const decide = useCallback((tags: LibraryTag[], decision: "accept" | "dismiss") => {
+    void libraryAI.decide(item.filePath, tags.map((t) => ({ tag: t.tag, kind: t.kind })), decision).catch(() => {});
+  }, [item.filePath]);
+
+  const decideSeries = useCallback((accept: boolean) => {
+    const sr = lib.info?.series;
+    if (!sr) return;
+    void libraryAI
+      .applySeries([accept ? { filePath: item.filePath, name: sr.name, number: sr.number } : { filePath: item.filePath, name: sr.name, status: "dismissed" }])
+      .catch(() => {});
+  }, [item.filePath, lib.info?.series]);
 
   const trimmedTitle = title.trim();
   const trimmedAuthor = author.trim();
@@ -151,11 +136,20 @@ Return ONLY valid JSON:
     if (fetched?.genres?.length) meta.genres = fetched.genres;
 
     onSave(item.id, fields, fetched ? meta : undefined);
+    // Fetched genres that map onto the library taxonomy become accepted tags (filters, grouping).
+    const genresToTag = [...new Set((fetched?.genres ?? []).map(normalizeGenre).filter((g): g is NonNullable<typeof g> => !!g))];
+    if (genresToTag.length && aiAvailable) void libraryAI.addTags(item.filePath, "genre", genresToTag, "web").catch(() => {});
     onClose();
-  }, [dirty, titleChanged, authorChanged, trimmedTitle, trimmedAuthor, fetched, proxiedCover, item.id, onSave, onClose]);
+  }, [dirty, titleChanged, authorChanged, trimmedTitle, trimmedAuthor, fetched, proxiedCover, item.id, item.filePath, aiAvailable, onSave, onClose]);
 
   const description = fetched?.description ?? savedMeta?.description;
-  const genres = fetched?.genres?.length ? fetched.genres : savedMeta?.genres;
+  const acceptedGenres = (lib.info?.tags ?? []).filter((t) => t.kind === "genre" && t.status === "accepted").map((t) => t.tag);
+  const shownGenres = fetched?.genres?.length ? fetched.genres : [...(savedMeta?.genres ?? []), ...acceptedGenres];
+  const genres = [...new Map(shownGenres.map((g) => [g.toLowerCase(), g] as const)).values()];
+  const acceptedOther = (lib.info?.tags ?? []).filter((t) => t.kind !== "genre" && t.status === "accepted");
+  const suggestions = (lib.info?.tags ?? []).filter((t) => t.status === "suggested");
+  const series = lib.info?.series ?? null;
+  const oneLine = lib.info?.oneLine;
   const displayCover = proxiedCover || fetched?.coverUrl || item.cover;
   const status = fetched?.status;
   const statusVariant = status === "Completed" ? "success" : status === "Ongoing" ? "accent" : "default";
@@ -189,6 +183,28 @@ Return ONLY valid JSON:
     { label: "Author", value: editable(author, setAuthor, "Author", "Unknown") },
     { label: "Format", value: <span className="text-label-secondary">{item.format.toUpperCase()}</span> },
   ];
+  if (series) {
+    rows.push({
+      label: "Series",
+      value: (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          {series.status === "suggested" && <Sparkles className="size-3.5 shrink-0 text-brand" strokeWidth={1.75} aria-label="Suggested" />}
+          <span className={cn("truncate", series.status === "suggested" && "text-label-secondary")}>{series.name}</span>
+          {series.number != null && <span className="shrink-0 text-label-secondary tabular-nums">· Vol. {series.number}</span>}
+          {series.status === "suggested" && (
+            <span className="ml-1 inline-flex shrink-0 items-center gap-0.5">
+              <button type="button" onClick={() => decideSeries(true)} title="Add to this series" aria-label={`Add to ${series.name}`} className="focus-ring pressable inline-flex size-6 items-center justify-center rounded-full text-label-secondary hover:bg-fill-tertiary hover:text-success">
+                <Check className="size-3.5" strokeWidth={2.25} />
+              </button>
+              <button type="button" onClick={() => decideSeries(false)} title="Not part of this series" aria-label="Dismiss series" className="focus-ring pressable inline-flex size-6 items-center justify-center rounded-full text-label-secondary hover:bg-fill-tertiary hover:text-label">
+                <X className="size-3.5" strokeWidth={2.25} />
+              </button>
+            </span>
+          )}
+        </span>
+      ),
+    });
+  }
   if (status) rows.push({ label: "Status", value: <Badge variant={statusVariant}>{status}</Badge> });
   if (fetched?.source) {
     rows.push({
@@ -269,11 +285,51 @@ Return ONLY valid JSON:
               ))}
             </dl>
 
-            {genres && genres.length > 0 && (
+            {(genres.length > 0 || acceptedOther.length > 0) && (
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {genres.map((g) => (
                   <Badge key={g} variant="outline">{g}</Badge>
                 ))}
+                {acceptedOther.map((t) => (
+                  <Badge key={`${t.kind}:${t.tag}`} variant={t.kind === "warning" ? "default" : "outline"} title={KIND_LABEL[t.kind]}>{t.tag}</Badge>
+                ))}
+              </div>
+            )}
+
+            {/* Suggested tags — accept (click) or dismiss (×); decisions stick across runs */}
+            {suggestions.length > 0 && (
+              <div className="mt-3 animate-fade-up rounded-lg bg-fill-quaternary p-2.5 hairline">
+                <div className="mb-2 flex h-5 items-center gap-1.5 px-0.5 text-xs text-label-secondary">
+                  <Sparkles className="size-3.5 text-brand" strokeWidth={1.75} />
+                  <span className="flex-1">Suggested tags</span>
+                  <button type="button" onClick={() => decide(suggestions, "accept")} className="focus-ring rounded-xs px-1 font-medium text-brand hover:underline">
+                    Accept all
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.map((t) => (
+                    <span key={`${t.kind}:${t.tag}`} className="group/chip inline-flex h-6 items-center rounded-full bg-fill-tertiary text-xs text-label-secondary transition-colors duration-150 hover:bg-fill-secondary hover:text-label">
+                      <button
+                        type="button"
+                        onClick={() => decide([t], "accept")}
+                        title={`Add ${KIND_LABEL[t.kind].toLowerCase()} “${t.tag}”`}
+                        className="focus-ring inline-flex h-full items-center gap-1 rounded-full pr-1 pl-2.5"
+                      >
+                        <Check className="size-3 opacity-50 group-hover/chip:text-success group-hover/chip:opacity-100" strokeWidth={2.5} />
+                        {t.tag}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => decide([t], "dismiss")}
+                        aria-label={`Dismiss ${t.tag}`}
+                        title="Dismiss"
+                        className="focus-ring mr-0.5 inline-flex size-5 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label"
+                      >
+                        <X className="size-3" strokeWidth={2.25} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -284,6 +340,8 @@ Return ONLY valid JSON:
                 <p className="max-h-40 overflow-y-auto pr-1 text-sm leading-relaxed text-label-secondary">
                   {description}
                 </p>
+              ) : oneLine ? (
+                <p className="text-sm leading-relaxed text-label-secondary">{oneLine}</p>
               ) : (
                 <p className="text-sm text-label-tertiary">
                   No description yet. Fetch details to look this book up online.
@@ -311,6 +369,19 @@ Return ONLY valid JSON:
           )}
           {fetching ? "Searching…" : fetched ? "Search Again" : "Fetch Details"}
         </Button>
+        {aiAvailable && suggestions.length === 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={suggestTags}
+            disabled={suggesting || tagRun.running}
+            title="Suggest genres, tropes and series with AI"
+            className="mr-auto ml-2"
+          >
+            {suggesting || tagRun.running ? <Loader2 className="animate-spin" strokeWidth={1.75} /> : <Library strokeWidth={1.75} />}
+            {tagRun.running ? "Tagging…" : lib.info?.taggedAt ? "Re-suggest Tags" : "Suggest Tags"}
+          </Button>
+        )}
 
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={onClose}>

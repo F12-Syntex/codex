@@ -353,6 +353,12 @@ export function deleteItem(id: number): void {
   const item = db.prepare("SELECT filePath FROM items WHERE id = ?").get(id) as { filePath: string } | undefined;
   if (item) {
     db.prepare("INSERT OR IGNORE INTO excluded_paths (filePath) VALUES (?)").run(item.filePath);
+    // Drop the book's library-AI rows (tags, series, AI results) — mirrors LibraryStore.forget.
+    for (const t of ["item_tags", "item_series", "item_series_dismissed", "item_ai"]) {
+      try {
+        db.prepare(`DELETE FROM ${t} WHERE file_path = ?`).run(item.filePath);
+      } catch { /* table not created yet (library migrations not run) */ }
+    }
   }
   db.prepare("DELETE FROM items WHERE id = ?").run(id);
 }

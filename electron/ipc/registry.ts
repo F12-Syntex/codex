@@ -12,6 +12,7 @@ import { registerChapters } from "../ai/chapters-ipc";
 import { registerBook } from "../book/ipc";
 import { getKnowledgeService, registerKnowledge } from "../knowledge/ipc";
 import { configureAssistant, registerAssistant } from "../assistant/ipc";
+import { registerLibrary } from "../library/ipc";
 
 export type { AreaContext, RegistryDeps } from "./context";
 
@@ -55,6 +56,7 @@ export function registerAll(deps: RegistryDeps): AreaContext {
   registerBook(ctx);
   registerKnowledge(ctx);
   registerAssistant(ctx);
+  registerLibrary(ctx);
   // Assistant wiki-edit proposals apply through the knowledge service (transactional, undoable).
   const knowledge = getKnowledgeService();
   if (knowledge) configureAssistant({ applyEdits: (filePath, edits) => knowledge.applyEdits(filePath, edits) });

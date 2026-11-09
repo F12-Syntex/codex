@@ -27,17 +27,28 @@ export interface AssistantLauncherProps {
   onReveal?: (ref: ParaRef) => void;
   /** Hide the pill (the panel still opens via `openAssistant`). */
   hidePill?: boolean;
+  /** The panel opened/closed (the reader insets its text column so the panel never covers it). */
+  onOpenChange?: (open: boolean) => void;
+  /** Panel material; the reader uses "glass-thick" over the page. */
+  material?: "glass" | "glass-thick";
   /** Positioning of the launcher corner; default bottom-right above the reader footer. */
   className?: string;
 }
 
 export function AssistantLauncher({
-  filePath, bookTitle, frontierLabel, onDetach, onOpenEntity, onReveal, hidePill = false, className,
+  filePath, bookTitle, frontierLabel, onDetach, onOpenEntity, onReveal, hidePill = false, onOpenChange, material, className,
 }: AssistantLauncherProps) {
   const reduce = useReducedMotion();
   const [open, setOpen] = React.useState(false);
   const [request, setRequest] = React.useState<OpenAssistantRequest | null>(null);
   const pillRef = React.useRef<HTMLButtonElement>(null);
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  });
+  React.useEffect(() => {
+    onOpenChangeRef.current?.(open);
+  }, [open]);
 
   React.useEffect(
     () =>
@@ -69,6 +80,7 @@ export function AssistantLauncher({
             onDetach={onDetach ? (id) => { setOpen(false); onDetach(id); } : undefined}
             onOpenEntity={onOpenEntity}
             onReveal={onReveal}
+            material={material}
           />
         )}
       </AnimatePresence>

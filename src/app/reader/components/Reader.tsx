@@ -1,145 +1,116 @@
 "use client";
 
+/**
+ * The reader (Phase 2c cutover). One source of rendered text and one AI path:
+ *
+ *   useChapterPipeline  → RenderedChapter (source → rewrite → format → sanitize → lexicon →
+ *                         entities ≤ frontier → decorations → page/speech projections)
+ *   useChapterArtifacts → orchestrator `ensure` for the chapter (+ prefetch), per-kind status
+ *   useBookAIPrefs      → per-book feature switches (AI Tools panel)
+ *
+ * The page, the speed reader and TTS all read the same RenderedChapter, so they can't disagree;
+ * word replacements happen once, in the lexicon layer. Every user anchor (comments, quotes,
+ * bookmarks, branch points, read marks) is a ParaRef resolved with `resolveAnchor`, so it stays
+ * on its paragraph whichever variant is showing. The reader reports its position as you read,
+ * which moves the spoiler frontier the wiki, entity cards and assistant are gated by.
+ */
+
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Loader2, MessageCircle, Quote } from "lucide-react";
+import { AlertCircle, Loader2, Quote } from "lucide-react";
+import type { Annotation, ParaId, ParaRef, RenderedChapter } from "@shared/pipeline/types";
+import type { EntityIndexItem, WikiEntryType } from "@shared/knowledge/types";
+import { resolveAnchor } from "@shared/pipeline/build";
+import { applyLexicon, applyLexiconText } from "@shared/pipeline/lexicon";
+import { buildSpeech } from "@shared/pipeline/speech";
 import { getThemeClasses } from "../lib/theme";
-import type { BookContent, CustomFont } from "../lib/types";
+import type { CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
 import { useBookmarks } from "../hooks/useBookmarks";
-import { useTTS, isSpeakable } from "../hooks/useTTS";
+import { useTTS, isSpeakable, type TTSItem } from "../hooks/useTTS";
 import { useTTSMetrics } from "../hooks/useTTSMetrics";
+import { useChapterPipeline } from "../hooks/useChapterPipeline";
+import { useReaderAnchors } from "../hooks/useReaderAnchors";
+import { useSimulateBranch } from "../hooks/useSimulateBranch";
 import { ReaderHeader } from "./ReaderHeader";
-import { ReaderFooter, FOOTER_HEIGHT } from "./ReaderFooter";
+import { ReaderFooter } from "./ReaderFooter";
 import { TOCSidebar } from "./TOCSidebar";
 import { TTSPanel } from "./TTSPanel";
 import { TextSettingsPanel } from "./TextSettingsPanel";
 import { BookTableOfContents, isTOCChapter } from "./BookTableOfContents";
-import { TextContent } from "./TextContent";
-import { AISidebar } from "./AISidebar";
-import { BulkProgressDock, useBulkRun } from "./BulkProgressDock";
-import { isStructuralChapter } from "@/lib/ai-prompts";
-import { aiText } from "@/lib/ai-client";
-import type { WikiEntryType } from "@/lib/ai-wiki";
-import { generateWikiForChapterBatch } from "@/lib/ai-wiki";
-import { generateSimContinuation, extractVoiceLines, type SimChoice } from "@/lib/ai-simulate";
-import { formatChapterContent } from "@/lib/ai-formatting";
-import type { InlineComment } from "@/lib/ai-comments";
-import { enrichQuote } from "@/lib/ai-quotes";
-import { useEnrichment } from "../hooks/useEnrichment";
-import { useFormatting } from "../hooks/useFormatting";
-import { useCondense } from "../hooks/useCondense";
-import { useWiki } from "../hooks/useWiki";
-import { useComments } from "../hooks/useComments";
-import { useAutoProcess } from "../hooks/useAutoProcess";
-import { buildChapterLabels, type ChapterLabels } from "@/lib/chapter-labels";
-import { AIBuddyPanel } from "./AIBuddyPanel";
-import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
+import { TextContent, type ReaderComment } from "./TextContent";
 import { SpeedReaderView } from "./SpeedReaderView";
+import { EntityCard } from "./EntityCard";
+import { EntityContextMenu } from "./EntityContextMenu";
+import { RecapSheet } from "./RecapSheet";
+import { AIToolsPanel, BulkDock } from "./ai-tools";
 import { LAYOUT_SPRING } from "./chrome";
-
-/** Side panels push the text column aside instead of covering it. */
-const TOC_INSET = 336; // TOC 320 + 16
-const AI_INSET = 304; // AI sidebar 288 + 16
+import { AssistantLauncher, DefinePopover } from "@/components/assistant";
+import { openAssistant } from "@/lib/assistant/open";
+import { createSelectionActions, type SelectionPayload } from "@/lib/assistant/selection";
+import { useBookAIPrefs, useChapterArtifacts, useChapterTitles } from "@/lib/ai/chapters";
+import { useAISettings } from "@/lib/ai/useAISettings";
+import { hasRpc } from "@/lib/ai/rpc";
+import { knowledge } from "@/lib/knowledge/bridge";
+import { useEntityIndex, useFrontier } from "@/lib/knowledge/useKnowledge";
+import { buildChapterLabels, fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
-import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
-import { applyReplacements, loadReplacements, type WordReplacement } from "@/lib/word-replacements";
 
-/** Decode all HTML entities using the DOM. Safe after tags are already stripped. */
-const _entityEl = typeof document !== "undefined" ? document.createElement("textarea") : null;
-function decodeHtmlEntities(text: string): string {
-  if (!_entityEl) return text;
-  _entityEl.innerHTML = text;
-  return _entityEl.value;
-}
+/** Side panels push the text column aside instead of covering it (conventions §13.6). */
+const TOC_INSET = 336; // TOC 320 + 16
+const AI_INSET = 336; // AI Tools 320 + 16
+const ASSISTANT_INSET = 444; // Assistant panel 420 + 20 right + 4
 
-/** Strip HTML for TTS: unwrap dialogue speaker spans (keep name text), then strip remaining tags. */
-function stripHtmlForTTS(html: string[]): string[] {
-  return html.map(h => {
-    // When a dialogue-speaker span is immediately followed by a quote, drop the span
-    // (the visual badge already shows the speaker — no need to say the name).
-    // When NOT followed by a quote (name appears mid-narration), keep the text.
-    const QUOTE_CHARS = "\u201C\u201D\u2018\u2019\u0022\u0027";
-    let text = h
-      .replace(
-        new RegExp(
-          `<span\\b[^>]*\\bclass="ai-fmt-dialogue-[^"]*"[^>]*>[^<]*<\\/span>\\s*,?\\s*(?=[${QUOTE_CHARS}])`,
-          "g",
-        ),
-        "",
-      )
-      .replace(/<span\b[^>]*\bclass="ai-fmt-dialogue-[^"]*"[^>]*>([^<]*)<\/span>/g, "$1");
-    // Strip all HTML tags, then decode any remaining HTML entities
-    text = decodeHtmlEntities(text.replace(/<[^>]+>/g, "")).trim();
-    return text;
-  });
-}
+type Rect = { top: number; left: number; bottom: number; right: number; width: number; height: number };
+const rectOf = (r: { x: number; y: number; width: number; height: number }): Rect => ({
+  top: r.y, left: r.x, bottom: r.y + r.height, right: r.x + r.width, width: r.width, height: r.height,
+});
 
-/** Skip chapters with embedded images (base64) or extremely large content to avoid context overflow */
-function isChapterTooLarge(chapter: { paragraphs: string[]; htmlParagraphs: string[] }): boolean {
-  const totalLen = chapter.htmlParagraphs.reduce((sum, p) => sum + p.length, 0);
-  // Skip if total HTML is over 500K chars (~roughly 500K tokens) or contains base64 images
-  if (totalLen > 500_000) return true;
-  return chapter.htmlParagraphs.some(p => p.includes("data:image/") || p.includes("base64,"));
+interface EntityCardState {
+  entityId: string | null;
+  name?: string;
+  rect: Rect | DOMRect;
+  /** Paragraph the entity was clicked in (branch point for "Simulate"). */
+  paraIndex?: number;
 }
 
 interface ReaderProps {
   filePath: string;
+  /** Kept for the URL contract; main resolves the format itself (`book:content`). */
   format: string;
   title: string;
   author: string;
 }
 
-export function Reader({ filePath, format, title, author }: ReaderProps) {
-  const [bookContent, setBookContent] = useState<BookContent | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const NO_ANNOTATIONS: Annotation[] = [];
+
+export function Reader({ filePath, title, author }: ReaderProps) {
   const [chapterLabels, setChapterLabels] = useState<ChapterLabels>({});
   const [currentChapter, setCurrentChapter] = useState(0);
   const [customFonts] = useState<CustomFont[]>([]);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [visibleRange, setVisibleRange] = useState<[number, number]>([0, 0]);
   const [showTOC, setShowTOC] = useState(false);
   const reduceMotion = useReducedMotion();
   const [showTTS, setShowTTS] = useState(false);
   const [showTextSettings, setShowTextSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [immersiveVisible, setImmersiveVisible] = useState(true);
+  const [reveal, setReveal] = useState<{ chapterIndex: number; paraId: ParaId } | null>(null);
+
+  // Popovers over the text
+  const [entityCard, setEntityCard] = useState<EntityCardState | null>(null);
+  const [entityMenu, setEntityMenu] = useState<{ entity: EntityIndexItem; x: number; y: number; paraIndex: number } | null>(null);
+  const [define, setDefine] = useState<SelectionPayload | null>(null);
 
   // Quote toast
   const [quoteToastVisible, setQuoteToastVisible] = useState(false);
   const quoteToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // AI Buddy state
-  const [buddyEnabled, setBuddyEnabled] = useState(false);
-  const [showBuddy, setShowBuddy] = useState(false);
-
-  // AI Explain state
-  const [explainState, setExplainState] = useState<{
-    text: string;
-    messages: ExplainMessage[];
-    loading: boolean;
-    systemPrompt: string;
-  } | null>(null);
-
-  // Simulate state (branching narrative)
-  const [simulateEnabled, setSimulateEnabled] = useState(false);
-  const [activeBranch, setActiveBranch] = useState<{
-    id: string;
-    chapterIndex: number;
-    truncateAfterPara: number;
-    entityId: string;
-    entityName: string;
-  } | null>(null);
-  const [activeBranchSegments, setActiveBranchSegments] = useState<
-    { userInput: string; htmlParagraphs: string[] }[]
-  >([]);
-  const [simulateChoices, setSimulateChoices] = useState<SimChoice[]>([]);
-  const [simulateGenerating, setSimulateGenerating] = useState(false);
-  const [showBranchList, setShowBranchList] = useState(false);
-  const [savedBranches, setSavedBranches] = useState<SimBranchRow[]>([]);
 
   // Speed Reader state
   const [speedReaderActive, setSpeedReaderActive] = useState(false);
@@ -148,122 +119,163 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [srChunkOffset, setSrChunkOffset] = useState(0);
 
   const immersiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [ttsHighWaterMark, setTtsHighWaterMark] = useState(-1);
   const [autoPlayChapter, setAutoPlayChapter] = useState<number | null>(null);
-  const [persistedReadMarks, setPersistedReadMarks] = useState<Record<number, number>>({});
+  const [showBranchList, setShowBranchList] = useState(false);
 
   const { settings, updateSetting, isLoaded } = useReaderSettings();
   const theme = getThemeClasses(settings.readingTheme);
 
-  // Word replacements for TTS (loaded once from settings)
-  const [wordReplacements, setWordReplacements] = useState<WordReplacement[]>([]);
-  useEffect(() => { loadReplacements().then(setWordReplacements); }, []);
+  // ── AI: per-book prefs, chapter artifacts (orchestrator ensure), settings ──────────
+  const { prefs } = useBookAIPrefs(filePath);
+  const { settings: aiSettings } = useAISettings();
+  const readAloudOriginal = aiSettings?.readAloud === "original";
+  const anchorsState = useReaderAnchors(filePath);
+  const { anchors, comments: userComments, readMarks } = anchorsState;
 
-  const chapters = bookContent?.chapters ?? [];
-  const chapter = chapters[currentChapter];
-  const paragraphs = chapter?.paragraphs ?? [];
-  const isImageBook = bookContent?.isImageBook ?? false;
-  const rawChapterTitle = chapter?.title ?? `Chapter ${currentChapter + 1}`;
-
-  const bookLoaded = !!bookContent;
-
-  // ── AI Feature Hooks ──────────────────────────────────
-  const enrichHook = useEnrichment(chapters, title, filePath, currentChapter, bookLoaded);
-  const { enrichedNames, enrichEnabled, enrichingChapter, enrichAllProgress,
-          enrichChapter, enrichAll, toggleEnrichEnabled, clearEnrichedNames, cancelEnrichAll } = enrichHook;
-
-  const condenseHook = useCondense(chapters, title, filePath, currentChapter, bookLoaded);
-  const { condenseEnabled, condensedChapters, condensingChapter, condenseAllProgress,
-          condenseChapter, condenseAllChapters, toggleCondenseEnabled, clearCondense, cancelCondenseAll } = condenseHook;
-
-  const formatHook = useFormatting(chapters, title, filePath, condensedChapters, condenseEnabled, bookLoaded);
-  const { formattingEnabled, formattedChapters, formattingChapter, formatAllProgress,
-          styleDictionary, fmtCondensedChapters,
-          formatChapter, formatAllChapters, formatCondensedChapter,
-          toggleFormattingEnabled, clearFormatting, cancelFormatAll } = formatHook;
-
-  const wikiHook = useWiki(chapters, title, filePath, currentChapter, buddyEnabled, (v) => {
-    setBuddyEnabled(v);
-    if (!v) setShowBuddy(false);
-  }, simulateEnabled, (v) => {
-    setSimulateEnabled(v);
-    if (!v) { setActiveBranch(null); setActiveBranchSegments([]); }
-  });
-  const { wikiEnabled, wikiProcessingChapter, wikiAllProgress,
-          wikiEntityIndex, wikiProcessedChapters, wikiEntryCount,
-          processWikiChapter, retryWikiChapter, toggleWikiEnabled, cancelWikiAll, refreshWikiState,
-          setWikiEnabled, setWikiProcessedChapters, setWikiEntryCount,
-          setWikiEntityIndex, setWikiAllProgress, setWikiProcessingChapter,
-          wikiAbortRef } = wikiHook;
-
-  const commentsHook = useComments(chapters, title, filePath, currentChapter);
-  const { commentsEnabled, chapterComments, commentingChapter,
-          generateCommentsForChapter, toggleCommentsEnabled, addUserComment, deleteUserComment, clearComments } = commentsHook;
-
-  useAutoProcess({
-    chapters, bookContent, filePath, currentChapter,
-    enrichEnabled, enrichedNames, condenseEnabled, condensedChapters,
-    formattingEnabled, formattedChapters, fmtCondensedChapters,
-    wikiEnabled, wikiProcessedChapters, commentsEnabled, chapterComments,
-    enrichChapter, condenseChapter, formatChapter, formatCondensedChapter,
-    processWikiChapter, generateCommentsForChapter,
-  });
-
-  const chapterTitle = enrichEnabled && enrichedNames[currentChapter] ? enrichedNames[currentChapter] : rawChapterTitle;
-
-  // TTS — use condensed/formatted text when available, stripped to plain text
-  const isBranchChapterForTTS = activeBranch && currentChapter === activeBranch.chapterIndex;
-  const ttsParagraphs = useMemo(() => {
-    // Branch chapters: use original/formatted original
-    if (isBranchChapterForTTS && activeBranch) {
-      const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
-        ? formattedChapters[activeBranch.chapterIndex]
-        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
-      const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
-      const generated = (activeBranchSegments ?? []).flatMap(s => s.htmlParagraphs);
-      const html = [...truncated, ...generated];
-      return stripHtmlForTTS(html);
+  // Pipeline inputs. Saved quotes are highlighted where they are, in any variant.
+  const [pipelineChapterId, setPipelineChapterId] = useState<string | null>(null);
+  const quoteAnnotations = useMemo<Annotation[]>(() => {
+    const out: Annotation[] = [];
+    for (const a of anchors) {
+      if (a.kind !== "quote" || a.chapterId !== pipelineChapterId || !a.quote) continue;
+      out.push({ kind: "highlight", paraId: a.paraId, quote: a.quote, id: `q${a.refId}`, tone: "quote" });
     }
+    return out.length ? out : NO_ANNOTATIONS;
+  }, [anchors, pipelineChapterId]);
 
-    // Condensed + formatted
-    if (condenseEnabled && condensedChapters[currentChapter]) {
-      if (formattingEnabled && fmtCondensedChapters[currentChapter]) {
-        return stripHtmlForTTS(fmtCondensedChapters[currentChapter]);
+  const pipeline = useChapterPipeline(filePath, currentChapter, {
+    showRewrite: !!prefs && prefs.rewrite !== "off",
+    showFormat: !!prefs?.formatting,
+    entities: !!prefs?.knowledge,
+    withOriginal: readAloudOriginal,
+    annotations: quoteAnnotations,
+  });
+  const { book, lexicon } = pipeline;
+  const chapters = book?.chapters ?? [];
+  const totalChapters = chapters.length;
+  const ready = pipeline.chapterIndex === currentChapter && pipeline.status === "ready";
+  const chapter: RenderedChapter | null = ready ? pipeline.chapter : null;
+  const chapterId = ready ? pipeline.source?.id ?? null : null;
+  const isImageBook = book?.isImageBook ?? false;
+  const isLoading = !book && pipeline.status !== "error";
+
+  useEffect(() => {
+    if (chapterId) setPipelineChapterId(chapterId);
+  }, [chapterId]);
+
+  // Queue this chapter's AI work (and prefetch the next) through the orchestrator.
+  useChapterArtifacts(filePath, currentChapter, { ensure: true, totalChapters: totalChapters || undefined });
+
+  // Prefs decide which layers `chapters:artifacts` serves: re-read them when prefs change.
+  const prefsKey = prefs ? JSON.stringify(prefs) : "";
+  const { refresh: refreshPipeline } = pipeline;
+  useEffect(() => {
+    if (prefsKey) refreshPipeline("artifacts");
+  }, [prefsKey, refreshPipeline]);
+
+  const aiTitles = useChapterTitles(filePath);
+  const displayTitles = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const [i, t] of Object.entries(aiTitles)) out[Number(i)] = applyLexiconText(t, lexicon, "display");
+    return out;
+  }, [aiTitles, lexicon]);
+
+  const rawChapterTitle = chapters[currentChapter]?.title ?? `Chapter ${currentChapter + 1}`;
+  const aiTitle = pipeline.chapterIndex === currentChapter ? pipeline.artifacts?.title : undefined;
+  // AI output shown to the user passes through the display lexicon too (§4.5 contracts).
+  const chapterTitle = applyLexiconText(aiTitle || rawChapterTitle, lexicon, "display");
+
+  const chapterLabel = useCallback((i: number) => `Ch. ${fmtCh(i, chapterLabels) ?? i + 1}`, [chapterLabels]);
+
+  // ── Spoiler frontier + entities ≤ frontier ───────────────────────────────────────
+  const frontier = useFrontier(filePath);
+  const frontierLabel = frontier && frontier.chapterIndex >= 0
+    ? `Chapter ${fmtCh(frontier.chapterIndex, chapterLabels) ?? frontier.chapterIndex + 1}`
+    : undefined;
+  const { data: entityIndex } = useEntityIndex(prefs?.knowledge ? filePath : null);
+  const entityById = useMemo(() => new Map((entityIndex ?? []).map((e) => [e.id, e])), [entityIndex]);
+
+  // ── "What if" branches (anchored by ParaRef, stored in main) ─────────────────────
+  const sim = useSimulateBranch(filePath, chapter, { chapterIndex: currentChapter });
+  const branchHere = !!sim.active && sim.truncateAt !== null;
+  const branchLockChapter = sim.active ? sim.active.chapterIndex : null;
+  const branchSegmentsHtml = useMemo(
+    () => (branchHere ? sim.segments.flatMap((s) => s.paragraphs) : []),
+    [branchHere, sim.segments],
+  );
+  const extraParagraphs = useMemo(() => {
+    const segs = branchSegmentsHtml.map((h) => applyLexicon(h, lexicon, "display"));
+    if (branchHere && sim.streamText) {
+      for (const para of sim.streamText.split(/\n{2,}/)) {
+        const t = para.trim();
+        if (t) segs.push(`<p>${escapeHtml(applyLexiconText(t, lexicon, "display"))}</p>`);
       }
-      // Condensed is plain text — return directly
-      return condensedChapters[currentChapter];
     }
+    return segs;
+  }, [branchSegmentsHtml, branchHere, sim.streamText, lexicon]);
 
-    // Formatted original
-    if (formattingEnabled && formattedChapters[currentChapter]) {
-      return stripHtmlForTTS(formattedChapters[currentChapter]);
-    }
+  // ── TTS over the speech projection ───────────────────────────────────────────────
+  const ttsChapter = readAloudOriginal && pipeline.original ? pipeline.original : chapter;
+  const ttsItems = useMemo<TTSItem[]>(() => {
+    if (!ttsChapter) return [];
+    const out: TTSItem[] = [];
+    ttsChapter.paras.forEach((p, i) => {
+      if (p.hidden || !p.speech) return;
+      if (branchHere && sim.truncateAt !== null && i > sim.truncateAt) return;
+      out.push({ id: p.id, index: i, text: p.speech.text, tokens: p.speech.tokens });
+    });
+    branchSegmentsHtml.forEach((h, k) => {
+      const sp = buildSpeech(h, lexicon);
+      if (sp) out.push({ id: `branch:${sim.active?.id}:${k}`, index: ttsChapter.paras.length + k, text: sp.text, tokens: sp.tokens });
+    });
+    return out;
+  }, [ttsChapter, branchHere, sim.truncateAt, sim.active?.id, branchSegmentsHtml, lexicon]);
 
-    return paragraphs; // original plain text
-  }, [isBranchChapterForTTS, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters,
-      fmtCondensedChapters, condenseEnabled, condensedChapters, currentChapter, chapters, paragraphs]);
-
-  // Apply word replacements to TTS text so the speech matches the display
-  const ttsReplacedParagraphs = useMemo(() => {
-    if (wordReplacements.length === 0) return ttsParagraphs;
-    return ttsParagraphs.map(p => applyReplacements(p, wordReplacements));
-  }, [ttsParagraphs, wordReplacements]);
+  const ttsChapterRef = useRef(ttsChapter);
+  ttsChapterRef.current = ttsChapter;
+  const resolveTTSIndex = useCallback((id: ParaId, items: TTSItem[]) => {
+    const ch = ttsChapterRef.current;
+    if (!ch) return -1;
+    const r = resolveAnchor(ch, id);
+    if (r < 0) return -1;
+    const host = ch.paras[r].id;
+    return items.findIndex((it) => it.id === host);
+  }, []);
 
   const ttsMetrics = useTTSMetrics();
+  const handleChapterChangeRef = useRef<(index: number, opts?: { lastPage?: boolean; via?: "page" | "jump" }) => void>(() => {});
+
+  const reportPosition = useCallback((pos: { chapterIndex: number; paraId?: ParaId; atChapterEnd: boolean; via: "page" | "tts" | "speed" | "jump" }) => {
+    if (!filePath || !hasRpc()) return;
+    knowledge.reportPosition(filePath, pos).catch(() => undefined);
+  }, [filePath]);
+
+  const markReadAt = useCallback((paraId: ParaId) => {
+    const ch = chapter;
+    if (!ch || !chapterId || ch.byId[paraId] === undefined) return;
+    const idx = ch.byId[paraId];
+    anchorsState.markRead(chapterId, paraId, (prev) => (ch.byId[prev] ?? -1) < idx);
+  }, [chapter, chapterId, anchorsState]);
 
   const tts = useTTS({
-    paragraphs: ttsReplacedParagraphs,
+    items: ttsItems,
+    resolveIndex: resolveTTSIndex,
     voice: settings.ttsVoice,
     rate: settings.ttsRate,
     pitch: settings.ttsPitch,
     volume: settings.ttsVolume,
     autoAdvance: settings.ttsAutoAdvance,
-    onParagraphChange: () => {},
     onParagraphTiming: (timing) => ttsMetrics.record(timing),
+    onParagraphDone: (item) => {
+      if (item.id.startsWith("branch:")) return;
+      markReadAt(item.id);
+      reportPosition({ chapterIndex: currentChapter, paraId: item.id, atChapterEnd: false, via: "tts" });
+    },
     onChapterEnd: () => {
-      if (currentChapter < chapters.length - 1) {
+      reportPosition({ chapterIndex: currentChapter, atChapterEnd: true, via: "tts" });
+      if (currentChapter < totalChapters - 1) {
         const next = currentChapter + 1;
-        handleChapterChange(next);
+        handleChapterChangeRef.current(next);
         setAutoPlayChapter(next);
       }
     },
@@ -271,105 +283,72 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
 
   const isTTSActive = tts.state.status !== "idle";
 
-  // Track highest paragraph TTS has reached (for read mark)
+  // Auto-play after chapter change from auto-advance (once the new chapter is built)
   useEffect(() => {
-    if (tts.state.status === "idle") { setTtsHighWaterMark(-1); return; }
-    setTtsHighWaterMark(prev => Math.max(prev, tts.state.currentParagraph));
-  }, [tts.state.currentParagraph, tts.state.status]);
-
-  // Auto-play after chapter change from auto-advance
-  useEffect(() => {
-    if (autoPlayChapter !== null && autoPlayChapter === currentChapter) {
+    if (autoPlayChapter !== null && autoPlayChapter === currentChapter && ttsItems.length > 0) {
       setAutoPlayChapter(null);
       tts.actions.playFrom(0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPlayChapter, currentChapter]);
+  }, [autoPlayChapter, currentChapter, ttsItems.length]);
 
-  // Persisted read marks — load
-  const readMarksKey = `ttsReadMarks:${filePath}`;
-  useEffect(() => {
-    if (!filePath) return;
-    window.electronAPI?.getSetting(readMarksKey).then(raw => {
-      if (!raw) return;
-      try { setPersistedReadMarks(JSON.parse(raw)); } catch { /* ignore */ }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filePath]);
+  /** Page index of the paragraph TTS is reading (merged/dropped → the paragraph showing it). */
+  const ttsParagraphIndex = useMemo(() => {
+    const id = tts.state.currentParaId;
+    if (!id || tts.state.status === "idle") return -1;
+    if (id.startsWith("branch:")) return tts.state.currentParagraph;
+    return chapter ? resolveAnchor(chapter, id) : -1;
+  }, [tts.state.currentParaId, tts.state.status, tts.state.currentParagraph, chapter]);
+  // Word highlights index the DISPLAYED variant's words; reading the original → paragraph only.
+  const ttsWordIndex = ttsChapter === chapter ? tts.activeWordIndex : -1;
 
-  // Persisted read marks — save when high water mark advances
-  useEffect(() => {
-    if (!filePath || ttsHighWaterMark < 0) return;
-    setPersistedReadMarks(prev => {
-      const existing = prev[currentChapter] ?? -1;
-      if (ttsHighWaterMark <= existing) return prev;
-      const next = { ...prev, [currentChapter]: ttsHighWaterMark };
-      window.electronAPI?.setSetting(readMarksKey, JSON.stringify(next));
-      return next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ttsHighWaterMark, currentChapter, filePath]);
+  const readMarkIndex = useMemo(() => {
+    if (!chapter || !chapterId) return -1;
+    const id = readMarks[chapterId];
+    return id ? resolveAnchor(chapter, id) : -1;
+  }, [chapter, chapterId, readMarks]);
 
-  // Effective high water mark: live during TTS, persisted when idle
-  const effectiveHighWaterMark = tts.state.status !== "idle"
-    ? ttsHighWaterMark
-    : (persistedReadMarks[currentChapter] ?? -1);
-
-  // TTS progress info — use ttsParagraphs so ETA reflects condensed/formatted text
   const ttsProgress = useMemo(() => {
-    const total = ttsParagraphs.length;
-    const current = tts.state.currentParagraph;
-    if (tts.state.status === "idle") return { current: 0, total, wordsRemaining: 0, paragraphsRemaining: 0, estimatedSeconds: 0 };
+    const total = ttsItems.length;
+    const curIdx = tts.state.currentParaId ? ttsItems.findIndex((it) => it.id === tts.state.currentParaId) : -1;
+    if (tts.state.status === "idle" || curIdx < 0) return { current: 0, total, estimatedSeconds: 0 };
     let words = 0;
-    let speakableCount = 0;
-    for (let i = current; i < ttsParagraphs.length; i++) {
-      if (isSpeakable(ttsParagraphs[i])) {
-        words += (ttsParagraphs[i].match(/\S+/g) ?? []).length;
-        speakableCount++;
-      }
+    let speakable = 0;
+    for (let i = curIdx; i < ttsItems.length; i++) {
+      if (!isSpeakable(ttsItems[i].text)) continue;
+      words += ttsItems[i].tokens.length;
+      speakable++;
     }
-    const estimatedSeconds = ttsMetrics.estimate(settings.ttsRate, words, speakableCount);
-    return { current, total, wordsRemaining: words, paragraphsRemaining: speakableCount, estimatedSeconds };
+    return { current: curIdx, total, estimatedSeconds: ttsMetrics.estimate(settings.ttsRate, words, speakable) };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ttsParagraphs, tts.state.currentParagraph, tts.state.status, settings.ttsRate]);
+  }, [ttsItems, tts.state.currentParaId, tts.state.status, settings.ttsRate]);
 
+  // ── Bookmarks (ParaRef of the page's first paragraph) ────────────────────────────
+  const pageRef = useMemo<ParaRef | null>(() => {
+    const p = chapter?.paras[visibleRange[0]];
+    return p && chapterId ? { filePath, chapterId, paraId: p.id } : null;
+  }, [chapter, chapterId, visibleRange, filePath]);
+  const isOnPage = useCallback((a: { chapterId: string; paraId: ParaId }) => {
+    if (!chapter || a.chapterId !== chapterId) return false;
+    const idx = resolveAnchor(chapter, a.paraId);
+    return idx >= visibleRange[0] && idx <= visibleRange[1];
+  }, [chapter, chapterId, visibleRange]);
   const bookmarkState = useBookmarks({
     filePath,
     chapterIndex: currentChapter,
-    paragraphIndex: 0,
     chapterTitle,
+    pageRef,
+    pageParaIndex: visibleRange[0],
+    isOnPage,
+    anchors,
+    setAnchor: anchorsState.setAnchor,
+    deleteAnchor: anchorsState.deleteAnchor,
   });
 
-  // Load book content
+  // ── Chapter labels (non-story pages unnumbered), stored once per book ───────────
   useEffect(() => {
-    console.log(`[Reader] Loading book — filePath="${filePath}", format="${format}"`);
-    if (!filePath) { console.warn("[Reader] No filePath provided, skipping load"); setIsLoading(false); return; }
-    setIsLoading(true);
-    window.electronAPI
-      ?.getBookContent(filePath, format)
-      .then((content) => {
-        console.log(`[Reader] Book loaded — ${content?.chapters?.length ?? 0} chapters, isImageBook=${content?.isImageBook}`);
-        if (content?.chapters?.[0]?.title === "Error") {
-          console.error(`[Reader] Parser error: ${content.chapters[0].paragraphs[0]}`);
-        }
-        setBookContent(content);
-        setIsLoading(false);
-      })
-      .catch((err: unknown) => {
-        console.error("[Reader] Failed to load book content:", err);
-        setBookContent({
-          chapters: [{ title: "Error", paragraphs: ["Failed to load book content."], htmlParagraphs: ["<p>Failed to load book content.</p>"] }],
-          isImageBook: false,
-          toc: [],
-        });
-        setIsLoading(false);
-      });
-  }, [filePath, format]);
-
-  // Chapter labeling — skip known non-story pages by title, store once per book
-  useEffect(() => {
-    if (!bookContent || !filePath) return;
-    const toc = bookContent.toc ?? [];
+    if (!book || !filePath) return;
+    const toc = book.toc ?? [];
     if (toc.length === 0) return;
     const key = `chapter-labels-v2:${filePath}`;
     window.electronAPI?.getSetting(key).then((existing) => {
@@ -383,610 +362,103 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         setChapterLabels(labels);
       }
     });
-  }, [bookContent, filePath]);
-
-  // (Settings loading for enrichment, formatting, condense, wiki, comments
-  //  is now handled inside each hook's own useEffect)
-
-  // Load buddy + simulate toggle states from settings
-  useEffect(() => {
-    if (!bookContent || !filePath) return;
-    window.electronAPI?.getSetting(`buddyEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setBuddyEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
-    window.electronAPI?.getSetting(`simulateEnabled:${filePath}`).then((raw) => {
-      if (raw != null) {
-        try { setSimulateEnabled(JSON.parse(raw)); } catch { /* ignore */ }
-      }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookContent, filePath]);
-
-
-  const toggleBuddyEnabled = useCallback(() => {
-    const next = !buddyEnabled;
-    setBuddyEnabled(next);
-    if (!next) setShowBuddy(false);
-    window.electronAPI?.setSetting(`buddyEnabled:${filePath}`, JSON.stringify(next));
-  }, [buddyEnabled, filePath]);
-
-  const toggleSimulateEnabled = useCallback(() => {
-    const next = !simulateEnabled;
-    setSimulateEnabled(next);
-    if (!next) {
-      setActiveBranch(null);
-      setActiveBranchSegments([]);
-    }
-    window.electronAPI?.setSetting(`simulateEnabled:${filePath}`, JSON.stringify(next));
-  }, [simulateEnabled, filePath]);
-
-  // Load saved branches when simulate is enabled
-  useEffect(() => {
-    if (!simulateEnabled || !filePath) return;
-    window.electronAPI?.simGetBranches(filePath).then(branches => {
-      setSavedBranches(branches);
-    });
-  }, [simulateEnabled, filePath]);
-
-  // ── AI Explain handler ────────────────────────────
-
-  const handleExplain = useCallback(async (selectedText: string, _paraIndex: number) => {
-    if (!filePath) return;
-
-    const api = window.electronAPI;
-    if (!api) return;
-
-    // Build wiki context
-    const allEntries = await api.wikiGetEntries(filePath);
-    let wikiContext = "";
-    if (allEntries.length > 0) {
-      const entityLines = allEntries
-        .filter((e) => e.significance >= 2)
-        .slice(0, 30)
-        .map((e) => `- [${e.type}] ${e.name}: ${e.short_description}`);
-      if (entityLines.length > 0) {
-        wikiContext = `\n\nKnown entities from this book:\n${entityLines.join("\n")}`;
-      }
-    }
-
-    const summaries = await api.wikiGetChapterSummaries(filePath, 0, currentChapter);
-    let summaryContext = "";
-    if (summaries.length > 0) {
-      const summaryLines = summaries.slice(-5).map(
-        (s) => `- Ch. ${s.chapter_index}: ${s.summary}`
-      );
-      summaryContext = `\n\nRecent chapter summaries:\n${summaryLines.join("\n")}`;
-    }
-
-    const chapterText = chapters[currentChapter]?.htmlParagraphs
-      ?.map((h) => h.replace(/<[^>]+>/g, ""))
-      .join("\n")
-      .slice(0, 8000) ?? "";
-
-    const systemPrompt = `You are a literary assistant helping a reader understand a passage from a book titled "${title}". Explain clearly and concisely, referencing characters, events, or context from the story when relevant. Keep explanations to 2-4 sentences unless the user asks for more detail. Do not spoil future events — only reference what has happened up to this point.${wikiContext}${summaryContext}\n\nChapter ${currentChapter + 1} context:\n${chapterText}`;
-
-    const userMsg: ExplainMessage = { role: "user", content: `Please explain this passage:\n"${selectedText}"` };
-
-    setExplainState({ text: selectedText, messages: [userMsg], loading: true, systemPrompt });
-
-    try {
-      const reply = await aiText({
-        preset: "quick",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMsg.content },
-        ],
-      });
-
-      setExplainState((prev) => prev ? {
-        ...prev,
-        messages: [...prev.messages, { role: "assistant", content: reply }],
-        loading: false,
-      } : null);
-    } catch (err) {
-      console.error("[explain] Error:", err);
-      setExplainState((prev) => prev ? {
-        ...prev,
-        messages: [...prev.messages, { role: "assistant", content: "Failed to generate explanation. Please check your API key and try again." }],
-        loading: false,
-      } : null);
-    }
-  }, [filePath, currentChapter, chapters, title]);
-
-  const handleExplainFollowUp = useCallback(async (question: string) => {
-    if (!explainState || !filePath) return;
-
-    const userMsg: ExplainMessage = { role: "user", content: question };
-    const updatedMessages = [...explainState.messages, userMsg];
-
-    setExplainState((prev) => prev ? { ...prev, messages: updatedMessages, loading: true } : null);
-
-    try {
-      // Build full conversation for the API
-      const apiMessages = [
-        { role: "system" as const, content: explainState.systemPrompt },
-        ...updatedMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      ];
-
-      const reply = await aiText({ preset: "quick", messages: apiMessages });
-
-      setExplainState((prev) => prev ? {
-        ...prev,
-        messages: [...prev.messages, { role: "assistant", content: reply }],
-        loading: false,
-      } : null);
-    } catch (err) {
-      console.error("[explain follow-up] Error:", err);
-      setExplainState((prev) => prev ? {
-        ...prev,
-        messages: [...prev.messages, { role: "assistant", content: "Failed to respond. Please try again." }],
-        loading: false,
-      } : null);
-    }
-  }, [explainState, filePath]);
-
-  // ── Quote save handler ─────────────────────────────
-
-  const handleSaveQuote = useCallback(async (text: string, paraIndex: number) => {
-    if (!filePath) return;
-    const api = window.electronAPI;
-    if (!api) return;
-
-    const savedQuote = await api.quotesAdd(
-      filePath,
-      currentChapter,
-      paraIndex,
-      text,
-      chapterTitle,
-      title
-    );
-
-    // Show toast
-    if (quoteToastTimer.current) clearTimeout(quoteToastTimer.current);
-    setQuoteToastVisible(true);
-    quoteToastTimer.current = setTimeout(() => setQuoteToastVisible(false), 2000);
-
-    // Fire-and-forget AI enrichment
-    const surrounding = chapters[currentChapter]?.paragraphs
-      .slice(Math.max(0, paraIndex - 2), paraIndex + 3)
-      .join(" ");
-    enrichQuote(text, { chapterTitle, bookTitle: title, surroundingText: surrounding })
-      .then((enrichment) => {
-        api.quotesUpdate(savedQuote.id, {
-          speaker: enrichment.speaker,
-          kind: enrichment.kind,
-          aiEnhanced: true,
-        });
-      })
-      .catch(() => {/* silent */});
-  }, [filePath, currentChapter, chapterTitle, title, chapters]);
-
-  // ── Simulate handlers ──────────────────────────────
-
-  const handleSimulateEntity = useCallback(async (entity: { id: string; name: string; type: WikiEntryType; color: string }, paragraphIndex: number) => {
-    if (!filePath) return;
-
-    // Truncate right at the paragraph where the user right-clicked
-    const truncateAfterPara = paragraphIndex;
-
-    // Create branch
-    const branchId = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const branch = {
-      id: branchId,
-      filePath,
-      entityId: entity.id,
-      entityName: entity.name,
-      chapterIndex: currentChapter,
-      truncateAfterPara,
-    };
-
-    await window.electronAPI?.simUpsertBranch(branch);
-
-    setActiveBranch({
-      id: branchId,
-      chapterIndex: currentChapter,
-      truncateAfterPara,
-      entityId: entity.id,
-      entityName: entity.name,
-    });
-    setActiveBranchSegments([]);
-    setSimulateChoices([]);
-
-    // Refresh branch list
-    const branches = await window.electronAPI?.simGetBranches(filePath) ?? [];
-    setSavedBranches(branches);
-  }, [filePath, currentChapter]);
-
-  const handleSimulateSubmit = useCallback(async (text: string) => {
-    if (!activeBranch || !filePath || simulateGenerating) return;
-
-    setSimulateGenerating(true);
-    setSimulateChoices([]);
-
-    try {
-      // Get entity data for AI context
-      const api = window.electronAPI;
-      if (!api) throw new Error("No API");
-
-      const [row, details, relationships, allEntries, aliases, chapterSummariesRaw] = await Promise.all([
-        api.wikiGetEntry(filePath, activeBranch.entityId),
-        api.wikiGetDetails(filePath, activeBranch.entityId, activeBranch.chapterIndex),
-        api.wikiGetRelationships(filePath, activeBranch.entityId, activeBranch.chapterIndex),
-        api.wikiGetEntries(filePath),
-        api.wikiGetAliases(filePath, activeBranch.entityId),
-        api.wikiGetChapterSummaries(filePath, 0, activeBranch.chapterIndex),
-      ]);
-
-      const nameMap = new Map(allEntries.map(e => [e.id, e.name]));
-
-      // Get preceding paragraphs for current chapter context
-      const base = wikiEnabled && formattedChapters[activeBranch.chapterIndex]
-        ? formattedChapters[activeBranch.chapterIndex]
-        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
-      const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
-      const existingGenerated = activeBranchSegments.flatMap(s => s.htmlParagraphs);
-      const allPrecedingParas = [...truncated, ...existingGenerated];
-
-      // Build previous chapter text (the chapter right before the branch chapter)
-      let prevChapterText = "";
-      const prevChIdx = activeBranch.chapterIndex - 1;
-      if (prevChIdx >= 0 && chapters[prevChIdx]) {
-        const prevParas = chapters[prevChIdx].htmlParagraphs;
-        // Take last ~4000 chars of the previous chapter
-        const stripped: string[] = [];
-        let charCount = 0;
-        for (let i = prevParas.length - 1; i >= 0; i--) {
-          const t = prevParas[i].replace(/<[^>]+>/g, "").trim();
-          if (!t) continue;
-          if (charCount + t.length > 4000) break;
-          stripped.unshift(t);
-          charCount += t.length;
-        }
-        prevChapterText = stripped.join("\n\n");
-      }
-
-      // Format chapter summaries for broader narrative context
-      const chapterSummaries = (chapterSummariesRaw ?? [])
-        .slice(-8)
-        .map(s => `- Chapter ${s.chapter_index + 1}: ${s.summary}`);
-
-      // Extract voice lines from the original book text (all chapters up to branch point)
-      const entityNames = [activeBranch.entityName, ...((aliases ?? []) as Array<{ alias: string } | string>).map(a => typeof a === "string" ? a : a.alias)];
-      const allBookParas: string[] = [];
-      for (let ci = 0; ci <= activeBranch.chapterIndex; ci++) {
-        const chParas = chapters[ci]?.htmlParagraphs ?? [];
-        if (ci === activeBranch.chapterIndex) {
-          allBookParas.push(...chParas.slice(0, activeBranch.truncateAfterPara + 1));
-        } else {
-          allBookParas.push(...chParas);
-        }
-      }
-      const voiceLines = extractVoiceLines(allBookParas, entityNames);
-
-      // Also check wiki details for previously saved voice lines
-      const savedVoiceDetails = details
-        .filter(d => d.category === "voice")
-        .map(d => d.content);
-      const combinedVoice = [...new Set([...savedVoiceDetails, ...voiceLines])].slice(0, 20);
-
-      const entityData = {
-        name: activeBranch.entityName,
-        description: row?.description ?? "",
-        shortDescription: row?.short_description ?? "",
-        details: details.map(d => ({ category: d.category, content: d.content })),
-        relationships: relationships.map(r => ({
-          targetName: (r.source_id === activeBranch.entityId
-            ? nameMap.get(r.target_id)
-            : nameMap.get(r.source_id)) ?? r.target_id,
-          relation: r.relation,
-        })),
-        voiceLines: combinedVoice,
-      };
-
-      const result = await generateSimContinuation(
-        title,
-        entityData,
-        allPrecedingParas,
-        prevChapterText,
-        chapterSummaries,
-        text,
-      );
-
-      // Auto-format generated paragraphs if formatting is enabled
-      let finalParagraphs = result.htmlParagraphs;
-      if (formattingEnabled && styleDictionary) {
-        try {
-            const syntheticChapter = {
-              title: "",
-              paragraphs: finalParagraphs.map(p => p.replace(/<[^>]+>/g, "").trim()),
-              htmlParagraphs: finalParagraphs,
-            };
-            const fmtResult = await formatChapterContent(
-              syntheticChapter, title, () => false, styleDictionary, filePath,
-            );
-            if (fmtResult) {
-              finalParagraphs = fmtResult.paragraphs;
-            }
-        } catch (fmtErr) {
-          console.warn("Failed to format simulate content:", fmtErr);
-        }
-      }
-
-      const segmentIndex = activeBranchSegments.length;
-      await api.simAddSegment({
-        filePath,
-        branchId: activeBranch.id,
-        segmentIndex,
-        userInput: text,
-        htmlParagraphs: JSON.stringify(finalParagraphs),
-      });
-
-      setActiveBranchSegments(prev => [...prev, { userInput: text, htmlParagraphs: finalParagraphs }]);
-      setSimulateChoices(result.choices);
-
-      // Persist new voice lines to wiki DB (only ones not already saved)
-      const newVoiceLines = voiceLines.filter(vl => !savedVoiceDetails.includes(vl));
-      if (newVoiceLines.length > 0) {
-        await api.wikiAddDetails(
-          filePath,
-          activeBranch.entityId,
-          newVoiceLines.map(vl => ({
-            chapterIndex: activeBranch.chapterIndex,
-            category: "voice",
-            content: vl,
-          })),
-        );
-      }
-    } catch (err) {
-      console.error("Simulate generation error:", err);
-    } finally {
-      setSimulateGenerating(false);
-    }
-  }, [activeBranch, filePath, simulateGenerating, formattingEnabled, formattedChapters, chapters, activeBranchSegments, title, styleDictionary]);
-
-  const handleExitBranch = useCallback(() => {
-    setActiveBranch(null);
-    setActiveBranchSegments([]);
-    setSimulateChoices([]);
-  }, []);
-
-  const handleLoadBranch = useCallback(async (branch: SimBranchRow) => {
-    if (!filePath) return;
-
-    // Load segments
-    const segments = await window.electronAPI?.simGetSegments(filePath, branch.id) ?? [];
-    const parsedSegments = segments.map(s => ({
-      userInput: s.user_input,
-      htmlParagraphs: JSON.parse(s.html_paragraphs) as string[],
-    }));
-
-    // Navigate to branch chapter
-    setCurrentChapter(branch.chapter_index);
-    setActiveBranch({
-      id: branch.id,
-      chapterIndex: branch.chapter_index,
-      truncateAfterPara: branch.truncate_after_para,
-      entityId: branch.entity_id,
-      entityName: branch.entity_name,
-    });
-    setActiveBranchSegments(parsedSegments);
-    setShowBranchList(false);
-  }, [filePath]);
-
-  const handleDeleteBranch = useCallback(async (branchId: string) => {
-    if (!filePath) return;
-    await window.electronAPI?.simDeleteBranch(filePath, branchId);
-    setSavedBranches(prev => prev.filter(b => b.id !== branchId));
-    if (activeBranch?.id === branchId) {
-      setActiveBranch(null);
-      setActiveBranchSegments([]);
-    }
-  }, [filePath, activeBranch]);
-
-  const clearWiki = useCallback(() => {
-    wikiAbortRef.current = true;
-    setWikiEnabled(false);
-    setWikiProcessingChapter(null);
-    setWikiEntityIndex([]);
-    setWikiProcessedChapters(new Set());
-    setWikiEntryCount(0);
-    window.electronAPI?.wikiClear(filePath);
-    window.electronAPI?.setSetting(`wikiEnabled:${filePath}`, JSON.stringify(false));
-  }, [filePath]);
-
-  const processAllWikiChapters = useCallback(async (fromChapter?: number, upToChapter?: number) => {
-    const api = window.electronAPI;
-    const apiKey = await api?.getSetting("openrouterApiKey");
-    if (!apiKey || !api) return;
-
-    wikiAbortRef.current = false;
-
-    const start = fromChapter ?? 0;
-    const limit = upToChapter ?? chapters.length - 1;
-
-    // Always query DB (not React state) so we never miss chapters due to stale state
-    const getUnprocessed = async (): Promise<number[]> => {
-      const processed = new Set(await api.wikiGetProcessed(filePath));
-      const queue: number[] = [];
-      for (let i = start; i <= limit; i++) {
-        if (!processed.has(i) && chapters[i]) {
-          // Skip structural chapters (cover, TOC, etc.) — mark them processed so they don't re-appear
-          if (isStructuralChapter(chapters[i].title)) {
-            await api.wikiMarkProcessed(filePath, i);
-          } else {
-            queue.push(i);
-          }
-        }
-      }
-      return queue;
-    };
-
-    let unprocessed = await getUnprocessed();
-    if (unprocessed.length === 0) return;
-
-    // Per-chapter attempt counter — prevent infinite retries on persistently broken chapters
-    const attemptCounts = new Map<number, number>();
-    const initialCount = unprocessed.length;
-
-    while (unprocessed.length > 0 && !wikiAbortRef.current) {
-      // Give up on chapters that have failed twice — mark them processed so we don't loop forever
-      const giveUp = unprocessed.filter((i) => (attemptCounts.get(i) ?? 0) >= 2);
-      for (const i of giveUp) {
-        console.warn(`Wiki: giving up on chapter ${i} after 2 failed attempts, marking processed`);
-        await api.wikiMarkProcessed(filePath, i);
-      }
-
-      const toProcess = unprocessed.filter((i) => (attemptCounts.get(i) ?? 0) < 2);
-      if (toProcess.length === 0) break;
-
-      // Process exactly one chapter at a time
-      const chapterIndex = toProcess[0];
-      const text = chapters[chapterIndex].paragraphs.join("\n");
-      attemptCounts.set(chapterIndex, (attemptCounts.get(chapterIndex) ?? 0) + 1);
-
-      setWikiProcessingChapter(chapterIndex);
-      const doneCount = initialCount - unprocessed.length;
-      setWikiAllProgress({ current: doneCount, total: initialCount });
-
-      try {
-        await generateWikiForChapterBatch(
-          [{ index: chapterIndex, text }],
-          title, filePath, () => wikiAbortRef.current,
-        );
-        if (wikiAbortRef.current) break;
-        await refreshWikiState();
-      } catch (err) {
-        console.error(`Wiki error at chapter ${chapterIndex}:`, err);
-      }
-
-      // Re-query DB — marks made by the chapter call are now reflected
-      unprocessed = await getUnprocessed();
-      const newDoneCount = initialCount - unprocessed.length;
-      setWikiAllProgress({ current: newDoneCount, total: initialCount });
-    }
-
-    await refreshWikiState();
-    setWikiProcessingChapter(null);
-    setWikiAllProgress(null);
-  }, [chapters, title, filePath, refreshWikiState]);
-
-  const cancelWikiProcessAll = useCallback(() => {
-    wikiAbortRef.current = true;
-    setWikiProcessingChapter(null);
-    setWikiAllProgress(null);
-    cancelFormatAll();
-  }, [cancelFormatAll]);
-
-  // Wiki entity index for text highlighting (already from DB)
-  const effectiveWikiEntityIndex = useMemo(() => {
-    if (!wikiEnabled) return [];
-    return wikiEntityIndex;
-  }, [wikiEnabled, wikiEntityIndex]);
-
-  // Effective HTML paragraphs — layered: base (condensed or original) + formatting overlay
-  // Branch only overrides content on the branch's own chapter — other chapters show normally
-  const isBranchChapter = activeBranch && currentChapter === activeBranch.chapterIndex;
-  const effectiveHtml = useMemo(() => {
-    if (isBranchChapter && activeBranch) {
-      const base = formattingEnabled && formattedChapters[activeBranch.chapterIndex]
-        ? formattedChapters[activeBranch.chapterIndex]
-        : chapters[activeBranch.chapterIndex]?.htmlParagraphs ?? [];
-      const truncated = base.slice(0, activeBranch.truncateAfterPara + 1);
-      const generated = activeBranchSegments.flatMap(s => s.htmlParagraphs);
-      return [...truncated, ...generated];
-    }
-
-    // Base layer: condensed (plain text) or original
-    const useCondensed = condenseEnabled && !!condensedChapters[currentChapter];
-
-    if (useCondensed) {
-      // Condensed base — use formatted-condensed if available, else plain condensed
-      if (formattingEnabled && fmtCondensedChapters[currentChapter]) {
-        return fmtCondensedChapters[currentChapter];
-      }
-      return condensedChapters[currentChapter];
-    }
-
-    // Original base — use formatted-original if available, else raw
-    if (formattingEnabled && formattedChapters[currentChapter]) {
-      return formattedChapters[currentChapter];
-    }
-    return chapter?.htmlParagraphs ?? [];
-  }, [isBranchChapter, activeBranch, activeBranchSegments, formattingEnabled, formattedChapters,
-      fmtCondensedChapters, condenseEnabled, condensedChapters, currentChapter, chapter, chapters]);
-
-  // Speed reader chunks from effective HTML (with wiki entity injection)
-  const speedReaderChunks = useMemo(() => {
-    if (!speedReaderActive) return [];
-    // Inject wiki entities into HTML before chunking so entity names are tagged
-    let html = effectiveHtml;
-    if (wikiEnabled && effectiveWikiEntityIndex.length > 0) {
-      const regex = buildEntityRegex(effectiveWikiEntityIndex);
-      if (regex) {
-        html = html.map(h => injectWikiEntities(h, effectiveWikiEntityIndex, regex));
-      }
-    }
-    return chunkParagraphs(html);
-  }, [speedReaderActive, effectiveHtml, wikiEnabled, effectiveWikiEntityIndex]);
-
-  // Restore saved reading position after book loads
+  }, [book, filePath]);
+
+  // ── Navigation ───────────────────────────────────────────────────────────────────
+  const pendingLastPageRef = useRef(false);
+  /** How the reader got to the current position: TOC/bookmark/citation jumps don't move the frontier. */
+  const navViaRef = useRef<"page" | "jump">("page");
+  const maxPageRef = useRef<{ chapter: number; page: number }>({ chapter: -1, page: 0 });
+
+  const handleChapterChange = useCallback((index: number, opts: { lastPage?: boolean; via?: "page" | "jump" } = {}) => {
+    if (branchLockChapter !== null && index > branchLockChapter) return;
+    tts.actions.stop();
+    navViaRef.current = opts.via ?? "page";
+    pendingLastPageRef.current = !!opts.lastPage;
+    setCurrentPage(0);
+    setTotalPages(1);
+    setCurrentChapter(index);
+    setShowTOC(false);
+  }, [tts.actions, branchLockChapter]);
+  handleChapterChangeRef.current = handleChapterChange;
+
+  const navigateToRef = useCallback((ref: { chapterId: string; paraId: ParaId }, fallbackChapter?: number) => {
+    const idx = chapters.findIndex((c) => c.id === ref.chapterId);
+    const target = idx >= 0 ? idx : fallbackChapter;
+    if (target === undefined || target < 0) return;
+    if (target !== currentChapter) handleChapterChange(target, { via: "jump" });
+    else navViaRef.current = "jump";
+    setReveal({ chapterIndex: target, paraId: ref.paraId });
+  }, [chapters, currentChapter, handleChapterChange]);
+
+  const revealParaIndex = reveal && reveal.chapterIndex === currentChapter && chapter
+    ? resolveAnchor(chapter, reveal.paraId)
+    : null;
+  const clearReveal = useCallback(() => setReveal(null), []);
+
+  // Restore saved reading position after the book loads (a restore is not "reading").
   const progressKey = `readProgress:${filePath}`;
+  const restoredRef = useRef(false);
   useEffect(() => {
-    if (!bookContent || !filePath) return;
+    if (!book || !filePath || restoredRef.current) return;
+    restoredRef.current = true;
     window.electronAPI?.getSetting(progressKey).then((raw) => {
       if (!raw) return;
       try {
-        const { chapter, page } = JSON.parse(raw);
-        const ch = Math.min(chapter ?? 0, bookContent.chapters.length - 1);
-        setCurrentChapter(ch);
+        const { chapter: ch, page } = JSON.parse(raw);
+        navViaRef.current = "jump";
+        setCurrentChapter(Math.max(0, Math.min(ch ?? 0, book.chapters.length - 1)));
         if (page && page > 0) {
-          // pendingLastPageRef is repurposed: store the exact page to restore.
-          // handleMeasure will resolve it once TextContent measures.
           pendingLastPageRef.current = false;
-          // Set page directly; handleMeasure will clamp if needed
           setCurrentPage(page);
         }
       } catch { /* ignore corrupt data */ }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookContent, filePath]);
+  }, [book, filePath]);
 
   // Save reading position on chapter/page change
   const saveProgressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!filePath || !bookContent) return;
+    if (!filePath || !book) return;
     if (saveProgressRef.current) clearTimeout(saveProgressRef.current);
     saveProgressRef.current = setTimeout(() => {
       window.electronAPI?.setSetting(
         progressKey,
-        JSON.stringify({ chapter: currentChapter, page: currentPage, totalChapters: chapters.length }),
+        JSON.stringify({ chapter: currentChapter, page: currentPage, totalChapters }),
       );
     }, 500);
     return () => { if (saveProgressRef.current) clearTimeout(saveProgressRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, currentPage, filePath, bookContent]);
+  }, [currentChapter, currentPage, filePath, book]);
 
   // Record page view for reading activity tracking
   const recordPageRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!filePath || !bookContent) return;
+    if (!filePath || !book) return;
     if (recordPageRef.current) clearTimeout(recordPageRef.current);
     recordPageRef.current = setTimeout(() => {
-      window.electronAPI?.recordPageView(
-        filePath,
-        title,
-        currentChapter,
-        chapterTitle,
-        currentPage,
-        totalPages,
-        chapters.length,
-      );
+      window.electronAPI?.recordPageView(filePath, title, currentChapter, chapterTitle, currentPage, totalPages, totalChapters);
     }, 1000);
     return () => { if (recordPageRef.current) clearTimeout(recordPageRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChapter, currentPage, filePath, bookContent]);
+  }, [currentChapter, currentPage, filePath, book]);
+
+  // Spoiler safety: report the position as you read (reading_state → frontier). A chapter is
+  // finished on its last page, or when 90% of a long chapter's pages were viewed.
+  useEffect(() => {
+    if (!chapter || !chapterId || speedReaderActive) return;
+    const t = setTimeout(() => {
+      const mp = maxPageRef.current;
+      if (mp.chapter !== currentChapter) maxPageRef.current = { chapter: currentChapter, page: currentPage };
+      else if (currentPage > mp.page) mp.page = currentPage;
+      const seen = maxPageRef.current.page + 1;
+      const atChapterEnd = totalPages > 0 && (currentPage >= totalPages - 1 || (totalPages >= 10 && seen / totalPages >= 0.9));
+      const last = chapter.paras[visibleRange[1]];
+      reportPosition({ chapterIndex: currentChapter, paraId: last?.id, atChapterEnd, via: navViaRef.current });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [chapter, chapterId, currentChapter, currentPage, totalPages, visibleRange, speedReaderActive, reportPosition]);
 
   useEffect(() => { window.electronAPI?.onMaximized(setMaximized); }, []);
 
@@ -1004,21 +476,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     return () => { window.removeEventListener("mousemove", handler); if (immersiveTimerRef.current) clearTimeout(immersiveTimerRef.current); };
   }, [settings.immersiveMode]);
 
-  // ── Page navigation (Reader owns all state) ─────────────
-  // When navigating to a chapter's last page, we store -1 here.
-  // Once TextContent measures the real page count, we resolve it.
-  const pendingLastPageRef = useRef(false);
-
-  const handleChapterChange = useCallback((index: number, goToLastPage = false) => {
-    if (activeBranch && index > activeBranch.chapterIndex) return;
-    tts.actions.stop();
-    pendingLastPageRef.current = goToLastPage;
-    setCurrentPage(0);
-    setTotalPages(1);
-    setCurrentChapter(index);
-    setShowTOC(false);
-  }, [tts.actions, activeBranch]);
-
   // Called by TextContent when it measures the real page count
   const handleMeasure = useCallback((measured: number) => {
     setTotalPages(measured);
@@ -1026,36 +483,51 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       pendingLastPageRef.current = false;
       setCurrentPage(measured - 1);
     } else {
-      // Clamp current page to valid range
       setCurrentPage((prev) => Math.min(prev, measured - 1));
     }
   }, []);
 
-  // Simple page navigation
   const goNextPage = useCallback(() => {
     if (currentPage < totalPages - 1) {
+      navViaRef.current = "page";
       setCurrentPage(currentPage + 1);
-    } else if (!activeBranch || currentChapter < (activeBranch?.chapterIndex ?? Infinity)) {
-      if (currentChapter < chapters.length - 1) {
-        handleChapterChange(currentChapter + 1);
-      }
+    } else if (branchLockChapter === null || currentChapter < branchLockChapter) {
+      if (currentChapter < totalChapters - 1) handleChapterChange(currentChapter + 1);
     }
-  }, [currentPage, totalPages, currentChapter, chapters.length, handleChapterChange, activeBranch]);
+  }, [currentPage, totalPages, currentChapter, totalChapters, handleChapterChange, branchLockChapter]);
 
   const goPrevPage = useCallback(() => {
     if (currentPage > 0) {
+      navViaRef.current = "page";
       setCurrentPage(currentPage - 1);
     } else if (currentChapter > 0) {
-      handleChapterChange(currentChapter - 1, true);
+      handleChapterChange(currentChapter - 1, { lastPage: true });
     }
   }, [currentPage, currentChapter, handleChapterChange]);
 
-  const [firstVisiblePara, setFirstVisiblePara] = useState(0);
+  const seekPage = useCallback((p: number) => {
+    navViaRef.current = "jump";
+    setCurrentPage(p);
+  }, []);
 
   const toggleTOC = useCallback(() => { setShowTTS(false); setShowTextSettings(false); setShowAI(false); setShowTOC(v => !v); }, []);
   const toggleTTS = useCallback(() => { setShowTOC(false); setShowTextSettings(false); setShowAI(false); setShowTTS(v => !v); }, []);
   const toggleTextSettings = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowAI(false); setShowTextSettings(v => !v); }, []);
   const toggleAI = useCallback(() => { setShowTOC(false); setShowTTS(false); setShowTextSettings(false); setShowAI(v => !v); }, []);
+
+  const handleAssistantOpenChange = useCallback((open: boolean) => {
+    setAssistantOpen(open);
+    if (open) setShowAI(false);
+  }, []);
+
+  // ── Speed reader (same RenderedChapter: lexicon + entities applied) ──────────────
+  const speedReaderChunks = useMemo(() => {
+    if (!speedReaderActive || !chapter) return [];
+    const html = chapter.paras.map((p, i) =>
+      p.hidden || (branchHere && sim.truncateAt !== null && i > sim.truncateAt) ? "" : p.html,
+    );
+    return chunkParagraphs([...html, ...extraParagraphs]);
+  }, [speedReaderActive, chapter, branchHere, sim.truncateAt, extraParagraphs]);
 
   const handleSpeedReaderToggle = useCallback(() => {
     setSpeedReaderActive(prev => {
@@ -1064,14 +536,30 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     });
   }, []);
 
-  // Idempotent exit — SpeedReaderView's own Esc and the Reader Esc chain can
-  // both fire for one key press, so this must not toggle.
   const exitSpeedReader = useCallback(() => {
     setSpeedReaderActive(false);
     setSrChunkParaIndex(-1);
     setSrChunkText("");
     setSrChunkOffset(0);
   }, []);
+
+  const handleSpeedReaderChunkChange = useCallback((paraIndex: number, chunkText: string, charOffset: number) => {
+    setSrChunkParaIndex(paraIndex);
+    setSrChunkText(chunkText);
+    setSrChunkOffset(charOffset);
+  }, []);
+
+  const handleSpeedReaderChapterEnd = useCallback(() => {
+    reportPosition({ chapterIndex: currentChapter, atChapterEnd: true, via: "speed" });
+    if (currentChapter < totalChapters - 1) handleChapterChange(currentChapter + 1);
+  }, [currentChapter, totalChapters, handleChapterChange, reportPosition]);
+
+  const handleSpeedReaderReadProgress = useCallback((paraIndex: number) => {
+    const p = chapter?.paras[paraIndex];
+    if (!p) return;
+    markReadAt(p.id);
+    reportPosition({ chapterIndex: currentChapter, paraId: p.id, atChapterEnd: false, via: "speed" });
+  }, [chapter, markReadAt, reportPosition, currentChapter]);
 
   // Theme scope is <html> (conventions §1): mirror the paper's appearance so
   // portals (modals, menus, tooltips) match the reader chrome.
@@ -1087,56 +575,143 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
   }, [settings.readingTheme]);
 
-  const handleSpeedReaderChunkChange = useCallback((paraIndex: number, chunkText: string, charOffset: number) => {
-    setSrChunkParaIndex(paraIndex);
-    setSrChunkText(chunkText);
-    setSrChunkOffset(charOffset);
-  }, []);
-
-  const handleSpeedReaderChapterEnd = useCallback(() => {
-    if (currentChapter < chapters.length - 1) {
-      handleChapterChange(currentChapter + 1);
-    }
-  }, [currentChapter, chapters.length, handleChapterChange]);
-
-  // Track speed reader paragraph progress as read marks
-  const handleSpeedReaderReadProgress = useCallback((paraIndex: number) => {
-    setPersistedReadMarks(prev => {
-      const existing = prev[currentChapter] ?? -1;
-      if (paraIndex <= existing) return prev;
-      const next = { ...prev, [currentChapter]: paraIndex };
-      window.electronAPI?.setSetting(`ttsReadMarks:${filePath}`, JSON.stringify(next));
-      return next;
-    });
-  }, [currentChapter, filePath]);
-
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
     else { document.exitFullscreen?.(); setIsFullscreen(false); }
   }, []);
 
-  // Escape + Space keyboard handling
+  // ── Comments: AI (artifact) + yours (annotations), resolved through merges/drops ──
+  const commentsByPara = useMemo(() => {
+    const map = new Map<number, ReaderComment[]>();
+    if (!chapter || !chapterId) return map;
+    const add = (paraId: ParaId, c: ReaderComment) => {
+      const i = resolveAnchor(chapter, paraId);
+      if (i < 0) return;
+      const list = map.get(i);
+      if (list) list.push(c);
+      else map.set(i, [c]);
+    };
+    (pipeline.artifacts?.comments ?? []).forEach((c, k) =>
+      add(c.paraId, { key: `a${k}`, author: "ai", text: applyLexiconText(c.text, lexicon, "display") }));
+    for (const c of userComments) {
+      if (c.chapterId === chapterId) add(c.paraId, { key: `u${c.id}`, author: "user", text: c.text, id: c.id });
+    }
+    return map;
+  }, [chapter, chapterId, pipeline.artifacts, userComments, lexicon]);
+  const commentsUI = !!prefs?.comments || userComments.some((c) => c.chapterId === chapterId);
+
+  const handleAddComment = useCallback((paraIndex: number, text: string) => {
+    const p = chapter?.paras[paraIndex];
+    if (!p || !chapterId) return;
+    void anchorsState.addComment({ filePath, chapterId, paraId: p.id }, text, p.text.slice(0, 200));
+  }, [chapter, chapterId, filePath, anchorsState]);
+
+  const handleDeleteComment = useCallback((c: ReaderComment) => {
+    if (c.author === "user" && c.id !== undefined) void anchorsState.deleteComment(c.id);
+  }, [anchorsState]);
+
+  // ── Selection actions (Ask · Explain · Define · Who's this? · Quote · Save word) ──
+  const quoteIdsRef = useRef(new Map<string, number>());
+  const handleSaveQuote = useCallback(async (s: SelectionPayload) => {
+    const api = window.electronAPI;
+    if (!api || !chapter) return;
+    const idx = chapter.byId[s.ref.paraId] ?? 0;
+    const saved = await api.quotesAdd(filePath, currentChapter, idx, s.text, chapterTitle, title).catch(() => null);
+    if (!saved) return;
+    quoteIdsRef.current.set(s.text, saved.id);
+    void anchorsState.setAnchor({ kind: "quote", refId: String(saved.id), filePath, chapterId: s.ref.chapterId, paraId: s.ref.paraId, quote: s.text });
+    if (quoteToastTimer.current) clearTimeout(quoteToastTimer.current);
+    setQuoteToastVisible(true);
+    quoteToastTimer.current = setTimeout(() => setQuoteToastVisible(false), 2000);
+  }, [chapter, filePath, currentChapter, chapterTitle, title, anchorsState]);
+
+  const findEntityByName = useCallback((name: string): string | null => {
+    const n = name.trim().toLowerCase();
+    for (const e of entityIndex ?? []) {
+      if (e.name.toLowerCase() === n || e.aliases.some((a) => a.toLowerCase() === n)) return e.id;
+    }
+    return null;
+  }, [entityIndex]);
+
+  const selectionActions = useMemo(() => createSelectionActions({
+    filePath,
+    bookTitle: title,
+    showDefine: (s) => setDefine(s),
+    showWhoIs: (s) => setEntityCard({ entityId: findEntityByName(s.text), name: s.text.trim(), rect: rectOf(s.rect) }),
+    saveQuote: handleSaveQuote,
+    onQuoteClassified: (s, r) => {
+      const id = quoteIdsRef.current.get(s.text);
+      if (id === undefined) return;
+      void window.electronAPI?.quotesUpdate(id, { speaker: r.speakerName ?? r.speaker, kind: r.kind, aiEnhanced: true });
+    },
+  }), [filePath, title, findEntityByName, handleSaveQuote]);
+
+  // ── Entities ──────────────────────────────────────────────────────────────────────
+  const refAt = useCallback((paraIndex: number | undefined): ParaRef | null => {
+    if (!chapter || !chapterId) return null;
+    const p = chapter.paras[paraIndex ?? visibleRange[0]] ?? chapter.paras[chapter.visible[0] ?? 0];
+    return p ? { filePath, chapterId, paraId: p.id } : null;
+  }, [chapter, chapterId, filePath, visibleRange]);
+
+  const startSimulate = useCallback((entity: { id: string; name: string }, paraIndex?: number) => {
+    const ref = refAt(paraIndex);
+    if (!ref) return;
+    tts.actions.stop();
+    void sim.start(ref, entity);
+  }, [refAt, sim, tts.actions]);
+
+  const openWiki = useCallback((entryId?: string) => {
+    window.electronAPI?.openWiki({ filePath, title, ...(entryId ? { entryId } : {}) });
+  }, [filePath, title]);
+
+  const handleEntityClick = useCallback((id: string, rect: DOMRect, paraIndex: number) => {
+    setEntityMenu(null);
+    setEntityCard((cur) => (cur?.entityId === id ? null : { entityId: id, rect, paraIndex }));
+  }, []);
+
+  const handleEntityContextMenu = useCallback((id: string, x: number, y: number, paraIndex: number) => {
+    const entity = entityById.get(id);
+    if (!entity) return;
+    setEntityCard(null);
+    setEntityMenu({ entity, x, y, paraIndex });
+  }, [entityById]);
+
+  // Popovers anchored to the page close when the page or chapter changes.
+  useEffect(() => {
+    setEntityMenu(null);
+    setEntityCard(null);
+    setDefine(null);
+  }, [currentPage, currentChapter]);
+
+  /** The assistant asked to show an entity: a card beside the assistant panel. */
+  const showEntityFromAssistant = useCallback((id: string) => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    setEntityCard({ entityId: id, rect: { top: h / 2 - 120, bottom: h / 2 - 100, left: w - ASSISTANT_INSET - 300, right: w - ASSISTANT_INSET - 16, width: 284, height: 20 } });
+  }, []);
+
+  // Escape: the window handler only acts on keys nobody consumed (surfaces that consume Escape
+  // call preventDefault in the capture phase). Esc NEVER closes the window — Ctrl+W does.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.key === "Escape") {
-        // If typing in an input, blur it first instead of closing panels
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA") {
           (e.target as HTMLElement).blur();
           return;
         }
         if (speedReaderActive) exitSpeedReader();
-        else if (activeBranch) { handleExitBranch(); }
+        else if (sim.active) sim.exit();
         else if (showAI) setShowAI(false);
         else if (showTextSettings) setShowTextSettings(false);
         else if (showTOC) setShowTOC(false);
         else if (showTTS) setShowTTS(false);
         else if (isTTSActive) tts.actions.stop();
         else if (isFullscreen) { document.exitFullscreen?.(); setIsFullscreen(false); }
-        else window.electronAPI?.close();
+        return;
       }
       if (e.key === " " && !isImageBook) {
-        // Don't intercept space when typing in an input/textarea
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
         e.preventDefault();
@@ -1146,11 +721,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [speedReaderActive, exitSpeedReader, showTextSettings, showTOC, showTTS, showAI, activeBranch, handleExitBranch, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
+  }, [speedReaderActive, exitSpeedReader, showTextSettings, showTOC, showTTS, showAI, sim, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
 
   // Arrow key page navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
       if (e.key === "ArrowRight" || e.key === "PageDown") {
@@ -1174,7 +750,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     const el = readerContentRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      // Don't hijack scroll from sidebars/panels/scrollable children
       let node = e.target as HTMLElement | null;
       while (node && node !== el) {
         const { overflowY } = getComputedStyle(node);
@@ -1201,31 +776,23 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
   }, [goNextPage, goPrevPage]);
 
-  // Bulk progress dock — must be after all callback definitions
-  const bulkRun = useBulkRun({
-    wikiAllProgress, wikiProcessingChapter,
-    formatAllProgress, formattingChapter,
-    enrichAllProgress, enrichingChapter,
-    condenseAllProgress, condensingChapter,
-    onRunWiki: processAllWikiChapters, onRunFormat: formatAllChapters,
-    onRunTitles: enrichAll, onRunCondense: condenseAllChapters,
-    cancelWiki: cancelWikiProcessAll, cancelFormat: cancelFormatAll,
-    cancelTitles: cancelEnrichAll, cancelCondense: cancelCondenseAll,
-  });
+  const handleVisibleRange = useCallback((first: number, last: number) => {
+    setVisibleRange((cur) => (cur[0] === first && cur[1] === last ? cur : [first, last]));
+  }, []);
 
   if (!isLoaded) return null;
 
-  const footerHeight = settings.immersiveMode && !immersiveVisible ? 0 : FOOTER_HEIGHT;
-  // Side panels never occlude the text column (conventions §13.6): the TOC
-  // and the Read Aloud panel take the left gutter, AI tools and Explain the right.
-  const tocInset = (showTOC && chapters.length > 1) || (showTTS && !isImageBook) ? TOC_INSET : 0;
-  const aiInset = showAI || explainState ? AI_INSET : 0;
+  // Side panels never occlude the text column (conventions §13.6): the TOC and the Read Aloud
+  // panel take the left gutter, AI tools and the assistant the right.
+  const tocInset = (showTOC && totalChapters > 1) || (showTTS && !isImageBook) ? TOC_INSET : 0;
+  const rightInset = Math.max(showAI ? AI_INSET : 0, assistantOpen ? ASSISTANT_INSET : 0);
+
+  const simulateMode = branchHere;
+  const branchEntityName = sim.active?.entityName;
 
   return (
     <div
       className={`relative flex h-screen flex-col ${theme.bg} transition-colors duration-500 ease-apple`}
-      // Light/sepia paper: chrome tokens switch to the light appearance so the
-      // glass reads correctly on the page. --reader-paper = solid page colour.
       data-appearance={settings.readingTheme === "dark" ? undefined : "light"}
       style={{ "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw } as React.CSSProperties}
     >
@@ -1233,26 +800,24 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       <header className="relative shrink-0">
         <ReaderHeader
           title={title} author={author} theme={theme}
-          chapterTitle={bookContent ? chapterTitle : undefined}
+          chapterTitle={book ? chapterTitle : undefined}
           readingTheme={settings.readingTheme} maximized={maximized}
-          isFullscreen={isFullscreen} hasMultipleChapters={chapters.length > 1}
+          isFullscreen={isFullscreen} hasMultipleChapters={totalChapters > 1}
           isImageBook={isImageBook} isBookmarked={!!bookmarkState.currentBookmark}
           isTTSActive={isTTSActive} showTOC={showTOC} showTTS={showTTS}
           showTextSettings={showTextSettings} showAI={showAI}
           onThemeChange={(t) => updateSetting("readingTheme", t)}
           onTOCToggle={toggleTOC} onTTSToggle={toggleTTS}
           onTextSettingsToggle={toggleTextSettings}
-          onBookmarkToggle={bookmarkState.toggleBookmark}
+          onBookmarkToggle={() => void bookmarkState.toggleBookmark()}
           onFullscreenToggle={toggleFullscreen}
           onAIToggle={toggleAI}
           speedReaderActive={speedReaderActive}
           onSpeedReaderToggle={handleSpeedReaderToggle}
-          // Focus mode hides the footer, so playback moves up here.
           playbackInFooter={!settings.immersiveMode}
           onOpenQuotes={() => window.electronAPI?.openQuotes({ filePath, title })}
         />
 
-        {/* Text Settings Panel */}
         <AnimatePresence>
         {showTextSettings && !isImageBook && (
           <TextSettingsPanel
@@ -1278,150 +843,80 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
         </AnimatePresence>
       </header>
 
-      {/* Main area: content + footer as siblings in a column */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Content area — sidebar overlays this, not the footer */}
         <div ref={readerContentRef} className="relative flex-1 overflow-hidden">
           <AnimatePresence>
-          {showTOC && chapters.length > 1 && (
+          {showTOC && totalChapters > 1 && (
             <TOCSidebar
               key="toc"
               chapters={chapters} currentChapter={currentChapter}
               bookmarks={bookmarkState.bookmarks} theme={theme}
               chapterLabels={chapterLabels}
-              enrichedNames={enrichedNames}
-              enrichEnabled={enrichEnabled}
-              enrichingChapter={enrichingChapter}
-              onEnrichChapter={enrichChapter}
-              formattingEnabled={formattingEnabled}
-              formattedChapters={formattedChapters}
-              formattingChapter={formattingChapter}
-              onFormatChapter={formatChapter}
-              wikiEnabled={wikiEnabled}
-              wikiProcessedChapters={wikiProcessedChapters}
-              onSelectChapter={handleChapterChange}
-              onJumpToBookmark={() => {}}
+              titles={displayTitles}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onSelectChapter={(i) => handleChapterChange(i, { via: "jump" })}
+              onJumpToBookmark={(bm) => {
+                const a = bookmarkState.anchorOf.get(String(bm.id));
+                if (a) navigateToRef(a, bm.chapterIndex);
+                else handleChapterChange(bm.chapterIndex, { via: "jump" });
+              }}
               onDeleteBookmark={bookmarkState.removeBookmark}
               onClose={() => setShowTOC(false)}
             />
           )}
           </AnimatePresence>
 
+          <AnimatePresence>
           {showAI && (
-            <AISidebar
-              theme={theme}
-              chapters={chapters}
-              enrichedNames={enrichedNames}
-              enrichEnabled={enrichEnabled}
-              enrichingChapter={enrichingChapter}
-              enrichAllProgress={enrichAllProgress}
-              onEnrichToggle={toggleEnrichEnabled}
-              onEnrichAll={enrichAll}
-              onCancelEnrichAll={cancelEnrichAll}
-              onClearEnrichedNames={clearEnrichedNames}
-              formattingEnabled={formattingEnabled}
-              formattedChapterCount={Object.keys(formattedChapters).length}
-              formattingChapter={formattingChapter}
-              formatAllProgress={formatAllProgress}
-              onFormattingToggle={toggleFormattingEnabled}
-              onFormatAll={formatAllChapters}
-              onCancelFormatAll={cancelFormatAll}
-              onClearFormatting={clearFormatting}
-              styleDictionary={styleDictionary}
-              condenseEnabled={condenseEnabled}
-              condensedChapterCount={Object.keys(condensedChapters).length}
-              condensingChapter={condensingChapter}
-              condenseAllProgress={condenseAllProgress}
-              onCondenseToggle={toggleCondenseEnabled}
-              onCondenseAll={condenseAllChapters}
-              onCancelCondenseAll={cancelCondenseAll}
-              onClearCondense={clearCondense}
-              currentChapterCondenseDone={!!condensedChapters[currentChapter]}
+            <AIToolsPanel
+              key="ai-tools"
               filePath={filePath}
-              bookTitle={title}
-              currentChapterWikiDone={wikiProcessedChapters.has(currentChapter)}
-              currentChapterFormatDone={
-                condenseEnabled
-                  ? !!fmtCondensedChapters[currentChapter]
-                  : !!formattedChapters[currentChapter]
-              }
-              currentChapterEnrichDone={!!enrichedNames[currentChapter]}
-              wikiEnabled={wikiEnabled}
-              wikiEntryCount={wikiEntryCount}
-              wikiProcessedCount={
-                Object.keys(chapterLabels).length > 0
-                  ? Array.from(wikiProcessedChapters).filter((i) => i in chapterLabels).length
-                  : wikiProcessedChapters.size
-              }
-              wikiProcessingChapter={wikiProcessingChapter}
-              wikiAllProgress={wikiAllProgress}
-              totalChapters={Object.keys(chapterLabels).length > 0 ? Object.keys(chapterLabels).length : chapters.length}
-              currentChapter={currentChapter}
-              onWikiToggle={toggleWikiEnabled}
-              onWikiProcessAll={processAllWikiChapters}
-              onCondenseRetry={() => {
-                // Clear condensed + formatted-condensed for this chapter, then re-condense
-                clearCondense();
-                condenseChapter(currentChapter);
-              }}
-              onWikiRetry={() => retryWikiChapter(currentChapter)}
-              onFormatRetry={() => {
-                if (condenseEnabled && condensedChapters[currentChapter]) {
-                  clearFormatting();
-                  formatCondensedChapter(currentChapter);
-                } else {
-                  formatChapter(currentChapter);
-                }
-              }}
-              onEnrichRetry={() => enrichChapter(currentChapter)}
-              onCancelWikiProcessAll={cancelWikiProcessAll}
-              onClearWiki={clearWiki}
-              buddyEnabled={buddyEnabled}
-              onBuddyToggle={toggleBuddyEnabled}
-              simulateEnabled={simulateEnabled}
-              onSimulateToggle={toggleSimulateEnabled}
-              commentsEnabled={commentsEnabled}
-              commentingChapter={commentingChapter}
-              chapterCommentCount={Object.keys(chapterComments).length}
-              onCommentsToggle={toggleCommentsEnabled}
-              onClearComments={clearComments}
-              chapterLabels={chapterLabels}
+              chapterIndex={currentChapter}
+              totalChapters={totalChapters || undefined}
+              chapterLabel={chapterLabel}
               onClose={() => setShowAI(false)}
-              onBulkStart={bulkRun.start}
+              onOpenWiki={() => openWiki()}
+              onOpenStyleDictionary={() => window.electronAPI?.openStyleDictionary({ filePath, title })}
             />
           )}
+          </AnimatePresence>
 
           <motion.div
             className="h-full"
             initial={false}
-            animate={{ paddingInlineStart: tocInset, paddingInlineEnd: aiInset }}
+            animate={{ paddingInlineStart: tocInset, paddingInlineEnd: rightInset }}
             transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
           >
-          {isLoading ? (
+          {isLoading || (!chapter && pipeline.status !== "error") ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 className={`size-5 animate-spin ${theme.muted}`} strokeWidth={1.5} />
             </div>
-          ) : isTOCChapter(chapterTitle) ? (
+          ) : pipeline.status === "error" || !chapter ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
+              <AlertCircle className={`size-5 ${theme.muted}`} strokeWidth={1.5} />
+              <p className={`text-sm ${theme.muted}`}>This book couldn’t be opened.</p>
+              {pipeline.error && <p className={`max-w-md text-xs ${theme.muted}`}>{pipeline.error}</p>}
+            </div>
+          ) : isTOCChapter(rawChapterTitle) ? (
             <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
               <BookTableOfContents
-                toc={bookContent?.toc ?? []}
+                toc={book?.toc ?? []}
                 currentChapter={currentChapter}
                 theme={theme}
-                enrichedNames={enrichedNames}
-                enrichEnabled={enrichEnabled}
-                onSelectChapter={handleChapterChange}
+                titles={displayTitles}
+                onSelectChapter={(i) => handleChapterChange(i, { via: "jump" })}
               />
             </div>
           ) : (
             <TextContent
               chapterTitle={chapterTitle}
-              htmlParagraphs={effectiveHtml}
+              paras={chapter.paras}
+              chapterId={chapterId}
+              truncateAfter={branchHere ? sim.truncateAt : null}
+              extraParagraphs={extraParagraphs}
               theme={theme}
               readingTheme={settings.readingTheme}
-              aiFormattingEnabled={formattingEnabled && (
-                (condenseEnabled && !!fmtCondensedChapters[currentChapter]) ||
-                (!condenseEnabled && !!formattedChapters[currentChapter])
-              )}
               fontFamily={settings.fontFamily}
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}
@@ -1432,34 +927,32 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               currentPage={currentPage}
               totalPages={totalPages}
               onMeasure={handleMeasure}
-              onFirstParaChange={setFirstVisiblePara}
+              onVisibleRangeChange={handleVisibleRange}
               onPageRequest={setCurrentPage}
+              revealParaIndex={revealParaIndex}
+              onRevealed={clearReveal}
               ttsStatus={tts.state.status}
-              ttsParagraphIndex={tts.state.currentParagraph}
-              ttsActiveWordIndex={tts.activeWordIndex}
-              ttsHighWaterMark={effectiveHighWaterMark}
+              ttsParagraphIndex={ttsParagraphIndex}
+              ttsActiveWordIndex={ttsWordIndex}
+              ttsHighWaterMark={readMarkIndex}
               ttsHighlightMode={settings.ttsHighlightMode}
               ttsShowReadMark={settings.ttsShowReadMark}
               onPlayFromParagraph={(idx) => tts.actions.playFrom(idx)}
-              wikiEnabled={wikiEnabled}
-              wikiEntityIndex={effectiveWikiEntityIndex}
-              currentChapterIndex={currentChapter}
               filePath={filePath}
-              bookTitle={title}
-              simulateEnabled={simulateEnabled}
-              onSimulateEntity={handleSimulateEntity}
-              simulateMode={!!isBranchChapter}
-              simulateInputVisible={!!isBranchChapter && !simulateGenerating}
-              simulateGenerating={!!isBranchChapter && simulateGenerating}
-              onSimulateSubmit={handleSimulateSubmit}
-              branchEntityName={activeBranch?.entityName}
-              simulateChoices={isBranchChapter ? simulateChoices : []}
-              commentsEnabled={commentsEnabled}
-              inlineComments={chapterComments[currentChapter] ?? []}
-              onAddComment={addUserComment}
-              onDeleteComment={deleteUserComment}
-              onExplain={handleExplain}
-              onSaveQuote={handleSaveQuote}
+              chapterIndex={currentChapter}
+              onEntityClick={prefs?.knowledge ? handleEntityClick : undefined}
+              onEntityContextMenu={prefs?.knowledge ? handleEntityContextMenu : undefined}
+              simulateMode={simulateMode}
+              simulateInputVisible={simulateMode && !sim.pending}
+              simulateGenerating={simulateMode && sim.pending}
+              onSimulateSubmit={(text) => void sim.submit(text)}
+              branchEntityName={branchEntityName}
+              simulateChoices={simulateMode ? sim.choices : []}
+              commentsEnabled={commentsUI}
+              commentsByPara={commentsByPara}
+              onAddComment={handleAddComment}
+              onDeleteComment={handleDeleteComment}
+              selectionActions={selectionActions}
               speedReaderActive={speedReaderActive}
               speedReaderParaIndex={srChunkParaIndex}
               speedReaderChunkText={srChunkText}
@@ -1468,7 +961,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           )}
           </motion.div>
 
-          {/* Speed reader overlay (control bar + RSVP display) */}
           {speedReaderActive && (
             <SpeedReaderView
               theme={theme}
@@ -1476,106 +968,44 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               chapterTitle={chapterTitle}
               onExit={exitSpeedReader}
               onChapterEnd={handleSpeedReaderChapterEnd}
-              onParagraphChange={(paraIdx) => setFirstVisiblePara(paraIdx)}
+              onParagraphChange={() => {}}
               onReadProgress={handleSpeedReaderReadProgress}
               onChunkChange={handleSpeedReaderChunkChange}
-            />
-          )}
-
-          {/* AI Explain panel — docked right, like the AI tools sidebar */}
-          {explainState && (
-            <ExplainPanel
-              theme={theme}
-              selectedText={explainState.text}
-              messages={explainState.messages}
-              loading={explainState.loading}
-              onAsk={handleExplainFollowUp}
-              onClose={() => setExplainState(null)}
             />
           )}
 
           {/* Top fade */}
           <div
             className="pointer-events-none absolute left-0 right-0 top-0"
-            style={{
-              height: `${settings.textPadding}px`,
-              background: `linear-gradient(to bottom, ${theme.bgRaw}, transparent)`,
-            }}
+            style={{ height: `${settings.textPadding}px`, background: `linear-gradient(to bottom, ${theme.bgRaw}, transparent)` }}
           />
           {/* Bottom fade */}
           <div
             className="pointer-events-none absolute bottom-0 left-0 right-0"
-            style={{
-              height: `${settings.textPadding}px`,
-              background: `linear-gradient(to top, ${theme.bgRaw}, transparent)`,
-            }}
+            style={{ height: `${settings.textPadding}px`, background: `linear-gradient(to top, ${theme.bgRaw}, transparent)` }}
           />
         </div>
 
-        {/* AI Buddy backdrop — click to close */}
-        {showBuddy && buddyEnabled && wikiEnabled && (
-          <div className="fixed inset-0 z-30" onClick={() => setShowBuddy(false)} />
-        )}
-
-        {/* Floating row above footer — buddy button + bulk progress dock */}
-        <div className="pointer-events-none absolute bottom-17 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4">
-          {/* Bulk progress dock */}
-          {bulkRun.showDock && (
-            <div className="pointer-events-auto">
-              <BulkProgressDock
-                isRunning={bulkRun.state.isRunning}
-                isDone={bulkRun.state.isDone}
-                phases={bulkRun.state.phases}
-                currentPhaseIdx={bulkRun.state.currentPhaseIdx}
-                eta={bulkRun.state.eta}
-                chapterLabels={chapterLabels}
-                activeChapters={{
-                  wiki: wikiProcessingChapter,
-                  format: formattingChapter,
-                  titles: enrichingChapter,
-                  condense: condensingChapter,
-                }}
-                onCancel={bulkRun.cancel}
-                onDismiss={bulkRun.dismiss}
-              />
-            </div>
-          )}
-
-          {/* AI Buddy button + panel */}
-          {buddyEnabled && wikiEnabled && (
-            <div className="pointer-events-auto">
-              <div className="relative">
-                {showBuddy && (
-                  <AIBuddyPanel
-                    theme={theme}
-                    filePath={filePath}
-                    bookTitle={title}
-                    currentChapter={currentChapter}
-                    totalChapters={chapters.length}
-                    wikiEntryCount={wikiEntryCount}
-                    readChapter={(idx) => chapters[idx]?.paragraphs?.join("\n") ?? null}
-                    onEntityClick={(entityId) => {
-                      window.electronAPI?.openWiki({ filePath, title, entryId: entityId });
-                    }}
-                    onClose={() => setShowBuddy(false)}
-                    onDetach={() => {
-                      setShowBuddy(false);
-                      window.electronAPI?.openBuddy({ filePath, title, currentChapter, totalChapters: chapters.length });
-                    }}
-                    onWikiUpdated={refreshWikiState}
-                  />
-                )}
-                <button
-                  onClick={() => setShowBuddy((v) => !v)}
-                  aria-label="AI reading buddy"
-                  className={`focus-ring pressable flex size-11 items-center justify-center rounded-full transition-colors duration-150 ${showBuddy ? "bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]" : "glass text-brand"}`}
-                >
-                  <MessageCircle className="size-5" strokeWidth={1.75} />
-                </button>
-              </div>
-            </div>
-          )}
+        {/* Bulk progress (orchestrator status), left of the assistant pill */}
+        <div className="pointer-events-none absolute bottom-17 left-0 right-0 z-40 flex items-end justify-end gap-3 px-4 pr-32">
+          <div className="pointer-events-auto">
+            <BulkDock filePath={filePath} chapterLabel={chapterLabel} />
+          </div>
         </div>
+
+        {!isImageBook && book && (
+          <AssistantLauncher
+            filePath={filePath}
+            bookTitle={title}
+            frontierLabel={frontierLabel}
+            material="glass-thick"
+            onOpenChange={handleAssistantOpenChange}
+            onDetach={() => window.electronAPI?.openBuddy({ filePath, title, currentChapter, totalChapters })}
+            onOpenEntity={showEntityFromAssistant}
+            onReveal={(ref) => navigateToRef(ref)}
+            hidePill={speedReaderActive}
+          />
+        )}
 
         {/* Quote saved toast */}
         <div
@@ -1588,17 +1018,16 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           </div>
         </div>
 
-        {/* Footer — hidden during speed reader mode */}
         {!speedReaderActive && <ReaderFooter
           currentPage={currentPage} totalPages={totalPages}
-          chapterIndex={currentChapter} chapterCount={chapters.length}
+          chapterIndex={currentChapter} chapterCount={totalChapters}
           chapterTitle={chapterTitle} theme={theme} immersiveMode={settings.immersiveMode}
           immersiveVisible={immersiveVisible}
-          canGoPrev={!activeBranch && (currentPage > 0 || currentChapter > 0)}
-          canGoNext={!activeBranch && (currentPage < totalPages - 1 || currentChapter < chapters.length - 1)}
+          canGoPrev={!sim.active && (currentPage > 0 || currentChapter > 0)}
+          canGoNext={!sim.active && (currentPage < totalPages - 1 || currentChapter < totalChapters - 1)}
           onPrev={goPrevPage}
           onNext={goNextPage}
-          onSeekPage={activeBranch ? undefined : setCurrentPage}
+          onSeekPage={sim.active ? undefined : seekPage}
           showPlayback={!isImageBook && !settings.immersiveMode}
           showTTS={showTTS}
           onTTSToggle={toggleTTS}
@@ -1606,15 +1035,19 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onSpeedReaderToggle={handleSpeedReaderToggle}
           ttsStatus={tts.state.status}
           estimatedSeconds={ttsProgress.estimatedSeconds}
-          branchMode={!!activeBranch}
-          branchEntityName={activeBranch?.entityName}
-          onExitBranch={handleExitBranch}
-          savedBranches={savedBranches}
+          branchMode={!!sim.active}
+          branchEntityName={branchEntityName}
+          onExitBranch={sim.exit}
+          savedBranches={sim.branches}
           showBranchList={showBranchList}
-          onToggleBranchList={() => setShowBranchList(v => !v)}
-          onLoadBranch={handleLoadBranch}
-          onDeleteBranch={handleDeleteBranch}
-          activeBranchId={activeBranch?.id}
+          onToggleBranchList={() => setShowBranchList((v) => !v)}
+          onLoadBranch={(b) => {
+            setShowBranchList(false);
+            void sim.load(b.id);
+            navigateToRef(b.ref, b.chapterIndex);
+          }}
+          onDeleteBranch={(id) => void sim.remove(id)}
+          activeBranchId={sim.active?.id}
           chapterLabels={chapterLabels}
         />}
       </div>
@@ -1638,10 +1071,9 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           estimatedSeconds={ttsProgress.estimatedSeconds}
           onPlayFromStart={() => tts.actions.playFrom(0)}
           onPlayFromCurrent={() => {
-            // Resume from last read position if available, otherwise start from first visible paragraph
-            const persisted = persistedReadMarks[currentChapter] ?? -1;
-            const resumeFrom = persisted >= firstVisiblePara ? persisted + 1 : firstVisiblePara;
-            tts.actions.playFrom(resumeFrom);
+            // Resume after the read mark if it's on this page or later, else from the page.
+            const from = readMarkIndex >= visibleRange[0] ? readMarkIndex + 1 : visibleRange[0];
+            tts.actions.playFrom(from);
           }}
           onPause={() => tts.actions.pause()}
           onResume={() => tts.actions.play()}
@@ -1659,6 +1091,74 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       )}
       </AnimatePresence>
 
+      {/* Spoiler-safe entity card (click on a highlighted name, "Who's this?") */}
+      {entityCard && (
+        <EntityCard
+          filePath={filePath}
+          entityId={entityCard.entityId}
+          name={entityCard.name}
+          anchorRect={entityCard.rect}
+          bookTitle={title}
+          chapterLabel={chapterLabel}
+          onAsk={(e) => {
+            setEntityCard(null);
+            if (e.id) openAssistant({ entityId: e.id }, { filePath });
+            else openAssistant(undefined, { filePath, mode: "lookup", prompt: `Who is ${e.name}?`, autoSend: true });
+          }}
+          onSimulate={(e) => {
+            const at = entityCard.paraIndex;
+            setEntityCard(null);
+            startSimulate(e, at);
+          }}
+          onOpenWiki={(id) => openWiki(id)}
+          onOpenEntity={(id) => setEntityCard((cur) => (cur ? { ...cur, entityId: id, name: undefined } : cur))}
+          onClose={() => setEntityCard(null)}
+        />
+      )}
+
+      {/* Right-click on a highlighted name */}
+      {entityMenu && (
+        <EntityContextMenu
+          entity={{ id: entityMenu.entity.id, name: applyLexiconText(entityMenu.entity.name, lexicon, "display"), type: entityMenu.entity.type as WikiEntryType, color: entityMenu.entity.color }}
+          x={entityMenu.x}
+          y={entityMenu.y}
+          onSimulate={() => startSimulate({ id: entityMenu.entity.id, name: entityMenu.entity.name }, entityMenu.paraIndex)}
+          onOpenWiki={() => openWiki(entityMenu.entity.id)}
+          onAsk={() => openAssistant({ entityId: entityMenu.entity.id }, { filePath })}
+          onClose={() => setEntityMenu(null)}
+        />
+      )}
+
+      {/* In-place Define / Translate */}
+      {define && (
+        <DefinePopover
+          term={define.text}
+          sentence={define.sentence}
+          anchorRect={define.rect}
+          filePath={filePath}
+          bookTitle={title}
+          ref={define.ref}
+          onClose={() => setDefine(null)}
+          onWhoIs={(name) => {
+            const rect = rectOf(define.rect);
+            setDefine(null);
+            setEntityCard({ entityId: findEntityByName(name), name, rect });
+          }}
+        />
+      )}
+
+      {/* "Previously on…" when reopening after a while (per-book pref) */}
+      {prefs?.recapOnReopen && (
+        <RecapSheet
+          filePath={filePath}
+          bookTitle={title}
+          onEntityClick={(id, rect) => setEntityCard({ entityId: id, rect })}
+        />
+      )}
     </div>
   );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

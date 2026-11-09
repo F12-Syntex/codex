@@ -81,7 +81,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("style-dictionary:open", info),
 
   // Buddy
-  openBuddy: (info: { filePath: string; title: string; currentChapter: number; totalChapters: number }) =>
+  openBuddy: (info: { filePath: string; title: string; currentChapter: number; totalChapters: number; threadId?: string }) =>
     ipcRenderer.invoke("buddy:open", info),
 
   // Wiki

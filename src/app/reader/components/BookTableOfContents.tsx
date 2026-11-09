@@ -10,8 +10,8 @@ interface BookTableOfContentsProps {
   toc: TocEntry[];
   currentChapter: number;
   theme: ThemeClasses;
-  enrichedNames?: Record<number, string>;
-  enrichEnabled?: boolean;
+  /** AI chapter titles by index (already lexicon-applied). */
+  titles?: Record<number, string>;
   onSelectChapter: (index: number) => void;
 }
 
@@ -30,8 +30,7 @@ export function BookTableOfContents({
   toc,
   currentChapter,
   theme,
-  enrichedNames = {},
-  enrichEnabled = false,
+  titles = {},
   onSelectChapter,
 }: BookTableOfContentsProps) {
   const [search, setSearch] = useState("");
@@ -43,11 +42,9 @@ export function BookTableOfContents({
   const entries = useMemo(() => {
     return toc.map((entry) => ({
       ...entry,
-      displayLabel: enrichEnabled && enrichedNames[entry.chapterIndex]
-        ? enrichedNames[entry.chapterIndex]
-        : entry.label,
+      displayLabel: titles[entry.chapterIndex] || entry.label,
     }));
-  }, [toc, enrichedNames, enrichEnabled]);
+  }, [toc, titles]);
 
   // Filter by search
   const filtered = useMemo(() => {

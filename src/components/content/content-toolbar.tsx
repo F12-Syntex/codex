@@ -11,6 +11,9 @@ import {
   Plus,
   ListFilter,
   Check,
+  Library,
+  Sparkles,
+  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,7 +29,7 @@ import type { BookFormat } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { EdgeBlur } from "./edge-blur";
 
-export type ViewMode = "list" | "grid" | "detail" | "group";
+export type ViewMode = "list" | "grid" | "detail" | "group" | "series";
 export type SortField = "title" | "author" | "format";
 export type SortDir = "asc" | "desc";
 export type FormatFilter = BookFormat | "all";
@@ -43,6 +46,17 @@ interface ContentToolbarProps {
   formatFilter: FormatFilter;
   onFormatFilterChange: (f: FormatFilter) => void;
   onImport: () => void;
+  /** Accepted genres present on this shelf (AI tags or fetched details). */
+  genreOptions?: string[];
+  genreFilter?: string | null;
+  onGenreFilterChange?: (genre: string | null) => void;
+  /** Library AI (F5): suggest tags for the shelf, and its progress. */
+  onSuggestTags?: () => void;
+  tagProgress?: { done: number; total: number } | null;
+  onCancelTagging?: () => void;
+  /** Why the last tagging run failed (e.g. no API key). */
+  tagError?: string | null;
+  onDetectSeries?: () => void;
 }
 
 /**
@@ -57,6 +71,7 @@ const viewModes: { id: ViewMode; icon: typeof List; tip: string }[] = [
   { id: "list", icon: List, tip: "List" },
   { id: "detail", icon: LayoutList, tip: "Detail" },
   { id: "group", icon: Layers, tip: "Group by author" },
+  { id: "series", icon: Library, tip: "Group by series" },
 ];
 
 const sortOptions: { field: SortField; label: string }[] = [
@@ -77,6 +92,14 @@ export function ContentToolbar({
   formatFilter,
   onFormatFilterChange,
   onImport,
+  genreOptions = [],
+  genreFilter = null,
+  onGenreFilterChange,
+  onSuggestTags,
+  tagProgress,
+  onCancelTagging,
+  tagError,
+  onDetectSeries,
 }: ContentToolbarProps) {
   const scroll = useContext(ToolbarScrollContext);
   const clusterRef = useRef<HTMLDivElement>(null);
@@ -95,7 +118,10 @@ export function ContentToolbar({
 
   const activeSort = sortOptions.find((o) => o.field === sortField);
   const SortDirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
-  const filtered = formatFilter !== "all";
+  const filtered = formatFilter !== "all" || !!genreFilter;
+  const filterLabel = [formatFilter !== "all" ? formatFilter : null, genreFilter].filter(Boolean).join(" · ");
+  const tagging = !!tagProgress && tagProgress.total > 0;
+  const hasOrganize = !!(onSuggestTags || onDetectSeries);
 
   const title = (
     <h1 key={viewLabel} className="text-large-title min-w-0 animate-blur-in truncate text-label">
@@ -120,11 +146,11 @@ export function ContentToolbar({
                 "bg-brand/15 text-brand hover:bg-brand/20 hover:text-brand data-[state=open]:bg-brand/20 data-[state=open]:text-brand",
             )}
           >
-            <ListFilter strokeWidth={2} />
-            {filtered ? formatFilter : "Filter"}
+            {tagging ? <Sparkles className="animate-pulse" strokeWidth={2} /> : <ListFilter strokeWidth={2} />}
+            <span className="max-w-40 truncate">{filtered ? filterLabel : "Filter"}</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuContent align="end" className="max-h-[70vh] min-w-52 overflow-y-auto">
           <DropdownMenuLabel>Format</DropdownMenuLabel>
           {formatOptions.map((f) => {
             const active = formatFilter === f;
@@ -135,6 +161,49 @@ export function ContentToolbar({
               </DropdownMenuItem>
             );
           })}
+          {onGenreFilterChange && genreOptions.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Genre</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => onGenreFilterChange(null)}>
+                <Check className={cn("size-4", !genreFilter ? "opacity-100" : "opacity-0")} strokeWidth={2} />
+                All genres
+              </DropdownMenuItem>
+              {genreOptions.map((g) => (
+                <DropdownMenuItem key={g} onClick={() => onGenreFilterChange(g)}>
+                  <Check className={cn("size-4", genreFilter === g ? "opacity-100" : "opacity-0")} strokeWidth={2} />
+                  {g}
+                </DropdownMenuItem>
+              ))}
+            </>
+          )}
+          {hasOrganize && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Organize</DropdownMenuLabel>
+              {onSuggestTags && (tagging ? (
+                <DropdownMenuItem onClick={() => onCancelTagging?.()}>
+                  <X className="size-4" strokeWidth={2} />
+                  <span className="flex-1">Stop tagging</span>
+                  <span className="text-2xs tabular-nums opacity-70">{tagProgress!.done}/{tagProgress!.total}</span>
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={onSuggestTags}>
+                  <Sparkles className="size-4" strokeWidth={1.75} />
+                  Suggest genres &amp; tags
+                </DropdownMenuItem>
+              ))}
+              {tagError && !tagging && (
+                <p role="status" className="max-w-56 px-2 pb-1 text-2xs leading-snug text-danger">{tagError}</p>
+              )}
+              {onDetectSeries && (
+                <DropdownMenuItem onClick={onDetectSeries}>
+                  <Library className="size-4" strokeWidth={1.75} />
+                  Detect series…
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -227,13 +227,14 @@ function createWindow() {
   });
 
   // ── Buddy: open in new window ────────────────────
-  ipcMain.handle("buddy:open", (_event, info: { filePath: string; title: string; currentChapter: number; totalChapters: number }) => {
+  ipcMain.handle("buddy:open", (_event, info: { filePath: string; title: string; currentChapter: number; totalChapters: number; threadId?: string }) => {
     const params = new URLSearchParams({
       filePath: info.filePath,
       title: info.title,
       currentChapter: String(info.currentChapter),
       totalChapters: String(info.totalChapters),
     });
+    if (info.threadId) params.set("threadId", info.threadId);
     createAppWindow("buddy", params, { width: 600, height: 700, minWidth: 400, minHeight: 400 });
   });
 

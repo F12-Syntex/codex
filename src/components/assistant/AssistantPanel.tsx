@@ -48,6 +48,8 @@ export interface AssistantPanelProps {
   onOpenEntity?: (entityId: string) => void;
   /** Override citation navigation (default `book:reveal`). */
   onReveal?: (ref: ParaRef) => void;
+  /** Glass material. Over reading text the reader passes "glass-thick" (conventions §13.6). */
+  material?: "glass" | "glass-thick";
   className?: string;
 }
 
@@ -92,7 +94,7 @@ function SeedChip({ seed, filePath, onClear }: { seed: AssistantSeed; filePath: 
 }
 
 export function AssistantPanel({
-  host, filePath, bookTitle, seed, request, threadId, frontierLabel, onClose, onDetach, onOpenEntity, onReveal, className,
+  host, filePath, bookTitle, seed, request, threadId, frontierLabel, onClose, onDetach, onOpenEntity, onReveal, material = "glass", className,
 }: AssistantPanelProps) {
   const reduce = useReducedMotion();
   const a = useAssistant({ filePath, threadId });
@@ -170,7 +172,7 @@ export function AssistantPanel({
         transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
         style={floating ? { width: 420, height: 600, maxHeight: "calc(100vh - 96px)", transformOrigin: "bottom right" } : undefined}
         className={cn(
-          "glass grain relative flex flex-col overflow-hidden text-label",
+          material, "grain relative flex flex-col overflow-hidden text-label",
           floating ? "rounded-2xl" : "h-full w-full",
           className,
         )}

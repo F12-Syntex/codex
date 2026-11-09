@@ -32,8 +32,10 @@ import type {
 } from "./assistant/types";
 
 export type { CancelSelector } from "./ai/types";
+import type { LibraryRpcMap } from "./library/types";
 
-export interface RpcMap {
+/** `library:*` (smart tagging + series, WS-E Phase 2d) is declared in `./library/types.ts`. */
+export interface RpcMap extends LibraryRpcMap {
   // ── WS-A: AI core ─────────────────────────────────────────────────────────
   /** Queue a job. Dedupes onto an identical in-flight job (raising its priority if needed). */
   "ai:submit": (spec: JobSpec) => JobTicket;

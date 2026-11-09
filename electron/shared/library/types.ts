@@ -109,6 +109,8 @@ export interface LibraryTagRequest {
   section?: "books" | "comic";
   /** Re-tag items that were already tagged by the current task version. */
   force?: boolean;
+  /** The user is waiting (e.g. one book from its details sheet): Interactive priority. */
+  interactive?: boolean;
 }
 
 export interface LibraryTagRun {
@@ -216,4 +218,13 @@ export interface LibraryRpcMap {
   /** Local filename/title rules first, then series names from tagging results. */
   "library:series:detect": (filePaths?: string[]) => SeriesSuggestion[];
   "library:series:apply": (assignments: SeriesAssignment[]) => LibraryOverview;
+  /** Reading progress of every book (`readProgress:*` settings), without loading every setting
+   *  over IPC at start-up (AI_AUDIT §7 #5). */
+  "library:progress": () => Record<string, LibraryProgress>;
+}
+
+export interface LibraryProgress {
+  /** 0-based chapter the reader is on. */
+  chapter: number;
+  totalChapters: number;
 }

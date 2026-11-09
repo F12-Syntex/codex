@@ -154,10 +154,12 @@ export function SpeedReaderView({
       if (e.key === "ArrowRight") { e.preventDefault(); handleSkipForward(); }
       if (e.key === "ArrowUp") { e.preventDefault(); setTargetWpm((w) => Math.min(800, w + 25)); }
       if (e.key === "ArrowDown") { e.preventDefault(); setTargetWpm((w) => Math.max(200, w - 25)); }
-      if (e.key === "Escape") { onExit(); }
+      // Consumed here: preventDefault in the capture phase so the Reader's window handler (which
+      // bails on defaultPrevented) never sees it.
+      if (e.key === "Escape") { e.preventDefault(); onExit(); }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", handler, { capture: true });
+    return () => window.removeEventListener("keydown", handler, { capture: true });
   }, [handlePlayPause, handleRewind, handleSkipForward, onExit]);
 
   const displayText = useMemo(() => {

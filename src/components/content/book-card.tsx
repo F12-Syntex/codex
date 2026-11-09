@@ -17,6 +17,8 @@ interface BookCardProps {
   showFormatBadge: boolean;
   selected?: boolean;
   progress?: number; // 0-1
+  /** Always-visible glass chip on the cover's bottom-right corner, e.g. "Vol. 3" in a series. */
+  badge?: string;
 }
 
 /** Cover radius per theme: rounded → cards radius, sharp → tiny chip radius. */
@@ -87,7 +89,7 @@ export function extractDominantColor(img: HTMLImageElement): string {
   return `rgb(${Math.round(r / count)},${Math.round(g / count)},${Math.round(b / count)})`;
 }
 
-export const BookCard = memo(function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress }: BookCardProps) {
+export const BookCard = memo(function BookCard({ title, author, gradient, cover, format, coverStyle, showFormatBadge, selected, progress, badge }: BookCardProps) {
   const radius = coverRadius(coverStyle);
   const [glowColor, setGlowColor] = useState<string>(gradient);
   const extracted = useRef(false);
@@ -154,6 +156,12 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
                 {showFormatBadge && (
                   <span className="glass pointer-events-none absolute top-2 left-2 inline-flex h-5 items-center rounded-xs px-1.5 text-2xs font-semibold text-label opacity-0 transition-opacity duration-200 ease-apple group-hover/card:opacity-100">
                     {format}
+                  </span>
+                )}
+
+                {badge && (
+                  <span className="glass pointer-events-none absolute right-1.5 bottom-2 inline-flex h-5 items-center rounded-full px-2 text-2xs font-semibold text-label tabular-nums">
+                    {badge}
                   </span>
                 )}
 

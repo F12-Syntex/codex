@@ -1,18 +1,47 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+/**
+ * useTTS — Edge TTS playback over the pipeline's SPEECH projection (AI_AUDIT §4.5, S2-8/S2-9).
+ *
+ * - Items are the displayed paragraphs' `RenderedPara.speech` (lexicon(speech) applied,
+ *   `[data-tts-skip]` speaker badges excluded), so TTS reads exactly what's on the page.
+ * - Position is tracked by ParaId and every long-running chain reads REFS only. When the variant
+ *   changes mid-playback (concise/formatting lands), the current paragraph finishes and playback
+ *   continues after `resolveIndex(currentParaId)` in the NEW items.
+ * - Edge word boundaries are aligned to speech tokens (`alignBoundaries`); each token knows the
+ *   DOM word it came from (`domWord`), which the page highlights with `wordRangesInNodes`.
+ */
+
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import type { ParaId, SpeechToken } from "@shared/pipeline/types";
+import { alignBoundaries } from "@shared/pipeline/speech";
 import type { EdgeVoice, TTSState, WordBoundary } from "../lib/types";
 import type { ParagraphTiming } from "./useTTSMetrics";
 
+/** One speakable paragraph, in page order. */
+export interface TTSItem {
+  id: ParaId;
+  /** Index of the paragraph element on the page (`data-para-idx`). */
+  index: number;
+  text: string;
+  tokens: SpeechToken[];
+}
+
 interface UseTTSOptions {
-  paragraphs: string[];
+  items: TTSItem[];
+  /**
+   * Index into `items` of the item that now shows paragraph `id` (merge host / next visible),
+   * or -1. Used after a variant swap; defaults to an exact id lookup.
+   */
+  resolveIndex?: (id: ParaId, items: TTSItem[]) => number;
   voice: string;
   rate: number;
   pitch: number;
   volume: number;
   autoAdvance: boolean;
-  onParagraphChange: (index: number) => void;
   onChapterEnd: () => void;
+  /** A paragraph was read to the end (read marks, frontier). */
+  onParagraphDone?: (item: TTSItem) => void;
   onParagraphTiming?: (timing: ParagraphTiming) => void;
 }
 
@@ -21,51 +50,65 @@ interface SynthResult {
   wordBoundaries: WordBoundary[];
 }
 
+export interface TTSPlaybackState extends TTSState {
+  /** ParaId being read (null when idle). */
+  currentParaId: ParaId | null;
+}
+
 /** Returns true if the text has no speakable content (empty, whitespace, or punctuation-only) */
 export function isSpeakable(text: string | undefined): boolean {
   if (!text) return false;
-  // Strip all whitespace and common punctuation — if nothing remains, it's not speakable
   return text.replace(/[\s\p{P}\p{S}]/gu, "").length > 0;
 }
 
+const exactIndex = (id: ParaId, items: TTSItem[]) => items.findIndex((it) => it.id === id);
+
+/** First speakable item at or after `from`, or -1. */
+function nextSpeakableIn(list: TTSItem[], from: number): number {
+  for (let i = Math.max(0, from); i < list.length; i++) if (isSpeakable(list[i].text)) return i;
+  return -1;
+}
+
+const cacheKey = (it: TTSItem) => `${it.id}\u0000${it.text}`;
+
 export function useTTS({
-  paragraphs,
+  items,
+  resolveIndex,
   voice,
   rate,
   pitch,
   volume,
   autoAdvance,
-  onParagraphChange,
   onChapterEnd,
+  onParagraphDone,
   onParagraphTiming,
 }: UseTTSOptions) {
-  const [state, setState] = useState<TTSState>({ status: "idle", currentParagraph: 0 });
+  const [state, setState] = useState<TTSPlaybackState>({ status: "idle", currentParagraph: 0, currentParaId: null });
   const [voices, setVoices] = useState<EdgeVoice[]>([]);
-  const [wordBoundaries, setWordBoundaries] = useState<WordBoundary[] | null>(null);
-  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+  /** The item being spoken (as synthesized) and the token under the playhead. */
+  const [playing, setPlaying] = useState<{ item: TTSItem; token: number } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const sessionRef = useRef(0); // incremented on stop to cancel stale callbacks
+  const sessionRef = useRef(0);
   const rafRef = useRef<number | null>(null);
-  // Tracks the current/target paragraph synchronously for rapid skip support
-  const currentParaRef = useRef(0);
+  const currentIdRef = useRef<ParaId | null>(null);
+  const boundaryTokensRef = useRef<{ start: number; end: number; token: number }[] | null>(null);
+  const prefetchCache = useRef<Map<string, Promise<SynthResult | null>>>(new Map());
+  const lastAudioEndRef = useRef<number | null>(null);
 
-  // Prefetch cache: stores pre-synthesized result for the next paragraph
-  const prefetchCache = useRef<Map<number, Promise<SynthResult | null>>>(new Map());
-
-  // Refs for callbacks/options to avoid stale closures in long-running synthesis chains
+  // Everything long-running reads refs (S2-8: no stale closures).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const resolveRef = useRef(resolveIndex ?? exactIndex);
+  resolveRef.current = resolveIndex ?? exactIndex;
   const autoAdvanceRef = useRef(autoAdvance);
   autoAdvanceRef.current = autoAdvance;
   const onChapterEndRef = useRef(onChapterEnd);
   onChapterEndRef.current = onChapterEnd;
-  const onParagraphChangeRef = useRef(onParagraphChange);
-  onParagraphChangeRef.current = onParagraphChange;
+  const onParagraphDoneRef = useRef(onParagraphDone);
+  onParagraphDoneRef.current = onParagraphDone;
   const onParagraphTimingRef = useRef(onParagraphTiming);
   onParagraphTimingRef.current = onParagraphTiming;
-  // Timestamp of when the last audio ended, for gap measurement
-  const lastAudioEndRef = useRef<number | null>(null);
-
-  // Keep refs for synthesis params so prefetch uses current values
   const voiceRef = useRef(voice);
   voiceRef.current = voice;
   const rateRef = useRef(rate);
@@ -74,20 +117,16 @@ export function useTTS({
   pitchRef.current = pitch;
   const volumeRef = useRef(volume);
   volumeRef.current = volume;
-  const paragraphsRef = useRef(paragraphs);
-  paragraphsRef.current = paragraphs;
 
-  // Load voices on mount
   useEffect(() => {
     window.electronAPI?.ttsGetVoices().then(setVoices).catch(() => {});
   }, []);
 
-  // Clear prefetch cache when paragraphs or voice settings change
+  // Voice settings changed: cached audio no longer matches.
   useEffect(() => {
     prefetchCache.current.clear();
-  }, [paragraphs, voice, rate, pitch, volume]);
+  }, [voice, rate, pitch, volume]);
 
-  // Clean up audio on unmount
   useEffect(() => {
     return () => {
       sessionRef.current++;
@@ -99,40 +138,6 @@ export function useTTS({
     };
   }, []);
 
-  // Word highlight sync loop — updates activeWordIndex based on audio.currentTime
-  const startWordTracking = useCallback((boundaries: WordBoundary[]) => {
-    // Edge TTS returns offsets in 100-nanosecond ticks — convert to milliseconds
-    const msb = boundaries.map(b => ({
-      start: b.offset / 10_000,
-      end: (b.offset + b.duration) / 10_000,
-    }));
-    let lastIdx = -1;
-    const tick = () => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      if (!audio.paused) {
-        const ms = audio.currentTime * 1000;
-        // Find the word whose time range contains the current playback position.
-        // Use a small look-ahead (20ms) so the highlight arrives just as the word is spoken.
-        const ahead = ms + 20;
-        let idx = -1;
-        for (let i = 0; i < msb.length; i++) {
-          if (ahead >= msb[i].start && ahead < msb[i].end) { idx = i; break; }
-        }
-        // Fallback: pick the last word whose start we've already passed
-        if (idx === -1) {
-          for (let i = msb.length - 1; i >= 0; i--) {
-            if (ms >= msb[i].start) { idx = i; break; }
-          }
-        }
-        if (idx !== lastIdx) lastIdx = idx;
-        setActiveWordIndex(idx);
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }, []);
-
   const stopWordTracking = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -140,9 +145,35 @@ export function useTTS({
     }
   }, []);
 
-  // Call Edge TTS API
-  // Edge TTS SSML rate tops out at +100% (2x). For faster speeds we cap the
-  // TTS rate here and apply the remainder via audio.playbackRate at play time.
+  const startWordTracking = useCallback((item: TTSItem) => {
+    const spans = boundaryTokensRef.current;
+    if (!spans) return;
+    let last = -2;
+    const tick = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (!audio.paused) {
+        const ms = audio.currentTime * 1000;
+        const ahead = ms + 20;
+        let tok = -1;
+        for (const s of spans) {
+          if (ahead >= s.start && ahead < s.end) { tok = s.token; break; }
+        }
+        if (tok === -1) {
+          for (let i = spans.length - 1; i >= 0; i--) {
+            if (ms >= spans[i].start) { tok = spans[i].token; break; }
+          }
+        }
+        if (tok !== last) {
+          last = tok;
+          setPlaying({ item, token: tok });
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
   const callTTSAPI = useCallback((text: string): Promise<SynthResult | null> => {
     const ttsRate = Math.min(rateRef.current, 2);
     const rateStr = `${ttsRate >= 0 ? "+" : ""}${Math.round((ttsRate - 1) * 100)}%`;
@@ -151,162 +182,144 @@ export function useTTS({
     return window.electronAPI?.ttsSynthesize(text, voiceRef.current, rateStr, pitchStr, volStr) ?? Promise.resolve(null);
   }, []);
 
-  // Synthesize a paragraph (uses cache if available, otherwise calls API)
-  const synthesize = useCallback((paraIndex: number): Promise<SynthResult | null> => {
-    const cached = prefetchCache.current.get(paraIndex);
+  const synthesize = useCallback((it: TTSItem): Promise<SynthResult | null> => {
+    const key = cacheKey(it);
+    const cached = prefetchCache.current.get(key);
     if (cached) {
-      prefetchCache.current.delete(paraIndex);
+      prefetchCache.current.delete(key);
       return cached;
     }
-
-    const text = paragraphsRef.current[paraIndex];
-    if (!isSpeakable(text)) return Promise.resolve(null);
-
-    return callTTSAPI(text);
+    return isSpeakable(it.text) ? callTTSAPI(it.text) : Promise.resolve(null);
   }, [callTTSAPI]);
 
-  // Kick off prefetch for the next non-empty paragraph
-  const prefetchNext = useCallback((afterIndex: number) => {
-    const paras = paragraphsRef.current;
-    const next = paras.findIndex((p, i) => i > afterIndex && isSpeakable(p));
-    if (next === -1 || prefetchCache.current.has(next)) return;
-
-    const text = paras[next];
-    if (!isSpeakable(text)) return;
-
-    const promise = callTTSAPI(text);
-    prefetchCache.current.set(next, promise);
-  }, [callTTSAPI]);
-
-  // Synthesize and play a single paragraph
-  const synthesizeAndPlay = useCallback(async (paraIndex: number, session: number) => {
-    const text = paragraphs[paraIndex];
-    if (!isSpeakable(text)) {
-      // Skip empty paragraphs
-      if (paraIndex < paragraphs.length - 1) {
-        // Move to next non-empty paragraph
-        const next = paragraphs.findIndex((p, i) => i > paraIndex && isSpeakable(p));
-        if (next !== -1 && session === sessionRef.current) {
-          setState(s => ({ ...s, currentParagraph: next }));
-          onParagraphChangeRef.current(next);
-          await synthesizeAndPlay(next, session);
-        }
-      }
-      return;
+  /** Where to continue after `id` finished: resolves through a variant swap. */
+  const nextAfter = useCallback((id: ParaId, sourceIndex: number): number => {
+    const list = itemsRef.current;
+    let i = exactIndex(id, list);
+    if (i >= 0) return nextSpeakableIn(itemsRef.current, i + 1);
+    i = resolveRef.current(id, list);
+    if (i < 0) {
+      // Unknown id: continue at the first item after the old position.
+      const k = list.findIndex((it) => it.index > sourceIndex);
+      return k < 0 ? -1 : nextSpeakableIn(itemsRef.current, k);
     }
+    // Dropped → the resolved paragraph hasn't been read yet; merged → its host already has.
+    return nextSpeakableIn(itemsRef.current, list[i].index > sourceIndex ? i : i + 1);
+  }, []);
 
-    if (session !== sessionRef.current) return;
+  const prefetch = useCallback((after: number) => {
+    const n = nextSpeakableIn(itemsRef.current, after + 1);
+    if (n < 0) return;
+    const it = itemsRef.current[n];
+    const key = cacheKey(it);
+    if (!prefetchCache.current.has(key)) prefetchCache.current.set(key, callTTSAPI(it.text));
+  }, [callTTSAPI]);
 
-    currentParaRef.current = paraIndex;
-    setState({ status: "synthesizing", currentParagraph: paraIndex });
-    onParagraphChangeRef.current(paraIndex);
+  const speak = useCallback(async (at: number, session: number): Promise<void> => {
+    const it = itemsRef.current[at];
+    if (!it || session !== sessionRef.current) return;
+    currentIdRef.current = it.id;
+    setState({ status: "synthesizing", currentParagraph: it.index, currentParaId: it.id });
+    setPlaying({ item: it, token: -1 });
 
     try {
-      // Measure gap: time from previous audio ending to this audio starting
       const gapStart = lastAudioEndRef.current ?? Date.now();
+      const result = await synthesize(it);
+      if (session !== sessionRef.current) return;
+      if (!result) {
+        const n = nextAfter(it.id, it.index);
+        if (n >= 0) return speak(n, session);
+        throw new Error("synthesis failed");
+      }
+      prefetch(at);
 
-      const result = await synthesize(paraIndex);
-      if (!result || session !== sessionRef.current) return;
+      const words = result.wordBoundaries.filter((b) => (b as { type?: string }).type !== "SentenceBoundary");
+      const map = alignBoundaries(it.tokens, it.text, words);
+      boundaryTokensRef.current = words.map((b, i) => ({ start: b.offset / 10_000, end: (b.offset + b.duration) / 10_000, token: map[i] }));
 
-      // Start prefetching the next paragraph while this one plays
-      prefetchNext(paraIndex);
-
-      // Create audio from base64
       const audio = new Audio(`data:audio/mp3;base64,${result.audio}`);
       audioRef.current = audio;
-
-      setWordBoundaries(result.wordBoundaries);
-      setActiveWordIndex(-1);
-
-      audio.volume = volume / 100;
-      // Apply any speed above 2x via playbackRate (Edge TTS caps at 2x)
+      audio.volume = volumeRef.current / 100;
       audio.playbackRate = rateRef.current / Math.min(rateRef.current, 2);
 
       let audioStartMs = 0;
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => resolve();
         audio.onerror = () => reject(new Error("Audio playback error"));
-
         audio.play().then(() => {
-          if (session !== sessionRef.current) { audio.pause(); return; }
+          if (session !== sessionRef.current) { audio.pause(); resolve(); return; }
           audioStartMs = Date.now();
-          setState({ status: "playing", currentParagraph: paraIndex });
-          startWordTracking(result.wordBoundaries);
+          setState({ status: "playing", currentParagraph: it.index, currentParaId: it.id });
+          startWordTracking(it);
         }).catch(reject);
       });
+      stopWordTracking();
+      if (session !== sessionRef.current) return;
 
-      // Audio ended naturally — record timing for adaptive metrics
       const audioEndMs = Date.now();
       lastAudioEndRef.current = audioEndMs;
-      if (audioStartMs > 0 && onParagraphTimingRef.current) {
-        onParagraphTimingRef.current({
+      if (audioStartMs > 0) {
+        onParagraphTimingRef.current?.({
           rate: rateRef.current,
-          wordCount: result.wordBoundaries.filter(b => b.type === "WordBoundary").length || result.wordBoundaries.length,
+          wordCount: words.length,
           playbackMs: audioEndMs - audioStartMs,
           gapMs: audioStartMs - gapStart,
         });
       }
+      onParagraphDoneRef.current?.(it);
 
-      stopWordTracking();
-      setActiveWordIndex(-1);
-
-      if (session !== sessionRef.current) return;
-
-      // Advance to next paragraph
-      const nextNonEmpty = paragraphs.findIndex((p, i) => i > paraIndex && isSpeakable(p));
-      if (nextNonEmpty !== -1) {
-        await synthesizeAndPlay(nextNonEmpty, session);
-      } else {
-        // End of chapter
-        setState({ status: "idle", currentParagraph: paraIndex });
-        setWordBoundaries(null);
-        if (autoAdvanceRef.current) {
-          onChapterEndRef.current();
-        }
-      }
+      const n = nextAfter(it.id, it.index);
+      if (n >= 0) return speak(n, session);
+      setState({ status: "idle", currentParagraph: it.index, currentParaId: null });
+      setPlaying(null);
+      currentIdRef.current = null;
+      if (autoAdvanceRef.current) onChapterEndRef.current();
     } catch {
       if (session === sessionRef.current) {
-        setState({ status: "idle", currentParagraph: paraIndex });
-        setWordBoundaries(null);
         stopWordTracking();
+        setState({ status: "idle", currentParagraph: it.index, currentParaId: null });
+        setPlaying(null);
       }
     }
-  }, [paragraphs, volume, startWordTracking, stopWordTracking, synthesize, prefetchNext]);
+  }, [synthesize, nextAfter, prefetch, startWordTracking, stopWordTracking]);
 
-  // Public actions
-  const play = useCallback((fromParagraph?: number) => {
+  /** Start at the first speakable item at or after page paragraph `index` (default: current). */
+  const playFrom = useCallback((index?: number) => {
     const session = ++sessionRef.current;
-    // Stop any existing audio
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
     stopWordTracking();
     prefetchCache.current.clear();
-
-    const startAt = fromParagraph ?? currentParaRef.current;
-    // Immediately mark as synthesizing so the UI doesn't flash to idle
-    currentParaRef.current = startAt;
-    setState({ status: "synthesizing", currentParagraph: startAt });
-    setActiveWordIndex(-1);
-    synthesizeAndPlay(startAt, session);
-  }, [synthesizeAndPlay, stopWordTracking]);
+    const list = itemsRef.current;
+    let at: number;
+    if (index === undefined) {
+      const cur = currentIdRef.current;
+      at = cur ? Math.max(0, exactIndex(cur, list)) : 0;
+    } else {
+      at = list.findIndex((it) => it.index >= index);
+    }
+    at = at < 0 ? -1 : nextSpeakableIn(itemsRef.current, at);
+    if (at < 0) return;
+    void speak(at, session);
+  }, [speak, stopWordTracking]);
 
   const pause = useCallback(() => {
     if (audioRef.current && state.status === "playing") {
       audioRef.current.pause();
       stopWordTracking();
-      setState(s => ({ ...s, status: "paused" }));
+      setState((s) => ({ ...s, status: "paused" }));
     }
   }, [state.status, stopWordTracking]);
 
   const resume = useCallback(() => {
     if (audioRef.current && state.status === "paused") {
-      audioRef.current.play();
-      setState(s => ({ ...s, status: "playing" }));
-      if (wordBoundaries) startWordTracking(wordBoundaries);
+      void audioRef.current.play();
+      setState((s) => ({ ...s, status: "playing" }));
+      if (playing) startWordTracking(playing.item);
     }
-  }, [state.status, wordBoundaries, startWordTracking]);
+  }, [state.status, playing, startWordTracking]);
 
   const stop = useCallback(() => {
     sessionRef.current++;
@@ -316,47 +329,57 @@ export function useTTS({
     }
     stopWordTracking();
     prefetchCache.current.clear();
-    setWordBoundaries(null);
-    setActiveWordIndex(-1);
-    currentParaRef.current = 0;
+    boundaryTokensRef.current = null;
+    currentIdRef.current = null;
     lastAudioEndRef.current = null;
-    setState({ status: "idle", currentParagraph: 0 });
+    setPlaying(null);
+    setState({ status: "idle", currentParagraph: 0, currentParaId: null });
   }, [stopWordTracking]);
 
   const skipNext = useCallback(() => {
-    // Use ref for immediate reads — React state may be stale during rapid skips
-    const cur = currentParaRef.current;
-    const next = paragraphs.findIndex((p, i) => i > cur && isSpeakable(p));
-    if (next !== -1) {
-      play(next);
-    }
-  }, [paragraphs, play]);
+    const cur = currentIdRef.current;
+    const list = itemsRef.current;
+    const i = cur ? exactIndex(cur, list) : -1;
+    const n = nextSpeakableIn(itemsRef.current, i + 1);
+    if (n >= 0) playFrom(list[n].index);
+  }, [playFrom]);
 
   const skipPrev = useCallback(() => {
-    const cur = currentParaRef.current;
-    let prev = -1;
-    for (let i = cur - 1; i >= 0; i--) {
-      if (paragraphs[i].trim().length > 0) { prev = i; break; }
+    const cur = currentIdRef.current;
+    const list = itemsRef.current;
+    const i = cur ? exactIndex(cur, list) : -1;
+    for (let k = i - 1; k >= 0; k--) {
+      if (isSpeakable(list[k].text)) {
+        playFrom(list[k].index);
+        return;
+      }
     }
-    if (prev !== -1) {
-      play(prev);
-    }
-  }, [paragraphs, play]);
+  }, [playFrom]);
 
-  // Expose play that handles pause/resume toggle
   const togglePlay = useCallback(() => {
     if (state.status === "paused") resume();
-    else play();
-  }, [state.status, resume, play]);
+    else playFrom();
+  }, [state.status, resume, playFrom]);
+
+  /**
+   * DOM word to highlight. The token index is mapped through the CURRENT items, so after a
+   * variant swap (e.g. a speaker badge added) the highlight follows the new markup; when the
+   * paragraph's speech text itself changed, there is no reliable word → no word highlight.
+   */
+  const activeWordIndex = useMemo(() => {
+    if (!playing || playing.token < 0) return -1;
+    const now = items.find((it) => it.id === playing.item.id);
+    const src = now && now.text === playing.item.text ? now : null;
+    return src?.tokens[playing.token]?.domWord ?? -1;
+  }, [playing, items]);
 
   return {
     state,
     voices,
-    wordBoundaries,
     activeWordIndex,
     actions: {
       play: togglePlay,
-      playFrom: play,
+      playFrom,
       pause,
       stop,
       skipNext,

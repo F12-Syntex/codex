@@ -1,5 +1,6 @@
 "use client";
 
+import type { SimBranch } from "@shared/assistant/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
@@ -49,10 +50,10 @@ interface ReaderFooterProps {
   branchMode?: boolean;
   branchEntityName?: string;
   onExitBranch?: () => void;
-  savedBranches?: SimBranchRow[];
+  savedBranches?: SimBranch[];
   showBranchList?: boolean;
   onToggleBranchList?: () => void;
-  onLoadBranch?: (branch: SimBranchRow) => void;
+  onLoadBranch?: (branch: SimBranch) => void;
   onDeleteBranch?: (branchId: string) => void;
   activeBranchId?: string;
 }
@@ -409,10 +410,10 @@ export function ReaderFooter({
                       className="focus-ring flex min-w-0 flex-1 flex-col items-start rounded-sm"
                     >
                       <span className={cn("w-full truncate text-left text-sm", activeBranchId === branch.id ? "text-brand" : "text-label")}>
-                        {branch.entity_name}
+                        {branch.entityName || branch.title}
                       </span>
                       <span className="text-2xs tabular-nums text-label-secondary">
-                        Ch. {branch.chapter_index + 1} · {new Date(branch.created_at).toLocaleDateString()}
+                        Ch. {fmtCh(branch.chapterIndex, chapterLabels) ?? branch.chapterIndex + 1} · {new Date(branch.createdAt).toLocaleDateString()}
                       </span>
                     </button>
                     {confirmDelete === branch.id ? (

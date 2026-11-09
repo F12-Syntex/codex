@@ -1,20 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Sparkles, ExternalLink } from "lucide-react";
+import { Sparkles, ExternalLink, MessageCircle } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { MenuHighlightScope, useMenuHighlight } from "@/components/ui/menu-highlight";
 import { cn } from "@/lib/utils";
-import type { WikiEntryType } from "@/lib/ai-wiki";
-
-const TYPE_LABELS: Record<WikiEntryType, string> = {
-  character: "Character",
-  item: "Item",
-  location: "Location",
-  event: "Event",
-  concept: "Concept",
-};
+import type { WikiEntryType } from "@shared/knowledge/types";
+import { WIKI_ENTITY_COLOR, WIKI_TYPE_META } from "@/lib/wiki-type-meta";
 
 interface EntityContextMenuProps {
   entity: { id: string; name: string; type: WikiEntryType; color: string };
@@ -22,6 +15,8 @@ interface EntityContextMenuProps {
   y: number;
   onSimulate: () => void;
   onOpenWiki: () => void;
+  /** Ask the assistant about this entity. */
+  onAsk?: () => void;
   onClose: () => void;
 }
 
@@ -31,6 +26,7 @@ export function EntityContextMenu({
   y,
   onSimulate,
   onOpenWiki,
+  onAsk,
   onClose,
 }: EntityContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -60,6 +56,7 @@ export function EntityContextMenu({
     };
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         onClose();
         e.stopPropagation();
       }
@@ -111,7 +108,7 @@ export function EntityContextMenu({
     items[next].focus();
   };
 
-  const dot = ENTITY_DOT[entity.color] ?? "var(--accent-brand)";
+  const dot = WIKI_ENTITY_COLOR[entity.color] ?? WIKI_TYPE_META[entity.type]?.color ?? "var(--accent-brand)";
 
   return (
     <motion.div
@@ -136,7 +133,7 @@ export function EntityContextMenu({
         <span className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-label">
           {entity.name}
         </span>
-        <Badge variant="outline">{TYPE_LABELS[entity.type] ?? "Entity"}</Badge>
+        <Badge variant="outline">{WIKI_TYPE_META[entity.type]?.label ?? "Entity"}</Badge>
       </div>
 
       <div aria-hidden className="mx-2 mb-1 h-px bg-separator" />
@@ -149,6 +146,13 @@ export function EntityContextMenu({
         hint="What if…"
         onSelect={() => { onSimulate(); onClose(); }}
       />
+      {onAsk && (
+        <MenuItem
+          icon={<MessageCircle strokeWidth={1.75} />}
+          label="Ask about"
+          onSelect={() => { onAsk(); onClose(); }}
+        />
+      )}
       <MenuItem
         icon={<ExternalLink strokeWidth={1.75} />}
         label="Open in Wiki"
@@ -159,14 +163,6 @@ export function EntityContextMenu({
   );
 }
 
-/** Wiki entity color key → system color (dot). */
-const ENTITY_DOT: Record<string, string> = {
-  blue: "var(--system-blue)",
-  amber: "var(--system-orange)",
-  emerald: "var(--system-green)",
-  rose: "var(--system-pink)",
-  violet: "var(--system-purple)",
-};
 
 /**
  * macOS menu item: h-7, accent lozenge that glides between items

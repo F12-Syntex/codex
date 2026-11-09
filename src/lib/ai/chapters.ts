@@ -303,6 +303,32 @@ export function useBookAIStatus(filePath: string | null | undefined): BookAIStat
   return { status, error, refresh };
 }
 
+// ── Titles (TOC) ────────────────────────────────────────────────────────────
+
+/** Ready AI chapter titles by 0-based index (empty while the book's `titles` pref is off). */
+export function useChapterTitles(filePath: string | null | undefined): Record<number, string> {
+  const [titles, setTitles] = useKeyedState<Record<number, string>>(filePath ?? null);
+  const seq = useRef(0);
+  const load = useCallback(() => {
+    if (!filePath || !hasRpc()) return;
+    const mine = ++seq.current;
+    rpc("chapters:titles", filePath).then((t) => mine === seq.current && setTitles(t), () => {});
+  }, [filePath, setTitles]);
+  const refresh = useCoalesced(load, 400);
+  useEffect(() => {
+    if (!filePath) return;
+    load();
+    const offs = [
+      onAIEvent("artifact", (e) => e.filePath === filePath && e.kind === "title" && refresh()),
+      onPrefs((fp) => fp === filePath && refresh()),
+    ];
+    return () => offs.forEach((off) => off());
+  }, [filePath, load, refresh]);
+  return titles ?? EMPTY_TITLES;
+}
+
+const EMPTY_TITLES: Record<number, string> = {};
+
 // ── Bulk ────────────────────────────────────────────────────────────────────
 
 export interface BulkRunState {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { ContentToolbar } from "@/components/content/content-toolbar";
@@ -23,6 +23,9 @@ import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut, shouldIgnoreShortcut } f
 import { groupByView, libraryItemToMockItem, type LibraryData, type MockItem } from "@/lib/mock-data";
 import { DEFAULT_THEME, FONT_FAMILY_CSS, type ThemeConfig } from "@/lib/theme";
 import { BookDetailsModal } from "@/components/content/book-details-modal";
+import { SeriesReviewModal } from "@/components/content/series-review-modal";
+import { hasRpc, rpc } from "@/lib/ai/rpc";
+import { useLibraryOverview, useLibraryTagRun } from "@/lib/library/useLibraryAI";
 
 const viewLabelMap: Record<NavView, string> = {
   bookshelf: "Bookshelf",
@@ -35,6 +38,8 @@ const viewLabelMap: Record<NavView, string> = {
   changelog: "What's New",
   installer: "Discover",
 };
+
+const noopSubscribe = () => () => {};
 
 /** Full-page views that are not a library shelf (no import / filter there). */
 const PAGE_VIEWS = new Set<NavView>(["settings", "changelog", "installer"]);
@@ -49,10 +54,16 @@ export default function Home() {
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
+  const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [seriesOpen, setSeriesOpen] = useState(false);
+  // Library AI (F5): accepted genres / series per book, and the library-wide tagging run.
+  const { overview } = useLibraryOverview();
+  const tagRun = useLibraryTagRun();
   const [bookData, setBookData] = useState<LibraryData>({});
   const [comicData, setComicData] = useState<LibraryData>({});
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [isDev, setIsDev] = useState(false);
+  // Static for the window's lifetime; `false` on the server render.
+  const isDev = useSyncExternalStore(noopSubscribe, () => window.electronAPI?.isDev ?? false, () => false);
   const [readingProgress, setReadingProgress] = useState<Record<string, { chapter: number; totalChapters: number }>>({});
   const [detailsItem, setDetailsItem] = useState<MockItem | null>(null);
   // Kept separate from the item so the modal stays mounted and its exit
@@ -61,9 +72,6 @@ export default function Home() {
   const lastSelectedIdRef = useRef<number | null>(null);
   const themeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    setIsDev(window.electronAPI?.isDev ?? false);
-  }, []);
 
   // ── Load data from database on mount ──────────────
 
@@ -89,30 +97,21 @@ export default function Home() {
 
   // ── Load settings from database on mount ──────────
 
+  // Only the theme and reading progress are needed here: never pull every setting (AI blobs
+  // included) over IPC at start-up (AI_AUDIT §7 #5).
   useEffect(() => {
-    if (!window.electronAPI?.getAllSettings) return;
-    window.electronAPI.getAllSettings().then((settings) => {
-      if (settings.theme) {
-        try {
-          const saved = JSON.parse(settings.theme) as Partial<ThemeConfig>;
-          setTheme((prev) => ({ ...prev, ...saved }));
-        } catch { /* ignore invalid JSON */ }
-      }
-
-      // Extract reading progress for all books
-      const progress: Record<string, { chapter: number; totalChapters: number }> = {};
-      for (const [key, value] of Object.entries(settings)) {
-        if (!key.startsWith("readProgress:")) continue;
-        const filePath = key.slice("readProgress:".length);
-        try {
-          const p = JSON.parse(value);
-          if (typeof p.chapter === "number" && typeof p.totalChapters === "number" && p.totalChapters > 0) {
-            progress[filePath] = { chapter: p.chapter, totalChapters: p.totalChapters };
-          }
-        } catch { /* ignore */ }
-      }
-      setReadingProgress(progress);
+    const api = window.electronAPI;
+    if (!api?.getSetting) return;
+    api.getSetting("theme").then((raw) => {
+      if (!raw) return;
+      try {
+        const saved = JSON.parse(raw) as Partial<ThemeConfig>;
+        setTheme((prev) => ({ ...prev, ...saved }));
+      } catch { /* ignore invalid JSON */ }
     });
+    if (hasRpc()) {
+      rpc("library:progress").then(setReadingProgress).catch(() => {});
+    }
   }, []);
 
   // ── Auto-scan on launch ───────────────────────────
@@ -164,6 +163,7 @@ export default function Home() {
     setActiveSection(section);
     setActiveView(section === "books" ? "bookshelf" : "series");
     setFormatFilter("all");
+    setGenreFilter(null);
     setSelectedIds(new Set());
   }, []);
 
@@ -378,13 +378,27 @@ export default function Home() {
 
   const viewLabel = viewLabelMap[activeView] ?? activeView;
   const data = activeSection === "books" ? bookData : comicData;
-  const rawItems = data[activeView] ?? [];
+  const rawItems = useMemo(() => data[activeView] ?? [], [data, activeView]);
+
+  /** Accepted genres on this shelf, most common first (the Filter menu's Genre section). */
+  const genreOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of rawItems) for (const g of overview[item.filePath]?.genres ?? []) counts.set(g, (counts.get(g) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([g]) => g).slice(0, 24);
+  }, [rawItems, overview]);
+  const activeGenre = genreFilter && genreOptions.includes(genreFilter) ? genreFilter : null;
+
+  const seriesOf = useCallback((filePath: string) => overview[filePath]?.series, [overview]);
 
   // Apply filter + sort
   const processedItems = useMemo(() => {
     let items = [...rawItems];
     if (formatFilter !== "all") {
       items = items.filter((item) => item.format === formatFilter);
+    }
+    if (activeGenre) {
+      const g = activeGenre.toLowerCase();
+      items = items.filter((item) => overview[item.filePath]?.genres.some((x) => x.toLowerCase() === g));
     }
     items.sort((a, b) => {
       const aVal = a[sortField].toLowerCase();
@@ -394,7 +408,10 @@ export default function Home() {
       return 0;
     });
     return items;
-  }, [rawItems, formatFilter, sortField, sortDir]);
+  }, [rawItems, formatFilter, activeGenre, overview, sortField, sortDir]);
+
+  const tagProgress = tagRun.running && tagRun.run ? { done: tagRun.run.done + tagRun.run.failed, total: tagRun.run.total } : null;
+  const libraryAIAvailable = hasRpc();
 
   /** Toggle selection of an item (ctrl+click / shift+click) */
   const handleToggleSelect = useCallback((id: number, shiftKey: boolean) => {
@@ -607,8 +624,10 @@ export default function Home() {
                         onBatchMove={handleBatchMove}
                         readingProgress={readingProgress}
                         onImport={handleImport}
-                        filterLabel={formatFilter !== "all" ? formatFilter : undefined}
-                        onClearFilter={() => setFormatFilter("all")}
+                        filterLabel={[formatFilter !== "all" ? formatFilter : null, activeGenre].filter(Boolean).join(" · ") || undefined}
+                        onClearFilter={() => { setFormatFilter("all"); setGenreFilter(null); }}
+                        seriesOf={seriesOf}
+                        onDetectSeries={libraryAIAvailable ? () => setSeriesOpen(true) : undefined}
                         header={
                         <ContentToolbar
                           viewMode={viewMode}
@@ -621,6 +640,14 @@ export default function Home() {
                           formatFilter={formatFilter}
                           onFormatFilterChange={setFormatFilter}
                           onImport={handleImport}
+                          genreOptions={genreOptions}
+                          genreFilter={activeGenre}
+                          onGenreFilterChange={setGenreFilter}
+                          onSuggestTags={libraryAIAvailable ? () => void tagRun.start({ filePaths: rawItems.map((i) => i.filePath) }) : undefined}
+                          tagProgress={tagProgress}
+                          onCancelTagging={tagRun.cancel}
+                          tagError={tagRun.error ?? (tagRun.run?.state === "done" && tagRun.run.failed > 0 ? tagRun.run.error ?? null : null)}
+                          onDetectSeries={libraryAIAvailable ? () => setSeriesOpen(true) : undefined}
                         />
                         }
                       />
@@ -644,6 +671,12 @@ export default function Home() {
           bookData={bookData}
           comicData={comicData}
           onOpenItem={handleOpenItem}
+        />
+        <SeriesReviewModal
+          open={seriesOpen}
+          onClose={() => setSeriesOpen(false)}
+          items={rawItems}
+          onApplied={(n) => { if (n > 0) setViewMode("series"); }}
         />
         {detailsItem && (
           <BookDetailsModal

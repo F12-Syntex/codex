@@ -15,6 +15,7 @@ import {
   Library,
   ListFilter,
   Plus,
+  Sparkles,
 } from "lucide-react";
 import { BLOOM_MASK, BookCard, coverRadius, extractDominantColor, SPINE_STYLE } from "./book-card";
 import { SelectionBar } from "./selection-bar";
@@ -40,6 +41,7 @@ import type { CoverStyle } from "@/lib/theme";
 import type { MockItem } from "@/lib/mock-data";
 import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { cn } from "@/lib/utils";
+import { bookProgress } from "@/lib/reading-progress";
 
 interface ContentGridProps {
   items: MockItem[];
@@ -71,6 +73,10 @@ interface ContentGridProps {
    * cluster stays pinned on an Edge Blur strip.
    */
   header?: React.ReactNode;
+  /** Accepted series of a book (Series view grouping + "Vol. n" badges). */
+  seriesOf?: (filePath: string) => { name: string; number: number | null } | undefined;
+  /** Offered by the Series view when nothing is grouped yet. */
+  onDetectSeries?: () => void;
 }
 
 type ReadingProgress = Record<string, { chapter: number; totalChapters: number }>;
@@ -111,23 +117,25 @@ const thumbRadius = (coverStyle: CoverStyle) => (coverStyle === "rounded" ? "rou
 /* ── Shared pieces ──────────────────────────────────────── */
 
 /**
- * The one definition of book progress (library, Continue Reading, detail and
- * list views): chapters reached / total chapters. The reader's TOC uses the
- * same formula.
+ * Book progress for a library card: the one formula (`@/lib/reading-progress`, shared with the
+ * reader). Position alone tops out at 99%; 100% means the book is on the Finished shelf.
  */
-function bookPct(progress: ReadingProgress, filePath: string): number | null {
+function bookPct(progress: ReadingProgress, filePath: string, finished = false): number | null {
   const p = progress[filePath];
   if (!p || p.totalChapters <= 0) return null;
-  return Math.min(((p.chapter + 1) / p.totalChapters) * 100, 100);
+  return bookProgress({ chapterIndex: p.chapter, totalChapters: p.totalChapters, finished });
 }
 
-/** "Chapter 8 of 20 · 40%" — the one progress caption. */
-function progressCaption(progress: ReadingProgress, filePath: string): string | null {
-  const pct = bookPct(progress, filePath);
+/** "Chapter 8 of 20 · 35%" — the one progress caption. */
+function progressCaption(progress: ReadingProgress, filePath: string, finished = false): string | null {
+  const pct = bookPct(progress, filePath, finished);
   if (pct == null) return null;
   const p = progress[filePath];
   return `Chapter ${Math.min(p.chapter + 1, p.totalChapters)} of ${p.totalChapters} · ${Math.round(pct)}%`;
 }
+
+/** Shelves whose books count as finished (100%). */
+const isFinishedView = (view: NavView) => view === "finished" || view === "completed";
 
 function CoverThumb({
   item,
@@ -418,17 +426,22 @@ function GroupCard({
   items,
   author,
   coverStyle,
+  unit = "books",
 }: {
   items: MockItem[];
+  /** Group name (author or series). */
   author: string;
   coverStyle: CoverStyle;
+  unit?: string;
 }) {
   const radius = coverRadius(coverStyle);
   const count = items.length;
   const covers = items.slice(0, 3);
 
   const layers =
-    covers.length === 2
+    covers.length === 1
+      ? [{ r: 0, x: 0, s: 1, z: 1 }]
+      : covers.length === 2
       ? [
           { r: -5, x: -6, s: 0.96, z: 1 },
           { r: 3, x: 4, s: 1, z: 2 },
@@ -497,13 +510,13 @@ function GroupCard({
       {/* Same two-row caption as BookCard, on the column edge */}
       <div className="mt-3 flex h-9 min-w-0 flex-col justify-center">
         <p className="text-headline truncate text-label">{author}</p>
-        <p className="truncate text-xs text-label-secondary">{count} books</p>
+        <p className="truncate text-xs text-label-secondary">{count} {unit}</p>
       </div>
     </div>
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {}, onImport, filterLabel, onClearFilter, header }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {}, onImport, filterLabel, onClearFilter, header, seriesOf, onDetectSeries }: ContentGridProps) {
   const hasSelection = selectedIds.size > 0;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -564,7 +577,8 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
 
   const ctxProps = { activeView, section, onMove: onMoveItem, onDelete: onDeleteItem, onTransfer: onTransferItem };
 
-  const getPct = (filePath: string) => bookPct(readingProgress, filePath);
+  const finishedShelf = isFinishedView(activeView);
+  const getPct = (filePath: string) => bookPct(readingProgress, filePath, finishedShelf);
 
   const allTargets = section === "books" ? bookMoveTargets : comicMoveTargets;
   const moveTargets = allTargets.filter((t) => t.view !== activeView);
@@ -677,7 +691,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
           {items.map((item, i) => {
             const isSelected = selectedIds.has(item.id);
             const pct = getPct(item.filePath);
-            const caption = progressCaption(readingProgress, item.filePath);
+            const caption = progressCaption(readingProgress, item.filePath, finishedShelf);
             const done = pct != null && pct >= 100;
             return (
               <BlurFade key={item.id} {...fade(i)}>
@@ -725,10 +739,14 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         </div>
       </LibraryScroll>
     );
-  } else if (viewMode === "group") {
-    /* ── Group view ───────────────────────────── */
+  } else if (viewMode === "group" || viewMode === "series") {
+    /* ── Group view (by author, or by accepted series) ── */
     body = (
       <GroupView
+        key={viewMode}
+        groupBy={viewMode === "series" ? "series" : "author"}
+        seriesOf={seriesOf}
+        onDetectSeries={onDetectSeries}
         items={items}
         coverStyle={coverStyle}
         showFormatBadge={showFormatBadge}
@@ -770,7 +788,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                           item={item}
                           coverStyle={coverStyle}
                           pct={getPct(item.filePath) ?? 0}
-                          caption={progressCaption(readingProgress, item.filePath)}
+                          caption={progressCaption(readingProgress, item.filePath, finishedShelf)}
                           selected={selectedIds.has(item.id)}
                           onResume={onOpenItem && !hasSelection ? () => onOpenItem(item) : undefined}
                         />
@@ -821,6 +839,9 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
 
 /* ── Group view component ────────────────────────────── */
 function GroupView({
+  groupBy,
+  seriesOf,
+  onDetectSeries,
   items,
   coverStyle,
   showFormatBadge,
@@ -848,24 +869,45 @@ function GroupView({
   onItemDoubleClick: (item: MockItem) => void;
   readingProgress: ReadingProgress;
   header?: React.ReactNode;
+  groupBy: "author" | "series";
+  seriesOf?: (filePath: string) => { name: string; number: number | null } | undefined;
+  onDetectSeries?: () => void;
 }) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const bySeries = groupBy === "series";
 
-  const groups = useMemo(() => {
+  /** Author groups; or series groups (volume order) followed by books outside any series. */
+  const { groups, loose } = useMemo(() => {
     const map = new Map<string, MockItem[]>();
+    const rest: MockItem[] = [];
     for (const item of items) {
-      const key = item.author || "Unknown";
+      const key = bySeries ? seriesOf?.(item.filePath)?.name : item.author || "Unknown";
+      if (!key) {
+        rest.push(item);
+        continue;
+      }
       const list = map.get(key);
       if (list) list.push(item);
       else map.set(key, [item]);
     }
-    return Array.from(map.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0])
-    );
-  }, [items]);
+    if (bySeries) {
+      const vol = (it: MockItem) => seriesOf?.(it.filePath)?.number ?? Infinity;
+      for (const list of map.values()) list.sort((a, b) => vol(a) - vol(b) || a.title.localeCompare(b.title));
+    }
+    return {
+      groups: Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0])),
+      loose: rest,
+    };
+  }, [items, bySeries, seriesOf]);
+
+  const volumeBadge = (item: MockItem) => {
+    if (!bySeries) return undefined;
+    const n = seriesOf?.(item.filePath)?.number;
+    return n != null ? `Vol. ${n}` : undefined;
+  };
 
   const renderBook = (item: MockItem, i: number) => {
-    const pct = bookPct(readingProgress, item.filePath);
+    const pct = bookPct(readingProgress, item.filePath, isFinishedView(ctxProps.activeView));
     return (
     <BlurFade key={item.id} {...fade(i)}>
       <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
@@ -880,6 +922,7 @@ function GroupView({
             showFormatBadge={showFormatBadge}
             selected={selectedIds.has(item.id)}
             progress={pct != null ? pct / 100 : undefined}
+            badge={expandedGroup ? volumeBadge(item) : undefined}
           />
         </div>
       </ItemContextMenu>
@@ -899,12 +942,12 @@ function GroupView({
               className="focus-ring pressable inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-fill-tertiary pr-3 pl-2 text-xs font-medium text-label-secondary hover:bg-fill-secondary hover:text-label"
             >
               <ChevronLeft className="size-4" strokeWidth={2} />
-              Authors
+              {bySeries ? "Series" : "Authors"}
             </button>
             <div className="flex min-w-0 items-baseline gap-2.5">
               <h2 className="text-title truncate text-label">{expandedGroup}</h2>
               <span className="shrink-0 text-sm text-label-tertiary tabular-nums">
-                {groupItems.length} {groupItems.length === 1 ? "book" : "books"}
+                {groupItems.length} {bySeries ? (groupItems.length === 1 ? "volume" : "volumes") : groupItems.length === 1 ? "book" : "books"}
               </span>
             </div>
           </div>
@@ -914,24 +957,40 @@ function GroupView({
     );
   }
 
+  const noSeries = bySeries && groups.length === 0;
+
   return (
     <LibraryScroll header={header}>
-      <div className={cn(PAGE_PAD, COVER_GRID)}>
-        {groups.map(([author, groupItems], i) =>
-          groupItems.length === 1 ? (
-            renderBook(groupItems[0], i)
-          ) : (
-            <BlurFade key={author} {...fade(i)}>
-              <button
-                type="button"
-                onClick={() => setExpandedGroup(author)}
-                className="focus-ring block w-full cursor-default rounded-lg text-left"
-              >
-                <GroupCard items={groupItems} author={author} coverStyle={coverStyle} />
-              </button>
-            </BlurFade>
-          )
+      <div className={PAGE_PAD}>
+        {/* Series view with nothing grouped yet: one quiet prompt above the shelf. */}
+        {noSeries && onDetectSeries && (
+          <div className="glass-thin mb-8 flex animate-fade-up items-center gap-4 rounded-2xl py-3 pr-3 pl-5">
+            <Sparkles className="size-5 shrink-0 text-brand" strokeWidth={1.75} />
+            <div className="min-w-0 flex-1">
+              <p className="text-headline text-label">Group volumes into series</p>
+              <p className="truncate text-xs text-label-secondary">Codex reads titles and file names (and AI tags, if you ran them) to find volumes that belong together.</p>
+            </div>
+            <Button size="sm" onClick={onDetectSeries}>Detect Series</Button>
+          </div>
         )}
+        <div className={COVER_GRID}>
+          {groups.map(([name, groupItems], i) =>
+            groupItems.length === 1 && !bySeries ? (
+              renderBook(groupItems[0], i)
+            ) : (
+              <BlurFade key={name} {...fade(i)}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedGroup(name)}
+                  className="focus-ring block w-full cursor-default rounded-lg text-left"
+                >
+                  <GroupCard items={groupItems} author={name} coverStyle={coverStyle} unit={bySeries ? (groupItems.length === 1 ? "volume" : "volumes") : "books"} />
+                </button>
+              </BlurFade>
+            )
+          )}
+          {loose.map((item, i) => renderBook(item, groups.length + i))}
+        </div>
       </div>
     </LibraryScroll>
   );

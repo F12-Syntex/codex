@@ -43,26 +43,24 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
   const wikiEntryCount = entities.data?.length ?? 0;
 
   // Resolve the conversation to continue BEFORE mounting the panel (it reads `threadId` once).
-  const [initialThread, setInitialThread] = useState<string | null | undefined>(threadId ?? undefined);
+  const canResolve = !!filePath && hasRpc();
+  const [resolvedThread, setResolvedThread] = useState<string | null | undefined>(threadId ?? undefined);
+  const initialThread = canResolve ? resolvedThread : null;
   useEffect(() => {
-    if (initialThread !== undefined) return;
-    if (!filePath || !hasRpc()) {
-      setInitialThread(null);
-      return;
-    }
+    if (resolvedThread !== undefined || !canResolve) return;
     let alive = true;
     assistant
       .threads(filePath)
       .then((list) => {
-        if (alive) setInitialThread(list[0]?.id ?? null);
+        if (alive) setResolvedThread(list[0]?.id ?? null);
       })
       .catch(() => {
-        if (alive) setInitialThread(null);
+        if (alive) setResolvedThread(null);
       });
     return () => {
       alive = false;
     };
-  }, [filePath, initialThread]);
+  }, [filePath, canResolve, resolvedThread]);
 
   const chapter = reachedChapter(frontier, currentChapter);
   const frontierLabel = frontier?.mode === "off" ? undefined : `Chapter ${chapter}`;
