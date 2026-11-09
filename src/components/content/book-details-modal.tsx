@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Loader2, BookOpen, Globe, Check, AlertCircle } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Globe, Check, AlertCircle, Pencil } from "lucide-react";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { Tilt } from "@/components/ui/tilt";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,14 @@ export function BookDetailsModal({ item, onClose, onSave }: BookDetailsModalProp
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [savedMeta, setSavedMeta] = useState<{ description?: string; genres?: string[] } | null>(null);
   const [proxiedCover, setProxiedCover] = useState<string | null>(null);
+  // Title and author are editable in place; a fetch pre-fills them.
+  const [title, setTitle] = useState(item.title);
+  const [author, setAuthor] = useState(item.author ?? "");
+
+  useEffect(() => {
+    if (fetched?.title) setTitle(fetched.title);
+    if (fetched?.author) setAuthor(fetched.author);
+  }, [fetched]);
 
   // Load saved metadata
   useEffect(() => {
@@ -118,22 +126,28 @@ Return ONLY valid JSON:
     }
   }, [item.title, item.author]);
 
+  const trimmedTitle = title.trim();
+  const trimmedAuthor = author.trim();
+  const titleChanged = !!trimmedTitle && trimmedTitle !== item.title;
+  const authorChanged = trimmedAuthor !== (item.author ?? "");
+  const dirty = !!fetched || titleChanged || authorChanged;
+
   const handleApply = useCallback(() => {
-    if (!fetched) return;
+    if (!dirty) return;
     const fields: { title?: string; author?: string; cover?: string } = {};
-    if (fetched.title && fetched.title !== item.title) fields.title = fetched.title;
-    if (fetched.author && fetched.author !== item.author) fields.author = fetched.author;
+    if (titleChanged) fields.title = trimmedTitle;
+    if (authorChanged) fields.author = trimmedAuthor;
     // Use proxied data URL if available, otherwise the raw URL
     if (proxiedCover) fields.cover = proxiedCover;
-    else if (fetched.coverUrl) fields.cover = fetched.coverUrl;
+    else if (fetched?.coverUrl) fields.cover = fetched.coverUrl;
 
     const meta: { description?: string; genres?: string[] } = {};
-    if (fetched.description) meta.description = fetched.description;
-    if (fetched.genres?.length) meta.genres = fetched.genres;
+    if (fetched?.description) meta.description = fetched.description;
+    if (fetched?.genres?.length) meta.genres = fetched.genres;
 
-    onSave(item.id, fields, meta);
+    onSave(item.id, fields, fetched ? meta : undefined);
     onClose();
-  }, [fetched, proxiedCover, item, onSave, onClose]);
+  }, [dirty, titleChanged, authorChanged, trimmedTitle, trimmedAuthor, fetched, proxiedCover, item.id, onSave, onClose]);
 
   const description = fetched?.description ?? savedMeta?.description;
   const genres = fetched?.genres?.length ? fetched.genres : savedMeta?.genres;
@@ -141,9 +155,34 @@ Return ONLY valid JSON:
   const status = fetched?.status;
   const statusVariant = status === "Completed" ? "success" : status === "Ongoing" ? "accent" : "default";
 
+  const editable = (value: string, onChange: (v: string) => void, label: string, placeholder: string) => (
+    <label className="group/edit relative flex min-w-0 flex-1 items-center">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleApply();
+          }
+        }}
+        aria-label={label}
+        placeholder={placeholder}
+        spellCheck={false}
+        className="h-7 w-full min-w-0 rounded-md bg-transparent pr-7 pl-2 text-right text-sm text-label outline-none transition-[background-color,box-shadow] duration-150 placeholder:text-label-tertiary hover:bg-fill-tertiary focus-visible:bg-fill-tertiary focus-visible:shadow-[inset_0_0_0_1px_var(--accent-brand)]"
+      />
+      <Pencil
+        aria-hidden
+        className="pointer-events-none absolute right-2 size-3 text-label-tertiary opacity-40 transition-opacity duration-150 group-hover/edit:opacity-100 group-focus-within/edit:opacity-100"
+        strokeWidth={2}
+      />
+    </label>
+  );
+
   const rows: { label: string; value: React.ReactNode }[] = [
-    { label: "Author", value: fetched?.author ?? item.author ?? "Unknown" },
-    { label: "Format", value: <Badge>{item.format.toUpperCase()}</Badge> },
+    { label: "Title", value: editable(title, setTitle, "Title", "Title") },
+    { label: "Author", value: editable(author, setAuthor, "Author", "Unknown") },
+    { label: "Format", value: <span className="text-label-secondary">{item.format.toUpperCase()}</span> },
   ];
   if (status) rows.push({ label: "Status", value: <Badge variant={statusVariant}>{status}</Badge> });
   if (fetched?.source) {
@@ -159,9 +198,20 @@ Return ONLY valid JSON:
   }
 
   return (
-    <GlassModal open onClose={onClose} width={640} hideClose className="grain">
+    <GlassModal
+      open
+      onClose={onClose}
+      width={640}
+      title={trimmedTitle || item.title}
+      subtitle={
+        fetched?.alternativeNames && fetched.alternativeNames.length > 0
+          ? <span className="line-clamp-1">{fetched.alternativeNames.join(" · ")}</span>
+          : undefined
+      }
+      className="grain isolate"
+    >
       {/* Ambient cover bloom — the book's own colour washes the top of the sheet */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-64 overflow-hidden" style={{ maskImage: "linear-gradient(to bottom, black, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black, transparent)" }}>
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 overflow-hidden" style={{ maskImage: "linear-gradient(to bottom, black, transparent)", WebkitMaskImage: "linear-gradient(to bottom, black, transparent)" }}>
         {displayCover ? (
           <img src={displayCover} alt="" className="h-full w-full scale-125 object-cover opacity-30 blur-3xl" />
         ) : (
@@ -169,7 +219,7 @@ Return ONLY valid JSON:
         )}
       </div>
 
-      <GlassModal.Body className="relative px-6 pt-6 pb-6">
+      <GlassModal.Body className="relative px-5 pt-2 pb-5">
         <div className="flex gap-6">
           {/* Cover */}
           <div className="w-44 shrink-0">
@@ -201,25 +251,15 @@ Return ONLY valid JSON:
 
           {/* Info */}
           <div className="flex min-w-0 flex-1 flex-col">
-            <p className="text-section">Book Details</p>
-            <h2 className="mt-1.5 font-display text-xl font-semibold text-label text-balance">
-              {fetched?.title ?? item.title}
-            </h2>
-            {fetched?.alternativeNames && fetched.alternativeNames.length > 0 && (
-              <p className="mt-1 line-clamp-1 text-xs text-label-tertiary">
-                {fetched.alternativeNames.join(" · ")}
-              </p>
-            )}
-
-            {/* Properties — inset grouped rows */}
-            <dl className="mt-4 overflow-hidden rounded-lg bg-fill-quaternary hairline">
+            {/* Properties — inset grouped rows; Title and Author edit in place */}
+            <dl className="overflow-hidden rounded-lg bg-fill-quaternary hairline">
               {rows.map((row, i) => (
                 <div
                   key={row.label}
-                  className={cn("flex h-9 items-center gap-3 px-3 text-sm", i > 0 && "border-t border-separator")}
+                  className={cn("flex h-10 items-center gap-3 pr-1.5 pl-3 text-sm", i > 0 && "border-t border-separator")}
                 >
                   <dt className="w-16 shrink-0 text-xs text-label-tertiary">{row.label}</dt>
-                  <dd className="flex min-w-0 flex-1 justify-end truncate text-label">{row.value}</dd>
+                  <dd className="flex min-w-0 flex-1 justify-end truncate pr-1.5 text-label has-[input]:pr-0">{row.value}</dd>
                 </div>
               ))}
             </dl>
@@ -257,7 +297,7 @@ Return ONLY valid JSON:
         </div>
       </GlassModal.Body>
 
-      <GlassModal.Footer className="relative justify-between px-6 py-4">
+      <GlassModal.Footer className="relative justify-between px-5 py-3.5">
         <Button variant="secondary" size="sm" className="rounded-md" onClick={handleFetch} disabled={fetching}>
           {fetching ? (
             <Loader2 className="animate-spin" strokeWidth={1.75} />
@@ -275,10 +315,10 @@ Return ONLY valid JSON:
             size="sm"
             className="rounded-md"
             onClick={handleApply}
-            disabled={!fetched}
-            title={fetched ? undefined : "Fetch details first"}
+            disabled={!dirty}
+            title={dirty ? undefined : "Edit the title or author, or fetch details"}
           >
-            Apply Changes
+            Save
           </Button>
         </div>
       </GlassModal.Footer>

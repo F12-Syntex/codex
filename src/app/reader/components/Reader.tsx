@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Loader2, MessageCircle, Quote } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
 import type { BookContent, CustomFont } from "../lib/types";
@@ -36,6 +36,11 @@ import { buildChapterLabels, type ChapterLabels } from "@/lib/chapter-labels";
 import { AIBuddyPanel } from "./AIBuddyPanel";
 import { ExplainPanel, type ExplainMessage } from "./ExplainPanel";
 import { SpeedReaderView } from "./SpeedReaderView";
+import { LAYOUT_SPRING } from "./chrome";
+
+/** Side panels push the text column aside instead of covering it. */
+const TOC_INSET = 336; // TOC 320 + 16
+const AI_INSET = 304; // AI sidebar 288 + 16
 import { chunkParagraphs } from "@/lib/speed-reader-engine";
 import { buildEntityRegex, injectWikiEntities } from "./WikiTooltip";
 import { applyReplacements, loadReplacements, type WordReplacement } from "@/lib/word-replacements";
@@ -95,6 +100,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [showTOC, setShowTOC] = useState(false);
+  const reduceMotion = useReducedMotion();
   const [showTTS, setShowTTS] = useState(false);
   const [showTextSettings, setShowTextSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
@@ -1186,6 +1192,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   if (!isLoaded) return null;
 
   const footerHeight = settings.immersiveMode && !immersiveVisible ? 0 : FOOTER_HEIGHT;
+  const tocInset = showTOC && chapters.length > 1 ? TOC_INSET : 0;
+  const aiInset = showAI ? AI_INSET : 0;
 
   return (
     <div
@@ -1355,6 +1363,12 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             />
           )}
 
+          <motion.div
+            className="h-full"
+            initial={false}
+            animate={{ paddingInlineStart: tocInset, paddingInlineEnd: aiInset }}
+            transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
+          >
           {isLoading ? (
             <div className="flex h-full items-center justify-center">
               <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
@@ -1424,6 +1438,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
               speedReaderChunkOffset={srChunkOffset}
             />
           )}
+          </motion.div>
 
           {/* Speed reader overlay (control bar + RSVP display) */}
           {speedReaderActive && !isTOCChapter(chapterTitle) && (

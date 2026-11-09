@@ -27,7 +27,7 @@ export const FONT_FACE_CSS = CUSTOM_FONTS.map(font => `
   @font-face {
     font-family: '${font.name}';
     src: url('/fonts/${font.file}') format('woff2');
-    font-weight: 400;
+    font-weight: 200 900;
     font-style: normal;
     font-display: swap;
   }

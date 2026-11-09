@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Installer — discover & download novels.
+ * Discover (formerly "Installer") — find & download novels.
  *
  * Re-composed around three moments:
  *  1. Discover: a centred serif hero with one large glass search field.

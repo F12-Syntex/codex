@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles, LayoutGrid } from "lucide-react";
+import { Trash2, MessageSquare, BookOpen, Eye, Feather, Quote as QuoteIcon, Loader2, ChevronDown, Sparkles } from "lucide-react";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
 import { SearchField } from "@/components/ui/search-field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { MasonryGrid } from "@/components/ui/masonry-grid";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NumberTicker } from "@/components/ui/number-ticker";
 
@@ -27,14 +26,13 @@ interface SavedQuote {
   createdAt: string;
 }
 
-type BadgeVariant = "default" | "accent" | "success" | "warning" | "danger" | "outline";
-
-const KIND_LABELS: Record<string, { label: string; icon: React.ReactNode; variant: BadgeVariant }> = {
-  dialogue: { label: "Dialogue", icon: <MessageSquare className="size-3" strokeWidth={2} />, variant: "accent" },
-  inner_thought: { label: "Inner Thought", icon: <Eye className="size-3" strokeWidth={2} />, variant: "default" },
-  narration: { label: "Narration", icon: <BookOpen className="size-3" strokeWidth={2} />, variant: "warning" },
-  description: { label: "Description", icon: <Feather className="size-3" strokeWidth={2} />, variant: "success" },
-  quote: { label: "Quote", icon: <QuoteIcon className="size-3" strokeWidth={2} />, variant: "outline" },
+/** Kind chips are neutral (bg-fill-tertiary); only the icon carries the tint. */
+const KIND_LABELS: Record<string, { label: string; short: string; icon: React.ReactNode; tint: string }> = {
+  dialogue: { label: "Dialogue", short: "Dialogue", icon: <MessageSquare className="size-3" strokeWidth={2} />, tint: "text-info" },
+  inner_thought: { label: "Inner Thought", short: "Thought", icon: <Eye className="size-3" strokeWidth={2} />, tint: "text-brand" },
+  narration: { label: "Narration", short: "Narration", icon: <BookOpen className="size-3" strokeWidth={2} />, tint: "text-warning" },
+  description: { label: "Description", short: "Description", icon: <Feather className="size-3" strokeWidth={2} />, tint: "text-success" },
+  quote: { label: "Quote", short: "Quote", icon: <QuoteIcon className="size-3" strokeWidth={2} />, tint: "text-label-tertiary" },
 };
 
 const ALL_KINDS = ["dialogue", "inner_thought", "narration", "description", "quote"];
@@ -51,6 +49,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
   const [filterKind, setFilterKind] = useState<string>("all");
   const [filterBook, setFilterBook] = useState<string>("all");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(100);
 
   const load = useCallback(async () => {
     const api = window.electronAPI;
@@ -100,9 +99,10 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
 
   const title = bookTitle || (filePath ? "Book Quotes" : "All Quotes");
 
+  // Labels over glyphs (conventions S9.7)
   const kindOptions = useMemo(() => [
-    { value: "all", label: "All", icon: <LayoutGrid strokeWidth={1.75} /> },
-    ...ALL_KINDS.map((k) => ({ value: k, icon: KIND_LABELS[k].icon, title: KIND_LABELS[k].label })),
+    { value: "all", label: "All" },
+    ...ALL_KINDS.map((k) => ({ value: k, label: KIND_LABELS[k].short, title: KIND_LABELS[k].label })),
   ], []);
 
   return (
@@ -111,17 +111,19 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
         icon={<QuoteIcon strokeWidth={1.75} />}
         title="Quotes"
         subtitle={bookTitle}
+        zoomKey="quotes"
+        zoom={zoom}
+        onZoomChange={setZoom}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" style={{ zoom: zoom / 100 }}>
         {!loading && quotes.length === 0 ? (
           <EmptyQuotes title={title} />
         ) : (
           <>
             {/* Hero */}
             <header className="mx-auto w-full max-w-6xl px-8 pt-10 pb-6 text-center">
-              <p className="text-section">Commonplace book</p>
-              <h1 className="mx-auto mt-2 max-w-2xl truncate text-large-title text-label">{title}</h1>
+              <h1 className="mx-auto max-w-2xl truncate text-large-title font-display text-label">{title}</h1>
               <p className="mt-2 text-sm text-label-secondary">
                 {loading ? "Gathering your quotes…" : (
                   <>
@@ -242,8 +244,7 @@ function EmptyQuotes({ title }: { title: string }) {
           </motion.div>
         ))}
       </div>
-      <p className="text-section">Commonplace book</p>
-      <h1 className="mt-2 text-large-title text-label">{title}</h1>
+      <h1 className="text-large-title font-display text-label text-balance">{title}</h1>
       <p className="mt-3 max-w-sm text-sm leading-relaxed text-label-secondary">
         Lines worth keeping live here. Select a passage in the reader and choose{" "}
         <span className="inline-flex h-5 items-center gap-1 rounded-full bg-fill-tertiary px-2 align-middle text-xs text-label">
@@ -254,6 +255,8 @@ function EmptyQuotes({ title }: { title: string }) {
     </div>
   );
 }
+
+const QUOTE_MARK = "color-mix(in srgb, var(--label) 40%, transparent)";
 
 /**
  * Quote card — serif pull-quote with hanging quotation marks and a hairline
@@ -280,25 +283,26 @@ function QuoteCard({
       <figure className="relative flex flex-col gap-4">
         {/* Meta */}
         <div className="flex h-6 items-center gap-2 pr-8">
-          <Badge variant={kindMeta.variant} className="gap-1">
-            {kindMeta.icon}
+          <span className="inline-flex h-5 items-center gap-1 rounded-full bg-fill-tertiary px-2 text-2xs font-medium text-label-secondary">
+            <span className={kindMeta.tint}>{kindMeta.icon}</span>
             {kindMeta.label}
-          </Badge>
+          </span>
           {quote.aiEnhanced && (
-            <span className="inline-flex items-center gap-1 text-2xs text-brand" title="AI enriched">
+            <span className="inline-flex text-brand" title="AI enriched" aria-label="AI enriched">
               <Sparkles className="size-3" strokeWidth={2} />
-              Enriched
             </span>
           )}
         </div>
 
         {/* Pull-quote */}
+        {/* Hanging punctuation: the opening mark sits in the margin, same size as the text */}
         <blockquote
-          className={`relative pl-3 font-display italic text-label text-pretty select-text ${long ? "text-base leading-relaxed" : "text-lg leading-relaxed"}`}
+          className={`relative font-display italic text-label text-pretty select-text ${long ? "text-base leading-relaxed" : "text-lg leading-relaxed"}`}
+          style={{ textIndent: "-0.45em" }}
         >
-          <span aria-hidden className="absolute -left-0.5 top-0 select-none text-label-quaternary">&ldquo;</span>
+          <span aria-hidden className="select-none" style={{ color: QUOTE_MARK }}>&ldquo;</span>
           <span>{quote.text}</span>
-          <span aria-hidden className="select-none text-label-quaternary">&rdquo;</span>
+          <span aria-hidden className="select-none" style={{ color: QUOTE_MARK }}>&rdquo;</span>
         </blockquote>
 
         {/* Note */}
