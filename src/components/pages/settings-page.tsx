@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
@@ -55,19 +56,23 @@ interface SettingsPageProps {
       path. The pane appears only when the shell passes both of these. */
   theme?: ThemeConfig;
   onThemeChange?: (patch: Partial<ThemeConfig>) => void;
+  /** Called after "Clear library" empties the database, so the shell can reload its item lists. */
+  onLibraryCleared?: () => void;
 }
-
-/* ── Presentational helpers ───────────────────────────────── */
-
-/** Text field styled like a macOS inset field (fixed height, accent focus ring). */
-const FIELD =
-  "h-8 rounded-md bg-fill-tertiary px-3 text-sm text-label outline-none transition-[background-color,box-shadow] duration-150 placeholder:text-label-quaternary hover:bg-fill-secondary focus:bg-fill-secondary focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_35%,transparent)]";
 
 /* ── Tab types ────────────────────────────────────────────── */
 
 type SettingsTab = "library" | "appearance" | "books" | "ai" | "updates" | "storage";
 
+/** Library sections, as stored in the database (see `page.tsx` refreshLibrary). */
+const LIBRARY_SECTIONS = ["books", "comic"] as const;
+
 const CONFIRM_COPY: Record<string, { title: string; body: string; action: string }> = {
+  library: {
+    title: "Clear your library?",
+    body: "Every book and comic will be removed from Codex. Files on disk aren't touched, but folder scans will skip them. Import the files again to bring them back.",
+    action: "Clear Library",
+  },
   wiki: {
     title: "Clear all wiki data?",
     body: "Every wiki entry, relationship, arc and summary for every book will be permanently deleted. This can't be undone.",
@@ -82,7 +87,7 @@ const CONFIRM_COPY: Record<string, { title: string; body: string; action: string
 
 /* ── Settings page ───────────────────────────────────────── */
 
-export function SettingsPage({ onImportItems, activeSection, theme, onThemeChange }: SettingsPageProps) {
+export function SettingsPage({ onImportItems, activeSection, theme, onThemeChange, onLibraryCleared }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("library");
   const [autoScan, setAutoScan] = useState(false);
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
@@ -200,8 +205,26 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
   };
 
   const handleClearLibrary = async () => {
-    // This would need confirmation in a real app
-    // For now just a placeholder
+    if (confirmAction !== "library") {
+      setConfirmAction("library");
+      return;
+    }
+    setConfirmAction(null);
+    try {
+      if (!api?.getItems || !api.deleteItem) throw new Error("Library API unavailable");
+      const sections = await Promise.all(LIBRARY_SECTIONS.map((s) => api.getItems(s)));
+      const items = sections.flat();
+      for (const item of items) await api.deleteItem(item.id);
+      setLastScanCount(null);
+      onLibraryCleared?.();
+      setClearStatus(`Removed ${items.length} item${items.length === 1 ? "" : "s"} from your library`);
+      setTimeout(() => setClearStatus(null), 3000);
+    } catch {
+      // A partial clear still changed the database, so let the shell reload.
+      onLibraryCleared?.();
+      setClearStatus("Failed to clear library");
+      setTimeout(() => setClearStatus(null), 3000);
+    }
   };
 
   const handleClearWiki = async () => {
@@ -300,7 +323,8 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
 
   const confirmCopy = confirmAction ? CONFIRM_COPY[confirmAction] : null;
   const runConfirmed = () => {
-    if (confirmAction === "wiki") handleClearWiki();
+    if (confirmAction === "library") handleClearLibrary();
+    else if (confirmAction === "wiki") handleClearWiki();
     else if (confirmAction === "formatting") handleClearFormatting();
   };
 
@@ -352,7 +376,7 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
                     />
                     <span className={cn("relative flex-1 truncate text-sm", active && "font-medium")}>{p.label}</span>
                     {p.value === "books" && wordReplacements.length > 0 && (
-                      <span className="relative text-2xs tabular-nums text-label-tertiary">{wordReplacements.length}</span>
+                      <span className="relative text-2xs tabular-nums text-label-secondary">{wordReplacements.length}</span>
                     )}
                   </button>
                 </li>
@@ -469,7 +493,7 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
                   footer={
                     clearStatus ? (
                       <span className={cn("inline-flex items-center gap-1.5", clearStatus.startsWith("Failed") ? "text-danger" : "text-success")}>
-                        {clearStatus.startsWith("Failed") ? <X className="size-3" strokeWidth={2.5} /> : <Check className="size-3" strokeWidth={2.5} />}
+                        {clearStatus.startsWith("Failed") ? <X className="size-3.5" strokeWidth={2} /> : <Check className="size-3.5" strokeWidth={2} />}
                         {clearStatus}
                       </span>
                     ) : (
@@ -505,22 +529,22 @@ export function SettingsPage({ onImportItems, activeSection, theme, onThemeChang
                 >
                   {wordReplacements.map((r, i) => (
                     <div key={i} className="flex h-12 items-center gap-2 pr-2 pl-3">
-                      <input
+                      <Input
                         type="text"
                         value={r.from}
                         onChange={(e) => handleReplacementChange(i, "from", e.target.value)}
                         placeholder="Original word"
                         aria-label="Original word"
-                        className={cn(FIELD, "min-w-0 flex-1")}
+                        className="min-w-0 flex-1"
                       />
                       <ArrowRight className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={2} />
-                      <input
+                      <Input
                         type="text"
                         value={r.to}
                         onChange={(e) => handleReplacementChange(i, "to", e.target.value)}
                         placeholder="Replacement"
                         aria-label="Replacement"
-                        className={cn(FIELD, "min-w-0 flex-1")}
+                        className="min-w-0 flex-1"
                       />
                       <Button
                         variant="ghost"

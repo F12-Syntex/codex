@@ -82,7 +82,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
       />
       <span className="relative flex size-full items-center justify-center rounded-full bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)] ring-[0.5px] ring-separator-strong ring-inset">
-        <Sparkles className={size === "lg" ? "size-8" : "size-4"} strokeWidth={1.75} />
+        <Sparkles className={size === "lg" ? "size-10" : "size-4"} strokeWidth={size === "lg" ? 1.25 : 1.75} />
       </span>
     </span>
   );
@@ -116,7 +116,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
                   <BookOpen className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
                   Chapter {currentChapter + 1}
                 </span>
-                <span className="tabular-nums text-label-tertiary">of {totalChapters}</span>
+                <span className="tabular-nums text-label-secondary">of {totalChapters}</span>
               </div>
               <div className="mt-2 h-1 overflow-hidden rounded-xs bg-fill-tertiary">
                 <motion.div
@@ -133,12 +133,12 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
                   <Library className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
                   Wiki knowledge
                 </span>
-                <span className="tabular-nums text-label-tertiary">{wikiEntryCount} entries</span>
+                <span className="tabular-nums text-label-secondary">{wikiEntryCount} entries</span>
               </div>
             )}
           </div>
 
-          <p className="mt-auto text-2xs leading-relaxed text-label-tertiary">
+          <p className="mt-auto text-2xs leading-relaxed text-label-secondary">
             Spoiler-safe: your buddy only knows what you&rsquo;ve read up to chapter {currentChapter + 1}.
           </p>
         </aside>
@@ -150,7 +150,7 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
             {orb("md")}
             <div className="min-w-0">
               <p className="truncate text-headline text-label">Reading buddy</p>
-              <p className="truncate text-2xs tabular-nums text-label-tertiary">
+              <p className="truncate text-2xs tabular-nums text-label-secondary">
                 Ch. {currentChapter + 1} of {totalChapters}{wikiEntryCount > 0 && ` · ${wikiEntryCount} wiki entries`}
               </p>
             </div>

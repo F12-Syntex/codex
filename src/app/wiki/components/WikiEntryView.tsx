@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  User, Swords, MapPin, Flame, Lightbulb,
-} from "lucide-react";
-import type { WikiEntry, WikiEntryType } from "@/lib/ai-wiki";
+import type { WikiEntry } from "@/lib/ai-wiki";
+import { WIKI_TYPE_META } from "@/lib/wiki-type-meta";
 
 interface WikiEntryViewProps {
   entry: WikiEntry;
@@ -12,41 +10,9 @@ interface WikiEntryViewProps {
   onEntryClick: (id: string) => void;
 }
 
-const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
-  character: {
-    icon: <User className="size-4" strokeWidth={1.75} />,
-    label: "Character",
-    color: "rgb(147, 197, 253)",
-    bg: "rgba(96, 165, 250, 0.12)",
-  },
-  item: {
-    icon: <Swords className="size-4" strokeWidth={1.75} />,
-    label: "Item",
-    color: "rgb(252, 211, 77)",
-    bg: "rgba(251, 191, 36, 0.12)",
-  },
-  location: {
-    icon: <MapPin className="size-4" strokeWidth={1.75} />,
-    label: "Location",
-    color: "rgb(110, 231, 183)",
-    bg: "rgba(52, 211, 153, 0.12)",
-  },
-  event: {
-    icon: <Flame className="size-4" strokeWidth={1.75} />,
-    label: "Event",
-    color: "rgb(253, 164, 175)",
-    bg: "rgba(251, 113, 133, 0.12)",
-  },
-  concept: {
-    icon: <Lightbulb className="size-4" strokeWidth={1.75} />,
-    label: "Concept",
-    color: "rgb(196, 181, 253)",
-    bg: "rgba(167, 139, 250, 0.12)",
-  },
-};
-
 export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewProps) {
-  const typeMeta = TYPE_META[entry.type];
+  const typeMeta = WIKI_TYPE_META[entry.type];
+  const TypeIcon = typeMeta.Icon;
   const [resolvedNames, setResolvedNames] = useState<Map<string, string>>(new Map());
 
   // Resolve relationship target names from DB
@@ -70,30 +36,30 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
   }
 
   return (
-    <div className="mx-auto max-w-[700px] px-8 py-6">
-      {/* Header */}
+    <div className="mx-auto max-w-2xl px-8 py-6">
+      {/* Header: title first, then type · status (no eyebrow, conventions §13.1) */}
       <div className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
+        <h1 className="text-large-title font-display text-label">
+          {entry.name}
+        </h1>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span
             className="inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium"
             style={{ background: typeMeta.bg, color: typeMeta.color }}
           >
-            {typeMeta.icon}
+            <TypeIcon className="size-3.5" strokeWidth={1.75} />
             {typeMeta.label}
           </span>
           <span className="inline-flex h-6 items-center rounded-full bg-fill-tertiary px-2.5 text-xs capitalize text-label-secondary">
             {entry.status}
           </span>
           {entry.aliases.length > 0 && (
-            <span className="text-xs text-label-tertiary">
+            <span className="text-xs text-label-secondary">
               aka {entry.aliases.join(", ")}
             </span>
           )}
         </div>
-
-        <h1 className="text-large-title font-display text-label">
-          {entry.name}
-        </h1>
 
         <p className="mt-3 text-base leading-relaxed text-label-secondary">
           {entry.shortDescription}
@@ -137,7 +103,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
                     key={i}
                     className="flex gap-3 rounded-lg bg-fill-quaternary px-3.5 py-2.5 hairline"
                   >
-                    <span className="shrink-0 text-2xs tabular-nums text-label-tertiary">
+                    <span className="shrink-0 text-2xs tabular-nums text-label-secondary">
                       Ch. {item.chapterIndex + 1}
                     </span>
                     <p className="text-sm leading-relaxed text-label-secondary">
@@ -230,7 +196,7 @@ function RelationshipsSection({
                     <span className="text-xs font-medium text-label">
                       {targetName}
                     </span>
-                    <span className="text-xs text-label-tertiary">{rel.relation}</span>
+                    <span className="text-xs text-label-secondary">{rel.relation}</span>
                   </button>
                 );
               })}

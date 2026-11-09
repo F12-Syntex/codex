@@ -5,16 +5,17 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 /**
- * Button — Tahoe "liquid glass" capsule.
+ * Button — Tahoe "liquid glass" control.
  *
- * Shape: every button is a capsule (rounded-full); icon buttons are circles.
+ * Shape: text buttons are `rounded-md` (conventions §6); icon buttons are
+ * circles; `shape="pill"` makes a capsule for toolbar pills.
  * Material: primary is an accent lozenge with an inner specular glow and an
  * accent "ink" bloom on hover; secondary is a frosted fill with a lit top
  * edge; ghost is chrome-less until hovered.
  * Motion: spring squish on press (`pressable`), 150ms fills.
  */
 const buttonVariants = cva(
-  "focus-ring relative inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-sm font-medium tracking-[-0.006em] select-none disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "focus-ring relative inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium tracking-[-0.006em] select-none disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -32,18 +33,24 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-8 px-4 has-[>svg]:pl-3 has-[>svg]:pr-3.5",
-        xs: "h-6 gap-1 px-2.5 text-xs has-[>svg]:px-2 [&_svg:not([class*='size-'])]:size-3",
+        xs: "h-6 gap-1 px-2.5 text-xs has-[>svg]:px-2 [&_svg:not([class*='size-'])]:size-3.5",
         sm: "h-7 gap-1.5 px-3 text-xs has-[>svg]:pl-2.5 has-[>svg]:pr-3 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-10 px-6 text-base has-[>svg]:pl-4.5 has-[>svg]:pr-5",
-        icon: "size-9",
-        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-8",
-        "icon-lg": "size-10 [&_svg:not([class*='size-'])]:size-5",
+        icon: "size-9 rounded-full",
+        "icon-xs": "size-6 rounded-full [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-sm": "size-8 rounded-full",
+        "icon-lg": "size-10 rounded-full [&_svg:not([class*='size-'])]:size-5",
+      },
+      shape: {
+        default: "",
+        /** Capsule — toolbar pills (conventions §3). */
+        pill: "rounded-full",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      shape: "default",
     },
   }
 )
@@ -52,6 +59,7 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  shape = "default",
   asChild = false,
   ...props
 }: React.ComponentProps<"button"> &
@@ -65,7 +73,8 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      data-shape={shape}
+      className={cn(buttonVariants({ variant, size, shape, className }))}
       {...props}
     />
   )

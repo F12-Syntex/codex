@@ -2,13 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import {
-  User, Swords, MapPin, Flame, Lightbulb,
-  ChevronRight, ArrowLeft, Home, Network,
-} from "lucide-react";
+import { ChevronRight, ArrowLeft, Home, Network } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import type { ChapterLabels } from "@/lib/chapter-labels";
+import { WIKI_RELATION_CATEGORIES, WIKI_TYPE_META, WIKI_TYPE_ORDER, tintOf } from "@/lib/wiki-type-meta";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -27,23 +25,12 @@ interface RelRow {
 
 /* ── Type colors & icons ───────────────────────────────── */
 
-const TYPE_META: Record<WikiEntryType, { color: string; bg: string; icon: React.ElementType }> = {
-  character: { color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)", icon: User },
-  item:      { color: "rgb(252, 211, 77)",  bg: "rgba(251, 191, 36, 0.12)", icon: Swords },
-  location:  { color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)", icon: MapPin },
-  event:     { color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)", icon: Flame },
-  concept:   { color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)", icon: Lightbulb },
-};
+/* Shared wiki palette (src/lib/wiki-type-meta). */
+const TYPE_META = WIKI_TYPE_META;
 
 /* ── Relation categories ───────────────────────────────── */
 
-const RELATION_CATEGORIES: { label: string; match: RegExp; color: string }[] = [
-  { label: "Allies", match: /ally|friend|companion|comrade|partner|trusted/i, color: "rgb(110, 231, 183)" },
-  { label: "Family", match: /family|father|mother|brother|sister|parent|child|son|daughter|spouse|husband|wife|sibling/i, color: "rgb(252, 211, 77)" },
-  { label: "Rivals", match: /enemy|rival|antagonist|opponent|adversary|nemesis|hostile/i, color: "rgb(253, 164, 175)" },
-  { label: "Mentors", match: /mentor|student|teacher|master|apprentice|disciple|guide/i, color: "rgb(196, 181, 253)" },
-  { label: "Other", match: /.*/, color: "rgb(148, 163, 184)" },
-];
+const RELATION_CATEGORIES = WIKI_RELATION_CATEGORIES;
 
 function categorizeRelation(relation: string): typeof RELATION_CATEGORIES[0] {
   return RELATION_CATEGORIES.find(c => c.match.test(relation)) ?? RELATION_CATEGORIES[RELATION_CATEGORIES.length - 1];
@@ -202,7 +189,7 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
   }
 
   const focusMeta = TYPE_META[focusedEntry.type];
-  const FocusIcon = focusMeta.icon;
+  const FocusIcon = focusMeta.Icon;
   const totalRelations = groupedRelations.reduce((sum, g) => sum + g.entries.length, 0);
   const spring = reduceMotion ? { duration: 0 } : { type: "spring" as const, bounce: 0.25, duration: 0.5 };
 
@@ -230,10 +217,10 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
           <div className="flex items-center gap-1.5 pr-2 text-xs">
             {history.length > 0 && (
               <>
-                <span className="max-w-32 truncate text-label-tertiary">
+                <span className="max-w-32 truncate text-label-secondary">
                   {entries.find(e => e.id === history[history.length - 1])?.name ?? "..."}
                 </span>
-                <ChevronRight className="size-3 text-label-quaternary" strokeWidth={2} />
+                <ChevronRight className="size-3.5 text-label-tertiary" strokeWidth={2} />
               </>
             )}
             <span className="max-w-48 truncate font-medium text-label">{focusedEntry.name}</span>
@@ -243,9 +230,9 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
 
         {/* Legend */}
         <div className="glass-thin pointer-events-auto flex h-9 items-center gap-3 rounded-full px-3.5">
-          {(Object.entries(TYPE_META) as [WikiEntryType, typeof TYPE_META[WikiEntryType]][]).map(([type, meta]) => (
+          {WIKI_TYPE_ORDER.map((type) => (
             <div key={type} className="flex items-center gap-1.5">
-              <span className="size-2 rounded-full" style={{ background: meta.color }} />
+              <span className="size-2 rounded-full" style={{ background: TYPE_META[type].color }} />
               <span className="text-2xs capitalize text-label-secondary">{type}</span>
             </div>
           ))}
@@ -272,21 +259,21 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
                 className="relative flex size-24 items-center justify-center rounded-full transition-transform duration-300 ease-spring group-hover:scale-105"
                 style={{
                   background: focusMeta.bg,
-                  boxShadow: `inset 0 0 0 1.5px ${focusMeta.color}, 0 0 40px ${focusMeta.color}30`,
+                  boxShadow: `inset 0 0 0 1.5px ${focusMeta.color}, 0 0 40px ${tintOf(focusMeta.color, 19)}`,
                 }}
               >
-                <FocusIcon className="size-9" style={{ color: focusMeta.color }} strokeWidth={1.5} />
+                <FocusIcon className="size-10" style={{ color: focusMeta.color }} strokeWidth={1.25} />
               </div>
               <div className="relative text-center">
                 <div className="font-display text-xl font-semibold text-label">{focusedEntry.name}</div>
-                <div className="mt-0.5 text-xs capitalize text-label-tertiary">{focusedEntry.type} · {totalRelations} connections</div>
+                <div className="mt-0.5 text-xs capitalize text-label-secondary">{focusedEntry.type} · {totalRelations} connections</div>
               </div>
             </motion.button>
           </AnimatePresence>
 
           {/* ── Category branches ── */}
           {groupedRelations.length === 0 ? (
-            <p className="mt-2 text-sm text-label-tertiary">No connections found</p>
+            <p className="mt-2 text-sm text-label-secondary">No connections found</p>
           ) : (
             <div className="grid w-full max-w-3xl grid-cols-1 gap-3 lg:grid-cols-2">
               {groupedRelations.map((group, gi) => {
@@ -309,7 +296,7 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
                     >
                       <span className="size-2 rounded-full" style={{ background: group.color }} />
                       <span className="text-headline text-label">{group.category}</span>
-                      <span className="text-2xs tabular-nums text-label-tertiary">{group.entries.length}</span>
+                      <span className="text-2xs tabular-nums text-label-secondary">{group.entries.length}</span>
                       <ChevronRight
                         className={`ml-auto size-3.5 text-label-tertiary transition-transform duration-200 ease-apple ${isExpanded ? "rotate-90" : ""}`}
                         strokeWidth={2}
@@ -320,7 +307,7 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
                     <div className="mt-0.5 space-y-0.5">
                       {visibleEntries.map((entry) => {
                         const meta = TYPE_META[entry.type];
-                        const EntryIcon = meta.icon;
+                        const EntryIcon = meta.Icon;
                         return (
                           <div
                             key={entry.id}
@@ -338,7 +325,7 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
 
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium text-label">{entry.name}</div>
-                              <div className="truncate text-xs text-label-tertiary">{entry.relation}</div>
+                              <div className="truncate text-xs text-label-secondary">{entry.relation}</div>
                             </div>
 
                             {/* Navigate arrow */}
@@ -357,7 +344,7 @@ export function RelationshipGraph({ filePath, entries, onNavigate }: Relationshi
                       {hasMore && !isExpanded && (
                         <button
                           onClick={() => toggleCategory(group.category)}
-                          className="focus-ring h-8 w-full rounded-lg text-xs text-label-tertiary transition-colors hover:bg-fill-quaternary hover:text-label-secondary"
+                          className="focus-ring h-8 w-full rounded-lg text-xs text-label-secondary transition-colors hover:bg-fill-quaternary hover:text-label"
                         >
                           +{group.entries.length - 4} more
                         </button>

@@ -459,7 +459,7 @@ export function TextContent({
               }}
             >
               <span className="inline-flex size-5 items-center justify-center rounded-full bg-current/10 shadow-xs">
-                <Plus className="size-3" strokeWidth={2.25} />
+                <Plus className="size-3.5" strokeWidth={2} />
               </span>
             </span>
           )}
@@ -512,8 +512,6 @@ export function TextContent({
               fontSize: `${fontSize}px`,
               fontWeight: 500,
               fontFamily,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
               marginBottom: `${Math.round(paraSpacing * 0.5)}px`,
             }}
           >
@@ -1146,7 +1144,7 @@ export function TextContent({
               >
                 <span className="h-px flex-1 bg-current/20" />
                 <Sparkles className="size-3.5 opacity-70" strokeWidth={1.75} />
-                <span className="text-2xs font-semibold tracking-wider uppercase opacity-70">What happens next</span>
+                <span className="text-xs font-medium opacity-70">What happens next</span>
                 <span className="h-px flex-1 bg-current/20" />
               </div>
 
@@ -1408,7 +1406,7 @@ export function TextContent({
             <div className="flex h-9 shrink-0 items-center gap-2 px-3">
               <MessageCircle className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
               <span className="flex-1 text-section text-label-tertiary">Margin notes</span>
-              <span className="text-2xs tabular-nums text-label-tertiary">{comments.length}</span>
+              <span className="text-2xs tabular-nums text-label-secondary">{comments.length}</span>
             </div>
             <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5">
               {comments.map((c, ci) => (
@@ -1426,7 +1424,7 @@ export function TextContent({
                       aria-label="Delete note"
                       onClick={() => onDeleteComment(expandedCommentPara, c.author, c.text)}
                       className="focus-ring pressable inline-flex size-5 shrink-0 items-center justify-center rounded-full text-label-tertiary opacity-0 transition-[opacity,background-color,color] group-hover/note:opacity-100 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100"
-                    ><X className="size-3" strokeWidth={2.25} /></button>
+                    ><X className="size-3.5" strokeWidth={2} /></button>
                   )}
                 </div>
               ))}
@@ -1567,8 +1565,8 @@ function CommentAvatar({ author, className }: { author: string; className?: stri
       } ${className ?? ""}`}
     >
       {ai
-        ? <Sparkles className="size-3" strokeWidth={2.25} />
-        : <User className="size-3" strokeWidth={2.25} />}
+        ? <Sparkles className="size-3.5" strokeWidth={2} />
+        : <User className="size-3.5" strokeWidth={2} />}
     </span>
   );
 }
@@ -1576,11 +1574,11 @@ function CommentAvatar({ author, className }: { author: string; className?: stri
 // ── Wiki tooltip type metadata ──────────────────────────
 const typeTint = (v: string) => ({ color: v, bg: `color-mix(in srgb, ${v} 16%, transparent)` });
 const WIKI_TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
-  character: { icon: <User className="size-3" strokeWidth={2} />, label: "Character", ...typeTint("var(--system-blue)") },
-  item: { icon: <Swords className="size-3" strokeWidth={2} />, label: "Item", ...typeTint("var(--system-orange)") },
-  location: { icon: <MapPin className="size-3" strokeWidth={2} />, label: "Location", ...typeTint("var(--system-green)") },
-  event: { icon: <Flame className="size-3" strokeWidth={2} />, label: "Event", ...typeTint("var(--system-pink)") },
-  concept: { icon: <Lightbulb className="size-3" strokeWidth={2} />, label: "Concept", ...typeTint("var(--system-purple)") },
+  character: { icon: <User className="size-3.5" strokeWidth={2} />, label: "Character", ...typeTint("var(--system-blue)") },
+  item: { icon: <Swords className="size-3.5" strokeWidth={2} />, label: "Item", ...typeTint("var(--system-orange)") },
+  location: { icon: <MapPin className="size-3.5" strokeWidth={2} />, label: "Location", ...typeTint("var(--system-green)") },
+  event: { icon: <Flame className="size-3.5" strokeWidth={2} />, label: "Event", ...typeTint("var(--system-pink)") },
+  concept: { icon: <Lightbulb className="size-3.5" strokeWidth={2} />, label: "Concept", ...typeTint("var(--system-purple)") },
 };
 
 /**
@@ -1693,7 +1691,7 @@ function WikiTooltipPopup({
             className="focus-ring pressable inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-tertiary px-3 text-xs font-medium text-label transition-colors hover:bg-fill-secondary"
           >
             Open in Wiki
-            <ExternalLink className="size-3 text-label-secondary" strokeWidth={2} />
+            <ExternalLink className="size-3.5 text-label-secondary" strokeWidth={1.75} />
           </button>
         </div>
       </div>

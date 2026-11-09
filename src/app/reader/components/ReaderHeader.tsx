@@ -30,7 +30,9 @@ interface ReaderHeaderProps {
   speedReaderActive: boolean;
   /**
    * When true, Read Aloud and Speed Reader live in the footer pill instead of
-   * the header (the default composition). Set false to keep them up here.
+   * the header (the default composition). Set false to keep them up here —
+   * the Reader does in focus mode, where the footer hides. The Speed Reader
+   * toggle always shows here while it is active (the footer is unmounted then).
    */
   playbackInFooter?: boolean;
   onThemeChange: (theme: ReadingTheme) => void;
@@ -134,7 +136,7 @@ export function ReaderHeader({
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               exit={{ opacity: 0, y: -6, filter: "blur(3px)" }}
               transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
-              className="block truncate text-2xs text-label-tertiary"
+              className="block truncate text-2xs text-label-secondary"
             >
               {chapterTitle || author}
             </motion.span>
@@ -169,14 +171,20 @@ export function ReaderHeader({
                 <ALargeSmall strokeWidth={1.75} />
               </ChromeButton>
               {!playbackInFooter && (
-                <>
-                  <ChromeButton onMouseDown={stop} onClick={onTTSToggle} active={isTTSActive || showTTS} title="Read aloud" aria-label="Read aloud">
-                    <AudioLines strokeWidth={1.75} />
-                  </ChromeButton>
-                  <ChromeButton onMouseDown={stop} onClick={onSpeedReaderToggle} active={speedReaderActive} title="Speed reader" aria-label="Speed reader">
-                    <Zap strokeWidth={1.75} />
-                  </ChromeButton>
-                </>
+                <ChromeButton onMouseDown={stop} onClick={onTTSToggle} active={isTTSActive || showTTS} title="Read aloud" aria-label="Read aloud">
+                  <AudioLines strokeWidth={1.75} />
+                </ChromeButton>
+              )}
+              {(!playbackInFooter || speedReaderActive) && (
+                <ChromeButton
+                  onMouseDown={stop}
+                  onClick={onSpeedReaderToggle}
+                  active={speedReaderActive}
+                  title={speedReaderActive ? "Exit speed reader (Esc)" : "Speed reader"}
+                  aria-label={speedReaderActive ? "Exit speed reader" : "Speed reader"}
+                >
+                  <Zap strokeWidth={1.75} />
+                </ChromeButton>
               )}
               {onOpenQuotes && (
                 <ChromeButton onMouseDown={stop} onClick={onOpenQuotes} title="Saved quotes" aria-label="Saved quotes">

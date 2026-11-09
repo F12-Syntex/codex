@@ -21,7 +21,7 @@ import type {
 } from "./ai/types";
 import type {
   ApplyResult, EntityIndexItem, EntitySnapshot, Frontier, KnowledgeContext, KnowledgeContextRequest,
-  ReadingPosition, SearchHit, WikiEdit, WikiSnapshot,
+  ReadingPosition, RecapStatus, SearchHit, WikiEdit, WikiSnapshot,
 } from "./knowledge/types";
 import type { BookContentV2, ChapterId, Lexicon, LexiconEntry, ParaId, ParaRef } from "./pipeline/types";
 import type { AssistantMessage, AssistantMode, AssistantSeed, AssistantThread } from "./assistant/types";
@@ -92,6 +92,13 @@ export interface RpcMap {
   "knowledge:clear": (filePath: string, chapterIndex?: number) => void;
   /** Wiki window bulk read. */
   "knowledge:wiki": (filePath: string, frontier?: Frontier) => WikiSnapshot;
+  /** Additive (Phase 1): revert one applied edit by its `ApplyResult.undoIds` entry. */
+  "knowledge:edits:undo": (filePath: string, undoId: number) => boolean;
+  /** Additive (Phase 1): should the "Previously on…" recap be offered now? Starts a reading
+   *  session if the book was idle for 30 min. */
+  "knowledge:recapStatus": (filePath: string) => RecapStatus;
+  /** Additive (Phase 1): the recap up to `chapterIndex` was shown or dismissed. */
+  "knowledge:recapSeen": (filePath: string, chapterIndex: number) => void;
 
   // ── WS-E: assistant ───────────────────────────────────────────────────────
   "assistant:threads": (filePath: string) => AssistantThread[];

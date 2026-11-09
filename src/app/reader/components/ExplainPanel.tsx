@@ -38,13 +38,16 @@ export function ExplainPanel({ selectedText, messages, loading, onAsk, onClose }
     if (!loading) inputRef.current?.focus();
   }, [loading]);
 
-  // Close on Escape (only when input is not focused or empty)
+  // Close on Escape. Capture + stopPropagation so the Reader's own Esc chain
+  // (which ends in closing the window) doesn't also run for this key press.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onClose();
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose]);
 
   // Close on click outside
@@ -79,15 +82,16 @@ export function ExplainPanel({ selectedText, messages, loading, onAsk, onClose }
     && messages[messages.length - 1].role === "assistant";
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none p-8">
+    // Docked in the right gutter (the AI tools slot); the Reader insets the
+    // text column while it is open, so the panel never covers the page.
+    <div className="pointer-events-none absolute top-2 right-2 bottom-2 z-50 flex w-72 items-center">
       <motion.div
         ref={panelRef}
         role="dialog"
         aria-label="AI Explain"
-        className="glass-thick grain relative pointer-events-auto flex w-full max-w-md flex-col overflow-hidden rounded-2xl text-label"
-        style={{ maxHeight: "70vh" }}
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.96, filter: "blur(6px)" }}
-        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+        className="glass-thick grain relative pointer-events-auto flex max-h-full w-full flex-col overflow-hidden rounded-2xl text-label"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, x: 24, scale: 0.98, filter: "blur(6px)" }}
+        animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
         transition={reduce ? { duration: 0.15 } : { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
       >
         {/* Header */}
@@ -97,7 +101,7 @@ export function ExplainPanel({ selectedText, messages, loading, onAsk, onClose }
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-title font-display leading-tight text-label">Explain</h2>
-            <p className="text-2xs text-label-tertiary">Answers stay within what you&rsquo;ve read</p>
+            <p className="text-2xs text-label-secondary">Answers stay within what you&rsquo;ve read</p>
           </div>
           <button
             type="button"

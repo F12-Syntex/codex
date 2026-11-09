@@ -28,11 +28,11 @@ interface SavedQuote {
 
 /** Kind chips are neutral (bg-fill-tertiary); only the icon carries the tint. */
 const KIND_LABELS: Record<string, { label: string; short: string; icon: React.ReactNode; tint: string }> = {
-  dialogue: { label: "Dialogue", short: "Dialogue", icon: <MessageSquare className="size-3" strokeWidth={2} />, tint: "text-info" },
-  inner_thought: { label: "Inner Thought", short: "Thought", icon: <Eye className="size-3" strokeWidth={2} />, tint: "text-brand" },
-  narration: { label: "Narration", short: "Narration", icon: <BookOpen className="size-3" strokeWidth={2} />, tint: "text-warning" },
-  description: { label: "Description", short: "Description", icon: <Feather className="size-3" strokeWidth={2} />, tint: "text-success" },
-  quote: { label: "Quote", short: "Quote", icon: <QuoteIcon className="size-3" strokeWidth={2} />, tint: "text-label-tertiary" },
+  dialogue: { label: "Dialogue", short: "Dialogue", icon: <MessageSquare className="size-3.5" strokeWidth={1.75} />, tint: "text-info" },
+  inner_thought: { label: "Inner Thought", short: "Thought", icon: <Eye className="size-3.5" strokeWidth={1.75} />, tint: "text-brand" },
+  narration: { label: "Narration", short: "Narration", icon: <BookOpen className="size-3.5" strokeWidth={1.75} />, tint: "text-warning" },
+  description: { label: "Description", short: "Description", icon: <Feather className="size-3.5" strokeWidth={1.75} />, tint: "text-success" },
+  quote: { label: "Quote", short: "Quote", icon: <QuoteIcon className="size-3.5" strokeWidth={1.75} />, tint: "text-label-secondary" },
 };
 
 const ALL_KINDS = ["dialogue", "inner_thought", "narration", "description", "quote"];
@@ -99,7 +99,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
 
   const title = bookTitle || (filePath ? "Book Quotes" : "All Quotes");
 
-  // Labels over glyphs (conventions S9.7)
+  // Labels over glyphs (conventions §13.7): every kind segment carries its word.
   const kindOptions = useMemo(() => [
     { value: "all", label: "All" },
     ...ALL_KINDS.map((k) => ({ value: k, label: KIND_LABELS[k].short, title: KIND_LABELS[k].label })),
@@ -129,7 +129,7 @@ export function QuotesView({ filePath, bookTitle }: QuotesViewProps) {
                   <>
                     <NumberTicker value={quotes.length} className="tabular-nums text-label" /> saved {quotes.length === 1 ? "passage" : "passages"}
                     {filtered.length !== quotes.length && (
-                      <span className="text-label-tertiary"> · {filtered.length} shown</span>
+                      <span> · {filtered.length} shown</span>
                     )}
                   </>
                 )}
@@ -248,7 +248,7 @@ function EmptyQuotes({ title }: { title: string }) {
       <p className="mt-3 max-w-sm text-sm leading-relaxed text-label-secondary">
         Lines worth keeping live here. Select a passage in the reader and choose{" "}
         <span className="inline-flex h-5 items-center gap-1 rounded-full bg-fill-tertiary px-2 align-middle text-xs text-label">
-          <QuoteIcon className="size-3" strokeWidth={2} /> Quote
+          <QuoteIcon className="size-3.5" strokeWidth={1.75} /> Quote
         </span>{" "}
         to start your collection.
       </p>
@@ -289,7 +289,7 @@ function QuoteCard({
           </span>
           {quote.aiEnhanced && (
             <span className="inline-flex text-brand" title="AI enriched" aria-label="AI enriched">
-              <Sparkles className="size-3" strokeWidth={2} />
+              <Sparkles className="size-3.5" strokeWidth={1.75} />
             </span>
           )}
         </div>
@@ -317,7 +317,7 @@ function QuoteCard({
             {hasSpeaker && !isNarrative && (
               <span className="truncate text-xs font-medium text-label-secondary">{quote.speaker}</span>
             )}
-            <span className="truncate text-xs text-label-tertiary">
+            <span className="truncate text-xs text-label-secondary">
               {quote.chapterTitle || `Chapter ${quote.chapterIndex + 1}`}
               {showBook && quote.bookTitle && <> · <span className="italic">{quote.bookTitle}</span></>}
             </span>
@@ -330,6 +330,7 @@ function QuoteCard({
         onClick={() => onDelete(quote.id)}
         disabled={deleting}
         title="Delete quote"
+        aria-label="Delete quote"
         className="focus-ring pressable absolute right-3 top-3 flex size-7 items-center justify-center rounded-full text-label-tertiary opacity-0 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-100"
       >
         {deleting ? (

@@ -80,6 +80,37 @@ export function EntityContextMenu({
     };
   }, [onClose]);
 
+  // Keyboard reach: take focus on open (the menu itself, so a pointer-opened
+  // menu shows no highlight), ↑/↓/Home/End rove between items, and focus
+  // returns to where it was when the menu closes.
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    menuRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (previous && previous.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    );
+    // Activation keys stay in the menu (Space would also toggle read-aloud).
+    if (e.key === " " || e.key === "Enter") { e.stopPropagation(); return; }
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    let next: number | null = null;
+    if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) next = index < 0 ? 0 : (index + 1) % items.length;
+    else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) next = index <= 0 ? items.length - 1 : index - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    if (next === null) return;
+    // Arrows also turn pages on window — keep them in the menu.
+    e.preventDefault();
+    e.stopPropagation();
+    items[next].focus();
+  };
+
   const dot = ENTITY_DOT[entity.color] ?? "var(--accent-brand)";
 
   return (
@@ -87,7 +118,9 @@ export function EntityContextMenu({
       ref={menuRef}
       role="menu"
       aria-label={`${entity.name} actions`}
-      className="glass-thick w-[220px] rounded-xl p-1 text-label"
+      tabIndex={-1}
+      onKeyDown={handleMenuKeyDown}
+      className="glass-thick w-[220px] rounded-xl p-1 text-label outline-none"
       style={{ position: "fixed", zIndex: 60, left: `${x}px`, top: `${y}px`, transformOrigin: "0 0" }}
       initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: -4 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -153,7 +186,8 @@ function MenuItem({ icon, label, hint, onSelect }: {
       tabIndex={-1}
       {...itemProps}
       onMouseEnter={(e) => e.currentTarget.focus()}
-      onMouseLeave={(e) => e.currentTarget.blur()}
+      // Hand focus back to the menu (not <body>) so the keyboard stays in it.
+      onMouseLeave={(e) => e.currentTarget.closest<HTMLElement>('[role="menu"]')?.focus({ preventScroll: true })}
       onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(); }
@@ -169,7 +203,7 @@ function MenuItem({ icon, label, hint, onSelect }: {
       </span>
       <span className="flex-1">{label}</span>
       {hint && (
-        <span className={cn("text-xs", active ? "text-brand-fg/75" : "text-label-tertiary")}>{hint}</span>
+        <span className={cn("text-xs", active ? "text-brand-fg/75" : "text-label-secondary")}>{hint}</span>
       )}
     </div>
   );

@@ -277,12 +277,12 @@ export function StyleDictionaryView({ filePath, bookTitle }: StyleDictionaryView
                   )}
                   <span className={cn("relative [&_svg]:size-4", active ? "text-brand" : "text-label-tertiary")}>{item.icon}</span>
                   <span className={cn("relative min-w-0 flex-1 truncate", active && "font-medium")}>{item.label}</span>
-                  <span className="relative text-2xs tabular-nums text-label-tertiary">{item.count}</span>
+                  <span className="relative text-2xs tabular-nums text-label-secondary">{item.count}</span>
                 </button>
               );
             })}
           </nav>
-          <div className="flex h-9 shrink-0 items-center border-t border-separator px-4 text-2xs text-label-tertiary">
+          <div className="flex h-9 shrink-0 items-center border-t border-separator px-4 text-2xs text-label-secondary">
             {dictionary.updatedAt && !isNaN(Date.parse(dictionary.updatedAt))
               ? `Updated ${new Date(dictionary.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
               : `${categories.length} ${categories.length === 1 ? "category" : "categories"}`}
@@ -369,7 +369,7 @@ function RuleCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-headline text-label">{rule.pattern}</div>
-          <div className="mt-0.5 font-mono text-2xs text-label-tertiary">.{rule.component}</div>
+          <div className="mt-0.5 font-mono text-2xs text-label-secondary">.{rule.component}</div>
         </div>
         <button
           onClick={() => onRegenerate()}
@@ -406,13 +406,13 @@ function RuleCard({
         <button
           onClick={() => setShowInput(true)}
           disabled={isRegenerating}
-          className="focus-ring mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs text-label-tertiary transition-colors hover:bg-fill-quaternary hover:text-label-secondary disabled:opacity-40"
+          className="focus-ring mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs text-label-secondary transition-colors hover:bg-fill-quaternary hover:text-label disabled:opacity-40"
         >
           <Plus className="size-3.5" strokeWidth={2} />
           Add instructions for regeneration
         </button>
       ) : (
-        <div className="mt-2.5 flex h-9 items-center gap-1.5 rounded-full bg-fill-tertiary pl-3.5 pr-1 animate-fade-in focus-within:shadow-[0_0_0_3px_var(--accent-brand-dim)]">
+        <div className="mt-2.5 flex h-8 items-center gap-1.5 rounded-full bg-fill-tertiary pl-3.5 pr-1 animate-fade-in focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_25%,transparent)]">
           <input
             type="text"
             value={instruction}
@@ -426,7 +426,8 @@ function RuleCard({
             onClick={handleSubmit}
             disabled={isRegenerating}
             title="Regenerate with instructions"
-            className="focus-ring pressable flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg disabled:opacity-40"
+            aria-label="Regenerate with instructions"
+            className="focus-ring pressable flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg disabled:opacity-40"
           >
             <ArrowUp className="size-3.5" strokeWidth={2.25} />
           </button>

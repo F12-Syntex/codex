@@ -14,6 +14,9 @@ import * as React from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 
+/** Only the first N items animate in (matches `BLUR_FADE_LIMIT`). */
+const ANIMATE_LIMIT = 24;
+
 interface MasonryGridProps<T> {
   items: T[];
   getKey: (item: T, index: number) => React.Key;
@@ -38,22 +41,32 @@ export function MasonryGrid<T>({
 
   return (
     <div className={cn("w-full", gapClassName, className)} role="list">
-      {items.map((item, index) => (
-        <motion.div
-          key={getKey(item, index)}
-          role="listitem"
-          className={cn("break-inside-avoid", itemClassName)}
-          initial={reduceMotion ? false : { opacity: 0, y: 12, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{
-            duration: 0.45,
-            ease: [0.16, 1, 0.3, 1],
-            delay: Math.min(index, 12) * staggerDelay,
-          }}
-        >
-          {renderItem(item, index)}
-        </motion.div>
-      ))}
+      {items.map((item, index) =>
+        // Past the stagger cap items render static: no per-item filter
+        // animation (and no motion node) for long lists.
+        index >= ANIMATE_LIMIT ? (
+          <div key={getKey(item, index)} role="listitem" className={cn("break-inside-avoid", itemClassName)}>
+            {renderItem(item, index)}
+          </div>
+        ) : (
+          <motion.div
+            key={getKey(item, index)}
+            role="listitem"
+            className={cn("break-inside-avoid", itemClassName)}
+            initial={reduceMotion ? false : { opacity: 0, y: 12, filter: "blur(4px)" }}
+            // End at `filter: none` — a lingering `blur(0px)` is a Backdrop
+            // Root and kills the glass of the card inside (conventions §2).
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
+            transition={{
+              duration: 0.45,
+              ease: [0.16, 1, 0.3, 1],
+              delay: Math.min(index, 12) * staggerDelay,
+            }}
+          >
+            {renderItem(item, index)}
+          </motion.div>
+        ),
+      )}
     </div>
   );
 }

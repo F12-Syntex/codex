@@ -24,4 +24,15 @@ export function Kbd({ children, className, ...props }: React.ComponentProps<"kbd
   );
 }
 
+/** A shortcut string ("Ctrl+Shift+K") as a row of keycaps. */
+export function Keys({ keys, className }: { keys: string; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-0.5", className)}>
+      {keys.split("+").map((k, i) => (
+        <Kbd key={`${k}-${i}`}>{k}</Kbd>
+      ))}
+    </span>
+  );
+}
+
 export default Kbd;

@@ -164,6 +164,9 @@ export interface ApplyResult {
   failed: { edit: WikiEdit; reason: string }[];
   /** `wiki_merge_log` ids created by merge edits (for undo). */
   mergeLogIds: number[];
+  /** Additive (Phase 1): `knowledge_edit_log` ids, one per applied edit, in order. Pass one to
+   *  `knowledge:edits:undo` to revert that edit (merges revert through `wiki_merge_log`). */
+  undoIds?: number[];
 }
 
 // ── Wiki window bulk read ───────────────────────────────────────────────────
@@ -234,4 +237,89 @@ export interface KnowledgeReader {
   getEntityIndex(filePath: string, frontier: Frontier): EntityIndexItem[];
   getEntity(filePath: string, id: string, frontier: Frontier): EntitySnapshot | null;
   search(filePath: string, query: string, frontier: Frontier, limit: number): SearchHit[];
+}
+
+// ── Additive (Phase 1, WS-B): recap, lookup and ingest task I/O ─────────────
+
+/** Whether a "Previously on…" recap should be offered now (`knowledge:recapStatus`).
+ *  Due when the book is reopened after > 8 h away, or ≥ 3 chapters were finished since the last
+ *  recap, the frontier is ≥ 1, and no recap was shown in this session yet. */
+export interface RecapStatus {
+  due: boolean;
+  reason: "away" | "progress" | null;
+  frontier: Frontier;
+  /** Chapter range the recap would cover (0-based, inclusive). Empty when `toChapter < fromChapter`. */
+  fromChapter: number;
+  toChapter: number;
+  /** 1-based story labels of the range, e.g. "41" / "45". */
+  fromLabel: string;
+  toLabel: string;
+  /** Time away before this session, if known. */
+  awayMs: number | null;
+}
+
+/** `book.recap` input (submitted with `ai:submit`, priority Interactive). */
+export interface RecapInput {
+  filePath: string;
+  /** Default: the book's frontier. */
+  frontier?: Frontier;
+  bookTitle?: string;
+  /** Default: `RecapStatus.awayMs`; widens the chapter window (3–8 chapters). */
+  awayMs?: number;
+}
+
+/** `book.recap` output (AI_AUDIT Appendix A, plus range and the last paragraph read). */
+export interface RecapOutput {
+  bullets: string[];
+  leftOff: string;
+  /** Subset of the entities given to the model. */
+  entityIds: string[];
+  fromChapter: number;
+  toChapter: number;
+  fromLabel: string;
+  toLabel: string;
+  /** Plain text of the last paragraph read (for the "Where we left off" quote). */
+  leftOffQuote?: string;
+  /** Whether chapter summaries were available or raw excerpts had to be used. */
+  source: "summaries" | "excerpts" | "mixed";
+}
+
+/** `entity.lookup` input: a name that is not (yet) in the wiki. */
+export interface EntityLookupInput {
+  filePath: string;
+  name: string;
+  /** Default: the book's frontier. */
+  frontier?: Frontier;
+  bookTitle?: string;
+}
+
+/** `entity.lookup` output (AI_AUDIT Appendix A). `refs` only cite passages ≤ frontier. */
+export interface EntityLookupOutput {
+  name: string;
+  type: WikiEntryType;
+  description: string;
+  /** 0–1. 0 when the passages were insufficient. */
+  confidence: number;
+  refs: ParaId[];
+  /** Chapter of each ref, same order (for citation chips). */
+  refChapters: number[];
+}
+
+/** `chapter.knowledge` input. Runs on the per-book lane `knowledge:<filePath>`. */
+export interface KnowledgeIngestInput {
+  filePath: string;
+  chapterIndex: number;
+  /** Re-run even if the chapter already has a completed run (the old run is undone first). */
+  force?: boolean;
+  bookTitle?: string;
+}
+
+export interface KnowledgeIngestOutput {
+  filePath: string;
+  chapterIndex: number;
+  chapterId: string;
+  /** "skipped": too large / image chapter; "unchanged": already ingested at this task version. */
+  status: "done" | "skipped" | "unchanged";
+  createdEntries: number;
+  updatedEntries: number;
 }

@@ -168,7 +168,7 @@ export function TOCSidebar({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-display text-lg font-semibold leading-tight text-label">Contents</h2>
-            <p className="mt-0.5 text-xs tabular-nums text-label-tertiary">
+            <p className="mt-0.5 text-xs tabular-nums text-label-secondary">
               {currentNo != null && <>Chapter {currentNo} of {labelCount || chapters.length} · </>}
               {Math.round(progressPct)}% read
             </p>
@@ -232,9 +232,9 @@ export function TOCSidebar({
             <button
               onClick={() => setSearchQuery("")}
               aria-label="Clear search"
-              className="focus-ring flex size-4 shrink-0 items-center justify-center rounded-full bg-label-tertiary text-canvas transition-colors hover:bg-label-secondary"
+              className="focus-ring -mr-1 flex size-5 shrink-0 items-center justify-center rounded-full text-label-tertiary transition-colors hover:bg-fill-secondary hover:text-label"
             >
-              <X className="size-2.5" strokeWidth={3} />
+              <X className="size-3.5" strokeWidth={2} />
             </button>
           )}
         </label>
@@ -248,7 +248,9 @@ export function TOCSidebar({
           <FluidHoverHighlight hover={hover} className="rounded-md" />
           {tab === "chapters" ? (
             filteredChapters.length === 0 ? (
-              <p className="py-10 text-center text-xs text-label-tertiary">No chapters match “{searchQuery}”</p>
+              <p className="py-10 text-center text-xs text-label-secondary">
+                {searchQuery ? <>No chapters match “{searchQuery}”</> : "No chapters"}
+              </p>
             ) : (
               filteredChapters.slice(0, renderLimit).map(({ i, displayTitle, shownNo }) => {
                 const canEnrich = enrichEnabled;
@@ -283,7 +285,7 @@ export function TOCSidebar({
                       <span
                         className={cn(
                           "relative w-6 shrink-0 text-right text-2xs tabular-nums",
-                          isCurrent ? "font-semibold text-brand" : "text-label-tertiary",
+                          isCurrent ? "font-semibold text-brand" : "text-label-secondary",
                         )}
                       >
                         {shownNo ?? ""}
@@ -294,16 +296,16 @@ export function TOCSidebar({
                       onClick={() => { onSelectChapter(i); onClose(); }}
                       className={cn(
                         "focus-ring relative flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-sm",
-                        isCurrent ? "font-medium text-brand" : isRead ? "text-label-tertiary" : "text-label",
+                        isCurrent ? "font-medium text-brand" : isRead ? "text-label-secondary" : "text-label",
                       )}
                       title={displayTitle}
                     >
                       <span className="truncate">{displayTitle}</span>
                       {hasIndicators && (
                         <span className="inline-flex shrink-0 items-center gap-1 text-brand/60">
-                          {enrichEnabled && isEnriched && <Sparkles className="size-3" strokeWidth={2} />}
-                          {formattingEnabled && isFormatted && <Paintbrush className="size-3" strokeWidth={2} />}
-                          {wikiEnabled && isWikiProcessed && <BookMarked className="size-3" strokeWidth={2} />}
+                          {enrichEnabled && isEnriched && <Sparkles className="size-3.5" strokeWidth={1.75} />}
+                          {formattingEnabled && isFormatted && <Paintbrush className="size-3.5" strokeWidth={1.75} />}
+                          {wikiEnabled && isWikiProcessed && <BookMarked className="size-3.5" strokeWidth={1.75} />}
                         </span>
                       )}
                     </button>
@@ -339,7 +341,7 @@ export function TOCSidebar({
                 <Bookmark className="size-5" strokeWidth={1.75} />
               </div>
               <p className="text-headline text-label">{searchQuery ? "No matches" : "No bookmarks yet"}</p>
-              <p className="mt-1 text-xs text-label-tertiary">
+              <p className="mt-1 text-xs text-label-secondary">
                 Press <kbd className="rounded-xs bg-fill-tertiary px-1 py-px text-2xs font-medium text-label-secondary">Ctrl B</kbd> on any page
               </p>
             </div>
@@ -359,7 +361,7 @@ export function TOCSidebar({
                   className="focus-ring relative flex min-w-0 flex-1 flex-col gap-0.5 rounded-sm text-left"
                 >
                   <span className="truncate text-sm text-label">{bm.label}</span>
-                  <span className="text-2xs tabular-nums text-label-tertiary">
+                  <span className="text-2xs tabular-nums text-label-secondary">
                     Chapter {bm.chapterIndex + 1} · Page {bm.paragraphIndex + 1}
                   </span>
                 </button>

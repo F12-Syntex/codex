@@ -5,6 +5,12 @@
  * Scrim + glass-thick panel with a spring "sheet" entrance (motion).
  * Inspired by 21st.dev "Animated Dialog" (rmahammad) choreography.
  *
+ * Built on Radix Dialog: focus is trapped inside the panel, the first
+ * focusable element (or an `autoFocus` child) gets focus on open, focus
+ * returns to the opener on close, and the rest of the page is inert to
+ * pointer and assistive tech. Motion runs through `forceMount` +
+ * AnimatePresence so the exit animation still plays.
+ *
  *   <GlassModal open={open} onClose={close} title="Details" subtitle="…" width={560}>
  *     <GlassModal.Body>…</GlassModal.Body>
  *     <GlassModal.Footer>…buttons…</GlassModal.Footer>
@@ -12,7 +18,7 @@
  */
 
 import * as React from "react";
-import { createPortal } from "react-dom";
+import { Dialog as DialogPrimitive } from "radix-ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,81 +57,103 @@ function GlassModalRoot({
   children,
 }: GlassModalProps) {
   const reduce = useReducedMotion();
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
 
-  React.useEffect(() => {
-    if (!open || !dismissible) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, dismissible, onClose]);
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8">
-          <motion.div
-            className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduce ? 0 : 0.22, ease: [0.32, 0.72, 0, 1] }}
-            onClick={dismissible ? onClose : undefined}
-          />
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            className={cn(
-              "glass-thick relative flex flex-col overflow-hidden rounded-2xl text-label",
-              className,
-            )}
-            style={{ width, maxWidth: "100%", maxHeight }}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.96, filter: "blur(6px)" }}
-            // `filter: none` once settled — `blur(0px)` would stay a Backdrop Root
-            // and kill the blur of glass nested in the panel (conventions §8).
-            animate={
-              reduce
-                ? { opacity: 1 }
-                : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }
-            }
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98, filter: "blur(4px)" }}
-            transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(title || !hideClose) && (
-              <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-3">
-                {icon && <div className="shrink-0">{icon}</div>}
-                <div className="min-w-0 flex-1">
-                  {title && <h2 className="text-title truncate font-display text-label">{title}</h2>}
-                  {subtitle && <p className="mt-0.5 text-xs text-label-secondary">{subtitle}</p>}
-                </div>
-                {headerActions}
-                {!hideClose && (
-                  <button
-                    type="button"
-                    aria-label="Close"
-                    onClick={onClose}
-                    className="focus-ring pressable -mt-0.5 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary hover:bg-fill-secondary hover:text-label"
-                  >
-                    <X className="size-3.5" strokeWidth={2.25} />
-                  </button>
-                )}
-              </div>
-            )}
-            {children}
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>,
-    document.body,
+  return (
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <AnimatePresence>
+        {open && (
+          <DialogPrimitive.Portal forceMount>
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-8">
+              <DialogPrimitive.Overlay asChild forceMount>
+                <motion.div
+                  className="absolute inset-0 bg-[var(--scrim)] backdrop-blur-[2px]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: reduce ? 0 : 0.22, ease: [0.32, 0.72, 0, 1] }}
+                />
+              </DialogPrimitive.Overlay>
+              <DialogPrimitive.Content
+                asChild
+                forceMount
+                aria-modal="true"
+                // No subtitle → no description; say so explicitly (Radix warns otherwise).
+                {...(subtitle ? {} : { "aria-describedby": undefined })}
+                // Esc is the modal's alone: keep it from reaching window-level
+                // handlers (e.g. the reader's Esc chain, which closes the window).
+                onEscapeKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (!dismissible) e.preventDefault();
+                }}
+                onPointerDownOutside={(e) => {
+                  if (!dismissible) e.preventDefault();
+                }}
+                onInteractOutside={(e) => {
+                  if (!dismissible) e.preventDefault();
+                }}
+              >
+                <motion.div
+                  className={cn(
+                    "glass-thick relative flex flex-col overflow-hidden rounded-2xl text-label outline-none",
+                    className,
+                  )}
+                  style={{ width, maxWidth: "100%", maxHeight }}
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.96, filter: "blur(6px)" }}
+                  // `filter: none` once settled — `blur(0px)` would stay a Backdrop Root
+                  // and kill the blur of glass nested in the panel (conventions §2).
+                  animate={
+                    reduce
+                      ? { opacity: 1 }
+                      : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }
+                  }
+                  exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98, filter: "blur(4px)" }}
+                  transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Radix needs a title for assistive tech even when none is shown. */}
+                  {!title && <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>}
+                  {(title || !hideClose) && (
+                    <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-3">
+                      {icon && <div className="shrink-0">{icon}</div>}
+                      <div className="min-w-0 flex-1">
+                        {title && (
+                          <DialogPrimitive.Title asChild>
+                            <h2 className="text-title truncate font-display text-label">{title}</h2>
+                          </DialogPrimitive.Title>
+                        )}
+                        {subtitle && (
+                          <DialogPrimitive.Description asChild>
+                            <p className="mt-0.5 text-xs text-label-secondary">{subtitle}</p>
+                          </DialogPrimitive.Description>
+                        )}
+                      </div>
+                      {headerActions}
+                      {!hideClose && (
+                        <DialogPrimitive.Close asChild>
+                          <button
+                            type="button"
+                            aria-label="Close"
+                            className="focus-ring pressable -mt-0.5 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary hover:bg-fill-secondary hover:text-label"
+                          >
+                            <X className="size-3.5" strokeWidth={2.25} />
+                          </button>
+                        </DialogPrimitive.Close>
+                      )}
+                    </div>
+                  )}
+                  {children}
+                </motion.div>
+              </DialogPrimitive.Content>
+            </div>
+          </DialogPrimitive.Portal>
+        )}
+      </AnimatePresence>
+    </DialogPrimitive.Root>
   );
 }
 

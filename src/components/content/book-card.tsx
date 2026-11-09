@@ -34,10 +34,20 @@ export const SPINE_STYLE: React.CSSProperties = {
     "linear-gradient(90deg, rgb(0 0 0 / 0.22) 0%, rgb(255 255 255 / 0.10) 2.5%, rgb(0 0 0 / 0.10) 5%, rgb(255 255 255 / 0.04) 8%, transparent 14%)",
 };
 
-/** Soft elliptical shadow where a floating cover meets the canvas. */
+/**
+ * Soft elliptical shadow where a floating cover meets the canvas. Pre-softened
+ * with extra gradient stops instead of a `filter: blur()` — a filter on every
+ * cover of a large grid is a lot of paint work.
+ */
 export const CONTACT_SHADOW: React.CSSProperties = {
-  background: "radial-gradient(closest-side, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.18) 60%, transparent)",
-  filter: "blur(4px)",
+  background:
+    "radial-gradient(closest-side, rgb(0 0 0 / 0.42), rgb(0 0 0 / 0.3) 35%, rgb(0 0 0 / 0.14) 65%, rgb(0 0 0 / 0.04) 85%, transparent)",
+};
+
+/** Soft-edged radial mask for colour blooms (cheaper than `blur-2xl`). */
+export const BLOOM_MASK: React.CSSProperties = {
+  maskImage: "radial-gradient(closest-side, black, transparent)",
+  WebkitMaskImage: "radial-gradient(closest-side, black, transparent)",
 };
 
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
@@ -106,11 +116,11 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
           className="pointer-events-none absolute inset-x-2 -bottom-2.5 h-5 transition-[transform,opacity] duration-500 ease-spring group-hover/card:scale-x-90 group-hover/card:opacity-60"
           style={CONTACT_SHADOW}
         />
-        {/* Ambient glow in the cover's own colour */}
+        {/* Ambient glow in the cover's own colour (masked, not blurred) */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 -bottom-1 h-10 rounded-full opacity-0 blur-2xl transition-opacity duration-300 ease-apple group-hover/card:opacity-50"
-          style={{ background: glowColor }}
+          className="pointer-events-none absolute -inset-x-2 -bottom-5 h-16 opacity-0 transition-opacity duration-300 ease-apple group-hover/card:opacity-50"
+          style={{ background: glowColor, ...BLOOM_MASK }}
         />
         <div className="relative transition-transform duration-500 ease-spring group-hover/card:-translate-y-1.5">
           <div
@@ -170,7 +180,7 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
             {/* Selection check */}
             {selected && (
               <div className="absolute -top-1.5 -right-1.5 z-20 flex size-5 animate-pop-in items-center justify-center rounded-full bg-brand text-brand-fg shadow-sm ring-2 ring-canvas">
-                <Check className="size-3" strokeWidth={3} />
+                <Check className="size-3.5" strokeWidth={2.5} />
               </div>
             )}
           </div>

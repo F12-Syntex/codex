@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Loader2, MessageCircle, Quote } from "lucide-react";
 import { getThemeClasses } from "../lib/theme";
@@ -1064,6 +1064,29 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     });
   }, []);
 
+  // Idempotent exit — SpeedReaderView's own Esc and the Reader Esc chain can
+  // both fire for one key press, so this must not toggle.
+  const exitSpeedReader = useCallback(() => {
+    setSpeedReaderActive(false);
+    setSrChunkParaIndex(-1);
+    setSrChunkText("");
+    setSrChunkOffset(0);
+  }, []);
+
+  // Theme scope is <html> (conventions §1): mirror the paper's appearance so
+  // portals (modals, menus, tooltips) match the reader chrome.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const light = settings.readingTheme !== "dark";
+    if (light) root.setAttribute("data-appearance", "light");
+    else root.removeAttribute("data-appearance");
+    root.style.colorScheme = light ? "light" : "dark";
+    return () => {
+      root.removeAttribute("data-appearance");
+      root.style.removeProperty("color-scheme");
+    };
+  }, [settings.readingTheme]);
+
   const handleSpeedReaderChunkChange = useCallback((paraIndex: number, chunkText: string, charOffset: number) => {
     setSrChunkParaIndex(paraIndex);
     setSrChunkText(chunkText);
@@ -1102,7 +1125,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           (e.target as HTMLElement).blur();
           return;
         }
-        if (activeBranch) { handleExitBranch(); }
+        if (speedReaderActive) exitSpeedReader();
+        else if (activeBranch) { handleExitBranch(); }
         else if (showAI) setShowAI(false);
         else if (showTextSettings) setShowTextSettings(false);
         else if (showTOC) setShowTOC(false);
@@ -1122,7 +1146,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showTextSettings, showTOC, showTTS, showAI, activeBranch, handleExitBranch, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
+  }, [speedReaderActive, exitSpeedReader, showTextSettings, showTOC, showTTS, showAI, activeBranch, handleExitBranch, isFullscreen, isTTSActive, isImageBook, tts.state.status, tts.actions]);
 
   // Arrow key page navigation
   useEffect(() => {
@@ -1192,8 +1216,10 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
   if (!isLoaded) return null;
 
   const footerHeight = settings.immersiveMode && !immersiveVisible ? 0 : FOOTER_HEIGHT;
-  const tocInset = showTOC && chapters.length > 1 ? TOC_INSET : 0;
-  const aiInset = showAI ? AI_INSET : 0;
+  // Side panels never occlude the text column (conventions §13.6): the TOC
+  // and the Read Aloud panel take the left gutter, AI tools and Explain the right.
+  const tocInset = (showTOC && chapters.length > 1) || (showTTS && !isImageBook) ? TOC_INSET : 0;
+  const aiInset = showAI || explainState ? AI_INSET : 0;
 
   return (
     <div
@@ -1204,7 +1230,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
       style={{ "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw } as React.CSSProperties}
     >
       {/* Header — floating pills on the paper, no bar */}
-      <header className="relative z-30 shrink-0">
+      <header className="relative shrink-0">
         <ReaderHeader
           title={title} author={author} theme={theme}
           chapterTitle={bookContent ? chapterTitle : undefined}
@@ -1221,6 +1247,8 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onAIToggle={toggleAI}
           speedReaderActive={speedReaderActive}
           onSpeedReaderToggle={handleSpeedReaderToggle}
+          // Focus mode hides the footer, so playback moves up here.
+          playbackInFooter={!settings.immersiveMode}
           onOpenQuotes={() => window.electronAPI?.openQuotes({ filePath, title })}
         />
 
@@ -1371,7 +1399,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           >
           {isLoading ? (
             <div className="flex h-full items-center justify-center">
-              <Loader2 className={`h-6 w-6 animate-spin ${theme.muted}`} strokeWidth={1.5} />
+              <Loader2 className={`size-5 animate-spin ${theme.muted}`} strokeWidth={1.5} />
             </div>
           ) : isTOCChapter(chapterTitle) ? (
             <div className="h-full overflow-y-auto" style={{ padding: `${settings.textPadding}px` }}>
@@ -1441,16 +1469,28 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           </motion.div>
 
           {/* Speed reader overlay (control bar + RSVP display) */}
-          {speedReaderActive && !isTOCChapter(chapterTitle) && (
+          {speedReaderActive && (
             <SpeedReaderView
               theme={theme}
               chunks={speedReaderChunks}
               chapterTitle={chapterTitle}
-              onExit={() => { setSpeedReaderActive(false); setSrChunkParaIndex(-1); setSrChunkText(""); setSrChunkOffset(0); }}
+              onExit={exitSpeedReader}
               onChapterEnd={handleSpeedReaderChapterEnd}
               onParagraphChange={(paraIdx) => setFirstVisiblePara(paraIdx)}
               onReadProgress={handleSpeedReaderReadProgress}
               onChunkChange={handleSpeedReaderChunkChange}
+            />
+          )}
+
+          {/* AI Explain panel — docked right, like the AI tools sidebar */}
+          {explainState && (
+            <ExplainPanel
+              theme={theme}
+              selectedText={explainState.text}
+              messages={explainState.messages}
+              loading={explainState.loading}
+              onAsk={handleExplainFollowUp}
+              onClose={() => setExplainState(null)}
             />
           )}
 
@@ -1471,18 +1511,6 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
             }}
           />
         </div>
-
-        {/* AI Explain panel */}
-        {explainState && (
-          <ExplainPanel
-            theme={theme}
-            selectedText={explainState.text}
-            messages={explainState.messages}
-            loading={explainState.loading}
-            onAsk={handleExplainFollowUp}
-            onClose={() => setExplainState(null)}
-          />
-        )}
 
         {/* AI Buddy backdrop — click to close */}
         {showBuddy && buddyEnabled && wikiEnabled && (
@@ -1571,7 +1599,7 @@ export function Reader({ filePath, format, title, author }: ReaderProps) {
           onPrev={goPrevPage}
           onNext={goNextPage}
           onSeekPage={activeBranch ? undefined : setCurrentPage}
-          showPlayback={!isImageBook}
+          showPlayback={!isImageBook && !settings.immersiveMode}
           showTTS={showTTS}
           onTTSToggle={toggleTTS}
           speedReaderActive={speedReaderActive}

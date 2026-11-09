@@ -99,7 +99,7 @@ const KIND: Record<
   feature: { label: "New", text: "text-success" },
   improvement: { label: "Improved", text: "text-info" },
   fix: { label: "Fixed", text: "text-warning" },
-  chore: { label: "Maintenance", text: "text-label-tertiary" },
+  chore: { label: "Maintenance", text: "text-label-secondary" },
 };
 
 const KIND_ORDER: ChangeKind[] = ["feature", "improvement", "fix", "chore"];
@@ -301,7 +301,7 @@ function renderBody(body: string) {
     if (/^#{2,3}\s+/.test(line)) {
       const text = line.replace(/^#{2,3}\s+/, "");
       elements.push(
-        <p key={i} className="text-section mt-3 mb-1.5 text-label-tertiary">
+        <p key={i} className="text-section mt-3 mb-1.5 text-label-secondary">
           {text}
         </p>
       );
@@ -420,7 +420,7 @@ function ChangeRow({
               renderBody(entry.release.body)
             ) : (
               entry.description.split("\n").map((line, i) => (
-                <p key={i} className="text-xs leading-relaxed text-label-tertiary">
+                <p key={i} className="text-xs leading-relaxed text-label-secondary">
                   {line || " "}
                 </p>
               ))
@@ -432,7 +432,7 @@ function ChangeRow({
                 className="focus-ring mt-2 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-brand hover:underline"
               >
                 View on GitHub
-                <ExternalLink className="size-3" strokeWidth={2} />
+                <ExternalLink className="size-3.5" strokeWidth={1.75} />
               </button>
             )}
           </div>
@@ -513,7 +513,7 @@ function HeroNotes({
             className="focus-ring mt-3 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-brand hover:underline"
           >
             View on GitHub
-            <ExternalLink className="size-3" strokeWidth={2} />
+            <ExternalLink className="size-3.5" strokeWidth={1.75} />
           </button>
         )}
       </div>
@@ -726,14 +726,15 @@ export function ChangelogPage() {
                   <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-20 size-56 rounded-full bg-brand/10 blur-3xl" />
                   <div className="relative">
                     <div className="flex items-center gap-2">
-                      <Badge variant="accent">Latest</Badge>
-                      <span className="text-xs text-label-tertiary tabular-nums">{formatDate(hero.date)}</span>
+                      {/* An unversioned head is not a release yet; its title already says "In development". */}
+                      {hero.version ? <Badge variant="accent">Latest</Badge> : <Badge variant="warning">Unreleased</Badge>}
+                      <span className="text-xs text-label-secondary tabular-nums">{formatDate(hero.date)}</span>
                     </div>
                     <h2 className="mt-3 text-title font-display text-label text-balance">
                       {releaseName(hero) ?? versionLabel(hero)}
                     </h2>
                     {releaseName(hero) && hero.version && (
-                      <p className="mt-0.5 font-mono text-xs text-label-tertiary">v{hero.version}</p>
+                      <p className="mt-0.5 font-mono text-xs text-label-secondary">v{hero.version}</p>
                     )}
                     <div className="mt-5">
                       <HeroNotes group={hero} expandedShas={expandedShas} onToggle={toggleExpanded} />
@@ -754,7 +755,7 @@ export function ChangelogPage() {
                             <span className="font-mono text-xs font-medium text-label">
                               {group.version ? `v${group.version}` : "In development"}
                             </span>
-                            <span className="text-xs text-label-tertiary tabular-nums">{formatDate(group.date)}</span>
+                            <span className="text-xs text-label-secondary tabular-nums">{formatDate(group.date)}</span>
                           </div>
                           {name && (
                             <h3 className="mt-2 font-display text-lg font-semibold text-label text-balance">{name}</h3>

@@ -16,6 +16,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { BarChart2, BookOpen, Network, LayoutGrid } from "lucide-react";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 import { cn } from "@/lib/utils";
+import { tintOf } from "@/lib/wiki-type-meta";
 import { SearchField } from "@/components/ui/search-field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 
@@ -64,10 +65,10 @@ export function EntityAvatar({
   className?: string;
 }) {
   const sizes = {
-    sm: "size-5 text-2xs [&_svg]:size-3",
+    sm: "size-5 text-2xs [&_svg]:size-3.5",
     md: "size-6 text-2xs [&_svg]:size-3.5",
     lg: "size-10 text-sm [&_svg]:size-4",
-    xl: "size-16 text-xl [&_svg]:size-7",
+    xl: "size-16 text-xl [&_svg]:size-10 [&_svg]:stroke-[1.25]",
   } as const;
   return (
     <span
@@ -76,7 +77,7 @@ export function EntityAvatar({
         sizes[size],
         className,
       )}
-      style={{ background: meta.bg, color: meta.color, boxShadow: `inset 0 0 0 0.5px ${meta.color}40` }}
+      style={{ background: meta.bg, color: meta.color, boxShadow: `inset 0 0 0 0.5px ${tintOf(meta.color, 25)}` }}
     >
       {type === "character" ? initials(name) : meta.icon}
     </span>
@@ -200,7 +201,7 @@ export function WikiSidebar({
               <div key={type}>
                 <div className="flex items-center justify-between px-2.5 pt-4 pb-1.5">
                   <span className="text-section">{meta.plural}</span>
-                  <span className="text-2xs tabular-nums text-label-quaternary">{items.length}</span>
+                  <span className="text-2xs tabular-nums text-label-secondary">{items.length}</span>
                 </div>
                 {items.map((e) => {
                   const active = selectedEntryId === e.id;
@@ -225,7 +226,7 @@ export function WikiSidebar({
           })}
 
           {filteredCount === 0 && entries.length > 0 && (
-            <p className="px-2.5 py-8 text-center text-xs text-label-tertiary">No matches</p>
+            <p className="px-2.5 py-8 text-center text-xs text-label-secondary">No matches</p>
           )}
         </div>
       </div>

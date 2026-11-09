@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { ThemeClasses, TTSStatus } from "../lib/types";
 import { fmtCh } from "@/lib/chapter-labels";
 import { visibleChapterNo } from "../lib/chapter-number";
+import { formatHms } from "../lib/format";
 import { AudioWaveform } from "@/components/ui/audio-waveform";
 import { ChromeButton, PillDivider, PANEL_SPRING, riseIn } from "./chrome";
 
@@ -58,16 +59,6 @@ interface ReaderFooterProps {
 
 /** Height of the footer zone; the glass pill floats centred inside it. */
 export const FOOTER_HEIGHT = 60;
-
-/* ── ETA helpers ──────────────────────────────────────────── */
-
-function formatHms(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
 
 /* ── Page scrubber ─────────────────────────────────────────
  * Adapted from 21st.dev "Playback Scrubber" (sltowl/matte-scrub-slider):
@@ -184,7 +175,7 @@ function PageScrubber({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 2, scale: 0.95, transition: { duration: 0.1 } }}
             transition={PANEL_SPRING}
-            className="glass-thick pointer-events-none absolute bottom-full mb-2 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-2xs font-medium tabular-nums text-label"
+            className="pointer-events-none absolute bottom-full mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-elevated px-2 py-1 text-2xs font-medium tabular-nums text-label shadow-md hairline"
             style={{ left: hoverX }}
           >
             Page {hoverPage + 1}
@@ -270,9 +261,9 @@ export function ReaderFooter({
         pointerEvents: isVisible ? "auto" : "none",
       }}
     >
-      <div
-        className="glass relative flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full p-1"
-      >
+      {/* The popover is a sibling of the glass pill, not a child: glass in glass double-blurs. */}
+      <div className="relative min-w-0 max-w-full">
+      <div className="glass relative flex h-10 min-w-0 max-w-full items-center gap-0.5 rounded-full p-1">
         {branchMode ? (
           /* ── Branch mode ───────────────────────────── */
           <>
@@ -303,7 +294,7 @@ export function ReaderFooter({
               {/* Chapter */}
               <div className="flex min-w-0 max-w-56 items-baseline gap-1.5" title={`Chapter ${chapterNo} of ${chapterCount} — ${chapterTitle}`}>
                 {shownNo != null && (
-                  <span className="shrink-0 text-2xs font-semibold tabular-nums text-label-tertiary">{shownNo}</span>
+                  <span className="shrink-0 text-2xs font-semibold tabular-nums text-label-secondary">{shownNo}</span>
                 )}
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.span
@@ -326,7 +317,7 @@ export function ReaderFooter({
               {/* Page in chapter */}
               <span className="shrink-0 text-xs font-medium tabular-nums text-label-secondary" title="Page in this chapter">
                 {currentPage + 1}
-                <span className="text-label-tertiary"> of {totalPages}</span>
+                <span className="font-normal"> of {totalPages}</span>
               </span>
             </div>
 
@@ -393,6 +384,7 @@ export function ReaderFooter({
             {savedBranches.length}
           </button>
         )}
+      </div>
 
         {/* ── Branch list popover ─────────────────────── */}
         <AnimatePresence>
@@ -419,7 +411,7 @@ export function ReaderFooter({
                       <span className={cn("w-full truncate text-left text-sm", activeBranchId === branch.id ? "text-brand" : "text-label")}>
                         {branch.entity_name}
                       </span>
-                      <span className="text-2xs tabular-nums text-label-tertiary">
+                      <span className="text-2xs tabular-nums text-label-secondary">
                         Ch. {branch.chapter_index + 1} · {new Date(branch.created_at).toLocaleDateString()}
                       </span>
                     </button>

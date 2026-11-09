@@ -3,10 +3,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Search, ArrowLeft,
-  User, Swords, MapPin, Flame, Lightbulb,
+  Search, ArrowLeft, User,
   BookOpen, GitBranch, Clock, ChevronRight, ChevronDown, Hash,
-  Merge, Undo2, X, BarChart2, Package, Coins, Zap, Shield, Activity,
+  Merge, Undo2, X, BarChart2,
   Quote,
 } from "lucide-react";
 import { WindowChrome, WindowShell } from "@/components/ui/window-chrome";
@@ -21,7 +20,11 @@ import { fmtCh, type ChapterLabels } from "@/lib/chapter-labels";
 import { fetchWikiEntry } from "@/lib/ai-wiki";
 import { WikiAIChat } from "./WikiAIChat";
 import { RelationshipGraph } from "./RelationshipGraph";
-import { WikiSidebar, WikiSidebarSkeleton, EntityAvatar, type WikiView } from "./WikiSidebar";
+import { WikiSidebar, WikiSidebarSkeleton, EntityAvatar, type WikiView, type SidebarTypeMeta } from "./WikiSidebar";
+import {
+  WIKI_TYPE_META, WIKI_TYPE_ORDER, WIKI_STAT_CATEGORY_META, WIKI_STAT_CATEGORY_ORDER,
+  tintOf, wikiMoodTint,
+} from "@/lib/wiki-type-meta";
 
 interface WikiViewerProps {
   filePath: string;
@@ -29,15 +32,15 @@ interface WikiViewerProps {
   initialEntryId?: string;
 }
 
-const TYPE_META: Record<WikiEntryType, { icon: React.ReactNode; label: string; plural: string; color: string; bg: string }> = {
-  character: { icon: <User className="size-3.5" strokeWidth={1.75} />, label: "Character", plural: "Characters", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
-  item: { icon: <Swords className="size-3.5" strokeWidth={1.75} />, label: "Item", plural: "Items", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
-  location: { icon: <MapPin className="size-3.5" strokeWidth={1.75} />, label: "Location", plural: "Locations", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
-  event: { icon: <Flame className="size-3.5" strokeWidth={1.75} />, label: "Event", plural: "Events", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
-  concept: { icon: <Lightbulb className="size-3.5" strokeWidth={1.75} />, label: "Concept", plural: "Concepts", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
-};
+/** The shared wiki palette (src/lib/wiki-type-meta) with rendered icons. */
+const TYPE_META = Object.fromEntries(
+  WIKI_TYPE_ORDER.map((t) => {
+    const { Icon, ...m } = WIKI_TYPE_META[t];
+    return [t, { ...m, icon: <Icon className="size-3.5" strokeWidth={1.75} /> }];
+  }),
+) as Record<WikiEntryType, SidebarTypeMeta>;
 
-const TYPE_ORDER: WikiEntryType[] = ["character", "item", "location", "event", "concept"];
+const TYPE_ORDER = WIKI_TYPE_ORDER;
 
 
 interface EntryListItem {
@@ -405,8 +408,8 @@ function EmptyWiki({ bookTitle }: { bookTitle: string }) {
               transition={{ type: "spring", bounce: 0.35, duration: 0.6, delay: 0.08 * i }}
             >
               <span
-                className={`flex items-center justify-center rounded-full ${i === 0 ? "size-16 [&_svg]:size-7" : "size-10 [&_svg]:size-4"}`}
-                style={{ background: meta.bg, color: meta.color, boxShadow: `inset 0 0 0 0.5px ${meta.color}50` }}
+                className={`flex items-center justify-center rounded-full ${i === 0 ? "size-14 [&_svg]:size-5" : "size-10 [&_svg]:size-4"}`}
+                style={{ background: meta.bg, color: meta.color, boxShadow: `inset 0 0 0 0.5px ${tintOf(meta.color, 30)}` }}
               >
                 {meta.icon}
               </span>
@@ -427,16 +430,14 @@ function EmptyWiki({ bookTitle }: { bookTitle: string }) {
    STATS PAGE — MC profile + stats reference
    ══════════════════════════════════════════════════════════ */
 
-const STAT_CATEGORY_META: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
-  attributes: { icon: <Shield className="size-3.5" strokeWidth={1.75} />, label: "Attributes", color: "rgb(147, 197, 253)", bg: "rgba(96, 165, 250, 0.12)" },
-  skills: { icon: <Zap className="size-3.5" strokeWidth={1.75} />, label: "Skills", color: "rgb(196, 181, 253)", bg: "rgba(167, 139, 250, 0.12)" },
-  inventory: { icon: <Package className="size-3.5" strokeWidth={1.75} />, label: "Inventory", color: "rgb(110, 231, 183)", bg: "rgba(52, 211, 153, 0.12)" },
-  currency: { icon: <Coins className="size-3.5" strokeWidth={1.75} />, label: "Currency", color: "rgb(252, 211, 77)", bg: "rgba(251, 191, 36, 0.12)" },
-  status: { icon: <Activity className="size-3.5" strokeWidth={1.75} />, label: "Status Effects", color: "rgb(253, 164, 175)", bg: "rgba(251, 113, 133, 0.12)" },
-  other: { icon: <BarChart2 className="size-3.5" strokeWidth={1.75} />, label: "Other", color: "var(--label-secondary)", bg: "var(--fill-tertiary)" },
-};
+const STAT_CATEGORY_META: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = Object.fromEntries(
+  Object.entries(WIKI_STAT_CATEGORY_META).map(([k, { Icon, ...m }]) => [
+    k,
+    { ...m, icon: <Icon className="size-3.5" strokeWidth={1.75} /> },
+  ]),
+);
 
-const STAT_CATEGORY_ORDER = ["attributes", "skills", "inventory", "currency", "status", "other"];
+const STAT_CATEGORY_ORDER = WIKI_STAT_CATEGORY_ORDER;
 
 /** Shared page frame: centered reading column with the standard gutter. */
 function Page({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
@@ -501,7 +502,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
       {stat.value && (
         <p className="mt-2 text-base font-semibold tabular-nums" style={{ color: showIcon ? meta.color : undefined }}>{stat.value}</p>
       )}
-      <p className="mt-0.5 text-2xs tabular-nums text-label-tertiary">Ch. {fmtCh(stat.last_chapter, chapterLabels) ?? stat.last_chapter + 1}</p>
+      <p className="mt-0.5 text-2xs tabular-nums text-label-secondary">Ch. {fmtCh(stat.last_chapter, chapterLabels) ?? stat.last_chapter + 1}</p>
     </div>
   );
 
@@ -510,7 +511,7 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
       <PageHero title={mcEntry?.name ?? "Character Stats"}>
         <p className="mt-2 text-sm text-label-secondary">
           Protagonist · {activeStats.length} active {activeStats.length === 1 ? "stat" : "stats"}
-          {inactiveStats.length > 0 && <span className="text-label-tertiary"> · {inactiveStats.length} lost or consumed</span>}
+          {inactiveStats.length > 0 && <span> · {inactiveStats.length} lost or consumed</span>}
         </p>
       </PageHero>
 
@@ -528,11 +529,11 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
                     <Badge variant="outline" className="ml-auto capitalize">{mcEntry.status}</Badge>
                   </div>
                   {mcEntry.aliases.filter((a) => a.relevance >= 4).length > 0 && (
-                    <p className="mt-1 text-xs text-label-tertiary">aka {mcEntry.aliases.filter((a) => a.relevance >= 4).slice(0, 5).map((a) => a.alias).join(", ")}</p>
+                    <p className="mt-1 text-xs text-label-secondary">aka {mcEntry.aliases.filter((a) => a.relevance >= 4).slice(0, 5).map((a) => a.alias).join(", ")}</p>
                   )}
                   <p className="mt-2.5 text-sm leading-relaxed text-label-secondary">{mcEntry.shortDescription}</p>
                   {mcEntry.description && (
-                    <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-label-tertiary">{mcEntry.description}</p>
+                    <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-label-secondary">{mcEntry.description}</p>
                   )}
                 </div>
                 <ChevronRight className="mt-1 size-4 shrink-0 text-label-quaternary transition-transform duration-200 ease-apple group-hover:translate-x-0.5 group-hover:text-label-secondary" strokeWidth={1.75} />
@@ -580,8 +581,8 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
           <div className="mt-3 flex flex-wrap gap-1.5">
             {inactiveStats.map((stat) => (
               <span key={stat.stat_key} className="inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-quaternary px-3">
-                <span className="text-xs text-label-tertiary line-through">{stat.display_name}</span>
-                {stat.value && <span className="text-2xs text-label-quaternary">{stat.value}</span>}
+                <span className="text-xs text-label-secondary line-through">{stat.display_name}</span>
+                {stat.value && <span className="text-2xs text-label-secondary">{stat.value}</span>}
               </span>
             ))}
           </div>
@@ -674,7 +675,7 @@ function HomePage({
                           <EntityAvatar name={e.name} type="character" meta={TYPE_META.character} size="lg" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-headline text-label">{e.name}</p>
-                            <p className="truncate text-xs capitalize text-label-tertiary">{e.status}</p>
+                            <p className="truncate text-xs capitalize text-label-secondary">{e.status}</p>
                           </div>
                         </div>
                         <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-label-secondary">{e.short_description}</p>
@@ -701,7 +702,7 @@ function HomePage({
                     >
                       <EntityAvatar name={e.name} type={e.type} meta={meta} />
                       <span className="w-40 shrink-0 truncate text-sm font-medium text-label">{e.name}</span>
-                      <span className="min-w-0 flex-1 truncate text-xs text-label-tertiary">{e.short_description}</span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-label-secondary">{e.short_description}</span>
                       <span className="shrink-0 rounded-full bg-fill-tertiary px-2 py-0.5 text-2xs tabular-nums text-label-secondary">Ch. {e.first_appearance + 1}</span>
                       <ChevronRight className="size-3.5 shrink-0 text-label-quaternary transition-transform duration-200 ease-apple group-hover:translate-x-0.5" strokeWidth={1.75} />
                     </button>
@@ -725,7 +726,7 @@ function HomePage({
                       <div className="flex items-center gap-2">
                         <span className="text-headline text-label">{arc.name}</span>
                         <Badge variant={active ? "success" : "default"} className="capitalize">{arc.status}</Badge>
-                        <span className="ml-auto text-2xs tabular-nums text-label-tertiary">
+                        <span className="ml-auto text-2xs tabular-nums text-label-secondary">
                           Ch. {arc.startChapter + 1}{arc.endChapter != null ? `–${arc.endChapter + 1}` : "+"}
                         </span>
                       </div>
@@ -801,7 +802,7 @@ function HomePage({
                 key={m.id}
                 icon={<Merge strokeWidth={1.75} />}
                 iconTint="purple"
-                label={<><span className="font-medium">{m.source_name}</span><span className="text-label-tertiary"> merged into </span><span className="font-medium">{m.target_name}</span></>}
+                label={<><span className="font-medium">{m.source_name}</span><span className="text-label-secondary"> merged into </span><span className="font-medium">{m.target_name}</span></>}
               >
                 <button
                   onClick={() => onUnmerge(m.id)}
@@ -934,7 +935,7 @@ function EntryPage({
                 exit={{ opacity: 0, scale: 0.96, y: -4 }}
                 transition={{ type: "spring", stiffness: 400, damping: 32 }}
                 style={{ transformOrigin: "top right" }}
-                className="glass-thick absolute right-0 top-full z-30 mt-2 w-72 rounded-xl p-1"
+                className="glass-menu absolute right-0 top-full z-30 mt-2 w-72 rounded-xl p-1"
               >
                 <div className="flex h-8 items-center gap-2 rounded-md bg-fill-tertiary px-2.5">
                   <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={2} />
@@ -946,19 +947,19 @@ function EntryPage({
                     placeholder={`Search ${TYPE_META[entry.type].plural.toLowerCase()}…`}
                     className="min-w-0 flex-1 bg-transparent text-sm text-label outline-none placeholder:text-label-tertiary"
                   />
-                  <button onClick={() => setShowMergePicker(false)} className="text-label-tertiary hover:text-label" aria-label="Close">
+                  <button onClick={() => setShowMergePicker(false)} className="focus-ring rounded-full text-label-tertiary hover:text-label" aria-label="Close">
                     <X className="size-3.5" strokeWidth={2} />
                   </button>
                 </div>
                 <p className="px-2 pt-2.5 pb-1 text-section">Merge {entry.name} into</p>
                 <div className="max-h-56 overflow-y-auto">
                   {mergeTargets.length === 0 ? (
-                    <p className="py-4 text-center text-xs text-label-tertiary">No matching entries</p>
+                    <p className="py-4 text-center text-xs text-label-secondary">No matching entries</p>
                   ) : mergeTargets.map((t) => (
                     <button
                       key={t.id}
                       onClick={() => { onMerge(entry.id, t.id); setShowMergePicker(false); }}
-                      className="group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label transition-colors hover:bg-brand hover:text-brand-fg"
+                      className="group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label outline-none transition-colors hover:bg-brand hover:text-brand-fg focus-visible:bg-brand focus-visible:text-brand-fg"
                     >
                       <EntityAvatar name={t.name} type={t.type} meta={TYPE_META[t.type]} size="sm" />
                       <span className="truncate">{t.name}</span>
@@ -992,11 +993,11 @@ function EntryPage({
               {primaryAliases.map((a) => (
                 <span key={a.alias} className="inline-flex h-6 items-center gap-1.5 rounded-full bg-fill-tertiary px-2.5 text-xs text-label-secondary">
                   {a.alias}
-                  {a.alias_type !== "name" && <span className="text-2xs text-label-tertiary">{a.alias_type}</span>}
+                  {a.alias_type !== "name" && <span className="text-2xs text-label-secondary">{a.alias_type}</span>}
                 </span>
               ))}
               {historicalAliases.length > 0 && (
-                <span className="inline-flex h-6 items-center rounded-full px-2.5 text-xs text-label-tertiary ring-[0.5px] ring-separator-strong ring-inset">
+                <span className="inline-flex h-6 items-center rounded-full px-2.5 text-xs text-label-secondary ring-[0.5px] ring-separator-strong ring-inset">
                   +{historicalAliases.length} historical
                 </span>
               )}
@@ -1070,7 +1071,7 @@ function EntryPage({
                                 <span className="size-6 rounded-full bg-fill-secondary" />
                               )}
                               <span className="text-xs font-medium text-label">{targetName}</span>
-                              <span className="text-xs text-label-tertiary">{rel.relation}</span>
+                              <span className="text-xs text-label-secondary">{rel.relation}</span>
                             </button>
                           );
                         })}
@@ -1145,11 +1146,11 @@ function EntryCard({ entry, onClick, showChapter }: { entry: EntryListItem; onCl
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-headline text-label">{entry.name}</span>
-          {showChapter && <span className="shrink-0 text-2xs tabular-nums text-label-tertiary">Ch. {entry.first_appearance + 1}</span>}
+          {showChapter && <span className="shrink-0 text-2xs tabular-nums text-label-secondary">Ch. {entry.first_appearance + 1}</span>}
         </div>
-        <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-label-tertiary">{entry.short_description}</p>
+        <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-label-secondary">{entry.short_description}</p>
       </div>
-      <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-label-quaternary transition-transform duration-200 ease-apple group-hover:translate-x-0.5 group-hover:text-label-tertiary" strokeWidth={1.75} />
+      <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-label-quaternary transition-transform duration-200 ease-apple group-hover:translate-x-0.5 group-hover:text-label-secondary" strokeWidth={1.75} />
     </button>
   );
 }
@@ -1159,7 +1160,7 @@ function SectionHeader({ icon, label, color, count }: { icon: React.ReactNode; l
     <div className="flex items-center gap-2">
       <span className="flex size-5 items-center justify-center [&_svg]:size-3.5" style={{ color }}>{icon}</span>
       <span className="text-section">{label}</span>
-      {count != null && <span className="text-2xs tabular-nums text-label-quaternary">{count}</span>}
+      {count != null && <span className="text-2xs tabular-nums text-label-secondary">{count}</span>}
       <div className="h-px flex-1 bg-separator" />
     </div>
   );
@@ -1177,7 +1178,7 @@ function ArticleSection({ title, children }: { title: string; children: React.Re
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-h-9 items-start justify-between gap-3 py-2">
-      <span className="text-xs text-label-tertiary">{label}</span>
+      <span className="text-xs text-label-secondary">{label}</span>
       <span className="text-right text-xs capitalize text-label">{value}</span>
     </div>
   );
@@ -1235,7 +1236,7 @@ function ArchivedDetailsSection({
                   <span className="inline-flex h-5 shrink-0 items-center rounded-full px-2 text-2xs tabular-nums" style={{ background: metaBg, color: metaColor }}>
                     {fmtCh(item.chapterIndex, chapterLabels)}
                   </span>
-                  <p className="text-xs leading-relaxed text-label-tertiary line-through decoration-label-quaternary">
+                  <p className="text-xs leading-relaxed text-label-secondary line-through decoration-label-quaternary">
                     {item.content}
                   </p>
                   {item.isSuperseded && (
@@ -1258,7 +1259,7 @@ function HistoricalAliasesSection({ aliases }: { aliases: WikiAliasDetailed[] })
         {aliases.map((a) => (
           <span key={a.alias} className="inline-flex h-6 items-center gap-1.5 rounded-full bg-fill-tertiary px-2.5 text-xs text-label-secondary">
             {a.alias}
-            <span className="text-2xs text-label-tertiary">{a.alias_type}</span>
+            <span className="text-2xs text-label-secondary">{a.alias_type}</span>
           </span>
         ))}
       </div>
@@ -1281,7 +1282,7 @@ function ChapterRow({ chapter, chapterLabels }: { chapter: ChapterSummary; chapt
       {events.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {events.map((ev, i) => (
-            <span key={i} className="inline-flex h-5 items-center rounded-full bg-fill-quaternary px-2 text-2xs text-label-tertiary">
+            <span key={i} className="inline-flex h-5 items-center rounded-full bg-fill-quaternary px-2 text-2xs text-label-secondary">
               {ev.replace(/-/g, " ")}
             </span>
           ))}
@@ -1293,12 +1294,11 @@ function ChapterRow({ chapter, chapterLabels }: { chapter: ChapterSummary; chapt
 
 function MoodBadge({ mood }: { mood: string }) {
   if (!mood) return null;
-  const MOOD_COLORS: Record<string, string> = { tension: "rgba(251, 113, 133, 0.15)", action: "rgba(251, 191, 36, 0.15)", calm: "rgba(52, 211, 153, 0.15)", mystery: "rgba(167, 139, 250, 0.15)", revelation: "rgba(96, 165, 250, 0.15)" };
-  const MOOD_TEXT: Record<string, string> = { tension: "rgba(253, 164, 175, 0.9)", action: "rgba(252, 211, 77, 0.9)", calm: "rgba(110, 231, 183, 0.9)", mystery: "rgba(196, 181, 253, 0.9)", revelation: "rgba(147, 197, 253, 0.9)" };
+  const tint = wikiMoodTint(mood);
   return (
     <span
       className="inline-flex h-5 items-center rounded-full px-2 text-2xs font-medium capitalize"
-      style={{ background: MOOD_COLORS[mood] ?? "var(--fill-tertiary)", color: MOOD_TEXT[mood] ?? "var(--label-secondary)" }}
+      style={{ background: tint.bg, color: tint.color }}
     >
       {mood}
     </span>
@@ -1386,7 +1386,7 @@ function LinkedText({
           <button
             key={i}
             onClick={(e) => { e.stopPropagation(); onNavigate(seg.entityId!); }}
-            className="inline cursor-pointer border-b border-dotted border-current/40 font-medium transition-opacity hover:opacity-80"
+            className="focus-ring inline cursor-pointer rounded-xs border-b border-dotted border-current/40 font-medium transition-opacity hover:opacity-80"
             style={{ color: seg.entityType ? TYPE_META[seg.entityType]?.color : undefined }}
           >
             {seg.text}
@@ -1428,15 +1428,17 @@ function SourcePreview({
     <span className="relative inline-flex" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="ml-1 inline-flex size-5 translate-y-0.5 items-center justify-center rounded-full text-label-quaternary transition-colors hover:bg-fill-tertiary hover:text-label-secondary"
+        className="focus-ring ml-1 inline-flex size-5 translate-y-0.5 items-center justify-center rounded-full text-label-tertiary transition-colors hover:bg-fill-tertiary hover:text-label-secondary"
+        aria-label={`Show source from Ch. ${fmtCh(chapterIndex, chapterLabels)}`}
+        aria-expanded={open}
         title={`Source from Ch. ${fmtCh(chapterIndex, chapterLabels)}`}
       >
-        <Quote className="size-3" strokeWidth={2} />
+        <Quote className="size-3.5" strokeWidth={1.75} />
       </button>
       {open && (
-        <span className="glass-thick absolute bottom-full left-0 z-40 mb-2 block w-80 rounded-xl p-3.5 animate-pop-in">
+        <span className="glass-menu absolute bottom-full left-0 z-40 mb-2 block w-80 rounded-xl p-3.5 animate-pop-in">
           <span className="mb-1.5 flex items-center gap-1.5">
-            <Quote className="size-3 shrink-0 text-label-tertiary" strokeWidth={2} />
+            <Quote className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
             <span className="text-section">
               Source — Ch. {fmtCh(chapterIndex, chapterLabels)}
             </span>

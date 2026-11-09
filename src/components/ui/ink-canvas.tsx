@@ -4,13 +4,16 @@
  * InkCanvas — Codex's signature ambient backdrop.
  *
  * A slow, domain-warped fbm flow field ("ink diffusing in water") tinted by the
- * current accent. Rendered at reduced resolution and ~24fps; pauses when hidden
- * and when reduced-motion is requested. Texture comes from a full-resolution
+ * current accent. Rendered at half CSS resolution (never above) and ~20fps;
+ * pauses while the window is hidden or not focused (`window` blur/focus —
+ * every glass surface above re-blurs on each frame, so an idle window should
+ * not animate) and when reduced-motion is requested. Texture comes from a full-resolution
  * `.grain` overlay on the wrapper, not from the shader (upsampled shader grain
  * reads as JPEG blocks).
  *
  * Lifecycle: the GL context, program and buffer are created once per mounted
- * canvas. Theme / accent / intensity changes only re-resolve tokens and
+ * canvas. Theme changes are picked up by a MutationObserver on `<html>` (where
+ * the theme lives); they and intensity changes only re-resolve tokens and
  * crossfade the colour uniforms over 600ms — the context is never thrown away
  * while the canvas is still in the document.
  *
@@ -26,8 +29,6 @@ import { cn } from "@/lib/utils";
 
 interface InkCanvasProps {
   className?: string;
-  /** Changing these re-reads the CSS tokens (accent / appearance / tint). */
-  accentKey?: string;
   /** 0–1 how visible the accent ink is. */
   intensity?: number;
   /** Disable animation (renders a single still frame). */
@@ -127,7 +128,7 @@ const FALLBACK_ACCENT: RGB = [0.04, 0.52, 1];
 const CROSSFADE_MS = 600;
 const RADIUS_PX = 240;
 const MOUSE_LERP = 0.08;
-const FRAME_MS = 1000 / 24;
+const FRAME_MS = 1000 / 20;
 const STILL_TIME = 12.0;
 
 function resolveColor(el: HTMLElement, cssVar: string, fallback: RGB): RGB {
@@ -195,7 +196,6 @@ interface InkApi {
 
 export function InkCanvas({
   className,
-  accentKey,
   intensity = 0.32,
   still = false,
   cursorLight,
@@ -214,7 +214,10 @@ export function InkCanvas({
 
     const reducedMq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const mountedAt = performance.now();
-    const start = mountedAt;
+    // Animation clock (ms). Advances only while animating, so pausing on blur
+    // freezes the field where it is instead of snapping to the still frame.
+    let clock = 0;
+    let lastTick: number | null = null;
 
     let gl: WebGLRenderingContext | null = null;
     let program: WebGLProgram | null = null;
@@ -235,8 +238,10 @@ export function InkCanvas({
     let raf = 0;
     let last = 0;
     let refreshRaf = 0;
+    // Window focus: an unfocused (but visible) window holds a still frame.
+    let focused = document.hasFocus();
 
-    const animating = () => !optsRef.current.still && !reducedMq.matches;
+    const animating = () => !optsRef.current.still && !reducedMq.matches && focused;
     const cursorOn = () => optsRef.current.cursor && animating();
 
     const applyPalette = (p: Palette) => {
@@ -303,8 +308,9 @@ export function InkCanvas({
     const resize = () => {
       if (!gl || !u) return;
       const rect = canvas.getBoundingClientRect();
-      // Half resolution — the field is soft; grain lives in the CSS overlay.
-      scale = Math.min(window.devicePixelRatio || 1, 2) * 0.5;
+      // Half CSS resolution, capped — the field is soft; grain lives in the CSS
+      // overlay. Hi-DPI screens don't buy anything here but fill-rate.
+      scale = Math.min(window.devicePixelRatio || 1, 1) * 0.5;
       const w = Math.max(1, Math.round(rect.width * scale));
       const h = Math.max(1, Math.round(rect.height * scale));
       if (canvas.width !== w || canvas.height !== h) {
@@ -350,7 +356,13 @@ export function InkCanvas({
         mouse.amt,
       );
 
-      const t = animating() ? ((now - start) / 1000) * 0.35 + STILL_TIME : STILL_TIME;
+      if (animating()) {
+        if (lastTick !== null) clock += Math.max(0, now - lastTick);
+        lastTick = now;
+      } else {
+        lastTick = null;
+      }
+      const t = (clock / 1000) * 0.35 + STILL_TIME;
       gl.uniform1f(u.time, t);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       return busy;
@@ -422,12 +434,19 @@ export function InkCanvas({
     };
     const onBlur = () => {
       target.amt = 0;
+      focused = false;
+      sync();
+    };
+    const onFocus = () => {
+      focused = true;
+      sync();
     };
     window.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("pointerout", onOut, { passive: true });
     window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
 
-    /* Theme changes that don't flow through `accentKey` (secondary windows). */
+    /* Theme changes: attributes and custom-accent vars live on <html>. */
     const mo = new MutationObserver(() => refresh());
     mo.observe(document.documentElement, {
       attributes: true,
@@ -457,6 +476,7 @@ export function InkCanvas({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerout", onOut);
       window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
       canvas.removeEventListener("webglcontextlost", onLost);
       canvas.removeEventListener("webglcontextrestored", onRestored);
       const g = gl;
@@ -479,7 +499,7 @@ export function InkCanvas({
   useEffect(() => {
     optsRef.current.intensity = intensity;
     apiRef.current?.refresh();
-  }, [accentKey, intensity]);
+  }, [intensity]);
 
   /* ── Loop mode ── */
   useEffect(() => {

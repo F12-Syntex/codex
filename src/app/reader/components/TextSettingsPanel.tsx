@@ -111,7 +111,7 @@ export function TextSettingsPanel({
                         Aa
                       </span>
                     </span>
-                    <span className={cn("text-2xs font-medium", selected ? "text-label" : "text-label-tertiary")}>{s.label}</span>
+                    <span className={cn("text-2xs font-medium", selected ? "text-label" : "text-label-secondary")}>{s.label}</span>
                   </button>
                 );
               })}
@@ -158,7 +158,7 @@ export function TextSettingsPanel({
                   <span className="relative text-xl leading-none" style={{ fontFamily: font.family }}>
                     Aa
                   </span>
-                  <span className={cn("relative w-full truncate text-center text-2xs", selected ? "font-medium text-brand" : "text-label-tertiary")}>
+                  <span className={cn("relative w-full truncate text-center text-2xs", selected ? "font-medium text-brand" : "text-label-secondary")}>
                     {font.name}
                   </span>
                 </button>
@@ -197,7 +197,7 @@ export function TextSettingsPanel({
           <div className="flex min-h-8 items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm text-label">Focus mode</div>
-              <div className="text-2xs text-label-tertiary">Hide the footer until the pointer nears it</div>
+              <div className="text-2xs text-label-secondary">Hide the footer until the pointer nears it</div>
             </div>
             <Switch checked={immersiveMode} onCheckedChange={onImmersiveModeChange} aria-label="Focus mode" />
           </div>
@@ -236,7 +236,7 @@ function SliderRow({
         aria-label={label}
         onValueChange={([v]) => onChange(Math.round(v * 100) / 100)}
       />
-      <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-label-tertiary">{display}</span>
+      <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-label-secondary">{display}</span>
     </div>
   );
 }

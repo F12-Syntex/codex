@@ -4,7 +4,7 @@ import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Kbd } from "@/components/ui/kbd";
+import { Keys } from "@/components/ui/kbd";
 import { WindowControls } from "@/components/window-controls";
 import { APP_VERSION } from "@/lib/version";
 import { SHORTCUT_REGISTRY } from "@/lib/shortcuts";
@@ -87,11 +87,7 @@ export function TitleBar({ showIdentity = true, onSearchOpen }: TitleBarProps) {
           >
             <Search className="size-3.5 shrink-0" strokeWidth={2} />
             <span className="flex-1 truncate text-left text-xs">Search your library</span>
-            <span className="inline-flex items-center gap-0.5 opacity-80 transition-opacity group-hover/search:opacity-100">
-              {searchKeys.split("+").map((k) => (
-                <Kbd key={k}>{k}</Kbd>
-              ))}
-            </span>
+            <Keys keys={searchKeys} className="opacity-80 transition-opacity group-hover/search:opacity-100" />
           </button>
         )}
       </div>

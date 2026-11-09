@@ -3,6 +3,11 @@ import path from "path";
 import { app } from "electron";
 import { wrapBetterSqlite, type SqlDb } from "./db/sql";
 import { runMigrations } from "./db/migrate";
+import * as wiki from "./knowledge/store";
+import type {
+  WikiEntryRow, WikiDetailRow, WikiAliasRow, WikiRelationshipRow, WikiChapterSummaryRow,
+  WikiArcRow, WikiArcBeatRow, WikiMergeLogRow, MCStatRow, WikiAliasInput,
+} from "./knowledge/store";
 
 export interface LibraryItem {
   id: number;
@@ -581,757 +586,203 @@ export function getReadingStats(): {
   return { totalPagesRead, totalSessions: 0, booksRead, activityByBook };
 }
 
-const WIKI_TABLES = [
-  "wiki_arc_beats", "wiki_arc_entities", "wiki_arcs",
-  "wiki_chapter_summaries", "wiki_appearances",
-  "wiki_relationships", "wiki_details", "wiki_aliases",
-  "wiki_entries", "wiki_processed", "wiki_mc_stats", "wiki_meta",
-] as const;
+// ── Wiki (owner: WS-B) ────────────────────────────
+// The wiki tables live behind `SqlDb` in `electron/knowledge/store.ts`. These exports keep their
+// legacy signatures so the existing `wiki:*` IPC handlers in main.ts work unchanged; they simply
+// delegate to the store on the shared connection. Removed in Phase 3 with the legacy handlers.
 
-// ── Wiki CRUD ─────────────────────────────────────
+export type {
+  WikiEntryRow, WikiDetailRow, WikiAliasRow, WikiRelationshipRow, WikiChapterSummaryRow,
+  WikiArcRow, WikiArcBeatRow, WikiMergeLogRow, MCStatRow, WikiAliasInput,
+} from "./knowledge/store";
 
-export interface WikiEntryRow {
-  id: string;
-  file_path: string;
-  name: string;
-  type: string;
-  short_description: string;
-  description: string;
-  color: string;
-  first_appearance: number;
-  significance: number;
-  status: string;
-}
-
-export interface WikiDetailRow {
-  id: number;
-  file_path: string;
-  entry_id: string;
-  chapter_index: number;
-  category: string;
-  content: string;
-  relevance: number;
-  is_superseded: number;
-  superseded_chapter: number | null;
-}
-
-export interface WikiAliasRow {
-  alias: string;
-  alias_type: string;
-  relevance: number;
-}
-
-export interface WikiRelationshipRow {
-  id: number;
-  file_path: string;
-  source_id: string;
-  target_id: string;
-  relation: string;
-  since_chapter: number;
-  until_chapter: number | null;
-  description: string;
-}
-
-export interface WikiChapterSummaryRow {
-  file_path: string;
-  chapter_index: number;
-  summary: string;
-  key_events: string;
-  active_entities: string;
-  mood: string;
-}
-
-export interface WikiArcRow {
-  id: string;
-  file_path: string;
-  name: string;
-  description: string;
-  arc_type: string;
-  status: string;
-  start_chapter: number;
-  end_chapter: number | null;
-}
-
-export interface WikiArcBeatRow {
-  id: number;
-  file_path: string;
-  arc_id: string;
-  chapter_index: number;
-  beat_type: string;
-  description: string;
-}
-
-// ── Wiki Entries ──
-
-export function upsertWikiEntry(entry: {
-  id: string;
-  filePath: string;
-  name: string;
-  type: string;
-  shortDescription?: string;
-  description?: string;
-  color?: string;
-  firstAppearance?: number;
-  significance?: number;
-  status?: string;
-}): void {
-  db.prepare(`
-    INSERT INTO wiki_entries (id, file_path, name, type, short_description, description, color, first_appearance, significance, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(file_path, id) DO UPDATE SET
-      name = excluded.name,
-      type = excluded.type,
-      short_description = excluded.short_description,
-      description = excluded.description,
-      color = excluded.color,
-      first_appearance = excluded.first_appearance,
-      significance = excluded.significance,
-      status = excluded.status
-  `).run(
-    entry.id,
-    entry.filePath,
-    entry.name,
-    entry.type,
-    entry.shortDescription ?? "",
-    entry.description ?? "",
-    entry.color ?? "blue",
-    entry.firstAppearance ?? 0,
-    entry.significance ?? 1,
-    entry.status ?? "active",
-  );
+export function upsertWikiEntry(entry: Parameters<typeof wiki.upsertWikiEntry>[1]): void {
+  wiki.upsertWikiEntry(getDb(), entry);
 }
 
 /** Remove wiki entries with empty/null name, id, or short_description (created by truncated AI responses). */
 export function purgeNullWikiEntries(filePath: string): number {
-  const result = db.prepare(
-    `DELETE FROM wiki_entries
-     WHERE file_path = ?
-       AND (trim(name) = '' OR trim(id) = '' OR trim(COALESCE(short_description,'')) = '')`
-  ).run(filePath);
-  return result.changes;
+  return wiki.purgeNullWikiEntries(getDb(), filePath);
 }
 
 export function getWikiEntries(filePath: string): WikiEntryRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_entries WHERE file_path = ? ORDER BY first_appearance ASC"
-  ).all(filePath) as WikiEntryRow[];
+  return wiki.getWikiEntries(getDb(), filePath);
 }
 
 export function getWikiEntry(filePath: string, entryId: string): WikiEntryRow | null {
-  return (db.prepare(
-    "SELECT * FROM wiki_entries WHERE file_path = ? AND id = ?"
-  ).get(filePath, entryId) as WikiEntryRow) ?? null;
+  return wiki.getWikiEntry(getDb(), filePath, entryId);
 }
 
 export function deleteWikiEntry(filePath: string, entryId: string): void {
-  db.prepare("DELETE FROM wiki_entries WHERE file_path = ? AND id = ?").run(filePath, entryId);
-}
-
-// ── Wiki Entry Merge ──
-
-export interface WikiMergeLogRow {
-  id: number;
-  file_path: string;
-  source_id: string;
-  target_id: string;
-  source_name: string;
-  target_name: string;
-  source_snapshot: string;
-  merged_at: string;
+  wiki.deleteWikiEntry(getDb(), filePath, entryId);
 }
 
 /** Merge sourceId into targetId — moves all data, logs for undo */
 export function mergeWikiEntries(filePath: string, sourceId: string, targetId: string): void {
-  const merge = db.transaction(() => {
-    const source = db.prepare("SELECT * FROM wiki_entries WHERE file_path = ? AND id = ?").get(filePath, sourceId) as WikiEntryRow | undefined;
-    const target = db.prepare("SELECT * FROM wiki_entries WHERE file_path = ? AND id = ?").get(filePath, targetId) as WikiEntryRow | undefined;
-    if (!source || !target) return;
-
-    // Snapshot source for undo
-    const aliases = (db.prepare("SELECT alias FROM wiki_aliases WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { alias: string }[]).map(r => r.alias);
-    const details = db.prepare("SELECT * FROM wiki_details WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId);
-    const relationships = db.prepare("SELECT * FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?)").all(filePath, sourceId, sourceId);
-    const appearances = (db.prepare("SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { chapter_index: number }[]).map(r => r.chapter_index);
-
-    const snapshot = JSON.stringify({ entry: source, aliases, details, relationships, appearances });
-
-    db.prepare(
-      "INSERT INTO wiki_merge_log (file_path, source_id, target_id, source_name, target_name, source_snapshot) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(filePath, sourceId, targetId, source.name, target.name, snapshot);
-
-    // Append source description to target
-    if (source.description) {
-      const newDesc = target.description ? `${target.description}\n\n${source.description}` : source.description;
-      db.prepare("UPDATE wiki_entries SET description = ? WHERE file_path = ? AND id = ?").run(newDesc, filePath, targetId);
-    }
-
-    // Bump significance
-    if (source.significance > target.significance) {
-      db.prepare("UPDATE wiki_entries SET significance = ? WHERE file_path = ? AND id = ?").run(source.significance, filePath, targetId);
-    }
-
-    // Use earliest first_appearance
-    if (source.first_appearance < target.first_appearance) {
-      db.prepare("UPDATE wiki_entries SET first_appearance = ? WHERE file_path = ? AND id = ?").run(source.first_appearance, filePath, targetId);
-    }
-
-    // Add source name + aliases as aliases of target
-    db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, source.name);
-    for (const alias of aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, targetId, alias);
-    }
-
-    // Move details
-    db.prepare("UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ?").run(targetId, filePath, sourceId);
-
-    // Move appearances (ignore duplicates)
-    for (const ch of appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, targetId, ch);
-    }
-
-    // Move relationships — repoint source_id/target_id references
-    db.prepare("UPDATE wiki_relationships SET source_id = ? WHERE file_path = ? AND source_id = ?").run(targetId, filePath, sourceId);
-    db.prepare("UPDATE wiki_relationships SET target_id = ? WHERE file_path = ? AND target_id = ?").run(targetId, filePath, sourceId);
-
-    // Clean up self-referencing relationships (both sides now point to targetId)
-    db.prepare("DELETE FROM wiki_relationships WHERE file_path = ? AND source_id = target_id").run(filePath);
-
-    // Clean up duplicate relationships (same source, target, relation)
-    db.prepare(`DELETE FROM wiki_relationships WHERE file_path = ? AND id NOT IN (
-      SELECT MIN(id) FROM wiki_relationships WHERE file_path = ? GROUP BY source_id, target_id, relation
-    )`).run(filePath, filePath);
-
-    // Move arc entity references
-    const arcEntities = db.prepare("SELECT arc_id, role FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").all(filePath, sourceId) as { arc_id: string; role: string }[];
-    for (const ae of arcEntities) {
-      db.prepare("INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)").run(filePath, ae.arc_id, targetId, ae.role);
-    }
-    // Remove source arc entities before deleting entry
-    db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND entry_id = ?").run(filePath, sourceId);
-
-    // Delete source entry (cascades aliases, remaining references)
-    db.prepare("DELETE FROM wiki_entries WHERE file_path = ? AND id = ?").run(filePath, sourceId);
-  });
-  merge();
+  wiki.mergeWikiEntries(getDb(), filePath, sourceId, targetId);
 }
 
 /** Undo a merge — restore the source entry from snapshot */
 export function unmergeWikiEntries(filePath: string, mergeLogId: number): void {
-  const unmerge = db.transaction(() => {
-    const log = db.prepare("SELECT * FROM wiki_merge_log WHERE id = ? AND file_path = ?").get(mergeLogId, filePath) as WikiMergeLogRow | undefined;
-    if (!log) return;
-
-    const snapshot = JSON.parse(log.source_snapshot) as {
-      entry: WikiEntryRow;
-      aliases: string[];
-      details: { chapter_index: number; category: string; content: string; entry_id: string }[];
-      relationships: { source_id: string; target_id: string; relation: string; since_chapter: number; until_chapter: number | null; description: string }[];
-      appearances: number[];
-    };
-
-    // Re-create the source entry
-    const e = snapshot.entry;
-    db.prepare(
-      "INSERT OR IGNORE INTO wiki_entries (id, file_path, name, type, short_description, description, color, first_appearance, significance, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).run(e.id, filePath, e.name, e.type, e.short_description, e.description, e.color, e.first_appearance, e.significance, e.status);
-
-    // Re-add aliases
-    for (const alias of snapshot.aliases) {
-      db.prepare("INSERT OR IGNORE INTO wiki_aliases (file_path, entry_id, alias) VALUES (?, ?, ?)").run(filePath, e.id, alias);
-    }
-
-    // Re-add details (they were moved, so move them back)
-    for (const d of snapshot.details) {
-      // Move back details that were reassigned to target
-      db.prepare(
-        "UPDATE wiki_details SET entry_id = ? WHERE file_path = ? AND entry_id = ? AND chapter_index = ? AND category = ? AND content = ?"
-      ).run(e.id, filePath, log.target_id, d.chapter_index, d.category, d.content);
-    }
-
-    // Re-add appearances
-    for (const ch of snapshot.appearances) {
-      db.prepare("INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)").run(filePath, e.id, ch);
-    }
-
-    // Remove source name from target aliases
-    db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, e.name);
-    for (const alias of snapshot.aliases) {
-      db.prepare("DELETE FROM wiki_aliases WHERE file_path = ? AND entry_id = ? AND alias = ?").run(filePath, log.target_id, alias);
-    }
-
-    // Delete the merge log entry
-    db.prepare("DELETE FROM wiki_merge_log WHERE id = ?").run(mergeLogId);
-  });
-  unmerge();
+  wiki.unmergeWikiEntries(getDb(), filePath, mergeLogId);
 }
 
 /** Get all merge log entries for a book */
 export function getWikiMergeLog(filePath: string): WikiMergeLogRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_merge_log WHERE file_path = ? ORDER BY merged_at DESC"
-  ).all(filePath) as WikiMergeLogRow[];
+  return wiki.getWikiMergeLog(getDb(), filePath);
 }
 
-// ── Wiki Aliases ──
-
-export type WikiAliasInput = string | { alias: string; alias_type?: string; relevance?: number };
-
 export function addWikiAliases(filePath: string, entryId: string, aliases: WikiAliasInput[]): void {
-  const stmt = db.prepare(`
-    INSERT INTO wiki_aliases (file_path, entry_id, alias, alias_type, relevance) VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(file_path, entry_id, alias) DO UPDATE SET
-      alias_type = CASE WHEN excluded.relevance > wiki_aliases.relevance THEN excluded.alias_type ELSE wiki_aliases.alias_type END,
-      relevance = MAX(wiki_aliases.relevance, excluded.relevance)
-  `);
-  const insertAll = db.transaction(() => {
-    for (const a of aliases) {
-      const alias = typeof a === "string" ? a : a.alias;
-      const alias_type = typeof a === "string" ? "name" : (a.alias_type ?? "name");
-      const relevance = typeof a === "string" ? 3 : (a.relevance ?? 3);
-      if (alias) stmt.run(filePath, entryId, alias, alias_type, relevance);
-    }
-  });
-  insertAll();
+  wiki.addWikiAliases(getDb(), filePath, entryId, aliases);
 }
 
 export function getWikiAliases(filePath: string, entryId: string): WikiAliasRow[] {
-  return db.prepare(
-    "SELECT alias, alias_type, relevance FROM wiki_aliases WHERE file_path = ? AND entry_id = ? ORDER BY relevance DESC"
-  ).all(filePath, entryId) as WikiAliasRow[];
+  return wiki.getWikiAliases(getDb(), filePath, entryId);
 }
 
-// ── Wiki Details ──
-
 export function addWikiDetails(filePath: string, entryId: string, details: { chapterIndex: number; category: string; content: string; relevance?: number; sourceText?: string }[]): void {
-  const insertStmt = db.prepare(
-    "INSERT INTO wiki_details (file_path, entry_id, chapter_index, category, content, relevance, source_text) VALUES (@fp, @eid, @ch, @cat, @con, @rel, @src)"
-  );
-  // Dedup: skip if identical content already exists for this entry (any chapter)
-  const checkStmt = db.prepare(
-    "SELECT 1 FROM wiki_details WHERE file_path = ? AND entry_id = ? AND content = ? LIMIT 1"
-  );
-  const insertAll = db.transaction(() => {
-    for (const d of details) {
-      if (!d.content) continue;
-      const content = String(d.content);
-      if (checkStmt.get(filePath, entryId, content)) continue;
-      insertStmt.run({
-        fp: filePath,
-        eid: entryId,
-        ch: d.chapterIndex ?? 0,
-        cat: d.category || "info",
-        con: content,
-        rel: d.relevance ?? 3,
-        src: d.sourceText ?? "",
-      });
-    }
-  });
-  insertAll();
+  wiki.addWikiDetails(getDb(), filePath, entryId, details);
 }
 
 export function supersedeWikiDetails(filePath: string, entryId: string, category: string, currentChapter: number): void {
-  db.prepare(
-    "UPDATE wiki_details SET is_superseded = 1, superseded_chapter = ? WHERE file_path = ? AND entry_id = ? AND category = ? AND chapter_index < ? AND is_superseded = 0"
-  ).run(currentChapter, filePath, entryId, category, currentChapter);
+  wiki.supersedeWikiDetails(getDb(), filePath, entryId, category, currentChapter);
 }
 
 export function getWikiDetailsForEntry(filePath: string, entryId: string, maxChapter?: number): WikiDetailRow[] {
-  if (maxChapter != null) {
-    return db.prepare(
-      "SELECT * FROM wiki_details WHERE file_path = ? AND entry_id = ? AND chapter_index <= ? ORDER BY chapter_index ASC"
-    ).all(filePath, entryId, maxChapter) as WikiDetailRow[];
-  }
-  return db.prepare(
-    "SELECT * FROM wiki_details WHERE file_path = ? AND entry_id = ? ORDER BY chapter_index ASC"
-  ).all(filePath, entryId) as WikiDetailRow[];
+  return wiki.getWikiDetailsForEntry(getDb(), filePath, entryId, maxChapter);
 }
 
-// ── Wiki Relationships ──
-
 export function addWikiRelationship(filePath: string, rel: { sourceId: string; targetId: string; relation: string; sinceChapter: number; description?: string }): void {
-  // Skip self-relationships
-  if (rel.sourceId === rel.targetId) return;
-
-  // Check for duplicate (same direction)
-  const existing = db.prepare(
-    "SELECT id FROM wiki_relationships WHERE file_path = ? AND source_id = ? AND target_id = ? AND relation = ?"
-  ).get(filePath, rel.sourceId, rel.targetId, rel.relation);
-  if (existing) return;
-
-  // Check for reverse direction (B→A with same relation)
-  const reverse = db.prepare(
-    "SELECT id FROM wiki_relationships WHERE file_path = ? AND source_id = ? AND target_id = ? AND relation = ?"
-  ).get(filePath, rel.targetId, rel.sourceId, rel.relation);
-  if (reverse) return;
-
-  // Skip if source entity doesn't exist
-  const sourceExists = db.prepare(
-    "SELECT 1 FROM wiki_entries WHERE file_path = ? AND id = ?"
-  ).get(filePath, rel.sourceId);
-  if (!sourceExists) return;
-
-  // Skip if target entity doesn't exist
-  const targetExists = db.prepare(
-    "SELECT 1 FROM wiki_entries WHERE file_path = ? AND id = ?"
-  ).get(filePath, rel.targetId);
-  if (!targetExists) return;
-
-  db.prepare(
-    "INSERT INTO wiki_relationships (file_path, source_id, target_id, relation, since_chapter, description) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(filePath, rel.sourceId, rel.targetId, rel.relation, rel.sinceChapter, rel.description ?? "");
+  wiki.addWikiRelationship(getDb(), filePath, rel);
 }
 
 export function getRelationshipsForEntry(filePath: string, entryId: string, maxChapter?: number): WikiRelationshipRow[] {
-  if (maxChapter != null) {
-    return db.prepare(
-      "SELECT * FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?) AND since_chapter <= ? ORDER BY since_chapter ASC"
-    ).all(filePath, entryId, entryId, maxChapter) as WikiRelationshipRow[];
-  }
-  return db.prepare(
-    "SELECT * FROM wiki_relationships WHERE file_path = ? AND (source_id = ? OR target_id = ?) ORDER BY since_chapter ASC"
-  ).all(filePath, entryId, entryId) as WikiRelationshipRow[];
+  return wiki.getRelationshipsForEntry(getDb(), filePath, entryId, maxChapter);
 }
 
-// ── Wiki Appearances ──
-
 export function addWikiAppearance(filePath: string, entryId: string, chapterIndex: number): void {
-  db.prepare(
-    "INSERT OR IGNORE INTO wiki_appearances (file_path, entry_id, chapter_index) VALUES (?, ?, ?)"
-  ).run(filePath, entryId, chapterIndex);
+  wiki.addWikiAppearance(getDb(), filePath, entryId, chapterIndex);
 }
 
 export function getAppearancesForEntry(filePath: string, entryId: string): number[] {
-  const rows = db.prepare(
-    "SELECT chapter_index FROM wiki_appearances WHERE file_path = ? AND entry_id = ? ORDER BY chapter_index ASC"
-  ).all(filePath, entryId) as { chapter_index: number }[];
-  return rows.map((r) => r.chapter_index);
+  return wiki.getAppearancesForEntry(getDb(), filePath, entryId);
 }
 
 export function getAllWikiRelationships(filePath: string): WikiRelationshipRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_relationships WHERE file_path = ? ORDER BY since_chapter ASC"
-  ).all(filePath) as WikiRelationshipRow[];
+  return wiki.getAllWikiRelationships(getDb(), filePath);
 }
 
 export function getAllAppearanceCounts(filePath: string): { entry_id: string; count: number }[] {
-  return db.prepare(
-    "SELECT entry_id, COUNT(*) as count FROM wiki_appearances WHERE file_path = ? GROUP BY entry_id"
-  ).all(filePath) as { entry_id: string; count: number }[];
+  return wiki.getAllAppearanceCounts(getDb(), filePath);
 }
 
-// ── Chapter Summaries ──
-
-export function upsertChapterSummary(filePath: string, summary: {
-  chapterIndex: number;
-  summary: string;
-  keyEvents?: string;
-  activeEntities?: string;
-  mood?: string;
-}): void {
-  db.prepare(`
-    INSERT INTO wiki_chapter_summaries (file_path, chapter_index, summary, key_events, active_entities, mood)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(file_path, chapter_index) DO UPDATE SET
-      summary = excluded.summary,
-      key_events = excluded.key_events,
-      active_entities = excluded.active_entities,
-      mood = excluded.mood
-  `).run(
-    filePath,
-    summary.chapterIndex,
-    summary.summary,
-    summary.keyEvents ?? "",
-    summary.activeEntities ?? "",
-    summary.mood ?? "",
-  );
+export function upsertChapterSummary(filePath: string, summary: Parameters<typeof wiki.upsertChapterSummary>[2]): void {
+  wiki.upsertChapterSummary(getDb(), filePath, summary);
 }
 
 export function getChapterSummaries(filePath: string, fromCh: number, toCh: number): WikiChapterSummaryRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_chapter_summaries WHERE file_path = ? AND chapter_index >= ? AND chapter_index <= ? ORDER BY chapter_index ASC"
-  ).all(filePath, fromCh, toCh) as WikiChapterSummaryRow[];
+  return wiki.getChapterSummaries(getDb(), filePath, fromCh, toCh);
 }
 
 export function getAllChapterSummaries(filePath: string): WikiChapterSummaryRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_chapter_summaries WHERE file_path = ? ORDER BY chapter_index ASC"
-  ).all(filePath) as WikiChapterSummaryRow[];
+  return wiki.getAllChapterSummaries(getDb(), filePath);
 }
 
-// ── Story Arcs ──
-
-export function upsertArc(filePath: string, arc: {
-  id: string;
-  name: string;
-  description?: string;
-  arcType?: string;
-  status?: string;
-  startChapter: number;
-  endChapter?: number | null;
-}): void {
-  db.prepare(`
-    INSERT INTO wiki_arcs (id, file_path, name, description, arc_type, status, start_chapter, end_chapter)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(file_path, id) DO UPDATE SET
-      name = excluded.name,
-      description = excluded.description,
-      arc_type = excluded.arc_type,
-      status = excluded.status,
-      start_chapter = excluded.start_chapter,
-      end_chapter = excluded.end_chapter
-  `).run(
-    arc.id,
-    filePath,
-    arc.name,
-    arc.description ?? "",
-    arc.arcType ?? "plot",
-    arc.status ?? "active",
-    arc.startChapter,
-    arc.endChapter ?? null,
-  );
+export function upsertArc(filePath: string, arc: Parameters<typeof wiki.upsertArc>[2]): void {
+  wiki.upsertArc(getDb(), filePath, arc);
 }
 
 export function getActiveArcs(filePath: string): WikiArcRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_arcs WHERE file_path = ? AND status IN ('setup', 'active', 'climax') ORDER BY start_chapter ASC"
-  ).all(filePath) as WikiArcRow[];
+  return wiki.getActiveArcs(getDb(), filePath);
 }
 
 export function getAllArcs(filePath: string): WikiArcRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_arcs WHERE file_path = ? ORDER BY start_chapter ASC"
-  ).all(filePath) as WikiArcRow[];
+  return wiki.getAllArcs(getDb(), filePath);
 }
 
-export function addArcBeat(filePath: string, arcId: string, beat: {
-  chapterIndex: number;
-  beatType: string;
-  description: string;
-}): void {
-  db.prepare(
-    "INSERT INTO wiki_arc_beats (file_path, arc_id, chapter_index, beat_type, description) VALUES (?, ?, ?, ?, ?)"
-  ).run(filePath, arcId, beat.chapterIndex, beat.beatType, beat.description);
+export function addArcBeat(filePath: string, arcId: string, beat: { chapterIndex: number; beatType: string; description: string }): void {
+  wiki.addArcBeat(getDb(), filePath, arcId, beat);
 }
 
 export function getArcBeats(filePath: string, arcId: string): WikiArcBeatRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_arc_beats WHERE file_path = ? AND arc_id = ? ORDER BY chapter_index ASC"
-  ).all(filePath, arcId) as WikiArcBeatRow[];
+  return wiki.getArcBeats(getDb(), filePath, arcId);
 }
 
 export function addArcEntity(filePath: string, arcId: string, entryId: string, role: string): void {
-  db.prepare(
-    "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
-  ).run(filePath, arcId, entryId, role);
+  wiki.addArcEntity(getDb(), filePath, arcId, entryId, role);
 }
 
 export function getArcEntities(filePath: string, arcId: string): { entry_id: string; role: string }[] {
-  return db.prepare(
-    "SELECT entry_id, role FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?"
-  ).all(filePath, arcId) as { entry_id: string; role: string }[];
+  return wiki.getArcEntities(getDb(), filePath, arcId);
 }
 
 export function deleteArc(filePath: string, arcId: string): void {
-  const del = db.transaction(() => {
-    db.prepare("DELETE FROM wiki_arc_beats WHERE file_path = ? AND arc_id = ?").run(filePath, arcId);
-    db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, arcId);
-    db.prepare("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?").run(filePath, arcId);
-  });
-  del();
+  wiki.deleteArc(getDb(), filePath, arcId);
 }
 
 export function mergeArcs(filePath: string, sourceArcIds: string[], targetArcId: string): void {
-  const merge = db.transaction(() => {
-    // Verify target arc exists
-    const target = db.prepare(
-      "SELECT id FROM wiki_arcs WHERE file_path = ? AND id = ?"
-    ).get(filePath, targetArcId);
-    if (!target) return;
-
-    for (const sourceId of sourceArcIds) {
-      if (sourceId === targetArcId) continue;
-      // Verify source arc exists
-      const source = db.prepare(
-        "SELECT id FROM wiki_arcs WHERE file_path = ? AND id = ?"
-      ).get(filePath, sourceId);
-      if (!source) continue;
-
-      // Move beats to target arc
-      db.prepare(
-        "UPDATE wiki_arc_beats SET arc_id = ? WHERE file_path = ? AND arc_id = ?"
-      ).run(targetArcId, filePath, sourceId);
-      // Move entities to target arc (ignore duplicates)
-      const entities = db.prepare(
-        "SELECT entry_id, role FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?"
-      ).all(filePath, sourceId) as { entry_id: string; role: string }[];
-      for (const e of entities) {
-        db.prepare(
-          "INSERT OR IGNORE INTO wiki_arc_entities (file_path, arc_id, entry_id, role) VALUES (?, ?, ?, ?)"
-        ).run(filePath, targetArcId, e.entry_id, e.role);
-      }
-      // Delete source arc entities first, then arc (cascade handles beats)
-      db.prepare("DELETE FROM wiki_arc_entities WHERE file_path = ? AND arc_id = ?").run(filePath, sourceId);
-      db.prepare("DELETE FROM wiki_arcs WHERE file_path = ? AND id = ?").run(filePath, sourceId);
-    }
-  });
-  merge();
+  wiki.mergeArcs(getDb(), filePath, sourceArcIds, targetArcId);
 }
 
-// ── Processing State ──
-
 export function markChapterProcessed(filePath: string, chapterIndex: number): void {
-  db.prepare(
-    "INSERT OR IGNORE INTO wiki_processed (file_path, chapter_index) VALUES (?, ?)"
-  ).run(filePath, chapterIndex);
+  wiki.markChapterProcessed(getDb(), filePath, chapterIndex);
 }
 
 export function unmarkChapterProcessed(filePath: string, chapterIndex: number): void {
-  db.prepare(
-    "DELETE FROM wiki_processed WHERE file_path = ? AND chapter_index = ?"
-  ).run(filePath, chapterIndex);
+  wiki.unmarkChapterProcessed(getDb(), filePath, chapterIndex);
 }
 
 export function getProcessedChapters(filePath: string): number[] {
-  const rows = db.prepare(
-    "SELECT chapter_index FROM wiki_processed WHERE file_path = ? ORDER BY chapter_index ASC"
-  ).all(filePath) as { chapter_index: number }[];
-  return rows.map((r) => r.chapter_index);
+  return wiki.getProcessedChapters(getDb(), filePath);
 }
 
-// ── Wiki Meta ──
-
 export function getWikiMeta(filePath: string): { file_path: string; book_title: string; updated_at: string } | null {
-  return (db.prepare(
-    "SELECT * FROM wiki_meta WHERE file_path = ?"
-  ).get(filePath) as { file_path: string; book_title: string; updated_at: string }) ?? null;
+  return wiki.getWikiMeta(getDb(), filePath);
 }
 
 export function upsertWikiMeta(filePath: string, bookTitle: string): void {
-  db.prepare(`
-    INSERT INTO wiki_meta (file_path, book_title, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(file_path) DO UPDATE SET
-      book_title = excluded.book_title,
-      updated_at = datetime('now')
-  `).run(filePath, bookTitle);
+  wiki.upsertWikiMeta(getDb(), filePath, bookTitle);
 }
-
-// ── Entity Index (compact, for AI context + highlighting) ──
 
 export function getEntityIndex(filePath: string): { id: string; name: string; type: string; color: string; aliases: string[] }[] {
-  const rows = db.prepare(`
-    SELECT e.id, e.name, e.type, e.color,
-           GROUP_CONCAT(a.alias, '||') as aliases_str
-    FROM wiki_entries e
-    LEFT JOIN wiki_aliases a ON a.file_path = e.file_path AND a.entry_id = e.id AND a.relevance >= 3
-    WHERE e.file_path = ?
-    GROUP BY e.id
-    ORDER BY e.first_appearance ASC
-  `).all(filePath) as { id: string; name: string; type: string; color: string; aliases_str: string | null }[];
-  return rows.map(r => ({
-    id: r.id, name: r.name, type: r.type, color: r.color,
-    aliases: r.aliases_str ? r.aliases_str.split("||") : [],
-  }));
+  return wiki.getEntityIndex(getDb(), filePath);
 }
-
-// ── Recent Entities (for AI context window) ──
 
 export function getRecentEntities(filePath: string, lastNChapters: number, currentChapter: number): WikiEntryRow[] {
-  const minChapter = Math.max(0, currentChapter - lastNChapters + 1);
-  return db.prepare(`
-    SELECT DISTINCT e.* FROM wiki_entries e
-    JOIN wiki_appearances a ON a.file_path = e.file_path AND a.entry_id = e.id
-    WHERE e.file_path = ? AND a.chapter_index >= ? AND a.chapter_index <= ?
-    ORDER BY e.significance DESC, e.first_appearance ASC
-  `).all(filePath, minChapter, currentChapter) as WikiEntryRow[];
+  return wiki.getRecentEntities(getDb(), filePath, lastNChapters, currentChapter);
 }
-
-// ── Clear Chapter Data (for clean reprocessing) ──
 
 export function clearChapterWikiData(filePath: string, chapterIndex: number): void {
-  const tx = db.transaction(() => {
-    db.prepare("DELETE FROM wiki_details WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_appearances WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_arc_beats WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_chapter_summaries WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-    db.prepare("DELETE FROM wiki_processed WHERE file_path = ? AND chapter_index = ?").run(filePath, chapterIndex);
-  });
-  tx();
+  wiki.clearChapterWikiData(getDb(), filePath, chapterIndex);
 }
-
-// ── Batch Alias Fetch (avoids N+1 queries) ──
 
 export function getAllWikiAliases(filePath: string): { entry_id: string; alias: string; alias_type: string; relevance: number }[] {
-  return db.prepare(
-    "SELECT entry_id, alias, alias_type, relevance FROM wiki_aliases WHERE file_path = ? ORDER BY relevance DESC"
-  ).all(filePath) as { entry_id: string; alias: string; alias_type: string; relevance: number }[];
+  return wiki.getAllWikiAliases(getDb(), filePath);
 }
 
-// ── Clear Wiki ──
-
-// ── MC Stats ──
-
-export interface MCStatRow {
-  id: number;
-  file_path: string;
-  stat_key: string;
-  category: string;
-  display_name: string;
-  value: string | null;
-  is_active: number;
-  last_chapter: number;
-}
-
-export function upsertMCStat(
-  filePath: string,
-  stat: { key: string; category: string; name: string; value: string | null; isActive: boolean; chapter: number },
-): void {
-  db.prepare(`
-    INSERT INTO wiki_mc_stats (file_path, stat_key, category, display_name, value, is_active, last_chapter)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(file_path, stat_key) DO UPDATE SET
-      category = excluded.category,
-      display_name = excluded.display_name,
-      value = excluded.value,
-      is_active = excluded.is_active,
-      last_chapter = excluded.last_chapter
-  `).run(filePath, stat.key, stat.category, stat.name, stat.value ?? null, stat.isActive ? 1 : 0, stat.chapter);
+export function upsertMCStat(filePath: string, stat: Parameters<typeof wiki.upsertMCStat>[2]): void {
+  wiki.upsertMCStat(getDb(), filePath, stat);
 }
 
 export function getMCStats(filePath: string): MCStatRow[] {
-  return db.prepare(
-    "SELECT * FROM wiki_mc_stats WHERE file_path = ? ORDER BY category, display_name"
-  ).all(filePath) as MCStatRow[];
+  return wiki.getMCStats(getDb(), filePath);
 }
 
 export function setMCEntityId(filePath: string, entityId: string): void {
-  db.prepare("UPDATE wiki_meta SET mc_entity_id = ? WHERE file_path = ?").run(entityId, filePath);
+  wiki.setMCEntityId(getDb(), filePath, entityId);
 }
 
 export function getMCEntityId(filePath: string): string | null {
-  const row = db.prepare("SELECT mc_entity_id FROM wiki_meta WHERE file_path = ?").get(filePath) as { mc_entity_id: string | null } | undefined;
-  return row?.mc_entity_id ?? null;
+  return wiki.getMCEntityId(getDb(), filePath);
 }
 
 export function clearWiki(filePath: string): void {
-  const clearAll = db.transaction(() => {
-    for (const table of WIKI_TABLES) {
-      db.prepare(`DELETE FROM ${table} WHERE file_path = ?`).run(filePath);
-    }
-  });
-  clearAll();
+  wiki.clearWiki(getDb(), filePath);
 }
 
 /** Clear ALL wiki data for ALL books */
 export function clearAllWiki(): void {
-  const clearAll = db.transaction(() => {
-    for (const table of WIKI_TABLES) {
-      db.prepare(`DELETE FROM ${table}`).run();
-    }
-    // Also clear merge log
-    db.prepare("DELETE FROM wiki_merge_log").run();
-  });
-  clearAll();
+  wiki.clearAllWiki(getDb());
 }
 
 /** Delete all settings whose key starts with the given prefix */
@@ -1339,83 +790,8 @@ export function clearSettingsByPrefix(prefix: string): void {
   db.prepare("DELETE FROM settings WHERE key LIKE ?").run(prefix + "%");
 }
 
-// ── Migrate from JSON blob ──
-
 export function migrateJsonWiki(filePath: string): boolean {
-  const raw = getSetting(`wiki:${filePath}`);
-  if (!raw) return false;
-
-  try {
-    const wiki = JSON.parse(raw) as {
-      bookTitle: string;
-      entries: Record<string, {
-        id: string; name: string; type: string; aliases: string[];
-        shortDescription: string; description: string;
-        firstAppearance: number; chapterAppearances: number[];
-        details: { chapterIndex: number; content: string; category: string }[];
-        relationships: { targetId: string; relation: string; since: number }[];
-        color: string;
-      }>;
-      processedChapters: number[];
-    };
-
-    const migrate = db.transaction(() => {
-      upsertWikiMeta(filePath, wiki.bookTitle);
-
-      for (const entry of Object.values(wiki.entries)) {
-        upsertWikiEntry({
-          id: entry.id,
-          filePath,
-          name: entry.name,
-          type: entry.type,
-          shortDescription: entry.shortDescription,
-          description: entry.description,
-          color: entry.color,
-          firstAppearance: entry.firstAppearance,
-          significance: 1,
-          status: "active",
-        });
-
-        if (entry.aliases?.length > 0) {
-          addWikiAliases(filePath, entry.id, entry.aliases);
-        }
-
-        if (entry.details?.length > 0) {
-          addWikiDetails(filePath, entry.id, entry.details.map((d) => ({
-            chapterIndex: d.chapterIndex,
-            category: d.category,
-            content: d.content,
-          })));
-        }
-
-        for (const rel of entry.relationships ?? []) {
-          addWikiRelationship(filePath, {
-            sourceId: entry.id,
-            targetId: rel.targetId,
-            relation: rel.relation,
-            sinceChapter: rel.since,
-          });
-        }
-
-        for (const ch of entry.chapterAppearances ?? []) {
-          addWikiAppearance(filePath, entry.id, ch);
-        }
-      }
-
-      for (const ch of wiki.processedChapters ?? []) {
-        markChapterProcessed(filePath, ch);
-      }
-    });
-
-    migrate();
-
-    // Remove old JSON blob
-    db.prepare("DELETE FROM settings WHERE key = ?").run(`wiki:${filePath}`);
-    return true;
-  } catch (err) {
-    console.error("Wiki migration failed:", err);
-    return false;
-  }
+  return wiki.migrateJsonWiki(getDb(), filePath);
 }
 
 // ── Simulate ──────────────────────────────────────────
