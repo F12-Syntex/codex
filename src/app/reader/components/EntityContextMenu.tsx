@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { Sparkles, ExternalLink } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
+import { MenuHighlightScope, useMenuHighlight } from "@/components/ui/menu-highlight";
+import { cn } from "@/lib/utils";
 import type { WikiEntryType } from "@/lib/ai-wiki";
 
 const TYPE_LABELS: Record<WikiEntryType, string> = {
@@ -107,6 +109,7 @@ export function EntityContextMenu({
       <div aria-hidden className="mx-2 mb-1 h-px bg-separator" />
 
       {/* Menu items */}
+      <MenuHighlightScope>
       <MenuItem
         icon={<Sparkles strokeWidth={1.75} />}
         label="Simulate"
@@ -118,6 +121,7 @@ export function EntityContextMenu({
         label="Open in Wiki"
         onSelect={() => { onOpenWiki(); onClose(); }}
       />
+      </MenuHighlightScope>
     </motion.div>
   );
 }
@@ -131,29 +135,42 @@ const ENTITY_DOT: Record<string, string> = {
   violet: "var(--system-purple)",
 };
 
-/** macOS menu item: h-7 rounded-md, accent highlight with inverted text. */
+/**
+ * macOS menu item: h-7, accent lozenge that glides between items
+ * (shared `menu-highlight`, from 21st.dev "Animated Background").
+ */
 function MenuItem({ icon, label, hint, onSelect }: {
   icon: React.ReactNode;
   label: string;
   hint?: string;
   onSelect: () => void;
 }) {
+  const { itemProps, indicator } = useMenuHighlight();
+  const active = indicator !== null;
   return (
-    <button
-      type="button"
+    <div
       role="menuitem"
+      tabIndex={-1}
+      {...itemProps}
+      onMouseEnter={(e) => e.currentTarget.focus()}
+      onMouseLeave={(e) => e.currentTarget.blur()}
       onClick={onSelect}
-      className="group/item flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-label outline-none transition-colors duration-75 hover:bg-brand hover:text-brand-fg focus-visible:bg-brand focus-visible:text-brand-fg"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(); }
+      }}
+      className={cn(
+        "relative isolate flex h-7 w-full cursor-default items-center gap-2 rounded-lg px-2 text-left text-sm outline-none select-none",
+        active ? "text-brand-fg" : "text-label",
+      )}
     >
-      <span className="inline-flex text-label-secondary group-hover/item:text-brand-fg group-focus-visible/item:text-brand-fg [&_svg]:size-4">
+      {indicator}
+      <span className={cn("inline-flex [&_svg]:size-4", active ? "text-brand-fg" : "text-label-secondary")}>
         {icon}
       </span>
       <span className="flex-1">{label}</span>
       {hint && (
-        <span className="text-xs text-label-tertiary group-hover/item:text-brand-fg/70 group-focus-visible/item:text-brand-fg/70">
-          {hint}
-        </span>
+        <span className={cn("text-xs", active ? "text-brand-fg/75" : "text-label-tertiary")}>{hint}</span>
       )}
-    </button>
+    </div>
   );
 }

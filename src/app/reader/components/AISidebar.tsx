@@ -5,7 +5,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   X, Sparkles, Type, MessageCircle, Paintbrush, KeyRound,
-  Loader2, Trash2, Clapperboard, ExternalLink,
+  Trash2, Clapperboard, ExternalLink,
   BookMarked, Square, RefreshCw, Check, Layers, Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import type { StyleDictionary } from "@/lib/ai-style-dictionary";
 import { type ChapterLabels } from "@/lib/chapter-labels";
 import { BulkAnalyserModal } from "./BulkAnalyserModal";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ListIcon, type ListIconTint } from "@/components/ui/list-group";
 import { ProgressRing } from "@/components/ui/progress-ring";
@@ -123,11 +124,9 @@ export function AISidebar({
   const reduce = useReducedMotion();
   // The Bulk Analyser modal is portaled to <body>; while it's open, clicks in it
   // must not count as "outside" the sidebar (they used to be DOM children).
-  const bulkOpenRef = useRef(bulkOpen);
-  bulkOpenRef.current = bulkOpen;
   const handleOutside = useCallback(() => {
-    if (!bulkOpenRef.current) onClose();
-  }, [onClose]);
+    if (!bulkOpen) onClose();
+  }, [bulkOpen, onClose]);
 
   useEffect(() => {
     window.electronAPI?.getSetting("openrouterApiKey").then((key) => {
@@ -321,20 +320,14 @@ export function AISidebar({
 
       {/* ── Bulk Analyse ── */}
       <div className="shrink-0 border-t border-separator p-3">
-        <button
-          type="button"
+        <Button
           onClick={() => setBulkOpen(true)}
           disabled={disabled}
-          className={cn(
-            "focus-ring pressable flex h-8 w-full items-center justify-center gap-2 rounded-md bg-brand px-3.5 text-sm font-medium text-brand-fg transition-[filter,opacity]",
-            disabled
-              ? "cursor-not-allowed opacity-30"
-              : "shadow-[0_0_24px_-6px_var(--accent-brand)] hover:brightness-110",
-          )}
+          className="w-full"
         >
           <Layers className="size-4" strokeWidth={1.75} />
           Bulk Analyse…
-        </button>
+        </Button>
       </div>
 
       <BulkAnalyserModal

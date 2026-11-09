@@ -17,7 +17,7 @@ export function CommentInput({ value, onChange, onSubmit, onCancel }: CommentInp
   const hasText = value.trim().length > 0;
 
   return (
-    <div className="flex h-8 w-full min-w-0 flex-1 items-center gap-1 rounded-md bg-fill-tertiary pl-2.5 pr-1 transition-shadow duration-150 focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent-brand)_45%,transparent)]">
+    <div className="flex h-8 w-full min-w-0 flex-1 items-center gap-1 rounded-full bg-fill-tertiary pl-3 pr-1 transition-shadow duration-150 focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent-brand)_45%,transparent)]">
       <input
         type="text"
         placeholder="Add your thoughts…"

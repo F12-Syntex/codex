@@ -1,10 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import { Minus, Eye, ChevronDown, Type, Zap } from "lucide-react";
-import type { ThemeClasses, CustomFont } from "../lib/types";
+import { cn } from "@/lib/utils";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { NumberStepper } from "@/components/ui/number-stepper";
+import type { ThemeClasses, CustomFont, ReadingTheme } from "../lib/types";
 import { ALL_FONTS } from "../lib/constants";
+import { dropIn, LAYOUT_SPRING, PANEL_SPRING, PAPER_SWATCHES, stopNavKeys } from "./chrome";
 
 interface TextSettingsPanelProps {
   theme: ThemeClasses;
@@ -17,6 +23,9 @@ interface TextSettingsPanelProps {
   animatedPageTurn: boolean;
   immersiveMode: boolean;
   customFonts: CustomFont[];
+  /** Paper theme — when provided the panel shows the paper picker. */
+  readingTheme?: ReadingTheme;
+  onThemeChange?: (theme: ReadingTheme) => void;
   onFontFamilyChange: (f: string) => void;
   onFontSizeChange: (s: number) => void;
   onLineHeightChange: (lh: number) => void;
@@ -28,8 +37,11 @@ interface TextSettingsPanelProps {
   onClose: () => void;
 }
 
+/**
+ * Appearance popover — Apple Books' "Aa" sheet with a Codex twist: paper
+ * chips, live "Aa" typeface tiles, a rolling size stepper and fine sliders.
+ */
 export function TextSettingsPanel({
-  theme,
   fontFamily,
   fontSize,
   lineHeight,
@@ -39,6 +51,8 @@ export function TextSettingsPanel({
   animatedPageTurn,
   immersiveMode,
   customFonts,
+  readingTheme,
+  onThemeChange,
   onFontFamilyChange,
   onFontSizeChange,
   onLineHeightChange,
@@ -49,192 +63,183 @@ export function TextSettingsPanel({
   onImmersiveModeChange,
   onClose,
 }: TextSettingsPanelProps) {
+  const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
-  const [showFontPicker, setShowFontPicker] = useState(false);
-
   const allFonts = [...ALL_FONTS, ...customFonts];
-  const currentFont = allFonts.find(f => f.family === fontFamily);
-  const currentFontName = currentFont?.name ?? "Georgia";
 
   // Click outside to close panel (ignore clicks on header toolbar buttons)
   useClickOutside(panelRef, onClose, "[data-reader-header]");
 
-  const Toggle = ({ value, onChange, icon, label }: { value: boolean; onChange: (v: boolean) => void; icon: React.ReactNode; label: string }) => (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className={`text-xs ${theme.muted}`}>{label}</span>
-      </div>
-      <button
-        onClick={() => onChange(!value)}
-        className={`relative h-5 w-9 rounded-full transition-colors ${value ? "bg-[var(--accent-brand)]" : theme.subtle}`}
-      >
-        <span
-          className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${value ? "translate-x-4" : ""}`}
-        />
-      </button>
-    </div>
-  );
-
   return (
-    <div
+    <motion.div
       ref={panelRef}
-      className={`absolute right-24 top-full z-50 mt-2 w-[280px] rounded-lg border ${theme.border} ${theme.panel} shadow-lg shadow-black/30`}
-      style={{ maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}
+      {...dropIn}
+      initial={reduceMotion ? false : dropIn.initial}
+      transition={PANEL_SPRING}
+      onKeyDown={stopNavKeys}
+      className="glass grain absolute right-29 top-full z-50 flex w-80 origin-top-right flex-col overflow-hidden rounded-2xl"
+      style={{ maxHeight: "calc(100vh - 72px)" }}
     >
-      <div className="space-y-3 p-4">
-        {/* Font family selector */}
-        <div className="relative">
-          <span className={`mb-1.5 block text-xs ${theme.muted}`}>Font</span>
-          <button
-            onClick={() => setShowFontPicker(v => !v)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs transition-colors ${theme.subtle} ${theme.text}`}
-          >
-            <div className="flex items-center gap-2">
-              <Type className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
-              <span className="truncate" style={{ fontFamily }}>{currentFontName}</span>
+      <div className="overflow-y-auto p-4">
+        {/* ── Paper ─────────────────────────────────── */}
+        {readingTheme && onThemeChange && (
+          <section className="mb-5">
+            <h3 className="mb-2.5 text-section">Page</h3>
+            <div role="radiogroup" aria-label="Page colour" className="grid grid-cols-3 gap-2">
+              {PAPER_SWATCHES.map((s) => {
+                const selected = readingTheme === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => onThemeChange(s.id)}
+                    className="focus-ring group flex flex-col items-center gap-1.5 rounded-lg py-1"
+                  >
+                    <span className="relative grid size-12 place-items-center">
+                      {selected && (
+                        <motion.span
+                          layoutId="reader-paper-ring"
+                          transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
+                          className="absolute -inset-1 rounded-full ring-2 ring-brand"
+                        />
+                      )}
+                      <span
+                        className="pressable grid size-12 place-items-center rounded-full font-display text-base font-semibold shadow-sm hairline transition-transform duration-300 ease-spring group-hover:scale-105"
+                        style={{ backgroundColor: s.paper, color: s.ink }}
+                      >
+                        Aa
+                      </span>
+                    </span>
+                    <span className={cn("text-2xs font-medium", selected ? "text-label" : "text-label-tertiary")}>{s.label}</span>
+                  </button>
+                );
+              })}
             </div>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" strokeWidth={1.5} />
-          </button>
+          </section>
+        )}
 
-          {showFontPicker && (
-            <div
-              className={`absolute left-0 top-full z-50 mt-1 w-full overflow-y-auto rounded-lg border p-1 shadow-lg shadow-black/30 ${theme.border} ${theme.panel}`}
-              style={{ maxHeight: "min(200px, 35vh)" }}
-            >
-              {allFonts.map((font) => (
+        {/* ── Typeface ──────────────────────────────── */}
+        <section>
+          <div className="mb-2.5 flex items-center justify-between">
+            <h3 className="text-section">Typeface</h3>
+            <NumberStepper
+              label="Font size"
+              value={fontSize}
+              min={14}
+              max={28}
+              onValueChange={onFontSizeChange}
+              decrementIcon={<span className="font-display text-xs font-semibold leading-none">A</span>}
+              incrementIcon={<span className="font-display text-base font-semibold leading-none">A</span>}
+            />
+          </div>
+          <div role="radiogroup" aria-label="Typeface" className="grid grid-cols-3 gap-1.5">
+            {allFonts.map((font) => {
+              const selected = font.family === fontFamily;
+              return (
                 <button
                   key={font.name}
-                  onClick={() => {
-                    onFontFamilyChange(font.family);
-                    setShowFontPicker(false);
-                  }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
-                    font.family === fontFamily ? theme.btnActive : theme.btn
-                  }`}
-                  style={{ fontFamily: font.family }}
+                  role="radio"
+                  aria-checked={selected}
+                  title={font.name}
+                  onClick={() => onFontFamilyChange(font.family)}
+                  className={cn(
+                    "focus-ring pressable relative flex h-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors duration-150",
+                    selected ? "text-brand" : "bg-fill-quaternary text-label hover:bg-fill-tertiary",
+                  )}
                 >
-                  {font.name}
+                  {selected && (
+                    <motion.span
+                      layoutId="reader-font-tile"
+                      transition={reduceMotion ? { duration: 0 } : LAYOUT_SPRING}
+                      className="absolute inset-0 rounded-lg bg-brand/12 ring-1 ring-inset ring-brand/50"
+                    />
+                  )}
+                  <span className="relative text-xl leading-none" style={{ fontFamily: font.family }}>
+                    Aa
+                  </span>
+                  <span className={cn("relative w-full truncate text-center text-2xs", selected ? "font-medium text-brand" : "text-label-tertiary")}>
+                    {font.name}
+                  </span>
                 </button>
-              ))}
-              {customFonts.length === 0 && (
-                <p className={`px-2 py-2 text-xs ${theme.muted}`}>
-                  Add fonts to public/fonts/
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Font size */}
-        <div className="flex items-center justify-between">
-          <span className={`text-xs ${theme.muted}`}>Size</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onFontSizeChange(Math.max(14, fontSize - 1))}
-              disabled={fontSize <= 14}
-              className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-            >
-              <Minus className="h-3 w-3" strokeWidth={1.5} />
-            </button>
-            <span className={`w-7 text-center text-xs tabular-nums ${theme.text}`}>{fontSize}</span>
-            <button
-              onClick={() => onFontSizeChange(Math.min(28, fontSize + 1))}
-              disabled={fontSize >= 28}
-              className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${theme.btn}`}
-            >
-              <span className="text-sm leading-none">+</span>
-            </button>
+              );
+            })}
           </div>
-        </div>
+          {customFonts.length === 0 && (
+            <p className="mt-2 text-2xs text-label-quaternary">Drop .woff2 files in public/fonts/ to add more.</p>
+          )}
+        </section>
 
-        {/* Line height */}
-        <div className="flex items-center gap-3">
-          <span className={`w-16 text-xs ${theme.muted}`}>Line height</span>
-          <input
-            type="range"
-            min={1.2}
-            max={2.2}
-            step={0.1}
-            value={lineHeight}
-            onChange={(e) => onLineHeightChange(parseFloat(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
-          />
-          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
-            {lineHeight.toFixed(1)}
-          </span>
-        </div>
+        <div className="my-4 h-px bg-separator" />
 
-        {/* Paragraph spacing */}
-        <div className="flex items-center gap-3">
-          <span className={`w-16 text-xs ${theme.muted}`}>Spacing</span>
-          <input
-            type="range"
-            min={0}
-            max={32}
-            step={4}
-            value={paraSpacing}
-            onChange={(e) => onParaSpacingChange(parseInt(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
-          />
-          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
-            {paraSpacing}px
-          </span>
-        </div>
+        {/* ── Layout ────────────────────────────────── */}
+        <section className="space-y-1">
+          <h3 className="mb-2 text-section">Layout</h3>
+          <SliderRow label="Line height" value={lineHeight} min={1.2} max={2.2} step={0.1} display={lineHeight.toFixed(1)} onChange={onLineHeightChange} />
+          <SliderRow label="Paragraphs" value={paraSpacing} min={0} max={32} step={4} display={`${paraSpacing}`} onChange={(v) => onParaSpacingChange(Math.round(v))} />
+          <SliderRow label="Margins" value={textPadding} min={16} max={96} step={8} display={`${textPadding}`} onChange={(v) => onTextPaddingChange(Math.round(v))} />
+          <SliderRow label="Width" value={maxTextWidth} min={600} max={1600} step={50} display={`${maxTextWidth}`} onChange={(v) => onMaxTextWidthChange(Math.round(v))} />
+        </section>
 
-        {/* Text padding */}
-        <div className="flex items-center gap-3">
-          <span className={`w-16 text-xs ${theme.muted}`}>Padding</span>
-          <input
-            type="range"
-            min={16}
-            max={96}
-            step={8}
-            value={textPadding}
-            onChange={(e) => onTextPaddingChange(parseInt(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
-          />
-          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
-            {textPadding}px
-          </span>
-        </div>
+        <div className="my-4 h-px bg-separator" />
 
-        {/* Max text width */}
-        <div className="flex items-center gap-3">
-          <span className={`w-16 text-xs ${theme.muted}`}>Max width</span>
-          <input
-            type="range"
-            min={600}
-            max={1600}
-            step={50}
-            value={maxTextWidth}
-            onChange={(e) => onMaxTextWidthChange(parseInt(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[var(--accent-brand)]"
-          />
-          <span className={`w-[32px] text-right text-xs tabular-nums ${theme.text}`}>
-            {maxTextWidth}
-          </span>
-        </div>
-
-        {/* Divider */}
-        <div className={`h-px ${theme.subtle}`} />
-
-        {/* Animated page turn */}
-        <Toggle
-          value={animatedPageTurn}
-          onChange={onAnimatedPageTurnChange}
-          icon={<Zap className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
-          label="Animated pages"
-        />
-
-        {/* Immersive mode */}
-        <Toggle
-          value={immersiveMode}
-          onChange={onImmersiveModeChange}
-          icon={<Eye className={`h-3.5 w-3.5 ${theme.muted}`} strokeWidth={1.5} />}
-          label="Immersive mode"
-        />
+        {/* ── Behaviour ─────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex h-8 items-center justify-between gap-3">
+            <span className="text-sm text-label">Page turn</span>
+            <SegmentedControl
+              size="sm"
+              value={animatedPageTurn ? "slide" : "instant"}
+              onValueChange={(v) => onAnimatedPageTurnChange(v === "slide")}
+              options={[
+                { value: "slide", label: "Slide" },
+                { value: "instant", label: "Instant" },
+              ]}
+            />
+          </div>
+          <div className="flex min-h-8 items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-label">Focus mode</div>
+              <div className="text-2xs text-label-tertiary">Hide the footer until the pointer nears it</div>
+            </div>
+            <Switch checked={immersiveMode} onCheckedChange={onImmersiveModeChange} aria-label="Focus mode" />
+          </div>
+        </section>
       </div>
+    </motion.div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex h-8 items-center gap-3">
+      <span className="w-20 shrink-0 text-xs text-label-secondary">{label}</span>
+      <Slider
+        className="flex-1"
+        value={[value]}
+        min={min}
+        max={max}
+        step={step}
+        aria-label={label}
+        onValueChange={([v]) => onChange(Math.round(v * 100) / 100)}
+      />
+      <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-label-tertiary">{display}</span>
     </div>
   );
 }

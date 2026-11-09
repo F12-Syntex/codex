@@ -592,6 +592,7 @@ export default function Home() {
                         onBatchDelete={handleBatchDelete}
                         onBatchMove={handleBatchMove}
                         readingProgress={readingProgress}
+                        onImport={handleImport}
                       />
                     </>
                   )}

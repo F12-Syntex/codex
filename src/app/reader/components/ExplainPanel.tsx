@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { X, Sparkles, ArrowUp } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { ShimmerText } from "@/components/ui/shimmer-text";
+import { ChatBubble } from "@/components/ui/chat-bubble";
 import type { ThemeClasses } from "../lib/types";
 
 export interface ExplainMessage {
@@ -119,27 +120,23 @@ export function ExplainPanel({ selectedText, messages, loading, onAsk, onClose }
 
         {/* Messages */}
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <AnimatePresence initial={false}>
             {visible.map(({ msg, i }) => (
-              <motion.div
-                key={i}
-                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-                className={msg.role === "user" ? "flex justify-end" : undefined}
-              >
-                {msg.role === "user" ? (
-                  <p className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-3.5 py-2 text-sm leading-snug whitespace-pre-wrap text-brand-fg shadow-xs">
-                    {msg.content}
-                  </p>
-                ) : (
-                  <p className="font-display text-base leading-relaxed whitespace-pre-wrap text-label">
-                    {msg.content}
-                  </p>
-                )}
-              </motion.div>
+              msg.role === "user" ? (
+                <ChatBubble key={i} variant="outgoing" maxWidth="85%" bubbleClassName="py-2 leading-snug whitespace-pre-wrap">
+                  {msg.content}
+                </ChatBubble>
+              ) : (
+                <motion.p
+                  key={i}
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+                  className="font-display text-base leading-relaxed whitespace-pre-wrap text-label"
+                >
+                  {msg.content}
+                </motion.p>
+              )
             ))}
-          </AnimatePresence>
           {loading && (
             <div className="flex h-6 items-center gap-2 text-brand">
               <Sparkles className="size-3.5 animate-pulse" strokeWidth={1.75} />
@@ -168,7 +165,7 @@ export function ExplainPanel({ selectedText, messages, loading, onAsk, onClose }
 
         {/* Composer */}
         <div className="shrink-0 border-t border-separator p-3">
-          <div className="flex h-10 items-center gap-2 rounded-xl bg-fill-tertiary pr-1.5 pl-3.5 transition-shadow duration-150 focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent-brand)_45%,transparent)]">
+          <div className="flex h-10 items-center gap-2 rounded-full bg-fill-tertiary pr-1.5 pl-4 transition-shadow duration-150 focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent-brand)_45%,transparent)]">
             <input
               ref={inputRef}
               type="text"

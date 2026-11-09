@@ -85,14 +85,15 @@ export function ModelCombobox({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          "flex w-56 items-center justify-between gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-left text-xs outline-none transition-colors hover:bg-white/[0.08]",
-          value ? "text-white/70" : "text-white/25",
+          "pressable focus-ring flex h-8 w-56 items-center justify-between gap-2 rounded-full bg-fill-tertiary pr-2.5 pl-3.5 text-left text-xs shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge)] hover:bg-fill-secondary",
+          open && "bg-fill-secondary",
+          value ? "text-label" : "text-label-tertiary",
         )}
       >
         <span className="min-w-0 truncate">{displayValue}</span>
         <ChevronDown
           className={cn(
-            "h-3 w-3 shrink-0 text-white/25 transition-transform",
+            "size-3.5 shrink-0 text-label-tertiary transition-transform duration-300 ease-spring",
             open && "rotate-180",
           )}
         />
@@ -101,32 +102,32 @@ export function ModelCombobox({
       {/* Dropdown */}
       {open && (
         <div
-          className="absolute right-0 z-50 mt-1.5 w-80 overflow-hidden rounded-lg border border-white/[0.08] bg-[var(--bg-overlay)]/95 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+          className="glass-thick absolute right-0 z-50 mt-2 flex w-80 origin-top-right animate-pop-in flex-col overflow-hidden rounded-xl p-1"
           style={{ maxHeight: "320px" }}
         >
           {/* Search input */}
-          <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2">
-            <Search className="h-3 w-3 shrink-0 text-white/20" />
+          <div className="mb-1 flex h-7 shrink-0 items-center gap-2 rounded-full bg-fill-tertiary px-3 shadow-[inset_0_1px_2px_0_var(--bg-inset),inset_0_0_0_0.5px_var(--separator)] focus-within:shadow-[inset_0_0_0_1px_var(--accent-brand),0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_22%,transparent)]">
+            <Search className="size-3.5 shrink-0 text-label-tertiary" />
             <input
               ref={inputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search models..."
-              className="w-full bg-transparent text-xs text-white/70 placeholder-white/20 outline-none"
+              className="w-full bg-transparent text-xs text-label placeholder:text-label-tertiary outline-none"
             />
           </div>
 
           {/* Model list */}
-          <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: "272px" }}>
+          <div ref={listRef} className="flex flex-col gap-px overflow-y-auto" style={{ maxHeight: "272px" }}>
             {loading && (
-              <div className="px-3 py-4 text-center text-xs text-white/25">
+              <div className="px-3 py-4 text-center text-xs text-label-tertiary">
                 Loading models...
               </div>
             )}
 
             {!loading && visible.length === 0 && (
-              <div className="px-3 py-4 text-center text-xs text-white/25">
+              <div className="px-3 py-4 text-center text-xs text-label-tertiary">
                 {search ? "No models match" : "No models available"}
               </div>
             )}
@@ -140,21 +141,21 @@ export function ModelCombobox({
                     type="button"
                     onClick={() => handleSelect(model.id)}
                     className={cn(
-                      "flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors",
+                      "flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-2.5 py-1.5 text-left outline-none transition-colors duration-100 focus-visible:bg-fill-tertiary",
                       isSelected
-                        ? "bg-[var(--accent-brand)]/10"
-                        : "hover:bg-white/[0.04]",
+                        ? "bg-brand/15"
+                        : "hover:bg-fill-tertiary",
                     )}
                   >
                     <span
                       className={cn(
                         "truncate text-xs",
-                        isSelected ? "text-[var(--accent-brand)]" : "text-white/60",
+                        isSelected ? "font-medium text-brand" : "text-label",
                       )}
                     >
                       {model.id}
                     </span>
-                    <span className="truncate text-xs text-white/25">
+                    <span className="truncate text-2xs text-label-tertiary">
                       {model.name}
                     </span>
                   </button>
@@ -162,7 +163,7 @@ export function ModelCombobox({
               })}
 
             {!loading && filtered.length > 80 && (
-              <div className="px-3 py-2 text-center text-xs text-white/20">
+              <div className="px-3 py-2 text-center text-2xs text-label-quaternary">
                 {filtered.length - 80} more — refine your search
               </div>
             )}
