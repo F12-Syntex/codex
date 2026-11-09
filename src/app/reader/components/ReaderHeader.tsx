@@ -2,10 +2,11 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  Minus, Square, X, Copy, Maximize2, Minimize2, PanelLeft, ALargeSmall,
+  Maximize2, Minimize2, PanelLeft, ALargeSmall,
   Bookmark, BookmarkCheck, AudioLines, Sparkles, Zap, Quote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WindowControls } from "@/components/window-controls";
 import type { ReadingTheme, ThemeClasses } from "../lib/types";
 import { ChromeButton, PillDivider, PAPER_SWATCHES } from "./chrome";
 
@@ -48,14 +49,14 @@ const stop = (e: React.MouseEvent) => e.stopPropagation();
 /**
  * Reader header — no bar. The paper runs to the window edge and the chrome
  * floats on it: a navigation pill on the left, the book title set in serif in
- * the middle, a tool pill and refined window controls on the right.
+ * the middle, a tool pill and the shared caption buttons on the right.
+ * `maximized` stays in the props contract; WindowControls tracks it itself.
  */
 export function ReaderHeader({
   title,
   author,
   chapterTitle,
   readingTheme,
-  maximized,
   isFullscreen,
   hasMultipleChapters,
   isImageBook,
@@ -81,7 +82,7 @@ export function ReaderHeader({
   const showLeftPill = hasMultipleChapters || !isImageBook;
 
   return (
-    <div className="app-drag-region relative flex h-13 min-w-0 items-center gap-2 px-3" data-reader-header>
+    <div className="app-drag-region relative flex h-13 min-w-0 items-center gap-2 pl-3" data-reader-header>
       {/* ── Left: navigation pill ─────────────────────────── */}
       <div className="flex min-w-0 flex-1 basis-0 items-center">
         {showLeftPill && (
@@ -142,7 +143,7 @@ export function ReaderHeader({
       </div>
 
       {/* ── Right: tool pill + window controls ────────────── */}
-      <div className="flex min-w-0 flex-1 basis-0 items-center justify-end gap-2">
+      <div className="flex h-full min-w-0 flex-1 basis-0 items-center justify-end gap-1.5">
         <div className="app-no-drag glass flex h-10 shrink-0 items-center gap-0.5 rounded-full p-1">
           {isImageBook ? (
             /* Image books have no text settings — paper chips live here */
@@ -193,30 +194,8 @@ export function ReaderHeader({
           </ChromeButton>
         </div>
 
-        {/* Window controls — quiet glyphs, no chrome until hovered */}
-        <div className="app-no-drag flex shrink-0 items-center">
-          <button
-            onClick={() => window.electronAPI?.minimize()}
-            aria-label="Minimise"
-            className="focus-ring pressable inline-flex size-8 items-center justify-center rounded-full text-label-tertiary transition-colors duration-150 hover:bg-fill-tertiary hover:text-label"
-          >
-            <Minus className="size-3.5" strokeWidth={1.75} />
-          </button>
-          <button
-            onClick={() => window.electronAPI?.maximize()}
-            aria-label={maximized ? "Restore" : "Maximise"}
-            className="focus-ring pressable inline-flex size-8 items-center justify-center rounded-full text-label-tertiary transition-colors duration-150 hover:bg-fill-tertiary hover:text-label"
-          >
-            {maximized ? <Copy className="size-3" strokeWidth={1.75} /> : <Square className="size-3" strokeWidth={1.75} />}
-          </button>
-          <button
-            onClick={() => window.electronAPI?.close()}
-            aria-label="Close"
-            className="focus-ring pressable inline-flex size-8 items-center justify-center rounded-full text-label-tertiary transition-colors duration-150 hover:bg-danger hover:text-label"
-          >
-            <X className="size-3.5" strokeWidth={1.75} />
-          </button>
-        </div>
+        {/* Window controls — the same caption buttons as every other window */}
+        <WindowControls />
       </div>
     </div>
   );

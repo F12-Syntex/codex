@@ -1,6 +1,8 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { app } from "electron";
+import { wrapBetterSqlite, type SqlDb } from "./db/sql";
+import { runMigrations } from "./db/migrate";
 
 export interface LibraryItem {
   id: number;
@@ -17,6 +19,15 @@ export interface LibraryItem {
 }
 
 let db: Database.Database;
+let sqlDb: SqlDb | null = null;
+
+/** The shared connection behind the `SqlDb` interface, for the new area stores (AI, artifacts,
+ *  knowledge, book, assistant). Throws if called before `initDatabase()`. */
+export function getDb(): SqlDb {
+  if (!db) throw new Error("getDb() called before initDatabase()");
+  sqlDb ??= wrapBetterSqlite(db);
+  return sqlDb;
+}
 
 export function initDatabase(): void {
   const dbPath = path.join(app.getPath("userData"), "codex.db");
@@ -290,6 +301,9 @@ export function initDatabase(): void {
   try { db.prepare("ALTER TABLE wiki_details ADD COLUMN superseded_chapter INTEGER").run(); } catch { /* already exists */ }
   // v0.83 — source text for details (quote from chapter)
   try { db.prepare("ALTER TABLE wiki_details ADD COLUMN source_text TEXT NOT NULL DEFAULT ''").run(); } catch { /* already exists */ }
+
+  // Per-area migrations (schema_migrations). Failures are logged and reported, never thrown.
+  runMigrations(getDb());
 }
 
 // ── Items ──────────────────────────────────────────

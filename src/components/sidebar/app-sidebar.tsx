@@ -5,7 +5,8 @@ import {
   Clock,
   BookOpenCheck,
   CheckCircle,
-  Layers,
+  BookCopy,
+  Compass,
   Settings,
   Gift,
   Download,
@@ -57,10 +58,10 @@ const sectionNavItems: Record<Section, { id: NavView; label: string; icon: typeo
     { id: "finished", label: "Finished", icon: CheckCircle },
   ],
   comic: [
-    { id: "series", label: "Series", icon: Layers },
+    { id: "series", label: "Series", icon: BookCopy },
     { id: "read-later", label: "Read Later", icon: Clock },
     { id: "reading", label: "Reading", icon: BookOpenCheck },
-    { id: "completed", label: "Completed", icon: CheckCircle },
+    { id: "completed", label: "Finished", icon: CheckCircle },
   ],
 };
 
@@ -165,15 +166,10 @@ export function AppSidebar({
   const updateVersion = useUpdateAvailable();
   const selectionId = useId();
 
-  const totalItems = Object.values(data).reduce(
-    (sum, arr) => sum + (arr?.length ?? 0),
-    0
-  );
-
   return (
     <aside className="glass-thin grain relative flex h-full flex-col overflow-hidden rounded-2xl">
       {/* ── Identity (also a window drag handle) ──── */}
-      <div className="app-drag-region flex h-9 shrink-0 items-center pl-[17px]">
+      <div className="app-drag-region flex h-9 shrink-0 items-center pl-4.5">
         <CodexIdentity />
       </div>
 
@@ -191,12 +187,7 @@ export function AppSidebar({
       {/* ── Collection nav ───────────────────────── */}
       <ScrollArea className="min-h-0 flex-1">
         <nav aria-label="Collections" className="flex flex-col gap-0.5 px-2 pb-2">
-          <div className="flex items-center justify-between px-2.5 pt-4 pb-1.5">
-            <h2 className="text-section">Library</h2>
-            <span className="text-2xs tabular-nums text-label-tertiary">
-              {totalItems} item{totalItems !== 1 ? "s" : ""}
-            </span>
-          </div>
+          <h2 className="px-2.5 pt-4 pb-1.5 text-section">Library</h2>
           {navItems.map((item) => (
             <NavRow
               key={item.id}
@@ -227,8 +218,8 @@ export function AppSidebar({
         {isDev && (
           <NavRow
             active={activeView === "installer"}
-            icon={Download}
-            label="Installer"
+            icon={Compass}
+            label="Discover"
             selectionId={selectionId}
             onClick={() => onViewChange("installer")}
           />

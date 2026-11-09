@@ -77,7 +77,7 @@ export function TextSettingsPanel({
       initial={reduceMotion ? false : dropIn.initial}
       transition={PANEL_SPRING}
       onKeyDown={stopNavKeys}
-      className="glass grain absolute right-29 top-full z-50 flex w-80 origin-top-right flex-col overflow-hidden rounded-2xl"
+      className="glass-thick grain absolute right-36 top-full z-50 flex w-80 origin-top-right flex-col overflow-hidden rounded-2xl"
       style={{ maxHeight: "calc(100vh - 72px)" }}
     >
       <div className="overflow-y-auto p-4">
@@ -165,9 +165,6 @@ export function TextSettingsPanel({
               );
             })}
           </div>
-          {customFonts.length === 0 && (
-            <p className="mt-2 text-2xs text-label-quaternary">Drop .woff2 files in public/fonts/ to add more.</p>
-          )}
         </section>
 
         <div className="my-4 h-px bg-separator" />
@@ -178,7 +175,7 @@ export function TextSettingsPanel({
           <SliderRow label="Line height" value={lineHeight} min={1.2} max={2.2} step={0.1} display={lineHeight.toFixed(1)} onChange={onLineHeightChange} />
           <SliderRow label="Paragraphs" value={paraSpacing} min={0} max={32} step={4} display={`${paraSpacing}`} onChange={(v) => onParaSpacingChange(Math.round(v))} />
           <SliderRow label="Margins" value={textPadding} min={16} max={96} step={8} display={`${textPadding}`} onChange={(v) => onTextPaddingChange(Math.round(v))} />
-          <SliderRow label="Width" value={maxTextWidth} min={600} max={1600} step={50} display={`${maxTextWidth}`} onChange={(v) => onMaxTextWidthChange(Math.round(v))} />
+          <SliderRow label="Width" value={maxTextWidth} min={480} max={1000} step={20} display={`${maxTextWidth}`} onChange={(v) => onMaxTextWidthChange(Math.round(v))} />
         </section>
 
         <div className="my-4 h-px bg-separator" />

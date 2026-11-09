@@ -48,7 +48,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   lineHeight: 1.8,
   paraSpacing: 16,
   textPadding: 48,
-  maxTextWidth: 900,
+  // Column measure in px (also capped at 70ch by TextContent).
+  maxTextWidth: 680,
   animatedPageTurn: true,
   immersiveMode: false,
 };

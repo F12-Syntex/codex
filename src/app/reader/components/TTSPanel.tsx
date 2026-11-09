@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   Play, Pause, Square, ChevronDown, Loader2, SkipBack, SkipForward, Search,
-  RotateCcw, AudioLines, Check, Volume1, Volume2, X,
+  RotateCcw, AudioLines, Check, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
@@ -93,7 +93,9 @@ export function TTSPanel({
   // Click outside to close (the toggles live in the header and footer)
   useClickOutside(panelRef, onClose, "[data-reader-header], [data-reader-footer]");
 
-  const voice = voices.find((v) => v.shortName === selectedVoice);
+  // ttsGetVoices can resolve null — never let that white-screen the reader.
+  const voiceList: EdgeVoice[] = Array.isArray(voices) ? voices : [];
+  const voice = voiceList.find((v) => v.shortName === selectedVoice);
   const voiceLabel = voice ? voiceName(voice) : "Select voice";
 
   const isActive = state.status !== "idle";
@@ -105,7 +107,7 @@ export function TTSPanel({
   const mainAction = !isActive ? onPlayFromCurrent : isPlaying ? onPause : isPaused ? onResume : undefined;
   const mainLabel = !isActive ? "Play from here" : isPlaying ? "Pause" : isPaused ? "Resume" : "Preparing…";
 
-  const filteredVoices = voices.filter((v) => {
+  const filteredVoices = voiceList.filter((v) => {
     if (!voiceSearch) return true;
     const q = voiceSearch.toLowerCase();
     return v.shortName.toLowerCase().includes(q) || v.locale.toLowerCase().includes(q) || v.gender.toLowerCase().includes(q);
@@ -119,7 +121,7 @@ export function TTSPanel({
         initial={reduceMotion ? false : riseIn.initial}
         transition={PANEL_SPRING}
         onKeyDown={stopNavKeys}
-        className="glass grain pointer-events-auto relative flex w-80 origin-bottom flex-col overflow-hidden rounded-2xl"
+        className="glass-thick grain pointer-events-auto relative flex w-80 origin-bottom flex-col overflow-hidden rounded-2xl"
         style={{ maxHeight: "calc(100vh - 140px)" }}
       >
         <div className="overflow-y-auto p-4">
@@ -170,7 +172,7 @@ export function TTSPanel({
                   onClick={onStop}
                   title="Stop"
                   aria-label="Stop"
-                  className="focus-ring pressable grid size-8 place-items-center rounded-full text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
+                  className="focus-ring pressable -ml-2 grid size-8 place-items-center rounded-full text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
                 >
                   <Square className="size-3.5 fill-current" strokeWidth={1.75} />
                 </button>
@@ -178,7 +180,7 @@ export function TTSPanel({
                 <button
                   onClick={onPlayFromStart}
                   title="Play chapter from the start"
-                  className="focus-ring pressable flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
+                  className="focus-ring pressable -ml-2.5 flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-label-secondary transition-colors hover:bg-fill-tertiary hover:text-label"
                 >
                   <RotateCcw className="size-3.5" strokeWidth={1.75} />
                   Start
@@ -233,24 +235,19 @@ export function TTSPanel({
               </button>
             </div>
 
-            <div className="flex justify-end">
-              <span className="rounded-full bg-fill-tertiary px-2 py-1 text-2xs font-semibold tabular-nums text-label-secondary">
-                {rate.toFixed(2).replace(/0$/, "")}×
-              </span>
-            </div>
+            {/* Speed is owned by the slider below — no duplicate chip here. */}
+            <div aria-hidden />
           </div>
 
           {/* ── Voice ───────────────────────────────── */}
-          <div className="mt-4 overflow-hidden rounded-lg bg-fill-quaternary">
+          <div className="mt-3">
             <button
               onClick={() => { setShowVoicePicker((v) => !v); setVoiceSearch(""); }}
               aria-expanded={showVoicePicker}
-              className="focus-ring flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-quaternary"
+              className="focus-ring group/voice flex h-8 w-full items-center gap-2 rounded-md text-left"
             >
-              <span className="min-w-0 flex-1">
-                <span className="block text-2xs text-label-tertiary">Voice</span>
-                <span className="block truncate text-sm leading-tight text-label">{voiceLabel}</span>
-              </span>
+              <span className="flex-1 text-sm text-label">Voice</span>
+              <span className="min-w-0 truncate text-sm text-label-secondary transition-colors group-hover/voice:text-label">{voiceLabel}</span>
               {voice && <span className="shrink-0 text-2xs text-label-tertiary">{voice.gender}</span>}
               <ChevronDown
                 className={cn("size-4 shrink-0 text-label-tertiary transition-transform duration-300 ease-apple", showVoicePicker && "rotate-180")}
@@ -267,7 +264,7 @@ export function TTSPanel({
                   transition={{ type: "spring", bounce: 0, duration: 0.35 }}
                   className="overflow-hidden"
                 >
-                  <div className="border-t border-separator p-1.5">
+                  <div className="mt-1 rounded-lg bg-fill-quaternary p-1.5">
                     <label className="flex h-7 items-center gap-2 rounded-full bg-fill-tertiary px-2.5">
                       <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
                       <input
@@ -298,7 +295,7 @@ export function TTSPanel({
                           </button>
                         );
                       })}
-                      {voices.length === 0 && (
+                      {voiceList.length === 0 && (
                         <p className="px-2 py-3 text-center text-xs text-label-tertiary">Loading voices…</p>
                       )}
                     </div>
@@ -309,17 +306,16 @@ export function TTSPanel({
           </div>
 
           {/* ── Speed & volume ──────────────────────── */}
-          <div className="mt-3 space-y-1">
+          <div className="mt-1 space-y-1">
             <div className="flex h-8 items-center gap-3">
-              <span className="w-12 shrink-0 text-xs text-label-secondary">Speed</span>
+              <span className="w-14 shrink-0 text-sm text-label">Speed</span>
               <Slider className="flex-1" aria-label="Speed" value={[rate]} min={0.5} max={3} step={0.25} onValueChange={([v]) => onRateChange(v)} />
               <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-label-tertiary">{rate.toFixed(2).replace(/0$/, "")}×</span>
             </div>
             <div className="flex h-8 items-center gap-3">
-              <span className="w-12 shrink-0 text-xs text-label-secondary">Volume</span>
-              <Volume1 className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+              <span className="w-14 shrink-0 text-sm text-label">Volume</span>
               <Slider className="flex-1" aria-label="Volume" value={[volume]} min={0} max={100} step={5} onValueChange={([v]) => onVolumeChange(v)} />
-              <Volume2 className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
+              <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-label-tertiary">{Math.round(volume)}%</span>
             </div>
           </div>
 

@@ -11,17 +11,22 @@ import { cn } from "@/lib/utils";
 export const PANEL_SPRING = { type: "spring", stiffness: 420, damping: 34 } as const;
 export const LAYOUT_SPRING = { type: "spring", bounce: 0.2, duration: 0.45 } as const;
 
+/*
+ * Entrance blurs end at `filter: none` (transitionEnd): a lingering
+ * `blur(0px)` makes the panel a Backdrop Root and kills nested glass.
+ */
+
 /** Popover-from-top entrance (header panels). */
 export const dropIn = {
   initial: { opacity: 0, y: -8, scale: 0.97, filter: "blur(4px)" },
-  animate: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+  animate: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } },
   exit: { opacity: 0, y: -6, scale: 0.98, filter: "blur(2px)", transition: { duration: 0.14 } },
 };
 
 /** Sheet-from-bottom entrance (footer panels). */
 export const riseIn = {
   initial: { opacity: 0, y: 10, scale: 0.97, filter: "blur(4px)" },
-  animate: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+  animate: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } },
   exit: { opacity: 0, y: 8, scale: 0.98, filter: "blur(2px)", transition: { duration: 0.14 } },
 };
 

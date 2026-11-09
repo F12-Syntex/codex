@@ -239,7 +239,11 @@ export function TextContent({
     const outerW = outer.clientWidth;
     const innerW = outerW - padding * 2;
     const innerH = outer.clientHeight - padding * 2;
-    const pw = Math.min(innerW, maxTextWidth);
+    // Measure: a column never exceeds maxTextWidth or 70ch. A single-column
+    // page is one such column; a two-column spread is two plus the gap.
+    const colMax = Math.min(maxTextWidth, Math.round(70 * measureCh(fontFamily, fontSize)));
+    const singleCol = outerW < 1200 || singleColFrozenRef.current;
+    const pw = Math.max(1, Math.min(innerW, singleCol ? colMax : colMax * 2 + columnGap));
 
     setContainerWidth(outerW);
     setPageWidth(pw);
@@ -262,7 +266,7 @@ export function TextContent({
         }
       }
     });
-  }, [padding, maxTextWidth, columnGap, onMeasure]);
+  }, [padding, maxTextWidth, columnGap, onMeasure, fontFamily, fontSize]);
 
   useEffect(() => {
     measure();
@@ -351,12 +355,16 @@ export function TextContent({
   const buildFirstParagraph = useCallback((html: string) => {
     const text = stripTags(html);
     if (!text || text.length === 0) return html;
-    const bigSize = Math.round(fontSize * 1.8);
+    // True drop cap: a float spanning exactly three lines, so line 1 keeps
+    // its normal height and both columns share one baseline grid.
+    const linePx = fontSize * lineHeight;
+    const capSize = Math.round(linePx * 3);
+    const capBox = Math.max(1, capSize - 2); // stay inside 3 lines — never indent line 4
     return html.replace(
       /(<p[^>]*>(?:\s*<[^/][^>]*>)*)([A-Za-z\u00C0-\u024F])/,
-      `$1<span style="font-size:${bigSize}px;font-weight:600;line-height:1">${"$2"}</span>`,
+      `$1<span class="reader-drop-cap" style="float:left;font-size:${capSize}px;line-height:${capBox}px;height:${capBox}px;font-weight:600;margin:0 0.08em 0 0">${"$2"}</span>`,
     );
-  }, [fontSize]);
+  }, [fontSize, lineHeight]);
 
   const paragraphsJSX = useMemo(() => {
     return filteredHtml.map((html, i) => {
@@ -1725,4 +1733,18 @@ function filterTitleParagraph(html: string[], title: string): string[] {
 
 function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, "").replace(/&[^;]+;/g, " ").trim();
+}
+
+/** Width of the "0" glyph (CSS `ch`) for a font, in px. Falls back to 0.5em. */
+let chCanvas: CanvasRenderingContext2D | null = null;
+function measureCh(fontFamily: string, fontSize: number): number {
+  try {
+    if (!chCanvas && typeof document !== "undefined") chCanvas = document.createElement("canvas").getContext("2d");
+    if (chCanvas) {
+      chCanvas.font = `${fontSize}px ${fontFamily}`;
+      const w = chCanvas.measureText("0").width;
+      if (w > 0) return w;
+    }
+  } catch { /* fall through */ }
+  return fontSize * 0.5;
 }

@@ -1,16 +1,46 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+// ── RPC / event allowlists ──────────────────────────────────────────────────
+// Sandboxed preloads cannot `require` local modules, so these are copies of `isAllowedChannel` /
+// `isAllowedEvent` from `electron/shared/rpc.ts`. `electron/foundation.test.ts` fails if they drift.
+const RPC_CHANNEL_RE = /^(ai|chapters|bulk|style|book|lexicon|knowledge|assistant|vocab|library):/;
+const EVENT_CHANNELS: readonly string[] = ["ai:event"];
+
+function isAllowedChannel(channel: unknown): channel is string {
+  return typeof channel === "string" && channel.length <= 128 && RPC_CHANNEL_RE.test(channel);
+}
+
+function isAllowedEvent(event: unknown): event is string {
+  return typeof event === "string" && EVENT_CHANNELS.includes(event);
+}
+
+/** Subscribe to `channel`; returns an unsubscriber that removes exactly this listener. */
+function subscribe(channel: string, listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void): () => void {
+  ipcRenderer.on(channel, listener);
+  return () => { ipcRenderer.removeListener(channel, listener); };
+}
+
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Typed RPC for the new areas (see electron/shared/rpc.ts). Rejects non-allowlisted channels.
+  rpc: (channel: string, ...args: unknown[]) => {
+    if (!isAllowedChannel(channel)) {
+      return Promise.reject(new Error(`rpc: channel "${String(channel)}" is not allowed`));
+    }
+    return ipcRenderer.invoke(channel, ...args);
+  },
+  // Main → renderer events (currently only "ai:event"). Returns an unsubscriber.
+  on: (event: string, callback: (payload: unknown) => void) => {
+    if (!isAllowedEvent(event)) throw new Error(`on: event "${String(event)}" is not allowed`);
+    return subscribe(event, (_event, payload) => callback(payload));
+  },
+
   platform: process.platform,
   isDev: process.env.NODE_ENV === "development",
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),
   close: () => ipcRenderer.send("window:close"),
-  onMaximized: (callback: (maximized: boolean) => void) => {
-    ipcRenderer.on("window:maximized", (_event, maximized) =>
-      callback(maximized)
-    );
-  },
+  onMaximized: (callback: (maximized: boolean) => void) =>
+    subscribe("window:maximized", (_event, maximized) => callback(maximized)),
 
   // Library operations
   importFiles: (section: string, view: string) =>
@@ -212,9 +242,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("shell:show-item-in-folder", filePath),
 
   // Library change events
-  onLibraryChanged: (callback: () => void) => {
-    ipcRenderer.on("library:items-changed", () => callback());
-  },
+  onLibraryChanged: (callback: () => void) =>
+    subscribe("library:items-changed", () => callback()),
 
   // Reading Activity
   recordPageView: (filePath: string, title: string, chapterIndex: number, chapterTitle: string, pageIndex: number, totalPages: number, totalChapters: number) =>
@@ -247,9 +276,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("installer:import-completed", id),
   installerProxyImage: (url: string) =>
     ipcRenderer.invoke("installer:proxy-image", url),
-  onInstallerProgress: (callback: (progress: { id: number; current: number; total: number; chapterTitle: string; eta: number | null; status: string }) => void) => {
-    ipcRenderer.on("installer:download-progress", (_event, progress) => callback(progress));
-  },
+  onInstallerProgress: (callback: (progress: { id: number; current: number; total: number; chapterTitle: string; eta: number | null; status: string }) => void) =>
+    subscribe("installer:download-progress", (_event, progress) => callback(progress)),
 
   // Updates
   checkForUpdates: () => ipcRenderer.invoke("update:check"),

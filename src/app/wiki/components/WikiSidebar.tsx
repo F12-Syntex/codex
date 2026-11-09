@@ -7,6 +7,8 @@
  * a single spring hover highlight that glides between rows, a shared-layout
  * (`layoutId`) selection pill, and section headers — re-skinned to Codex glass
  * tokens and macOS sidebar metrics (rows h-8/h-9, rounded-md, text-section).
+ * Selection matches the app sidebar (conventions S9.3): bg-fill-secondary pill,
+ * accent icon, font-medium label.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -95,13 +97,14 @@ interface WikiSidebarProps {
   activeView: WikiView;
   onSelectView: (view: WikiView) => void;
   onSelectEntry: (id: string) => void;
-  processedCount: number;
+  /** Kept for the caller's contract; counts are stated once, on the wiki home. */
+  processedCount?: number;
 }
 
 export function WikiSidebar({
   typeMeta, typeOrder, entries, groupedFiltered, filteredCount,
   searchQuery, onSearchChange, filterType, onFilterChange,
-  selectedEntryId, activeView, onSelectView, onSelectEntry, processedCount,
+  selectedEntryId, activeView, onSelectView, onSelectEntry,
 }: WikiSidebarProps) {
   const reduceMotion = useReducedMotion();
   const listRef = useRef<HTMLDivElement>(null);
@@ -127,7 +130,7 @@ export function WikiSidebar({
     <motion.span
       layoutId="wiki-sidebar-selection"
       transition={reduceMotion ? { duration: 0 } : { type: "spring", bounce: 0.2, duration: 0.45 }}
-      className="absolute inset-0 rounded-md bg-brand/20 shadow-[0_0_24px_-8px_var(--accent-brand)] ring-[0.5px] ring-brand/30"
+      className="absolute inset-0 rounded-md bg-fill-secondary"
     />
   );
 
@@ -139,9 +142,6 @@ export function WikiSidebar({
           value={searchQuery}
           onChange={onSearchChange}
           placeholder="Search wiki"
-          trailing={entries.length > 0 ? (
-            <span className="text-2xs tabular-nums text-label-quaternary">{entries.length}</span>
-          ) : undefined}
         />
         {filterOptions.length > 2 && (
           <SegmentedControl
@@ -188,7 +188,7 @@ export function WikiSidebar({
               >
                 {active && selection}
                 <span className={cn("relative [&_svg]:size-4", active ? "text-brand" : "text-label-tertiary")}>{item.icon}</span>
-                <span className="relative truncate">{item.label}</span>
+                <span className={cn("relative truncate", active && "font-medium")}>{item.label}</span>
               </button>
             );
           })}
@@ -216,10 +216,7 @@ export function WikiSidebar({
                     >
                       {active && selection}
                       <EntityAvatar name={e.name} type={e.type} meta={meta} className="relative" />
-                      <span className="relative min-w-0 flex-1 truncate">{e.name}</span>
-                      {e.significance >= 3 && (
-                        <span aria-label="Major" className="relative size-1.5 shrink-0 rounded-full bg-warning/70" />
-                      )}
+                      <span className={cn("relative min-w-0 flex-1 truncate", active && "font-medium")}>{e.name}</span>
                     </button>
                   );
                 })}
@@ -231,13 +228,6 @@ export function WikiSidebar({
             <p className="px-2.5 py-8 text-center text-xs text-label-tertiary">No matches</p>
           )}
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-t border-separator px-4 text-2xs tabular-nums text-label-tertiary">
-        <span>{entries.length} entries</span>
-        <span aria-hidden className="size-0.5 rounded-full bg-label-quaternary" />
-        <span>{processedCount} chapters read</span>
       </div>
     </aside>
   );

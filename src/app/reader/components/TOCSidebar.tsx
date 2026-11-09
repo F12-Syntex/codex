@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FluidHoverHighlight, useFluidHover } from "@/components/ui/fluid-hover-highlight";
 import { PANEL_SPRING, LAYOUT_SPRING, stopNavKeys } from "./chrome";
+import { visibleChapterNo } from "../lib/chapter-number";
 import type { BookChapter, ReaderBookmark, ThemeClasses } from "../lib/types";
 
 type Tab = "chapters" | "bookmarks";
@@ -64,6 +65,9 @@ export function TOCSidebar({
   const inputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<Tab>("chapters");
   const [searchQuery, setSearchQuery] = useState("");
+  // The search field is focused on open; it only shows its ring once the
+  // reader actually engages with it (no accent ring at rest).
+  const [searchEngaged, setSearchEngaged] = useState(false);
   const [renderLimit, setRenderLimit] = useState(60);
 
   const hasRestoredScroll = useRef(false);
@@ -79,14 +83,17 @@ export function TOCSidebar({
 
   // Filter chapters by search (use enriched name only when enabled)
   const filteredChapters = useMemo(() => {
-    const mapped = chapters.map((ch, i) => ({
-      ch, i,
-      displayTitle: enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title,
-    }));
+    const mapped = chapters.map((ch, i) => {
+      const displayTitle = enrichEnabled && enrichedNames[i] ? enrichedNames[i] : ch.title;
+      return { ch, i, displayTitle, shownNo: visibleChapterNo(displayTitle, fmtCh(i, chapterLabels)) };
+    });
     if (!searchQuery.trim()) return mapped;
     const q = searchQuery.toLowerCase();
     return mapped.filter(({ displayTitle }) => displayTitle.toLowerCase().includes(q));
-  }, [chapters, searchQuery, enrichedNames, enrichEnabled]);
+  }, [chapters, searchQuery, enrichedNames, enrichEnabled, chapterLabels]);
+
+  // Keep a numeral column only when at least one row still needs its number.
+  const showNumbers = useMemo(() => filteredChapters.some((c) => c.shownNo != null), [filteredChapters]);
 
   // Filter bookmarks by search
   const filteredBookmarks = useMemo(() => {
@@ -141,18 +148,20 @@ export function TOCSidebar({
     inputRef.current?.focus();
   }, []);
 
-  const progressPct = chapters.length > 0 ? ((currentChapter + 1) / chapters.length) * 100 : 0;
-  const currentNo = fmtCh(currentChapter, chapterLabels) ?? currentChapter + 1;
+  // The one book percentage in the reader — chapter-based, same formula as the library.
+  const progressPct = chapters.length > 0 ? Math.min(((currentChapter + 1) / chapters.length) * 100, 100) : 0;
+  const labelCount = Object.keys(chapterLabels).length;
+  const currentNo = fmtCh(currentChapter, chapterLabels);
 
   return (
     <motion.div
       ref={sidebarRef}
       initial={reduceMotion ? false : { opacity: 0, x: -20, scale: 0.98, filter: "blur(4px)" }}
-      animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+      animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
       exit={{ opacity: 0, x: -14, scale: 0.98, filter: "blur(2px)", transition: { duration: 0.16 } }}
       transition={PANEL_SPRING}
       onKeyDown={stopNavKeys}
-      className="glass-thin grain absolute bottom-3 left-3 top-1 z-20 flex w-80 origin-left flex-col overflow-hidden rounded-2xl shadow-lg"
+      className="glass-thick grain absolute bottom-3 left-3 top-1 z-20 flex w-80 origin-left flex-col overflow-hidden rounded-2xl shadow-lg"
     >
       {/* ── Header ─────────────────────────────────── */}
       <div className="relative shrink-0 px-4 pb-3 pt-4">
@@ -160,7 +169,8 @@ export function TOCSidebar({
           <div className="min-w-0">
             <h2 className="font-display text-lg font-semibold leading-tight text-label">Contents</h2>
             <p className="mt-0.5 text-xs tabular-nums text-label-tertiary">
-              Chapter {currentNo} of {chapters.length} · {Math.round(progressPct)}%
+              {currentNo != null && <>Chapter {currentNo} of {labelCount || chapters.length} · </>}
+              {Math.round(progressPct)}% read
             </p>
           </div>
           <button
@@ -200,13 +210,21 @@ export function TOCSidebar({
         />
 
         {/* Search */}
-        <label className="mt-2.5 flex h-8 items-center gap-2 rounded-full bg-fill-tertiary px-3 transition-shadow duration-150 focus-within:ring-2 focus-within:ring-brand/40">
+        <label
+          className={cn(
+            "mt-2.5 flex h-8 items-center gap-2 rounded-full bg-fill-tertiary px-3 transition-shadow duration-150",
+            searchEngaged && "focus-within:ring-2 focus-within:ring-brand/40",
+          )}
+        >
           <Search className="size-3.5 shrink-0 text-label-tertiary" strokeWidth={1.75} />
           <input
             ref={inputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={() => setSearchEngaged(true)}
+            onPointerDown={() => setSearchEngaged(true)}
+            onBlur={() => setSearchEngaged(false)}
             placeholder={tab === "chapters" ? "Search chapters" : "Search bookmarks"}
             className="min-w-0 flex-1 bg-transparent text-sm text-label outline-none placeholder:text-label-tertiary"
           />
@@ -232,7 +250,7 @@ export function TOCSidebar({
             filteredChapters.length === 0 ? (
               <p className="py-10 text-center text-xs text-label-tertiary">No chapters match “{searchQuery}”</p>
             ) : (
-              filteredChapters.slice(0, renderLimit).map(({ i, displayTitle }) => {
+              filteredChapters.slice(0, renderLimit).map(({ i, displayTitle, shownNo }) => {
                 const canEnrich = enrichEnabled;
                 const isEnriching = enrichingChapter === i;
 
@@ -261,23 +279,16 @@ export function TOCSidebar({
                       />
                     )}
 
-                    {/* Progress tick */}
-                    <span className="relative flex w-2 shrink-0 justify-center" aria-hidden>
-                      {isCurrent ? (
-                        <span className="size-1.5 rounded-full bg-brand shadow-[0_0_8px_0_var(--accent-brand)]" />
-                      ) : (
-                        <span className={cn("h-3 w-0.5 rounded-full", isRead ? "bg-brand/45" : "bg-fill")} />
-                      )}
-                    </span>
-
-                    <span
-                      className={cn(
-                        "relative w-6 shrink-0 text-right text-2xs tabular-nums",
-                        isCurrent ? "font-semibold text-brand" : "text-label-tertiary",
-                      )}
-                    >
-                      {fmtCh(i, chapterLabels) ?? ""}
-                    </span>
+                    {showNumbers && (
+                      <span
+                        className={cn(
+                          "relative w-6 shrink-0 text-right text-2xs tabular-nums",
+                          isCurrent ? "font-semibold text-brand" : "text-label-tertiary",
+                        )}
+                      >
+                        {shownNo ?? ""}
+                      </span>
+                    )}
 
                     <button
                       onClick={() => { onSelectChapter(i); onClose(); }}

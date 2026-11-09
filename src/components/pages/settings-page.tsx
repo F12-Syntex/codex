@@ -5,43 +5,34 @@ import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   Folder,
   RefreshCw,
-  ScanSearch,
   Trash2,
   Download,
-  BookOpen,
-  Key,
   ExternalLink,
   RotateCcw,
-  Replace,
   Plus,
   X,
-  Info,
-  Code2,
-  ShieldCheck,
   Sparkles,
-  Zap,
-  Feather,
-  Type,
-  Wand2,
-  Library,
   HardDrive,
   BookText,
   AlertTriangle,
   ArrowRight,
   Check,
   Loader2,
+  Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ListGroup, ListRow, ListIcon, type ListIconTint } from "@/components/ui/list-group";
+import { ListGroup, ListRow } from "@/components/ui/list-group";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { SecureInput } from "@/components/ui/secure-input";
 import { APP_VERSION } from "@/lib/version";
 import { testApiKey } from "@/lib/openrouter";
 import { ModelCombobox } from "@/components/ui/model-combobox";
+import { ThemePanel } from "@/components/theme-panel";
+import type { ThemeConfig } from "@/lib/theme";
 import {
   DEFAULT_PRESETS,
   PRESET_OVERRIDES_KEY,
@@ -60,6 +51,10 @@ import {
 interface SettingsPageProps {
   onImportItems: (items: LibraryItem[]) => void;
   activeSection: string;
+  /** Settings › Appearance renders the same ThemePanel as the dock's quick
+      path. The pane appears only when the shell passes both of these. */
+  theme?: ThemeConfig;
+  onThemeChange?: (patch: Partial<ThemeConfig>) => void;
 }
 
 /* ── Presentational helpers ───────────────────────────────── */
@@ -68,16 +63,9 @@ interface SettingsPageProps {
 const FIELD =
   "h-8 rounded-md bg-fill-tertiary px-3 text-sm text-label outline-none transition-[background-color,box-shadow] duration-150 placeholder:text-label-quaternary hover:bg-fill-secondary focus:bg-fill-secondary focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_35%,transparent)]";
 
-const PRESET_ICONS: Record<string, { icon: React.ReactNode; tint: ListIconTint }> = {
-  quick: { icon: <Zap />, tint: "orange" },
-  creative: { icon: <Feather />, tint: "pink" },
-  format: { icon: <Type />, tint: "blue" },
-  "format-regen": { icon: <Wand2 />, tint: "teal" },
-};
-
 /* ── Tab types ────────────────────────────────────────────── */
 
-type SettingsTab = "library" | "books" | "ai" | "updates" | "storage";
+type SettingsTab = "library" | "appearance" | "books" | "ai" | "updates" | "storage";
 
 const CONFIRM_COPY: Record<string, { title: string; body: string; action: string }> = {
   wiki: {
@@ -94,7 +82,7 @@ const CONFIRM_COPY: Record<string, { title: string; body: string; action: string
 
 /* ── Settings page ───────────────────────────────────────── */
 
-export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps) {
+export function SettingsPage({ onImportItems, activeSection, theme, onThemeChange }: SettingsPageProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("library");
   const [autoScan, setAutoScan] = useState(false);
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
@@ -298,13 +286,16 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
     saveReplacements(next);
   };
 
-  const panes: { value: SettingsTab; label: string; icon: React.ReactNode; tint: ListIconTint; description: string }[] = [
-    { value: "library", label: "Library", icon: <Folder />, tint: "blue", description: "Where Codex finds your books and comics, and how it keeps them in sync." },
-    { value: "books", label: "Reading", icon: <BookText />, tint: "orange", description: "Fine-tune how book text is rendered while you read." },
-    { value: "ai", label: "Intelligence", icon: <Sparkles />, tint: "purple", description: "Connect OpenRouter and choose the models behind every AI feature." },
-    { value: "updates", label: "Software Update", icon: <Download />, tint: "indigo", description: "Keep Codex current and learn about this build." },
-    { value: "storage", label: "Storage", icon: <HardDrive />, tint: "red", description: "Reset cached data. Files on disk are never touched." },
+  const hasAppearance = !!theme && !!onThemeChange;
+  const allPanes: { value: SettingsTab; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; description: string }[] = [
+    { value: "library", label: "Library", icon: Folder, description: "Where Codex finds your books and comics, and how it keeps them in sync." },
+    { value: "appearance", label: "Appearance", icon: Palette, description: "Mode, accent, type and canvas. The same controls as the dock’s Appearance button." },
+    { value: "books", label: "Reading", icon: BookText, description: "Fine-tune how book text is rendered while you read." },
+    { value: "ai", label: "Intelligence", icon: Sparkles, description: "Connect OpenRouter and choose the models behind every AI feature." },
+    { value: "updates", label: "Software Update", icon: Download, description: "Keep Codex current and learn about this build." },
+    { value: "storage", label: "Storage", icon: HardDrive, description: "Reset cached data. Files on disk are never touched." },
   ];
+  const panes = allPanes.filter((p) => p.value !== "appearance" || hasAppearance);
   const pane = panes.find((p) => p.value === activeTab) ?? panes[0];
 
   const confirmCopy = confirmAction ? CONFIRM_COPY[confirmAction] : null;
@@ -330,60 +321,44 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
       <div className="flex min-h-0 flex-1 gap-8 pl-8">
         {/* ── Pane rail (System Settings sidebar) ──── */}
         <nav aria-label="Settings sections" className="w-56 shrink-0 self-start">
-          <div className="glass-thin grain relative rounded-2xl p-2">
-            {/* App card — like the account card atop System Settings */}
-            <button
-              type="button"
-              onClick={() => setActiveTab("updates")}
-              className="focus-ring pressable mb-1 flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-fill-quaternary"
-            >
-              <span className="relative inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]">
-                <BookOpen className="size-5" strokeWidth={1.75} />
-              </span>
-              <span className="min-w-0">
-                <span className="block font-display text-base font-semibold text-label">Codex</span>
-                <span className="block text-2xs text-label-tertiary tabular-nums">Version {APP_VERSION}</span>
-              </span>
-            </button>
-
-            <div className="mx-2 mb-1 h-px bg-separator" />
-
-            <ul className="flex flex-col gap-0.5">
-              {panes.map((p) => {
-                const active = p.value === activeTab;
-                return (
-                  <li key={p.value}>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab(p.value)}
-                      aria-current={active ? "page" : undefined}
+          <ul className="glass-thin grain relative flex flex-col gap-0.5 rounded-2xl p-2">
+            {panes.map((p) => {
+              const active = p.value === activeTab;
+              const Icon = p.icon;
+              return (
+                <li key={p.value}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(p.value)}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "group/row focus-ring relative flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left transition-colors duration-150",
+                      active ? "text-label" : "text-label-secondary hover:bg-fill-quaternary hover:text-label",
+                    )}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="settings-pane-pill"
+                        className="absolute inset-0 rounded-md bg-fill-secondary"
+                        transition={reduceMotion ? { duration: 0 } : { type: "spring", bounce: 0.18, duration: 0.42 }}
+                      />
+                    )}
+                    <Icon
                       className={cn(
-                        "focus-ring relative flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-sm transition-colors duration-150",
-                        active ? "text-brand-fg" : "text-label hover:bg-fill-quaternary",
+                        "relative size-4 shrink-0 transition-colors duration-150",
+                        active ? "text-brand" : "text-label-tertiary group-hover/row:text-label-secondary",
                       )}
-                    >
-                      {active && (
-                        <motion.span
-                          layoutId="settings-pane-pill"
-                          className="absolute inset-0 rounded-md bg-brand"
-                          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 32 }}
-                        />
-                      )}
-                      <ListIcon tint={p.tint} className="relative size-5 rounded-sm [&_svg]:size-3">
-                        {p.icon}
-                      </ListIcon>
-                      <span className="relative flex-1 truncate font-medium">{p.label}</span>
-                      {p.value === "books" && wordReplacements.length > 0 && (
-                        <span className={cn("relative text-2xs tabular-nums", active ? "text-brand-fg" : "text-label-tertiary")}>
-                          {wordReplacements.length}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                      strokeWidth={1.75}
+                    />
+                    <span className={cn("relative flex-1 truncate text-sm", active && "font-medium")}>{p.label}</span>
+                    {p.value === "books" && wordReplacements.length > 0 && (
+                      <span className="relative text-2xs tabular-nums text-label-tertiary">{wordReplacements.length}</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </nav>
 
         {/* ── Pane content ─────────────────────────── */}
@@ -393,31 +368,28 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
               key={activeTab}
               className="flex w-full max-w-2xl flex-col gap-7"
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, filter: "blur(4px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
               exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(2px)" }}
               transition={{ duration: reduceMotion ? 0.1 : 0.26, ease: [0.32, 0.72, 0, 1] }}
             >
-              {/* Pane hero */}
-              <div className="flex items-center gap-4 pt-1">
-                <ListIcon tint={pane.tint} className="size-12 rounded-xl shadow-md [&_svg]:size-6 [&_svg]:stroke-[1.75]">
-                  {pane.icon}
-                </ListIcon>
-                <div className="min-w-0">
-                  <h2 className="text-title font-display text-label">{pane.label}</h2>
-                  <p className="mt-0.5 text-sm text-label-secondary">{pane.description}</p>
-                </div>
+              {/* Pane header — aligned to the group cards' left edge */}
+              <div className="min-w-0 pt-1">
+                <h2 className="text-title font-display text-label">{pane.label}</h2>
+                <p className="mt-1 text-sm text-label-secondary">{pane.description}</p>
               </div>
 
               {activeTab === "library" && (
                 <ListGroup title="Library Folder" footer="Scans import new files into the section you’re currently viewing.">
                   <ListRow
-                    icon={<Folder />}
-                    iconTint="blue"
                     label="Library folder"
                     description={
-                      <span className="block truncate font-mono text-2xs" title={libraryPath ?? undefined}>
-                        {libraryPath ?? "No folder selected"}
-                      </span>
+                      libraryPath ? (
+                        <span className="block truncate font-mono text-2xs" title={libraryPath}>
+                          {libraryPath}
+                        </span>
+                      ) : (
+                        "No folder selected"
+                      )
                     }
                   >
                     <Button size="sm" variant="secondary" onClick={handleSelectFolder} className="w-24">
@@ -426,8 +398,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   </ListRow>
 
                   <ListRow
-                    icon={<RefreshCw />}
-                    iconTint="teal"
                     label="Auto-scan on launch"
                     description="Automatically import new files when the app starts"
                   >
@@ -436,8 +406,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
 
                   {libraryPath && (
                     <ListRow
-                      icon={<ScanSearch />}
-                      iconTint="green"
                       label="Scan library"
                       description={
                         lastScanCount !== null ? (
@@ -460,23 +428,22 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                 </ListGroup>
               )}
 
+              {activeTab === "appearance" && theme && onThemeChange && (
+                <ThemePanel theme={theme} onThemeChange={onThemeChange} />
+              )}
+
               {activeTab === "updates" && (
                 <>
                   <SpotlightCard className="glass grain relative overflow-hidden rounded-2xl p-5">
                     <div aria-hidden className="pointer-events-none absolute -top-16 -right-10 size-48 rounded-full bg-brand/25 blur-3xl" />
                     <div className="relative flex items-center gap-4">
-                      <span className="inline-flex size-14 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg shadow-[0_0_24px_-6px_var(--accent-brand)]">
-                        <BookOpen className="size-7" strokeWidth={1.5} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-display text-lg font-semibold text-label">Codex</span>
-                          <Badge variant="accent">v{APP_VERSION}</Badge>
-                        </div>
-                        <p className="mt-0.5 truncate text-xs text-label-secondary">
-                          {updateStatus ?? `Current version: ${APP_VERSION}`}
-                        </p>
-                      </div>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/codex-logo.svg" alt="" className="size-14 shrink-0 select-none" draggable={false} />
+                      <p className="min-w-0 flex-1 truncate text-sm text-label-secondary">
+                        <span className="font-display text-lg font-semibold text-label tabular-nums">Codex {APP_VERSION}</span>
+                        <span aria-hidden> · </span>
+                        {updateStatus ?? "You’re up to date"}
+                      </p>
                       <Button size="sm" onClick={handleCheckUpdates} disabled={checkingUpdates} className="w-28">
                         <RefreshCw className={cn("size-3.5", checkingUpdates && "animate-spin")} />
                         {checkingUpdates ? "Checking" : "Check Now"}
@@ -485,12 +452,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   </SpotlightCard>
 
                   <ListGroup title="About">
-                    <ListRow icon={<Info />} iconTint="gray" label="Version">
-                      <span className="text-sm text-label-secondary tabular-nums">{APP_VERSION}</span>
-                    </ListRow>
                     <ListRow
-                      icon={<Code2 />}
-                      iconTint="gray"
                       label="Source code"
                       description="github.com/F12-Syntex/codex"
                       onClick={() => window.open("https://github.com/F12-Syntex/codex", "_blank")}
@@ -503,12 +465,7 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
 
               {activeTab === "storage" && (
                 <ListGroup
-                  title={
-                    <span className="inline-flex items-center gap-1.5 text-danger">
-                      <AlertTriangle className="size-3.5" strokeWidth={2} />
-                      Danger Zone
-                    </span>
-                  }
+                  title="Reset"
                   footer={
                     clearStatus ? (
                       <span className={cn("inline-flex items-center gap-1.5", clearStatus.startsWith("Failed") ? "text-danger" : "text-success")}>
@@ -521,29 +478,20 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   }
                 >
                   <ListRow
-                    icon={<Library />}
-                    iconTint="red"
                     label="Clear library"
                     description="Remove all items from your library. Files on disk are not affected."
-                    destructive
                   >
                     <DangerButton onClick={handleClearLibrary}>Clear…</DangerButton>
                   </ListRow>
                   <ListRow
-                    icon={<BookOpen />}
-                    iconTint="red"
                     label="Clear wiki data"
                     description="Delete all wiki entries, relationships, arcs, and summaries for every book."
-                    destructive
                   >
                     <DangerButton onClick={handleClearWiki}>Clear…</DangerButton>
                   </ListRow>
                   <ListRow
-                    icon={<Trash2 />}
-                    iconTint="red"
                     label="Clear formatting cache"
                     description="Delete all AI-formatted chapter data. Chapters will reformat on next visit."
-                    destructive
                   >
                     <DangerButton onClick={handleClearFormatting}>Clear…</DangerButton>
                   </ListRow>
@@ -555,16 +503,8 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                   title="Word Replacements"
                   footer="Replace specific words when rendering books. Case is preserved automatically."
                 >
-                  <div className="flex h-11 items-center gap-3 px-3">
-                    <ListIcon tint="purple">
-                      <Replace />
-                    </ListIcon>
-                    <span className="flex-1 text-sm text-label">Replacements</span>
-                    <Badge>{wordReplacements.length}</Badge>
-                  </div>
-
                   {wordReplacements.map((r, i) => (
-                    <div key={i} className="flex h-12 items-center gap-2 pr-2 pl-12">
+                    <div key={i} className="flex h-12 items-center gap-2 pr-2 pl-3">
                       <input
                         type="text"
                         value={r.from}
@@ -597,12 +537,12 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
 
                   <ListRow
                     onClick={handleAddReplacement}
-                    icon={
-                      <span className="inline-flex size-6 items-center justify-center text-brand">
-                        <Plus strokeWidth={2.25} />
+                    label={
+                      <span className="inline-flex items-center gap-2 font-medium text-brand">
+                        <Plus className="size-4" strokeWidth={2.25} />
+                        Add Replacement
                       </span>
                     }
-                    label={<span className="font-medium text-brand">Add Replacement</span>}
                   />
                 </ListGroup>
               )}
@@ -611,8 +551,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                 <>
                   <ListGroup title="OpenRouter" footer="Your key is stored locally and only sent to OpenRouter.">
                     <ListRow
-                      icon={<Key />}
-                      iconTint="orange"
                       label="API key"
                       description="Used for AI-powered features like recommendations"
                     >
@@ -627,8 +565,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                       />
                     </ListRow>
                     <ListRow
-                      icon={<ShieldCheck />}
-                      iconTint="green"
                       label="Test connection"
                       description={
                         <span className={cn(testResult?.ok && "text-success", testResult && !testResult.ok && "text-danger")}>
@@ -656,8 +592,6 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                       </Button>
                     </ListRow>
                     <ListRow
-                      icon={<ExternalLink />}
-                      iconTint="gray"
                       label="Get an API key"
                       description="openrouter.ai/keys"
                       onClick={() => window.open("https://openrouter.ai/keys", "_blank")}
@@ -673,13 +607,10 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                     {DEFAULT_PRESETS.map((preset) => {
                       const isOverridden = !!presetOverrides[preset.id];
                       const effectiveModel = getEffectiveModel(preset, presetOverrides);
-                      const meta = PRESET_ICONS[preset.id] ?? { icon: <Sparkles />, tint: "purple" as ListIconTint };
 
                       return (
                         <ListRow
                           key={preset.id}
-                          icon={meta.icon}
-                          iconTint={meta.tint}
                           label={
                             <span className="inline-flex items-center gap-2">
                               {preset.label}
@@ -688,12 +619,9 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                           }
                           description={preset.description}
                         >
-                          <ModelCombobox
-                            value={effectiveModel}
-                            onChange={(model) => handlePresetModelChange(preset.id, model)}
-                            placeholder={preset.defaultModel}
-                          />
-                          {/* Fixed-width slot keeps every combobox aligned */}
+                          {/* Reset slot sits BEFORE the combobox so the combobox's
+                              trailing edge lands on the row's 12px inset like every
+                              other control; the fixed slot keeps the comboboxes aligned. */}
                           <span className="inline-flex size-7 items-center justify-center">
                             {isOverridden && (
                               <Button
@@ -708,6 +636,11 @@ export function SettingsPage({ onImportItems, activeSection }: SettingsPageProps
                               </Button>
                             )}
                           </span>
+                          <ModelCombobox
+                            value={effectiveModel}
+                            onChange={(model) => handlePresetModelChange(preset.id, model)}
+                            placeholder={preset.defaultModel}
+                          />
                         </ListRow>
                       );
                     })}

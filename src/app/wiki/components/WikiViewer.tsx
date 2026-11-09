@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ShimmerText } from "@/components/ui/shimmer-text";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
-import { NumberTicker } from "@/components/ui/number-ticker";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { ListGroup, ListRow } from "@/components/ui/list-group";
 import type { WikiEntry, WikiEntryType, WikiArc, WikiAliasDetailed } from "@/lib/ai-wiki";
@@ -316,7 +315,7 @@ export function WikiViewer({ filePath, bookTitle, initialEntryId }: WikiViewerPr
           {(selectedEntry || activeView !== "graph") && (
             <div
               ref={scrollRef}
-              className="h-full overflow-y-auto"
+              className="h-full overflow-y-auto pb-28"
               style={{
                 paddingBottom: chatOpen && !chatExpanded
                   ? "clamp(280px, 45%, 420px)"
@@ -415,8 +414,7 @@ function EmptyWiki({ bookTitle }: { bookTitle: string }) {
           );
         })}
       </div>
-      <p className="text-section">The Wiki</p>
-      <h1 className="mt-2 text-large-title text-label">{bookTitle}</h1>
+      <h1 className="text-large-title font-display text-label text-balance">{bookTitle}</h1>
       <p className="mt-3 max-w-sm text-sm leading-relaxed text-label-secondary">
         Nothing has been written here yet. Turn on <span className="text-label">AI Wiki</span> in the reader and
         Codex will chronicle characters, places and events as you read.
@@ -449,25 +447,13 @@ function Page({ children, wide }: { children: React.ReactNode; wide?: boolean })
   );
 }
 
-function PageHero({ eyebrow, title, children }: { eyebrow: string; title: string; children?: React.ReactNode }) {
+/** Page header: serif large title + one subtitle line. No eyebrow (conventions S9.1). */
+function PageHero({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <header className="mb-10">
-      <p className="text-section">{eyebrow}</p>
-      <h1 className="mt-1.5 text-large-title text-label text-balance">{title}</h1>
+      <h1 className="text-large-title font-display text-label text-balance">{title}</h1>
       {children}
     </header>
-  );
-}
-
-function StatTile({ value, label, icon }: { value: number; label: string; icon: React.ReactNode }) {
-  return (
-    <div className="glass-thin flex flex-1 items-center gap-3 rounded-xl px-4 py-3">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-fill-tertiary text-label-secondary [&_svg]:size-4">{icon}</span>
-      <div className="min-w-0">
-        <NumberTicker value={value} className="block text-xl font-semibold tabular-nums text-label" />
-        <p className="truncate text-xs text-label-tertiary">{label}</p>
-      </div>
-    </div>
   );
 }
 
@@ -521,9 +507,9 @@ function StatsPage({ mcEntry, mcStats, onNavigateToMC, chapterLabels }: {
 
   return (
     <Page>
-      <PageHero eyebrow="Protagonist" title={mcEntry?.name ?? "Character Stats"}>
+      <PageHero title={mcEntry?.name ?? "Character Stats"}>
         <p className="mt-2 text-sm text-label-secondary">
-          {activeStats.length} active {activeStats.length === 1 ? "stat" : "stats"}
+          Protagonist · {activeStats.length} active {activeStats.length === 1 ? "stat" : "stats"}
           {inactiveStats.length > 0 && <span className="text-label-tertiary"> · {inactiveStats.length} lost or consumed</span>}
         </p>
       </PageHero>
@@ -635,12 +621,12 @@ function HomePage({
 
   return (
     <Page>
-      <PageHero eyebrow="Encyclopedia" title={bookTitle}>
-        <div className="mt-6 flex gap-2">
-          <StatTile value={entries.length} label="Entries" icon={<BookOpen strokeWidth={1.75} />} />
-          <StatTile value={processedCount} label="Chapters analyzed" icon={<Hash strokeWidth={1.75} />} />
-          <StatTile value={arcs.length} label="Story arcs" icon={<GitBranch strokeWidth={1.75} />} />
-        </div>
+      <PageHero title={bookTitle}>
+        {/* The one place the wiki states its counts (conventions S9.2) */}
+        <p className="mt-2 text-sm text-label-secondary tabular-nums">
+          {entries.length} {entries.length === 1 ? "entry" : "entries"} · {processedCount}{" "}
+          {processedCount === 1 ? "chapter" : "chapters"} analyzed
+        </p>
       </PageHero>
 
       {/* If searching/filtering, show flat results */}
@@ -921,7 +907,8 @@ function EntryPage({
   return (
     <article className="relative">
       {/* Floating article toolbar */}
-      <div className="sticky top-0 z-20 flex h-14 items-center gap-2 px-6">
+      {/* Back and Merge sit on the content column's edges (same max-w-5xl px-8 frame) */}
+      <div className="sticky top-0 z-20 mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-8">
         {canGoBack && (
           <button
             onClick={onBack}
@@ -991,17 +978,15 @@ function EntryPage({
             <span aria-hidden className="absolute -inset-6 rounded-full opacity-60 blur-2xl" style={{ background: meta.bg }} />
             <EntityAvatar name={entry.name} type={entry.type} meta={meta} size="xl" className="relative" />
           </div>
-          <div className="mt-5 flex flex-wrap items-center gap-1.5">
+          {/* Monogram → name → Type · Status. Everything else lives in the info card. */}
+          <h1 className="mt-5 text-large-title font-display text-label text-balance">{entry.name}</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <Badge className="gap-1.5">
               <span className="size-1.5 rounded-full" style={{ background: meta.color }} />
               {meta.label}
             </Badge>
             <Badge variant="outline" className="capitalize">{entry.status}</Badge>
-            {entry.significance >= 3 && (
-              <span className="ml-1 text-xs tracking-widest text-warning">{"★".repeat(entry.significance)}</span>
-            )}
           </div>
-          <h1 className="mt-3 text-large-title text-label text-balance">{entry.name}</h1>
           {primaryAliases.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {primaryAliases.map((a) => (
@@ -1017,15 +1002,6 @@ function EntryPage({
               )}
             </div>
           )}
-
-          {/* Quick info */}
-          <div className="mt-5 flex flex-wrap gap-1.5">
-            <InfoPill icon={<Clock className="size-3.5" strokeWidth={1.75} />} label={`First: Ch. ${fmtCh(entry.firstAppearance, chapterLabels)}`} />
-            <InfoPill icon={<BookOpen className="size-3.5" strokeWidth={1.75} />} label={`${entry.chapterAppearances.length} ${entry.chapterAppearances.length === 1 ? "chapter" : "chapters"}`} />
-            {uniqueRels.length > 0 && (
-              <InfoPill icon={<User className="size-3.5" strokeWidth={1.75} />} label={`${uniqueRels.length} ${uniqueRels.length === 1 ? "connection" : "connections"}`} />
-            )}
-          </div>
 
           {/* Lede */}
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-label-secondary select-text">
@@ -1058,7 +1034,7 @@ function EntryPage({
                         className="mt-px inline-flex h-5 shrink-0 items-center rounded-full px-2 text-2xs font-medium tabular-nums"
                         style={{ background: meta.bg, color: meta.color }}
                       >
-                        {fmtCh(item.chapterIndex, chapterLabels)}
+                        Ch. {fmtCh(item.chapterIndex, chapterLabels) ?? item.chapterIndex + 1}
                       </span>
                       <p className="flex-1 text-sm leading-relaxed text-label-secondary select-text">
                         <LinkedText text={item.content} entries={allEntries} currentEntryId={entry.id} onNavigate={onNavigate} />
@@ -1140,8 +1116,8 @@ function EntryPage({
                 <span className="text-section">Chapters</span>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {entry.chapterAppearances.map((ch) => (
-                    <span key={ch} className="inline-flex h-5 min-w-6 items-center justify-center rounded-full bg-fill-tertiary px-1.5 text-2xs tabular-nums text-label-secondary">
-                      {ch + 1}
+                    <span key={ch} className="inline-flex h-5 items-center justify-center rounded-full bg-fill-tertiary px-2 text-2xs tabular-nums text-label-secondary">
+                      Ch. {fmtCh(ch, chapterLabels) ?? ch + 1}
                     </span>
                   ))}
                 </div>
@@ -1170,7 +1146,6 @@ function EntryCard({ entry, onClick, showChapter }: { entry: EntryListItem; onCl
         <div className="flex items-center gap-1.5">
           <span className="truncate text-headline text-label">{entry.name}</span>
           {showChapter && <span className="shrink-0 text-2xs tabular-nums text-label-tertiary">Ch. {entry.first_appearance + 1}</span>}
-          {entry.significance >= 3 && <span className="size-1.5 shrink-0 rounded-full bg-warning/70" />}
         </div>
         <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-label-tertiary">{entry.short_description}</p>
       </div>
@@ -1196,15 +1171,6 @@ function ArticleSection({ title, children }: { title: string; children: React.Re
       <h3 className="mb-3 text-headline text-label">{title}</h3>
       {children}
     </section>
-  );
-}
-
-function InfoPill({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="inline-flex h-7 items-center gap-1.5 rounded-full bg-fill-quaternary px-3 text-xs text-label-secondary ring-[0.5px] ring-separator ring-inset [&_svg]:text-label-tertiary">
-      {icon}
-      {label}
-    </div>
   );
 }
 

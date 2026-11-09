@@ -89,7 +89,13 @@ function GlassModalRoot({
             )}
             style={{ width, maxWidth: "100%", maxHeight }}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.96, filter: "blur(6px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+            // `filter: none` once settled — `blur(0px)` would stay a Backdrop Root
+            // and kill the blur of glass nested in the panel (conventions §8).
+            animate={
+              reduce
+                ? { opacity: 1 }
+                : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }
+            }
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98, filter: "blur(4px)" }}
             transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34, mass: 0.9 }}
             onClick={(e) => e.stopPropagation()}

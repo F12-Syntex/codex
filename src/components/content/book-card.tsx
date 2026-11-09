@@ -3,8 +3,6 @@
 import { useState, useRef, useCallback, memo } from "react";
 import { Check } from "lucide-react";
 import { Tilt } from "@/components/ui/tilt";
-import { Badge } from "@/components/ui/badge";
-import { ProgressRing } from "@/components/ui/progress-ring";
 import type { BookFormat } from "@/lib/mock-data";
 import type { CoverStyle } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -43,7 +41,7 @@ export const CONTACT_SHADOW: React.CSSProperties = {
 };
 
 /** Sample pixels from a loaded image and return a dominant-ish RGB string. */
-function extractDominantColor(img: HTMLImageElement): string {
+export function extractDominantColor(img: HTMLImageElement): string {
   const canvas = document.createElement("canvas");
   const size = 32; // downsample for speed
   canvas.width = size;
@@ -97,7 +95,6 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
 
   const hasProgress = progress != null && progress > 0;
   const pct = hasProgress ? Math.min(Math.round(progress * 100), 100) : 0;
-  const showMeta = showFormatBadge || hasProgress;
 
   return (
     <div className="group/card flex flex-col">
@@ -143,6 +140,28 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
                 <div aria-hidden className="pointer-events-none absolute inset-0" style={SPINE_STYLE} />
                 <div aria-hidden className={cn("pointer-events-none absolute inset-0 hairline", radius)} />
 
+                {/* Format — a glass chip that only surfaces on hover */}
+                {showFormatBadge && (
+                  <span className="glass pointer-events-none absolute top-2 left-2 inline-flex h-5 items-center rounded-xs px-1.5 text-2xs font-semibold text-label opacity-0 transition-opacity duration-200 ease-apple group-hover/card:opacity-100">
+                    {format}
+                  </span>
+                )}
+
+                {/* Reading progress — a hairline of ink along the bottom edge.
+                    Literal track colour is allowed: it sits on cover art. */}
+                {hasProgress && (
+                  <div
+                    role="progressbar"
+                    aria-label={`${pct}% read`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pct}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-0.75 bg-black/30"
+                  >
+                    <div className="h-full bg-brand transition-[width] duration-500 ease-apple" style={{ width: `${pct}%` }} />
+                  </div>
+                )}
+
                 {/* Selection tint */}
                 {selected && <div aria-hidden className="absolute inset-0 bg-brand/15" />}
               </div>
@@ -158,21 +177,10 @@ export const BookCard = memo(function BookCard({ title, author, gradient, cover,
         </div>
       </div>
 
-      {/* Caption — aligned to the cover's left edge */}
-      <div className="mt-4 min-w-0">
-        <p className="text-headline line-clamp-2 text-label" title={title}>{title}</p>
-        <p className="mt-0.5 truncate text-xs text-label-secondary" title={author}>{author}</p>
-        {showMeta && (
-          <div className="mt-1.5 flex h-5 items-center gap-1.5">
-            {showFormatBadge && <Badge>{format}</Badge>}
-            {hasProgress && (
-              <span className="ml-auto inline-flex items-center gap-1 text-2xs text-label-tertiary tabular-nums">
-                <ProgressRing value={progress} size={14} stroke={2} aria-label={`${pct}% read`} />
-                {pct}%
-              </span>
-            )}
-          </div>
-        )}
+      {/* Caption — two fixed rows, aligned to the cover's left edge */}
+      <div className="mt-3 flex h-9 min-w-0 flex-col justify-center">
+        <p className="text-headline line-clamp-1 text-label" title={title}>{title}</p>
+        <p className="truncate text-xs text-label-secondary" title={author}>{author}</p>
       </div>
     </div>
   );

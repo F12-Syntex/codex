@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import {
   User, Swords, MapPin, Flame, Lightbulb,
-  Clock,
 } from "lucide-react";
 import type { WikiEntry, WikiEntryType } from "@/lib/ai-wiki";
 
@@ -85,11 +84,6 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
           <span className="inline-flex h-6 items-center rounded-full bg-fill-tertiary px-2.5 text-xs capitalize text-label-secondary">
             {entry.status}
           </span>
-          {entry.significance >= 3 && (
-            <span className="text-xs text-warning">
-              {"★".repeat(entry.significance)}
-            </span>
-          )}
           {entry.aliases.length > 0 && (
             <span className="text-xs text-label-tertiary">
               aka {entry.aliases.join(", ")}
@@ -97,7 +91,7 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
           )}
         </div>
 
-        <h1 className="text-large-title text-label">
+        <h1 className="text-large-title font-display text-label">
           {entry.name}
         </h1>
 
@@ -106,25 +100,14 @@ export function WikiEntryView({ entry, filePath, onEntryClick }: WikiEntryViewPr
         </p>
 
         {/* Chapter appearances */}
-        <div className="mt-4 flex items-center gap-2">
-          <Clock className="size-3.5 text-label-tertiary" strokeWidth={1.75} />
-          <span className="text-xs text-label-tertiary">
-            First: Ch. {entry.firstAppearance + 1}
-          </span>
-          <span className="text-xs text-label-quaternary">·</span>
-          <span className="text-xs text-label-tertiary">
-            Appears in {entry.chapterAppearances.length} {entry.chapterAppearances.length === 1 ? "chapter" : "chapters"}
-          </span>
-        </div>
-
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-4 flex flex-wrap gap-1">
           {entry.chapterAppearances.map((ch) => (
             <span
               key={ch}
-              className="inline-flex h-5 items-center rounded-full px-1.5 text-2xs tabular-nums font-medium"
+              className="inline-flex h-5 items-center rounded-full px-2 text-2xs tabular-nums font-medium"
               style={{ background: typeMeta.bg, color: typeMeta.color }}
             >
-              {ch + 1}
+              Ch. {ch + 1}
             </span>
           ))}
         </div>

@@ -14,7 +14,7 @@ import { MenuHighlightScope, useMenuHighlight } from "@/components/ui/menu-highl
  */
 
 const menuPanel =
-  "glass-thick z-50 min-w-48 overflow-x-hidden overflow-y-auto rounded-xl p-1 text-sm text-label outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-150"
+  "glass-menu z-50 min-w-48 overflow-x-hidden overflow-y-auto rounded-xl p-1 text-sm text-label outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-150"
 
 const menuRow =
   "group/menu-item relative isolate flex h-7 cursor-default items-center gap-2 rounded-lg px-2.5 text-sm text-label outline-none select-none transition-colors duration-100 data-[highlighted]:text-brand-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-35 data-[inset]:pl-7 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-label-secondary data-[highlighted]:[&_svg:not([class*='text-'])]:text-brand-fg"

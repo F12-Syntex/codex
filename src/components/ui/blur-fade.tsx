@@ -41,7 +41,11 @@ export function BlurFade({
   const hidden = reduceMotion
     ? { opacity: 0 }
     : { opacity: 0, y: yOffset, filter: `blur(${blur})` };
-  const shown = reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, filter: "blur(0px)" };
+  // End at `filter: none` — a lingering `blur(0px)` is a Backdrop Root and
+  // kills the blur of any glass inside (conventions §8).
+  const shown = reduceMotion
+    ? { opacity: 1 }
+    : { opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } };
 
   return (
     <motion.div

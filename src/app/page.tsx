@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import type { Section, NavView } from "@/components/sidebar/app-sidebar";
 import { ContentToolbar } from "@/components/content/content-toolbar";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/resizable";
 import { SHORTCUT_REGISTRY, parseKeys, matchesShortcut } from "@/lib/shortcuts";
 import { groupByView, libraryItemToMockItem, type LibraryData, type MockItem } from "@/lib/mock-data";
-import { DEFAULT_THEME, type ThemeConfig } from "@/lib/theme";
+import { DEFAULT_THEME, FONT_FAMILY_CSS, type ThemeConfig } from "@/lib/theme";
 import { BookDetailsModal } from "@/components/content/book-details-modal";
 
 const viewLabelMap: Record<NavView, string> = {
@@ -30,22 +30,10 @@ const viewLabelMap: Record<NavView, string> = {
   reading: "Reading",
   finished: "Finished",
   series: "Series",
-  completed: "Completed",
+  completed: "Finished",
   settings: "Settings",
   changelog: "What's New",
-  installer: "Installer",
-};
-
-const sectionLabelMap: Record<string, string> = {
-  books: "Books",
-  comic: "Comics",
-};
-
-const fontFamilyMap: Record<string, string> = {
-  geist: "var(--font-geist-sans)",
-  inter: "'Inter', sans-serif",
-  mono: "var(--font-geist-mono)",
-  system: "var(--font-ui)",
+  installer: "Discover",
 };
 
 export default function Home() {
@@ -453,21 +441,56 @@ export default function Home() {
     setSelectedIds(new Set());
   }, [activeSection]);
 
-  // Compute dynamic styles from theme
-  const rootStyle = useMemo(() => {
-    const s: Record<string, string> = {
-      fontFamily: fontFamilyMap[theme.fontFamily] ?? fontFamilyMap.geist,
+  // ── Theme lives on <html> ───────────────────────
+  // Every portal (Spotlight, modals, menus, tooltips) renders outside the app
+  // tree, so the theme attributes and vars must sit on the document root.
+  // Layout effect: lands before children's passive effects (InkCanvas reads
+  // its tokens from <html>) and before paint, so no frame shows a stale theme.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const attrs: Record<string, string | undefined> = {
+      "data-accent": theme.accent,
+      "data-appearance": theme.appearance,
+      "data-tint": theme.tintSurfaces ? "true" : undefined,
+      "data-cursor": theme.cursorStyle !== "default" ? theme.cursorStyle : undefined,
+    };
+    const fontFamily = FONT_FAMILY_CSS[theme.fontFamily] ?? FONT_FAMILY_CSS.system;
+    const vars: Record<string, string> = {
       "--radius": `${theme.borderRadius / 16}rem`,
+      // `font-sans` (body, and so every portal) resolves to --font-ui.
+      "--font-ui": fontFamily,
     };
     if (theme.accent === "custom" && theme.customAccentColor) {
       const hex = theme.customAccentColor;
-      s["--accent-brand"] = hex;
-      s["--accent-brand-dim"] = `${hex}26`;
-      s["--accent-brand-subtle"] = `${hex}14`;
-      s["--accent-brand-fg"] = "#fafafa";
+      vars["--accent-brand"] = hex;
+      vars["--accent-brand-dim"] = `${hex}26`;
+      vars["--accent-brand-subtle"] = `${hex}14`;
+      vars["--accent-brand-fg"] = "#fafafa";
     }
-    return s as React.CSSProperties;
-  }, [theme.fontFamily, theme.accent, theme.customAccentColor, theme.borderRadius]);
+
+    for (const [name, value] of Object.entries(attrs)) {
+      if (value === undefined) root.removeAttribute(name);
+      else root.setAttribute(name, value);
+    }
+    for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+    root.style.fontFamily = fontFamily;
+    root.style.colorScheme = theme.appearance === "light" ? "light" : "dark";
+
+    return () => {
+      for (const name of Object.keys(attrs)) root.removeAttribute(name);
+      for (const name of Object.keys(vars)) root.style.removeProperty(name);
+      root.style.removeProperty("font-family");
+      root.style.removeProperty("color-scheme");
+    };
+  }, [
+    theme.accent,
+    theme.appearance,
+    theme.tintSurfaces,
+    theme.cursorStyle,
+    theme.fontFamily,
+    theme.borderRadius,
+    theme.customAccentColor,
+  ]);
 
   const contentStyle = useMemo(() => {
     const s: React.CSSProperties = {};
@@ -488,27 +511,11 @@ export default function Home() {
     return s;
   }, [theme.backgroundImage, theme.backgroundOpacity, theme.backgroundBlur]);
 
-  const breadcrumb = useMemo(() => {
-    if (activeView === "settings") return ["Settings"];
-    if (activeView === "changelog") return ["What's New"];
-    if (activeView === "installer") return ["Installer"];
-    const sectionLabel = sectionLabelMap[activeSection] ?? activeSection;
-    const vLabel = viewLabelMap[activeView] ?? activeView;
-    return [sectionLabel, vLabel];
-  }, [activeSection, activeView]);
-
   const showInk = !theme.backgroundImage && theme.ambientBackground !== false;
 
   return (
     <TooltipProvider>
-      <div
-        className="app-canvas relative flex h-full overflow-hidden"
-        data-accent={theme.accent}
-        data-appearance={theme.appearance}
-        data-tint={theme.tintSurfaces ? "true" : undefined}
-        data-cursor={theme.cursorStyle !== "default" ? theme.cursorStyle : undefined}
-        style={rootStyle}
-      >
+      <div className="app-canvas relative flex h-full overflow-hidden">
         {/* ── Backdrop: wallpaper, or the living ink canvas ── */}
         {theme.backgroundImage ? (
           <div className="pointer-events-none absolute inset-0" style={contentStyle}>
@@ -541,13 +548,12 @@ export default function Home() {
                   />
                 </div>
               </ResizablePanel>
-              <ResizableHandle className="w-2" />
+              <ResizableHandle className="w-2 bg-transparent" />
             </>
           )}
           <ResizablePanel defaultSize={sidebarCollapsed ? "100%" : `${100 - theme.sidebarWidth}%`}>
             <div className="flex h-full min-w-0 flex-col">
               <TitleBar
-                breadcrumb={breadcrumb}
                 showIdentity={sidebarCollapsed}
                 onSearchOpen={() => setSearchOpen(true)}
               />
@@ -599,7 +605,7 @@ export default function Home() {
                 <Dock
                   theme={theme}
                   onThemeChange={handleThemeChange}
-                  onSearchOpen={() => setSearchOpen(true)}
+                  hidden={selectedIds.size > 0}
                   sidebarVisible={!sidebarCollapsed}
                   onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
                 />

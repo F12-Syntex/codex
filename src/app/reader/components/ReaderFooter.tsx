@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ThemeClasses, TTSStatus } from "../lib/types";
 import { fmtCh } from "@/lib/chapter-labels";
+import { visibleChapterNo } from "../lib/chapter-number";
 import { AudioWaveform } from "@/components/ui/audio-waveform";
 import { ChromeButton, PillDivider, PANEL_SPRING, riseIn } from "./chrome";
 
@@ -90,7 +91,8 @@ function PageScrubber({
   const [hoverX, setHoverX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const interactive = !!onSeek && !disabled && pages > 1;
-  const frac = pages > 1 ? page / (pages - 1) : 1;
+  // Page 1 of 2 reads 50%, the last page 100% — never an empty rail.
+  const frac = pages > 0 ? Math.min(1, (page + 1) / pages) : 1;
 
   const pageAt = useCallback(
     (clientX: number) => {
@@ -99,7 +101,7 @@ function PageScrubber({
       const r = el.getBoundingClientRect();
       const x = Math.min(r.width, Math.max(0, clientX - r.left));
       setHoverX(x);
-      return Math.round((x / r.width) * (pages - 1));
+      return Math.min(pages - 1, Math.max(0, Math.ceil((x / Math.max(1, r.width)) * pages) - 1));
     },
     [pages],
   );
@@ -110,7 +112,6 @@ function PageScrubber({
 
   return (
     <div
-      ref={trackRef}
       role="slider"
       aria-label="Page in chapter"
       aria-valuemin={1}
@@ -119,7 +120,7 @@ function PageScrubber({
       aria-disabled={!interactive}
       tabIndex={interactive ? 0 : -1}
       className={cn(
-        "focus-ring group/scrub relative flex h-6 w-full items-center rounded-full",
+        "focus-ring group/scrub flex h-6 w-full items-center rounded-full px-1.5",
         interactive ? "cursor-pointer" : "cursor-default",
       )}
       onPointerDown={(e) => {
@@ -148,6 +149,7 @@ function PageScrubber({
         else seek(Math.min(pages - 1, Math.max(0, page + d)));
       }}
     >
+      <div ref={trackRef} className="relative flex h-full w-full items-center">
       {/* Rail */}
       <div
         className={cn(
@@ -189,6 +191,7 @@ function PageScrubber({
           </motion.span>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -251,10 +254,10 @@ export function ReaderFooter({
   const ttsActive = ttsStatus !== "idle";
   const eta = ttsActive ? formatHms(displaySeconds) : "";
 
-  // Overall book progress: chapters done + fractional current chapter
-  const chapterFraction = totalPages > 1 ? (currentPage + 1) / totalPages : 1;
-  const bookPct = chapterCount > 0 ? Math.round(((chapterIndex + chapterFraction) / chapterCount) * 100) : 0;
+  // Book percentage lives only in the Contents header (chapter-based, like
+  // the library). The footer speaks pages-in-chapter: "Chapter 6 · ── · 1 of 2".
   const chapterNo = fmtCh(chapterIndex, chapterLabels) ?? chapterIndex + 1;
+  const shownNo = visibleChapterNo(chapterTitle, chapterNo);
 
   return (
     <footer
@@ -299,12 +302,14 @@ export function ReaderFooter({
             <div className="flex min-w-0 items-center gap-3 px-2">
               {/* Chapter */}
               <div className="flex min-w-0 max-w-56 items-baseline gap-1.5" title={`Chapter ${chapterNo} of ${chapterCount} — ${chapterTitle}`}>
-                <span className="shrink-0 text-2xs font-semibold tabular-nums text-label-tertiary">{chapterNo}</span>
+                {shownNo != null && (
+                  <span className="shrink-0 text-2xs font-semibold tabular-nums text-label-tertiary">{shownNo}</span>
+                )}
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.span
                     key={chapterTitle}
                     initial={reduceMotion ? false : { opacity: 0, filter: "blur(3px)" }}
-                    animate={{ opacity: 1, filter: "blur(0px)" }}
+                    animate={{ opacity: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
                     exit={{ opacity: 0, filter: "blur(3px)", transition: { duration: 0.12 } }}
                     className="min-w-0 truncate text-xs text-label-secondary"
                   >
@@ -318,16 +323,11 @@ export function ReaderFooter({
                 <PageScrubber page={currentPage} pages={totalPages} onSeek={onSeekPage} />
               </div>
 
-              {/* Page + book percent */}
-              <div className="flex shrink-0 items-baseline gap-1.5 tabular-nums">
-                <span className="text-xs font-medium text-label-secondary">
-                  {currentPage + 1}
-                  <span className="text-label-tertiary"> / {totalPages}</span>
-                </span>
-                <span className="text-2xs text-label-tertiary" title={`Chapter ${chapterNo} of ${chapterCount}`}>
-                  {bookPct}%
-                </span>
-              </div>
+              {/* Page in chapter */}
+              <span className="shrink-0 text-xs font-medium tabular-nums text-label-secondary" title="Page in this chapter">
+                {currentPage + 1}
+                <span className="text-label-tertiary"> of {totalPages}</span>
+              </span>
             </div>
 
             <ChromeButton onClick={onNext} disabled={!canGoNext} title="Next page (→)" aria-label="Next page">

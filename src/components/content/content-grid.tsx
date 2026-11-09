@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   BookOpen,
   Clock,
@@ -13,17 +13,17 @@ import {
   FolderOpen,
   Info,
   Library,
-  Play,
   Plus,
 } from "lucide-react";
-import { BookCard, coverRadius, SPINE_STYLE } from "./book-card";
+import { BookCard, coverRadius, extractDominantColor, SPINE_STYLE } from "./book-card";
 import { SelectionBar } from "./selection-bar";
+import { ToolbarScrollContext } from "./content-toolbar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GlassModal } from "@/components/ui/glass-modal";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { Tilt } from "@/components/ui/tilt";
 import {
@@ -58,9 +58,17 @@ interface ContentGridProps {
   onBatchDelete: (ids: Set<number>) => void;
   onBatchMove: (ids: Set<number>, targetView: NavView) => void;
   readingProgress?: Record<string, { chapter: number; totalChapters: number }>;
-  /** Optional — shows an Import action in the empty state. */
+  /** Optional — shows an Import action in the Bookshelf / Series empty state. */
   onImport?: () => void;
+  /**
+   * Optional page header (pass `<ContentToolbar … />`). When given it renders
+   * inside the scroll area: the title scrolls away and the toolbar's control
+   * cluster stays pinned on an Edge Blur strip.
+   */
+  header?: React.ReactNode;
 }
+
+type ReadingProgress = Record<string, { chapter: number; totalChapters: number }>;
 
 const bookMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] = [
   { view: "bookshelf", label: "Bookshelf", icon: BookOpen },
@@ -73,7 +81,8 @@ const comicMoveTargets: { view: NavView; label: string; icon: typeof Clock }[] =
   { view: "series", label: "Series", icon: BookOpen },
   { view: "read-later", label: "Read Later", icon: Clock },
   { view: "reading", label: "Reading", icon: BookOpenCheck },
-  { view: "completed", label: "Completed", icon: CheckCircle },
+  // Label only: the id stays `completed`. "Finished" everywhere in the UI.
+  { view: "completed", label: "Finished", icon: CheckCircle },
 ];
 
 /** Grid page rhythm (conventions §5): shared 32px gutter, clears the dock. */
@@ -91,7 +100,34 @@ const thumbRadius = (coverStyle: CoverStyle) => (coverStyle === "rounded" ? "rou
 
 /* ── Shared pieces ──────────────────────────────────────── */
 
-function CoverThumb({ item, className }: { item: MockItem; className?: string }) {
+/**
+ * The one definition of book progress (library, Continue Reading, detail and
+ * list views): chapters reached / total chapters. The reader's TOC uses the
+ * same formula.
+ */
+function bookPct(progress: ReadingProgress, filePath: string): number | null {
+  const p = progress[filePath];
+  if (!p || p.totalChapters <= 0) return null;
+  return Math.min(((p.chapter + 1) / p.totalChapters) * 100, 100);
+}
+
+/** "Chapter 8 of 20 · 40%" — the one progress caption. */
+function progressCaption(progress: ReadingProgress, filePath: string): string | null {
+  const pct = bookPct(progress, filePath);
+  if (pct == null) return null;
+  const p = progress[filePath];
+  return `Chapter ${Math.min(p.chapter + 1, p.totalChapters)} of ${p.totalChapters} · ${Math.round(pct)}%`;
+}
+
+function CoverThumb({
+  item,
+  className,
+  onImageLoad,
+}: {
+  item: MockItem;
+  className?: string;
+  onImageLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
+}) {
   return (
     <div className={cn("relative shrink-0 overflow-hidden bg-fill-tertiary", className)}>
       {item.cover ? (
@@ -101,6 +137,7 @@ function CoverThumb({ item, className }: { item: MockItem; className?: string })
           draggable={false}
           className="absolute inset-0 h-full w-full object-cover"
           loading="lazy"
+          onLoad={onImageLoad}
         />
       ) : (
         <div className="absolute inset-0" style={{ background: item.gradient }} />
@@ -138,71 +175,170 @@ function ProgressBarInline({ pct, className }: { pct: number; className?: string
   );
 }
 
-/** Serif section header — editorial rhythm between shelves. */
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+/** Serif section header — editorial rhythm between shelves. No counts. */
+function SectionHeader({ title }: { title: string }) {
+  return <h2 className="text-title mb-4 font-display text-label">{title}</h2>;
+}
+
+/**
+ * Library scroll region. With a `header`, renders it first inside the scroll
+ * content and tells it (via ToolbarScrollContext) whether content has
+ * scrolled under it.
+ */
+function LibraryScroll({
+  header,
+  children,
+}: {
+  header?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const hasHeader = header != null;
+
+  useEffect(() => {
+    if (!hasHeader) return;
+    const viewport = ref.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    if (!viewport) return;
+    const update = () => setScrolled(viewport.scrollTop > 4);
+    update();
+    viewport.addEventListener("scroll", update, { passive: true });
+    return () => viewport.removeEventListener("scroll", update);
+  }, [hasHeader]);
+
+  const ctx = useMemo(() => ({ scrolled }), [scrolled]);
+
   return (
-    <div className="mb-5 flex items-baseline gap-2.5">
-      <h2 className="text-title text-label">{title}</h2>
-      {count != null && <span className="text-sm text-label-tertiary tabular-nums">{count}</span>}
-    </div>
+    <ScrollArea ref={ref} className={cn("min-h-0 flex-1", FADE_MASK)}>
+      {hasHeader && <ToolbarScrollContext.Provider value={ctx}>{header}</ToolbarScrollContext.Provider>}
+      {children}
+    </ScrollArea>
   );
 }
 
-/* ── Continue Reading card — glass hero tile ────────────── */
+/* ── Empty states — copy and action per view ─────────────── */
+function emptyStateFor(view: NavView, section: Section) {
+  const isComics = section === "comic";
+  const noun = isComics ? "comic" : "book";
+  switch (view) {
+    case "read-later":
+      return {
+        icon: Clock,
+        title: "Nothing saved for later",
+        description: `Right-click any ${noun} and choose Move to › Read Later.`,
+        canImport: false,
+      };
+    case "reading":
+      return {
+        icon: BookOpenCheck,
+        title: "Nothing in progress",
+        description: `Open a ${noun} and it will wait for you here.`,
+        canImport: false,
+      };
+    case "finished":
+    case "completed":
+      return {
+        icon: CheckCircle,
+        title: isComics ? "No finished comics yet" : "No finished books yet",
+        description: `${isComics ? "Comics" : "Books"} you finish are collected here.`,
+        canImport: false,
+      };
+    default:
+      return {
+        icon: Library,
+        title: isComics ? "No series here yet" : "Your shelf is empty",
+        description: isComics
+          ? "Import CBZ or CBR archives and they’ll line up here, ready to read."
+          : "Import EPUB, PDF or MOBI files and they’ll line up here, ready to read.",
+        canImport: true,
+      };
+  }
+}
+
+/* ── Continue Reading — the hero ───────────────────────────
+   One in-progress book spans the content width; two or three share the row
+   (auto-fit). The card re-grades to its cover: a soft bloom in the cover's
+   dominant colour sits behind it (21st.dev "Hero Carousel", crafterui,
+   id 24752). */
 function ContinueCard({
   item,
   coverStyle,
   pct,
-  chapter,
-  totalChapters,
+  caption,
   selected,
   onResume,
 }: {
   item: MockItem;
   coverStyle: CoverStyle;
   pct: number;
-  chapter: number;
-  totalChapters: number;
+  caption: string | null;
   selected: boolean;
   onResume?: () => void;
 }) {
-  const radius = thumbRadius(coverStyle);
+  const radius = coverStyle === "rounded" ? "rounded-md" : "rounded-xs";
+  const [glow, setGlow] = useState<string>(item.gradient);
+  const extracted = useRef(false);
+
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (extracted.current) return;
+    extracted.current = true;
+    try {
+      setGlow(extractDominantColor(e.currentTarget));
+    } catch {
+      // cross-origin or decode error — keep the gradient
+    }
+  }, []);
+
   return (
     <SpotlightCard
       className={cn(
-        "glass-thin grain flex h-full items-center gap-4 rounded-2xl p-3 pr-4 transition-shadow duration-200",
+        "glass-thin grain flex h-full min-h-44 items-center gap-5 overflow-hidden rounded-2xl p-5 transition-shadow duration-200",
         selected && "shadow-[inset_0_0_0_1.5px_var(--accent-brand)]",
       )}
     >
+      {/* Cover-colour bloom behind the cover */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 -left-20 -z-10 size-96 -translate-y-1/2 rounded-full opacity-25 blur-2xl transition-[background] duration-700 ease-apple"
+        style={{ background: `radial-gradient(closest-side, ${glow}, transparent)` }}
+      />
+
       <Tilt maxTilt={5} glare className={cn("shrink-0", radius)}>
-        <CoverThumb item={item} className={cn("aspect-[2/3] w-16 shadow-cover", radius)} />
+        <CoverThumb
+          item={item}
+          onImageLoad={handleImageLoad}
+          className={cn("aspect-[2/3] w-24 shadow-cover", radius)}
+        />
       </Tilt>
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 font-display text-lg font-semibold text-label">{item.title}</p>
-        <p className="mt-0.5 truncate text-xs text-label-secondary">{item.author}</p>
-        <ProgressBarInline pct={pct} className="mt-3" />
-        {totalChapters > 0 && (
-          <p className="mt-1 text-2xs text-label-tertiary tabular-nums">
-            Chapter {chapter} of {totalChapters}
-          </p>
-        )}
+
+      <div className="flex min-w-0 flex-1 flex-col self-stretch">
+        <div className="min-w-0">
+          <p className="text-title line-clamp-2 font-display text-label" title={item.title}>{item.title}</p>
+          <p className="mt-1 truncate text-sm text-label-secondary">{item.author}</p>
+        </div>
+
+        <div className="mt-auto flex items-end gap-4 pt-4">
+          <div className="w-full max-w-72 min-w-0 flex-1">
+            <ProgressBar value={pct} />
+            <p className="mt-2 truncate text-xs text-label-secondary tabular-nums">
+              {caption ?? `${Math.round(pct)}%`}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="ml-auto rounded-md"
+            disabled={!onResume}
+            onClick={(e) => {
+              e.stopPropagation();
+              onResume?.();
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <BookOpen strokeWidth={2} />
+            Resume
+          </Button>
+        </div>
       </div>
-      {onResume && (
-        <Button
-          variant="secondary"
-          size="icon-sm"
-          aria-label={`Resume ${item.title}`}
-          title="Resume"
-          className="shrink-0 rounded-full"
-          onClick={(e) => {
-            e.stopPropagation();
-            onResume();
-          }}
-          onDoubleClick={(e) => e.stopPropagation()}
-        >
-          <Play className="size-3.5 translate-x-px fill-current" strokeWidth={2} />
-        </Button>
-      )}
     </SpotlightCard>
   );
 }
@@ -299,11 +435,11 @@ function GroupCard({
 
   return (
     <div className="group-card flex flex-col">
-      {/* Structure matters: globals.css fans `.group-card-cover` and fades the glow on hover */}
-      <div className="relative mx-3">
+      {/* globals.css fans `.group-card-cover` and fades in `.group-card-glow` on hover */}
+      <div className="relative">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 -bottom-1 h-10 rounded-full opacity-0 blur-2xl transition-opacity duration-300"
+          className="group-card-glow pointer-events-none absolute inset-x-3 -bottom-1 h-10 rounded-full opacity-0 blur-2xl transition-opacity duration-300"
           style={{ background: items[0].gradient }}
         />
 
@@ -352,15 +488,16 @@ function GroupCard({
         </div>
       </div>
 
-      <div className="mt-3 min-w-0 px-3">
+      {/* Same two-row caption as BookCard, on the column edge */}
+      <div className="mt-3 flex h-9 min-w-0 flex-col justify-center">
         <p className="text-headline truncate text-label">{author}</p>
-        <p className="mt-0.5 truncate text-xs text-label-secondary">{count} books</p>
+        <p className="truncate text-xs text-label-secondary">{count} books</p>
       </div>
     </div>
   );
 }
 
-export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {}, onImport }: ContentGridProps) {
+export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMoveItem, onDeleteItem, onTransferItem, onOpenItem, onViewDetails, activeView, section, selectedIds, onToggleSelect, onClearSelection, onBatchDelete, onBatchMove, readingProgress = {}, onImport, header }: ContentGridProps) {
   const hasSelection = selectedIds.size > 0;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -382,37 +519,35 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
   }, [hasSelection, onOpenItem]);
 
   if (items.length === 0) {
-    const isComics = section === "comic";
+    const empty = emptyStateFor(activeView, section);
+    const EmptyIcon = empty.icon;
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-8 pb-24">
-        <EmptyState
-          icon={<Library strokeWidth={1.5} />}
-          title={isComics ? "No series here yet" : "Your shelf is empty"}
-          description={
-            isComics
-              ? "Import CBZ or CBR archives and they’ll line up here, ready to read."
-              : "Import EPUB, PDF or MOBI files and they’ll line up here, ready to read."
-          }
-          action={
-            onImport ? (
-              <Button size="sm" onClick={onImport} className="rounded-md">
-                <Plus strokeWidth={2.25} />
-                Import
-              </Button>
-            ) : undefined
-          }
-        />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {header != null && (
+          <ToolbarScrollContext.Provider value={{ scrolled: false }}>{header}</ToolbarScrollContext.Provider>
+        )}
+        <div className="flex min-h-0 flex-1 items-center justify-center px-8 pb-24">
+          <EmptyState
+            icon={<EmptyIcon strokeWidth={1.5} />}
+            title={empty.title}
+            description={empty.description}
+            action={
+              empty.canImport && onImport ? (
+                <Button size="sm" onClick={onImport} className="rounded-md">
+                  <Plus strokeWidth={2.25} />
+                  Import
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       </div>
     );
   }
 
   const ctxProps = { activeView, section, onMove: onMoveItem, onDelete: onDeleteItem, onTransfer: onTransferItem };
 
-  const getPct = (filePath: string): number | null => {
-    const p = readingProgress[filePath];
-    if (!p || p.totalChapters <= 0) return null;
-    return Math.min(((p.chapter + 1) / p.totalChapters) * 100, 100);
-  };
+  const getPct = (filePath: string) => bookPct(readingProgress, filePath);
 
   const allTargets = section === "books" ? bookMoveTargets : comicMoveTargets;
   const moveTargets = allTargets.filter((t) => t.view !== activeView);
@@ -461,7 +596,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
     /* ── List view — inset grouped rows ───────── */
     const thumb = thumbRadius(coverStyle);
     body = (
-      <ScrollArea className={cn("min-h-0 flex-1", FADE_MASK)}>
+      <LibraryScroll header={header}>
         <div className={cn(PAGE_PAD, "pt-1")}>
           {/* Column headers */}
           <div className="flex h-7 items-center gap-3 px-3 text-section select-none">
@@ -503,9 +638,9 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                         {pct != null && <ProgressBarInline pct={pct} />}
                       </div>
                       {showFormatBadge && (
-                        <div className="flex w-14 shrink-0 justify-end">
-                          <Badge>{item.format}</Badge>
-                        </div>
+                        <span className="w-14 shrink-0 text-right text-2xs font-medium text-label-tertiary">
+                          {item.format}
+                        </span>
                       )}
                     </div>
                   </ItemContextMenu>
@@ -515,17 +650,19 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             <div aria-hidden className="pointer-events-none absolute inset-0 rounded-lg hairline" />
           </div>
         </div>
-      </ScrollArea>
+      </LibraryScroll>
     );
   } else if (viewMode === "detail") {
-    /* ── Detail view — spotlight tiles ────────── */
+    /* ── Detail view — tiles that actually carry detail ───── */
     const thumb = thumbRadius(coverStyle);
     body = (
-      <ScrollArea className={cn("min-h-0 flex-1", FADE_MASK)}>
+      <LibraryScroll header={header}>
         <div className={cn(PAGE_PAD, "grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4")}>
           {items.map((item, i) => {
             const isSelected = selectedIds.has(item.id);
             const pct = getPct(item.filePath);
+            const caption = progressCaption(readingProgress, item.filePath);
+            const done = pct != null && pct >= 100;
             return (
               <BlurFade key={item.id} delay={stagger(i)}>
                 <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
@@ -551,13 +688,16 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
                           </div>
                           {hasSelection && <SelectCheck selected={isSelected} />}
                         </div>
-                        <div className="mt-auto flex flex-col gap-2">
-                          {pct != null && <ProgressBarInline pct={pct} className="max-w-44" />}
-                          {showFormatBadge && (
-                            <div className="flex items-center gap-1.5">
-                              <Badge>{item.format}</Badge>
-                            </div>
-                          )}
+                        <div className="mt-auto flex flex-col gap-1.5">
+                          {pct != null && <ProgressBar value={pct} className="max-w-48" />}
+                          <div className="flex h-4 items-center gap-2 text-xs">
+                            <span className="min-w-0 flex-1 truncate text-label-secondary tabular-nums">
+                              {done ? "Finished" : caption ?? "Not started"}
+                            </span>
+                            {showFormatBadge && (
+                              <span className="shrink-0 text-2xs font-medium text-label-tertiary">{item.format}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </SpotlightCard>
@@ -567,7 +707,7 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
             );
           })}
         </div>
-      </ScrollArea>
+      </LibraryScroll>
     );
   } else if (viewMode === "group") {
     /* ── Group view ───────────────────────────── */
@@ -581,6 +721,8 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
         selectedIds={selectedIds}
         onItemClick={handleItemClick}
         onItemDoubleClick={handleItemDoubleClick}
+        readingProgress={readingProgress}
+        header={header}
       />
     );
   } else {
@@ -594,70 +736,62 @@ export function ContentGrid({ items, viewMode, coverStyle, showFormatBadge, onMo
     const showShelf = inProgress.length > 0;
 
     body = (
-      <ScrollArea className={cn("min-h-0 flex-1", FADE_MASK)}>
+      <LibraryScroll header={header}>
         <div className={PAGE_PAD}>
           {showShelf && (
-            <section className="mb-10">
+            <section>
               <SectionHeader title="Continue Reading" />
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
-                {inProgress.map((item, i) => {
-                  const p = readingProgress[item.filePath];
-                  return (
-                    <BlurFade key={item.id} delay={stagger(i)} className="h-full">
-                      <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
-                        <div
-                          onClick={(e) => handleItemClick(e, item)}
-                          onDoubleClick={() => handleItemDoubleClick(item)}
-                          className="h-full cursor-default select-none"
-                        >
-                          <ContinueCard
-                            item={item}
-                            coverStyle={coverStyle}
-                            pct={getPct(item.filePath) ?? 0}
-                            chapter={p ? p.chapter + 1 : 0}
-                            totalChapters={p?.totalChapters ?? 0}
-                            selected={selectedIds.has(item.id)}
-                            onResume={onOpenItem && !hasSelection ? () => onOpenItem(item) : undefined}
-                          />
-                        </div>
-                      </ItemContextMenu>
-                    </BlurFade>
-                  );
-                })}
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-4">
+                {inProgress.map((item, i) => (
+                  <BlurFade key={item.id} delay={stagger(i)} className="h-full">
+                    <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
+                      <div
+                        onClick={(e) => handleItemClick(e, item)}
+                        onDoubleClick={() => handleItemDoubleClick(item)}
+                        className="h-full cursor-default select-none"
+                      >
+                        <ContinueCard
+                          item={item}
+                          coverStyle={coverStyle}
+                          pct={getPct(item.filePath) ?? 0}
+                          caption={progressCaption(readingProgress, item.filePath)}
+                          selected={selectedIds.has(item.id)}
+                          onResume={onOpenItem && !hasSelection ? () => onOpenItem(item) : undefined}
+                        />
+                      </div>
+                    </ItemContextMenu>
+                  </BlurFade>
+                ))}
               </div>
             </section>
           )}
 
-          {showShelf && (
-            <SectionHeader title={section === "comic" ? "All Comics" : "All Books"} count={items.length} />
-          )}
-
-          <div className={COVER_GRID}>
-          {items.map((item, i) => {
-            const pct = getPct(item.filePath);
-            return (
-              <BlurFade key={item.id} delay={stagger(i)}>
-                <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
-                  <div
-                    onClick={(e) => handleItemClick(e, item)}
-                    onDoubleClick={() => handleItemDoubleClick(item)}
-                    className="cursor-default select-none"
-                  >
-                    <BookCard
-                      {...item}
-                      coverStyle={coverStyle}
-                      showFormatBadge={showFormatBadge}
-                      selected={selectedIds.has(item.id)}
-                      progress={pct != null ? pct / 100 : undefined}
-                    />
-                  </div>
-                </ItemContextMenu>
-              </BlurFade>
-            );
-          })}
+          <div className={cn(COVER_GRID, showShelf && "mt-10")}>
+            {items.map((item, i) => {
+              const pct = getPct(item.filePath);
+              return (
+                <BlurFade key={item.id} delay={stagger(i)}>
+                  <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
+                    <div
+                      onClick={(e) => handleItemClick(e, item)}
+                      onDoubleClick={() => handleItemDoubleClick(item)}
+                      className="cursor-default select-none"
+                    >
+                      <BookCard
+                        {...item}
+                        coverStyle={coverStyle}
+                        showFormatBadge={showFormatBadge}
+                        selected={selectedIds.has(item.id)}
+                        progress={pct != null ? pct / 100 : undefined}
+                      />
+                    </div>
+                  </ItemContextMenu>
+                </BlurFade>
+              );
+            })}
           </div>
         </div>
-      </ScrollArea>
+      </LibraryScroll>
     );
   }
 
@@ -679,6 +813,8 @@ function GroupView({
   selectedIds,
   onItemClick,
   onItemDoubleClick,
+  readingProgress,
+  header,
 }: {
   items: MockItem[];
   coverStyle: CoverStyle;
@@ -694,6 +830,8 @@ function GroupView({
   selectedIds: Set<number>;
   onItemClick: (e: React.MouseEvent, item: MockItem) => void;
   onItemDoubleClick: (item: MockItem) => void;
+  readingProgress: ReadingProgress;
+  header?: React.ReactNode;
 }) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
@@ -710,7 +848,9 @@ function GroupView({
     );
   }, [items]);
 
-  const renderBook = (item: MockItem, i: number) => (
+  const renderBook = (item: MockItem, i: number) => {
+    const pct = bookPct(readingProgress, item.filePath);
+    return (
     <BlurFade key={item.id} delay={stagger(i)}>
       <ItemContextMenu itemId={item.id} filePath={item.filePath} {...ctxProps} onViewDetails={onViewDetails ? () => onViewDetails(item) : undefined}>
         <div
@@ -723,16 +863,18 @@ function GroupView({
             coverStyle={coverStyle}
             showFormatBadge={showFormatBadge}
             selected={selectedIds.has(item.id)}
+            progress={pct != null ? pct / 100 : undefined}
           />
         </div>
       </ItemContextMenu>
     </BlurFade>
-  );
+    );
+  };
 
   if (expandedGroup) {
     const groupItems = groups.find(([author]) => author === expandedGroup)?.[1] ?? [];
     return (
-      <ScrollArea className={cn("min-h-0 flex-1", FADE_MASK)}>
+      <LibraryScroll header={header}>
         <div className={cn(PAGE_PAD, "pt-1")}>
           <div className="mb-6 flex animate-blur-in items-center gap-4">
             <button
@@ -752,12 +894,12 @@ function GroupView({
           </div>
           <div className={COVER_GRID}>{groupItems.map(renderBook)}</div>
         </div>
-      </ScrollArea>
+      </LibraryScroll>
     );
   }
 
   return (
-    <ScrollArea className={cn("min-h-0 flex-1", FADE_MASK)}>
+    <LibraryScroll header={header}>
       <div className={cn(PAGE_PAD, COVER_GRID)}>
         {groups.map(([author, groupItems], i) =>
           groupItems.length === 1 ? (
@@ -775,6 +917,6 @@ function GroupView({
           )
         )}
       </div>
-    </ScrollArea>
+    </LibraryScroll>
   );
 }

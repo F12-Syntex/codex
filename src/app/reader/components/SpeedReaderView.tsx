@@ -7,7 +7,6 @@ import {
   Pause,
   SkipBack,
   SkipForward,
-  X,
   Minus,
   Plus,
 } from "lucide-react";
@@ -223,12 +222,9 @@ export function SpeedReaderView({
         style={{ backgroundColor: "color-mix(in srgb, var(--reader-paper, var(--canvas)) 92%, transparent)" }}
       />
 
-      {/* Top: chapter + exit */}
+      {/* Top: chapter (exit lives in the transport pill — never under the window ✕) */}
       <div className="relative z-10 flex h-12 shrink-0 items-center justify-center px-14">
         <span className="truncate text-xs text-label-tertiary">{chapterTitle}</span>
-        <ChromeButton onClick={onExit} title="Exit speed reader (Esc)" aria-label="Exit speed reader" className="absolute right-3 top-2">
-          <X strokeWidth={1.75} />
-        </ChromeButton>
       </div>
 
       {/* Focal area — RSVP slightly above centre */}
@@ -321,10 +317,21 @@ export function SpeedReaderView({
 
           <PillDivider />
 
-          <div className="flex items-center gap-2 pl-1 pr-2.5">
+          <div className="flex items-center gap-2 pl-1 pr-1">
             <ProgressRing value={progressPercent / 100} size={22} stroke={2.5} aria-label="Chapter progress" />
             <span className="w-8 text-xs tabular-nums text-label-secondary">{progressPercent}%</span>
           </div>
+
+          <PillDivider />
+
+          <button
+            type="button"
+            onClick={onExit}
+            title="Exit speed reader (Esc)"
+            className="focus-ring pressable flex h-9 shrink-0 items-center rounded-full bg-fill-tertiary px-4 text-xs font-medium text-label transition-colors duration-150 hover:bg-fill-secondary"
+          >
+            Done
+          </button>
         </motion.div>
       </div>
     </motion.div>

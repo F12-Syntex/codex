@@ -4,15 +4,16 @@
  * What's New — release timeline.
  *
  * Composition adapted from two 21st.dev components:
- *  - "What's New Changelog Timeline" (dhxwhy, id 36570): vertical rail with
- *    category-coloured nodes, expand-in-place rows (grid-rows 0fr→1fr).
- *  - "Changelog" (mohammadshehadeh / Hirael, id 28402): sticky version rail,
- *    version badges, New / Improved / Fixed tags and a category filter.
- * Restyled for Codex Glass: serif release headings, latest release as a hero
- * glass card with paper grain, motion/react entrances.
+ *  - "What's New Changelog Timeline" (dhxwhy, id 36570): expand-in-place rows
+ *    (grid-rows 0fr→1fr).
+ *  - "Changelog" (mohammadshehadeh / Hirael, id 28402): New / Improved / Fixed
+ *    tags and a category filter.
+ * One column, one timeline: each version and date is stated once, and the
+ * coloured tag word ("New", "Fixed") is the only colour signal. The newest
+ * version is a hero glass card that shows its notes, with one "Latest" badge.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   AlertCircle,
@@ -21,10 +22,6 @@ import {
   Download,
   Loader2,
   ArrowDownToLine,
-  Sparkles,
-  Bug,
-  TrendingUp,
-  Hammer,
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -97,12 +94,12 @@ type KindFilter = "all" | ChangeKind;
 
 const KIND: Record<
   ChangeKind,
-  { label: string; dot: string; text: string; badge: "success" | "accent" | "warning" | "default"; icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }
+  { label: string; text: string }
 > = {
-  feature: { label: "New", dot: "bg-success", text: "text-success", badge: "success", icon: Sparkles },
-  improvement: { label: "Improved", dot: "bg-info", text: "text-info", badge: "accent", icon: TrendingUp },
-  fix: { label: "Fixed", dot: "bg-warning", text: "text-warning", badge: "warning", icon: Bug },
-  chore: { label: "Maintenance", dot: "bg-label-quaternary", text: "text-label-tertiary", badge: "default", icon: Hammer },
+  feature: { label: "New", text: "text-success" },
+  improvement: { label: "Improved", text: "text-info" },
+  fix: { label: "Fixed", text: "text-warning" },
+  chore: { label: "Maintenance", text: "text-label-tertiary" },
 };
 
 const KIND_ORDER: ChangeKind[] = ["feature", "improvement", "fix", "chore"];
@@ -161,16 +158,14 @@ function groupEntries(entries: CommitEntry[], latestSha: string | null): Release
   return groups;
 }
 
-function groupHeading(group: ReleaseGroup): string {
+/** A release's own name, when it has one beyond its tag. */
+function releaseName(group: ReleaseGroup): string | null {
   const r = group.release;
-  if (r?.name && r.name !== r.tag_name) return r.name;
-  const items = group.entries.map((e) => classify(e.title));
-  return (items.find((i) => i.kind === "feature") ?? items.find((i) => i.kind !== "chore") ?? items[0]).text;
+  return r?.name && r.name !== r.tag_name ? r.name : null;
 }
 
-function dominantKind(group: ReleaseGroup): ChangeKind {
-  const kinds = group.entries.map((e) => classify(e.title).kind);
-  return KIND_ORDER.find((k) => kinds.includes(k)) ?? "chore";
+function versionLabel(group: ReleaseGroup): string {
+  return group.version ? `Codex ${group.version}` : "In development";
 }
 
 /* ── Update Banner ────────────────────────────────────────── */
@@ -352,8 +347,7 @@ function Skeleton() {
         </div>
       </div>
       {[1, 2, 3].map((i) => (
-        <div key={i} className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-5">
-          <div className="mt-1 size-4 animate-pulse rounded-full bg-fill-tertiary" />
+        <div key={i} className="border-t border-separator pt-8">
           <div className="flex flex-col gap-3">
             <div className="h-4 w-24 animate-pulse rounded-full bg-fill-quaternary" />
             <div className="h-5 animate-pulse rounded-sm bg-fill-tertiary" style={{ width: `${40 + ((i * 17) % 30)}%` }} />
@@ -369,13 +363,11 @@ function Skeleton() {
 
 function ChangeRow({
   entry,
-  date,
   expanded,
   onToggle,
   showKindLabel,
 }: {
   entry: CommitEntry;
-  date: string;
   expanded: boolean;
   onToggle: () => void;
   showKindLabel?: boolean;
@@ -396,17 +388,10 @@ function ChangeRow({
           hasDetails && "focus-ring cursor-pointer transition-colors duration-150 hover:bg-fill-quaternary",
         )}
       >
-        <span className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", meta.dot)} />
         <span className="min-w-0 flex-1 text-sm leading-relaxed text-label-secondary group-hover/change:text-label">
           {showKindLabel && <span className={cn("mr-1.5 font-medium", meta.text)}>{meta.label}</span>}
           {text}
         </span>
-        {entry.release && (
-          <Badge variant="outline" className="mt-0.5">
-            <Megaphone strokeWidth={2} />
-            Release
-          </Badge>
-        )}
         {hasDetails && (
           <ChevronDown
             className={cn(
@@ -416,7 +401,6 @@ function ChangeRow({
             strokeWidth={2}
           />
         )}
-        <span className="mt-0.5 w-12 shrink-0 text-right text-2xs text-label-tertiary tabular-nums">{date}</span>
       </Comp>
 
       {/* Expand-in-place (grid-rows 0fr → 1fr) */}
@@ -428,7 +412,7 @@ function ChangeRow({
         aria-hidden={!expanded}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="mt-1 mb-2 ml-4 border-l border-separator pl-4">
+          <div className="mt-1 mb-2 ml-2 border-l border-separator pl-4">
             {entry.release?.name && entry.release.name !== entry.release.tag_name && (
               <p className="mb-2 text-headline text-label">{entry.release.name}</p>
             )}
@@ -464,12 +448,10 @@ function ReleaseChanges({
   group,
   expandedShas,
   onToggle,
-  formatDate,
 }: {
   group: ReleaseGroup;
   expandedShas: Set<string>;
   onToggle: (sha: string) => void;
-  formatDate: (d: string) => string;
 }) {
   const byKind = useMemo(() => {
     const map = new Map<ChangeKind, CommitEntry[]>();
@@ -486,7 +468,7 @@ function ReleaseChanges({
     const e = group.entries[0];
     return (
       <ul>
-        <ChangeRow entry={e} date={formatDate(e.date)} expanded={expandedShas.has(e.sha)} onToggle={() => onToggle(e.sha)} showKindLabel />
+        <ChangeRow entry={e} expanded={expandedShas.has(e.sha)} onToggle={() => onToggle(e.sha)} showKindLabel />
       </ul>
     );
   }
@@ -495,17 +477,12 @@ function ReleaseChanges({
     <div className="flex flex-col gap-4">
       {byKind.map(([kind, items]) => {
         const meta = KIND[kind];
-        const Icon = meta.icon;
         return (
           <section key={kind}>
-            <h4 className="text-section mb-1 flex items-center gap-1.5 text-label-tertiary">
-              <Icon className={cn("size-3", meta.text)} strokeWidth={2.25} />
-              {meta.label}
-              <span className="font-normal text-label-quaternary tabular-nums">{items.length}</span>
-            </h4>
+            <h4 className={cn("mb-1 text-xs font-medium", meta.text)}>{meta.label}</h4>
             <ul>
               {items.map((e) => (
-                <ChangeRow key={e.sha} entry={e} date={formatDate(e.date)} expanded={expandedShas.has(e.sha)} onToggle={() => onToggle(e.sha)} />
+                <ChangeRow key={e.sha} entry={e} expanded={expandedShas.has(e.sha)} onToggle={() => onToggle(e.sha)} />
               ))}
             </ul>
           </section>
@@ -515,12 +492,34 @@ function ReleaseChanges({
   );
 }
 
-function VersionPill({ group, className }: { group: ReleaseGroup; className?: string }) {
-  return group.version ? (
-    <Badge variant="outline" className={cn("font-mono", className)}>v{group.version}</Badge>
-  ) : (
-    <Badge variant="outline" className={className}>In development</Badge>
-  );
+/** The hero's notes: the release body when there is one, otherwise the changes. */
+function HeroNotes({
+  group,
+  expandedShas,
+  onToggle,
+}: {
+  group: ReleaseGroup;
+  expandedShas: Set<string>;
+  onToggle: (sha: string) => void;
+}) {
+  if (group.release?.body) {
+    return (
+      <div>
+        {renderBody(group.release.body)}
+        {group.release.html_url && (
+          <button
+            type="button"
+            onClick={() => window.open(group.release!.html_url, "_blank")}
+            className="focus-ring mt-3 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-brand hover:underline"
+          >
+            View on GitHub
+            <ExternalLink className="size-3" strokeWidth={2} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  return <ReleaseChanges group={group} expandedShas={expandedShas} onToggle={onToggle} />;
 }
 
 /* ── Data fetching ────────────────────────────────────────── */
@@ -605,7 +604,6 @@ export function ChangelogPage() {
   const [expandedShas, setExpandedShas] = useState<Set<string>>(new Set());
   const [latestRelease, setLatestRelease] = useState<string | null>(null);
   const [filter, setFilter] = useState<KindFilter>("all");
-  const scrollRef = useRef<HTMLDivElement>(null);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -653,18 +651,13 @@ export function ChangelogPage() {
 
   const [hero, ...rest] = groups;
 
-  const scrollToGroup = (key: string) => {
-    const el = scrollRef.current?.querySelector<HTMLElement>(`[data-group="${key}"]`);
-    el?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-  };
-
   const ready = !loading && !error && entries.length > 0;
 
   return (
-    <div ref={scrollRef} className="flex h-full flex-col overflow-y-auto scroll-pt-6">
-      {/* ── Header ─────────────────────────────────── */}
-      <header className="flex items-end justify-between gap-6 px-8 pt-6 pb-4">
-        <div className="min-w-0">
+    <div className="flex h-full flex-col overflow-y-auto scroll-pt-6">
+      <div className="w-full max-w-2xl px-8 pt-6 pb-32">
+        {/* ── Header: title, subtitle, filter ──────────── */}
+        <header className="pb-6">
           <h1 className="text-large-title font-display text-label">What&apos;s New</h1>
           <p className="mt-1 text-sm text-label-secondary">
             {ready ? (
@@ -676,147 +669,108 @@ export function ChangelogPage() {
               "Every commit and release to Codex."
             )}
           </p>
-        </div>
-        {ready && (
-          <SegmentedControl<KindFilter>
-            value={filter}
-            onValueChange={setFilter}
-            size="sm"
-            options={[
-              { value: "all", label: "All" },
-              { value: "feature", label: "New" },
-              { value: "improvement", label: "Improved" },
-              { value: "fix", label: "Fixed" },
-            ]}
-          />
-        )}
-      </header>
-
-      {/* Update banner */}
-      {!loading && isOutdated && (
-        <div className="max-w-5xl px-8 pb-2">
-          <UpdateBanner latestVersion={latestRelease!} />
-        </div>
-      )}
-
-      <div className="flex w-full max-w-5xl gap-10 px-8 pt-4 pb-32">
-        {/* ── Version index (sticky rail) ─────────────── */}
-        {ready && groups.length > 1 && (
-          <nav aria-label="Versions" className="sticky top-6 hidden w-36 shrink-0 self-start lg:block">
-            <p className="text-section mb-2 px-2 text-label-tertiary">Versions</p>
-            <ul className="scrollbar-none flex max-h-[60vh] flex-col overflow-y-auto">
-              {groups.slice(0, 40).map((g) => (
-                <li key={g.key}>
-                  <button
-                    type="button"
-                    onClick={() => scrollToGroup(g.key)}
-                    className="focus-ring flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors duration-150 hover:bg-fill-quaternary"
-                  >
-                    <span className={cn("size-1.5 shrink-0 rounded-full", KIND[dominantKind(g)].dot)} />
-                    <span className="flex-1 truncate font-mono text-xs text-label-secondary">
-                      {g.version ? `v${g.version}` : "Next"}
-                    </span>
-                    <span className="text-2xs text-label-quaternary tabular-nums">{formatDate(g.date)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
-
-        <div className="min-w-0 max-w-2xl flex-1">
-          {loading && <Skeleton />}
-
-          {error && (
-            <EmptyState
-              icon={<AlertCircle />}
-              title="Couldn't load history"
-              description="Check your connection and try again."
+          {ready && (
+            <SegmentedControl<KindFilter>
+              className="mt-4"
+              value={filter}
+              onValueChange={setFilter}
+              size="sm"
+              options={[
+                { value: "all", label: "All" },
+                { value: "feature", label: "New" },
+                { value: "improvement", label: "Improved" },
+                { value: "fix", label: "Fixed" },
+              ]}
             />
           )}
+        </header>
 
-          {!loading && !error && entries.length === 0 && (
-            <EmptyState icon={<Megaphone />} title="No commits yet" description="Release notes will appear here." />
-          )}
+        {/* Update banner */}
+        {!loading && isOutdated && (
+          <div className="pb-6">
+            <UpdateBanner latestVersion={latestRelease!} />
+          </div>
+        )}
 
-          {ready && groups.length === 0 && (
-            <EmptyState icon={<Megaphone />} title="Nothing here" description="No changes match this filter." />
-          )}
+        {loading && <Skeleton />}
 
-          <AnimatePresence mode="wait" initial={false}>
-            {ready && hero && (
-              <motion.div
-                key={filter}
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-              >
-                {/* ── Hero: latest release ─────────────── */}
-                <BlurFade>
-                  <article data-group={hero.key} className="glass grain relative overflow-hidden rounded-2xl p-6">
-                    <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 size-64 rounded-full bg-brand/25 blur-3xl" />
-                    <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-20 size-56 rounded-full bg-brand/10 blur-3xl" />
-                    <div className="relative">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="accent">
-                          <Sparkles strokeWidth={2} />
-                          Latest
-                        </Badge>
-                        <VersionPill group={hero} />
-                        {hero.isLatest && <Badge variant="success">Release</Badge>}
-                        <span className="text-xs text-label-tertiary">{formatDate(hero.date)}</span>
-                      </div>
-                      <h2 className="mt-3 text-title font-display text-label text-balance">{groupHeading(hero)}</h2>
-                      <p className="mt-1 text-xs text-label-tertiary">
-                        {hero.entries.length} {hero.entries.length === 1 ? "change" : "changes"}
-                      </p>
-                      {(hero.entries.length > 1 || hero.entries[0].description || hero.entries[0].release?.body) && (
-                        <div className="mt-5">
-                          <ReleaseChanges group={hero} expandedShas={expandedShas} onToggle={toggleExpanded} formatDate={formatDate} />
-                        </div>
-                      )}
+        {error && (
+          <EmptyState
+            icon={<AlertCircle />}
+            title="Couldn't load history"
+            description="Check your connection and try again."
+          />
+        )}
+
+        {!loading && !error && entries.length === 0 && (
+          <EmptyState icon={<Megaphone />} title="No commits yet" description="Release notes will appear here." />
+        )}
+
+        {ready && groups.length === 0 && (
+          <EmptyState icon={<Megaphone />} title="Nothing here" description="No changes match this filter." />
+        )}
+
+        <AnimatePresence mode="wait" initial={false}>
+          {ready && hero && (
+            <motion.div
+              key={filter}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+            >
+              {/* ── Hero: newest version, with its notes ───── */}
+              <BlurFade>
+                <article data-group={hero.key} className="glass grain relative overflow-hidden rounded-2xl p-6">
+                  <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 size-64 rounded-full bg-brand/25 blur-3xl" />
+                  <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-20 size-56 rounded-full bg-brand/10 blur-3xl" />
+                  <div className="relative">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="accent">Latest</Badge>
+                      <span className="text-xs text-label-tertiary tabular-nums">{formatDate(hero.date)}</span>
                     </div>
-                  </article>
-                </BlurFade>
+                    <h2 className="mt-3 text-title font-display text-label text-balance">
+                      {releaseName(hero) ?? versionLabel(hero)}
+                    </h2>
+                    {releaseName(hero) && hero.version && (
+                      <p className="mt-0.5 font-mono text-xs text-label-tertiary">v{hero.version}</p>
+                    )}
+                    <div className="mt-5">
+                      <HeroNotes group={hero} expandedShas={expandedShas} onToggle={toggleExpanded} />
+                    </div>
+                  </div>
+                </article>
+              </BlurFade>
 
-                {/* ── Timeline ─────────────────────────── */}
-                {rest.length > 0 && (
-                  <ol className="relative mt-10">
-                    <span aria-hidden className="pointer-events-none absolute top-2 bottom-2 left-2 w-px -translate-x-1/2 bg-separator" />
-                    {rest.map((group, i) => {
-                      const kind = dominantKind(group);
-                      return (
-                        <li key={group.key} data-group={group.key} className="relative scroll-mt-6 pb-10 last:pb-0">
-                          <BlurFade inView delay={Math.min(i, 6) * 0.03} className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-5">
-                            <span className="relative z-10 mt-0.5 inline-flex size-4 items-center justify-center rounded-full bg-fill-tertiary hairline">
-                              <span className={cn("size-2 rounded-full", KIND[kind].dot, group.isLatest && "shadow-[0_0_10px_var(--accent-brand)]")} />
+              {/* ── Timeline: one column, one date per version ── */}
+              {rest.length > 0 && (
+                <ol className="mt-10 flex flex-col">
+                  {rest.map((group, i) => {
+                    const name = releaseName(group);
+                    return (
+                      <li key={group.key} data-group={group.key} className="scroll-mt-6 border-t border-separator pt-6 pb-8 last:pb-0">
+                        <BlurFade inView delay={Math.min(i, 6) * 0.03}>
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-mono text-xs font-medium text-label">
+                              {group.version ? `v${group.version}` : "In development"}
                             </span>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <VersionPill group={group} />
-                                {group.isLatest && <Badge variant="accent">Latest release</Badge>}
-                                <span className="text-xs text-label-tertiary">{formatDate(group.date)}</span>
-                              </div>
-                              {group.entries.length > 1 && (
-                                <h3 className="mt-2 font-display text-lg font-semibold text-label text-balance">
-                                  {groupHeading(group)}
-                                </h3>
-                              )}
-                              <div className="mt-2.5">
-                                <ReleaseChanges group={group} expandedShas={expandedShas} onToggle={toggleExpanded} formatDate={formatDate} />
-                              </div>
-                            </div>
-                          </BlurFade>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                            <span className="text-xs text-label-tertiary tabular-nums">{formatDate(group.date)}</span>
+                          </div>
+                          {name && (
+                            <h3 className="mt-2 font-display text-lg font-semibold text-label text-balance">{name}</h3>
+                          )}
+                          <div className="mt-2">
+                            <ReleaseChanges group={group} expandedShas={expandedShas} onToggle={toggleExpanded} />
+                          </div>
+                        </BlurFade>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

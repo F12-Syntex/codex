@@ -45,7 +45,7 @@ function TooltipContent({
         sideOffset={sideOffset}
         className={cn(
           // Capsule glass label that springs out of the trigger's side.
-          "glass-thick z-50 flex h-6 w-fit origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap text-label",
+          "glass-menu z-50 flex h-6 w-fit origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-full px-2.5 text-xs font-medium whitespace-nowrap text-label",
           "animate-pop-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-90 data-[state=closed]:duration-100",
           className
         )}

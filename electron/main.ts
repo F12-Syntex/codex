@@ -4,7 +4,7 @@ import fs from "fs";
 import { pathToFileURL } from "url";
 import { initUpdater } from "./updater";
 import {
-  initDatabase, getAllItems, addItems, deleteItem, moveItem, transferItem, updateItemMeta,
+  initDatabase, getDb, getAllItems, addItems, deleteItem, moveItem, transferItem, updateItemMeta,
   getSetting, setSetting, getAllSettings, getBookmarks, addBookmark, deleteBookmark,
   getQuotes, getAllQuotes, addQuote, updateQuote, deleteQuote,
   getExcludedPaths, recordPageView, getReadingActivity, getReadingStats,
@@ -32,6 +32,8 @@ import { parseBookContent, parsePdfContent } from "./book-parser";
 import { EdgeTTS } from "@andresaya/edge-tts";
 import { searchNovels, getNovelInfo, getDownloadManager, fetchImageAsDataUrl, getAvailableSources, type NovelInfo } from "./installer";
 import { getDownloads, removeDownload, clearCompletedDownloads, getDownload } from "./database";
+import { registerAll } from "./ipc/registry";
+import { trackReaderWindow } from "./book/windows";
 
 const SUPPORTED_EXTENSIONS = [".epub", ".pdf", ".cbz", ".cbr", ".mobi"];
 
@@ -156,6 +158,8 @@ function createAppWindow(
 function createWindow() {
   // Initialize database before setting up IPC
   initDatabase();
+  // New RPC areas (ai:*, chapters:*, knowledge:*, book:*, assistant:*). Idempotent.
+  registerAll({ db: getDb(), getWindows: () => BrowserWindow.getAllWindows(), ipcMain });
 
   mainWindow = createAppWindow("", undefined, { width: 1200, height: 800, minWidth: 800, minHeight: 600 });
 
@@ -196,6 +200,7 @@ function createWindow() {
       filePath: bookInfo.filePath,
     });
     const readerWin = createAppWindow("reader", params);
+    trackReaderWindow(readerWin, bookInfo.filePath);
     // Persist last-open reader so it can be restored on next launch
     setSetting("lastReader", JSON.stringify(bookInfo));
     readerWin.on("closed", () => {
@@ -639,6 +644,7 @@ app.whenReady().then(() => {
           filePath: bookInfo.filePath,
         });
         const readerWin = createAppWindow("reader", params);
+        trackReaderWindow(readerWin, bookInfo.filePath);
         readerWin.on("closed", () => {
           setSetting("lastReader", "");
         });

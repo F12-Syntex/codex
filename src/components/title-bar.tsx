@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Kbd } from "@/components/ui/kbd";
 import { WindowControls } from "@/components/window-controls";
@@ -11,26 +11,30 @@ import { SHORTCUT_REGISTRY } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 interface TitleBarProps {
-  breadcrumb?: string[];
   /** Show the Codex identity here (when the sidebar — its usual home — is hidden). */
   showIdentity?: boolean;
   /** When given, a Spotlight-style search field sits centred in the bar. */
   onSearchOpen?: () => void;
 }
 
-/** Codex mark + wordmark + version — shared with the sidebar header. */
+/**
+ * Codex mark + wordmark + version — shared with the sidebar header.
+ * The navy-and-gold mark sits on a neutral plate so it reads on dark glass.
+ */
 export function CodexIdentity({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <Image
-        src="/codex-logo.svg"
-        alt=""
-        width={18}
-        height={18}
-        className="pointer-events-none rounded-xs"
-        draggable={false}
-        priority
-      />
+      <span className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-xs bg-fill-secondary shadow-[inset_0_0_0_0.5px_var(--separator)]">
+        <Image
+          src="/codex-logo.svg"
+          alt=""
+          width={16}
+          height={16}
+          className="pointer-events-none"
+          draggable={false}
+          priority
+        />
+      </span>
       <span className="font-display text-base leading-none font-semibold tracking-tight text-label">Codex</span>
       <Badge variant="outline" className="h-4 px-1.5 text-label-tertiary">
         v{APP_VERSION}
@@ -45,76 +49,32 @@ const searchKeys = SHORTCUT_REGISTRY.find((s) => s.id === "search")?.keys ?? "Ct
  * Unified toolbar-style window chrome for the content column (macOS Tahoe:
  * the sidebar runs full height, the title bar belongs to the content).
  * Transparent over the ink canvas; the bar is a drag region except controls.
- * Breadcrumb adapted from 21st.dev "Breadcrumb" (originui, id 439 — chevron
- * separator variant) with a blur-fade crossfade between locations.
+ *
+ * Left: identity, only while the sidebar is hidden (aligned to the 32px
+ * content gutter). Centre: the one search entry point. Right: window controls.
+ * No breadcrumb — the large title and the sidebar already say where you are.
  */
-export function TitleBar({ breadcrumb, showIdentity = true, onSearchOpen }: TitleBarProps) {
+export function TitleBar({ showIdentity = true, onSearchOpen }: TitleBarProps) {
   const reduce = useReducedMotion();
-  const segments = breadcrumb && breadcrumb.length > 0 ? breadcrumb : ["Library"];
 
   return (
     <header className="app-drag-region relative z-20 grid h-13 shrink-0 select-none grid-cols-[1fr_auto_1fr] items-center">
-      {/* Identity + location */}
-      <div className={cn("flex h-full min-w-0 items-center", showIdentity ? "pl-4" : "pl-8")}>
+      {/* Identity */}
+      <div className="flex h-full min-w-0 items-center pl-8">
         <AnimatePresence initial={false}>
           {showIdentity && (
             <motion.div
               key="identity"
               className="flex items-center"
               initial={reduce ? { opacity: 0 } : { opacity: 0, x: -8, filter: "blur(4px)" }}
-              animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+              animate={{ opacity: 1, x: 0, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
               exit={{ opacity: 0 }}
               transition={{ type: "spring", stiffness: 380, damping: 32 }}
             >
               <CodexIdentity />
-              <span aria-hidden="true" className="mx-3.5 h-3.5 w-px bg-separator-strong" />
             </motion.div>
           )}
         </AnimatePresence>
-
-        <nav aria-label="Breadcrumb" className="min-w-0">
-          <ol className="flex min-w-0 items-center gap-1">
-            <AnimatePresence mode="popLayout" initial={false}>
-              {segments.flatMap((segment, i) => {
-                const last = i === segments.length - 1;
-                const item = (
-                  <motion.li
-                    key={`seg-${i}-${segment}`}
-                    layout={!reduce}
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4, filter: "blur(4px)" }}
-                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                    exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4, filter: "blur(4px)" }}
-                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                    aria-current={last ? "page" : undefined}
-                    className={cn(
-                      "truncate text-sm",
-                      last ? "font-semibold text-label" : "text-label-tertiary",
-                    )}
-                  >
-                    {segment}
-                  </motion.li>
-                );
-                if (i === 0) return [item];
-                return [
-                  <motion.li
-                    key={`sep-${i}-${segment}`}
-                    role="presentation"
-                    aria-hidden="true"
-                    layout={!reduce}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.18 }}
-                    className="flex items-center text-label-quaternary"
-                  >
-                    <ChevronRight className="size-3.5" strokeWidth={2} />
-                  </motion.li>,
-                  item,
-                ];
-              })}
-            </AnimatePresence>
-          </ol>
-        </nav>
       </div>
 
       {/* Centre — Spotlight field */}

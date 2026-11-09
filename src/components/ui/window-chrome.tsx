@@ -1,22 +1,24 @@
 "use client";
 
 /**
- * Secondary-window chrome — the shell + 44px glass title bar used by the
- * Wiki, Quotes, AI Buddy and Style Dictionary Electron windows.
+ * Secondary-window chrome — the shell + 52px transparent title bar used by the
+ * Wiki, Quotes, AI Buddy and Style Dictionary Electron windows. It matches the
+ * main window exactly (conventions S9.5: one window chrome).
  *
- * - `WindowShell`: `app-canvas` body with a single still frame of the
+ * - `WindowShell`: `app-canvas` body with a quiet, still frame of the
  *   `<InkCanvas>` behind everything, so glass surfaces have something to refract.
- * - `WindowChrome`: drag region, serif window title, optional zoom pill and
- *   refined Windows/Linux-style window controls (same IPC as WindowHeader).
+ * - `WindowChrome`: drag region, window glyph + serif title + `· subtitle`,
+ *   optional zoom pill, and the shared `<WindowControls />` caption buttons.
  *
  * Zoom pill adapted from 21st.dev "Canvas Zoom Toolbar" (cnippet-dev, id 18775):
  * − / live percentage / + grouped in a single rounded toolbar pill.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Minus, Plus, Square, X } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InkCanvas } from "@/components/ui/ink-canvas";
+import { WindowControls } from "@/components/window-controls";
 
 /* ── Shell ─────────────────────────────────────────────────────────── */
 
@@ -24,7 +26,7 @@ export function WindowShell({ children, className }: { children: React.ReactNode
   return (
     <div className={cn("app-canvas relative isolate flex h-screen flex-col overflow-hidden text-label", className)}>
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <InkCanvas still intensity={0.5} />
+        <InkCanvas still intensity={0.24} />
       </div>
       {children}
     </div>
@@ -51,7 +53,6 @@ interface WindowChromeProps {
 }
 
 export function WindowChrome({ icon, title, subtitle, zoomKey, zoom: controlledZoom, onZoomChange, children }: WindowChromeProps) {
-  const [maximized, setMaximized] = useState(false);
   const [internalZoom, setInternalZoom] = useState(DEFAULT_ZOOM);
 
   const zoom = controlledZoom ?? internalZoom;
@@ -63,7 +64,6 @@ export function WindowChrome({ icon, title, subtitle, zoomKey, zoom: controlledZ
   }, [zoomKey, onZoomChange]);
 
   useEffect(() => {
-    window.electronAPI?.onMaximized(setMaximized);
     if (!zoomKey) return;
     window.electronAPI?.getSetting(`zoom:${zoomKey}`).then((raw) => {
       if (raw) {
@@ -77,27 +77,27 @@ export function WindowChrome({ icon, title, subtitle, zoomKey, zoom: controlledZ
   }, [zoomKey, onZoomChange]);
 
   return (
-    <header className="app-drag-region glass-chrome relative z-30 flex h-11 shrink-0 items-center gap-3 border-b border-separator pl-3.5 pr-2">
-      {/* Title */}
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+    <header className="app-drag-region relative z-30 flex h-13 shrink-0 select-none items-center gap-3 pl-4">
+      {/* Glyph · title · subtitle */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {icon && (
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-brand/15 text-brand [&_svg]:size-3.5">
+          <span aria-hidden className="flex shrink-0 items-center text-brand [&_svg]:size-4">
             {icon}
           </span>
         )}
-        <span className="shrink-0 font-display text-base font-semibold tracking-tight text-label">{title}</span>
+        <span className="shrink-0 font-display text-base leading-none font-semibold tracking-tight text-label">{title}</span>
         {subtitle && (
-          <>
-            <span aria-hidden className="size-1 shrink-0 rounded-full bg-label-quaternary" />
-            <span className="min-w-0 truncate text-xs text-label-tertiary">{subtitle}</span>
-          </>
+          <span className="min-w-0 truncate text-sm leading-none text-label-tertiary">
+            <span aria-hidden className="mr-2">·</span>
+            {subtitle}
+          </span>
         )}
         {children}
       </div>
 
       {/* Zoom pill */}
       {zoomKey && (
-        <div className="flex h-7 shrink-0 items-center rounded-full bg-fill-quaternary p-0.5">
+        <div className="app-no-drag flex h-7 shrink-0 items-center rounded-full bg-fill-quaternary p-0.5">
           <button
             onClick={() => setZoom(zoom - ZOOM_STEP)}
             disabled={zoom <= MIN_ZOOM}
@@ -124,29 +124,9 @@ export function WindowChrome({ icon, title, subtitle, zoomKey, zoom: controlledZ
         </div>
       )}
 
-      {/* Window controls */}
-      <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          onClick={() => window.electronAPI?.minimize()}
-          title="Minimize"
-          className="focus-ring pressable flex size-8 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label"
-        >
-          <Minus className="size-3.5" strokeWidth={1.75} />
-        </button>
-        <button
-          onClick={() => window.electronAPI?.maximize()}
-          title={maximized ? "Restore" : "Maximize"}
-          className="focus-ring pressable flex size-8 items-center justify-center rounded-full text-label-tertiary hover:bg-fill-tertiary hover:text-label"
-        >
-          {maximized ? <Copy className="size-3" strokeWidth={1.75} /> : <Square className="size-3" strokeWidth={1.75} />}
-        </button>
-        <button
-          onClick={() => window.electronAPI?.close()}
-          title="Close"
-          className="focus-ring pressable flex size-8 items-center justify-center rounded-full text-label-tertiary hover:bg-danger hover:text-white"
-        >
-          <X className="size-3.5" strokeWidth={1.75} />
-        </button>
+      {/* Window controls — same 46px caption buttons as the main window */}
+      <div className="flex h-full shrink-0 justify-end">
+        <WindowControls />
       </div>
     </header>
   );

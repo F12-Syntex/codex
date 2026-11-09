@@ -37,13 +37,12 @@ import {
   ChevronsUpDown,
   Clock,
   AlertTriangle,
-  Library,
+  Compass,
   CircleSlash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import { Tilt } from "@/components/ui/tilt";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -567,6 +566,7 @@ export function InstallerPage() {
       <Search className={cn("shrink-0 text-label-tertiary", size === "hero" ? "size-5" : "size-4", sources.length > 0 && "ml-1")} strokeWidth={1.75} />
       <input
         ref={inputRef}
+        autoFocus={size === "hero"}
         type="text"
         placeholder="Search novels..."
         value={query}
@@ -648,7 +648,7 @@ export function InstallerPage() {
           <div aria-hidden className="pointer-events-none absolute top-[8vh] left-1/2 size-96 -translate-x-1/2 rounded-full bg-brand/15 blur-3xl" />
           <BlurFade className="relative flex flex-col items-center text-center">
             <span className="mb-5 inline-flex size-14 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-[0_0_32px_-6px_var(--accent-brand)]">
-              <Library className="size-7" strokeWidth={1.5} />
+              <Compass className="size-7" strokeWidth={1.5} />
             </span>
             <h1 className="text-large-title font-display text-label">Find your next story</h1>
             <p className="mt-2 max-w-md text-sm text-label-secondary">
@@ -658,15 +658,9 @@ export function InstallerPage() {
           <div className="relative mt-8 flex w-full justify-center">{searchField("hero")}</div>
           <div className="relative mt-4 flex w-full max-w-2xl flex-col items-center gap-3">
             {errorBanner}
-            <p className="flex items-center gap-1.5 text-xs text-label-tertiary">
-              {query && !searching ? (
-                "No results found"
-              ) : (
-                <>
-                  Press <Kbd>⏎</Kbd> to search
-                </>
-              )}
-            </p>
+            {query && !searching && (
+              <p className="text-xs text-label-tertiary">No results found</p>
+            )}
           </div>
         </div>
       ) : (

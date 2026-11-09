@@ -106,11 +106,8 @@ export function BuddyWindow({ filePath, bookTitle, currentChapter, totalChapters
       <div className="flex min-h-0 flex-1 gap-2 p-2">
         {/* Companion card */}
         <aside className="glass-thin grain relative hidden w-64 shrink-0 flex-col overflow-hidden rounded-2xl p-5 animate-slide-in-left lg:flex">
-          <div className="flex flex-col items-center pt-6 text-center">
-            {orb("lg")}
-            <p className="mt-5 text-section">Reading with you</p>
-            <h2 className="mt-1.5 line-clamp-3 font-display text-xl font-semibold text-label text-balance">{bookTitle}</h2>
-          </div>
+          {/* No avatar here: the conversation's empty state carries the one Buddy mark. */}
+          <h2 className="line-clamp-3 text-title font-display text-label text-balance">{bookTitle}</h2>
 
           <div className="mt-8 space-y-4">
             <div>

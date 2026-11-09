@@ -289,7 +289,21 @@ interface ElectronAPI {
   minimize: () => void;
   maximize: () => void;
   close: () => void;
-  onMaximized: (callback: (maximized: boolean) => void) => void;
+  /** Returns an unsubscriber. */
+  onMaximized: (callback: (maximized: boolean) => void) => () => void;
+
+  // Typed RPC for the new main-process areas (electron/shared/rpc.ts). Only channels matching the
+  // preload allowlist are forwarded. Prefer the wrappers in src/lib/{ai,knowledge,assistant,book}/bridge.ts.
+  // (Inline import() types: this file is a global script and must not have top-level imports.)
+  rpc: <K extends keyof import("../../electron/shared/rpc").RpcMap>(
+    channel: K,
+    ...args: Parameters<import("../../electron/shared/rpc").RpcMap[K]>
+  ) => Promise<Awaited<ReturnType<import("../../electron/shared/rpc").RpcMap[K]>>>;
+  /** Subscribe to a main → renderer event; returns an unsubscriber. Prefer src/lib/ai/events.ts. */
+  on: <E extends keyof import("../../electron/shared/rpc").EventMap>(
+    event: E,
+    callback: (payload: import("../../electron/shared/rpc").EventMap[E]) => void
+  ) => () => void;
 
   // Library operations
   importFiles: (section: string, view: string) => Promise<LibraryItem[]>;
@@ -404,7 +418,8 @@ interface ElectronAPI {
   showItemInFolder: (filePath: string) => Promise<void>;
 
   // Library change events
-  onLibraryChanged: (callback: () => void) => void;
+  /** Returns an unsubscriber. */
+  onLibraryChanged: (callback: () => void) => () => void;
 
   // Settings
   getSetting: (key: string) => Promise<string | null>;
@@ -428,7 +443,8 @@ interface ElectronAPI {
   installerClearCompleted: () => Promise<void>;
   installerImportCompleted: (id: number) => Promise<LibraryItem[] | null>;
   installerProxyImage: (url: string) => Promise<string>;
-  onInstallerProgress: (callback: (progress: InstallerDownloadProgress) => void) => void;
+  /** Returns an unsubscriber. */
+  onInstallerProgress: (callback: (progress: InstallerDownloadProgress) => void) => () => void;
 
   // Updates
   checkForUpdates: () => Promise<unknown>;

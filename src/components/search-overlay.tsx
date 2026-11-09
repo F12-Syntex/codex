@@ -55,7 +55,7 @@ function highlightMatch(text: string, query: string, onAccent: boolean) {
   return (
     <>
       {text.slice(0, idx)}
-      <span className={cn("font-semibold", onAccent ? "underline decoration-1 underline-offset-2" : "text-brand")}>
+      <span className={cn("font-semibold", !onAccent && "text-brand")}>
         {text.slice(idx, idx + query.length)}
       </span>
       {text.slice(idx + query.length)}
@@ -176,7 +176,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
               hasQuery ? "rounded-2xl" : "rounded-3xl",
             )}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: -12, scaleX: 1.04, scaleY: 0.96, filter: "blur(10px)" }}
-            animate={{ opacity: 1, y: 0, scaleX: 1, scaleY: 1, filter: "blur(0px)" }}
+            animate={{ opacity: 1, y: 0, scaleX: 1, scaleY: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98, filter: "blur(6px)" }}
             transition={reduce ? { duration: 0 } : PANEL_SPRING}
             onClick={(e) => e.stopPropagation()}
@@ -196,7 +196,6 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
                 aria-autocomplete="list"
                 className="min-w-0 flex-1 bg-transparent text-xl font-normal tracking-tight text-label outline-none placeholder:text-label-tertiary"
               />
-              <Kbd>esc</Kbd>
             </div>
 
             {/* Results sheet */}

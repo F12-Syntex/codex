@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Copy, BookOpen, Play, Check, Sparkles, Quote } from "lucide-react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { Check } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,8 @@ interface ToolbarState {
 }
 
 /**
- * Floating glass pill above the text selection (macOS-style).
+ * Floating glass pill above the text selection (macOS-style). Labels over
+ * glyphs: Copy · Define · Read · Ask · Quote — nothing pre-highlighted.
  * Motion + mousedown-preserves-selection adapted from 21st.dev
  * "Selection Bubble Menu" (laziekiki, id 26926).
  * `theme` is kept in the props contract; the pill is app-chrome glass, not paper.
@@ -33,6 +34,7 @@ export function SelectionToolbar({ containerRef, onPlayFromParagraph, onExplain,
   const [state, setState] = useState<ToolbarState | null>(null);
   const [copied, setCopied] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarWidth, setToolbarWidth] = useState(0);
 
   const dismiss = useCallback(() => {
     setState(null);
@@ -114,6 +116,11 @@ export function SelectionToolbar({ containerRef, onPlayFromParagraph, onExplain,
     };
   }, [state, dismiss, containerRef]);
 
+  // Measure the real pill so clamping matches the labeled buttons.
+  useLayoutEffect(() => {
+    if (state && toolbarRef.current) setToolbarWidth(toolbarRef.current.offsetWidth);
+  }, [state, copied]);
+
   if (!state) return null;
 
   const handleCopy = async () => {
@@ -159,14 +166,11 @@ export function SelectionToolbar({ containerRef, onPlayFromParagraph, onExplain,
     window.getSelection()?.removeAllRanges();
   };
 
-  // Compute toolbar position, clamped to container bounds
-  const primaryCount = 2 + (onPlayFromParagraph ? 1 : 0);
-  const aiCount = (onExplain ? 1 : 0) + (onSaveQuote ? 1 : 0);
-  // 32px buttons · 2px gaps · 4px padding each side · 9px divider
-  const btnCount = primaryCount + aiCount;
-  const toolbarWidth = btnCount * 32 + (btnCount - 1) * 2 + 8 + (aiCount > 0 ? 9 : 0);
+  // Clamp the pill to the container (estimate until the first measure lands).
+  const actionCount = 2 + (onPlayFromParagraph ? 1 : 0) + (onExplain ? 1 : 0) + (onSaveQuote ? 1 : 0);
+  const width = toolbarWidth || actionCount * 56;
   const containerWidth = containerRef.current?.clientWidth ?? 800;
-  const clampedX = Math.max(toolbarWidth / 2 + 4, Math.min(state.x, containerWidth - toolbarWidth / 2 - 4));
+  const clampedX = Math.max(width / 2 + 4, Math.min(state.x, containerWidth - width / 2 - 4));
 
   return (
     <div
@@ -183,61 +187,38 @@ export function SelectionToolbar({ containerRef, onPlayFromParagraph, onExplain,
         <motion.div
           role="toolbar"
           aria-label="Selection actions"
-          className="glass flex items-center gap-0.5 rounded-full p-1 text-label"
+          className="glass-thick flex h-10 items-center gap-0.5 rounded-full p-1 text-label"
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.92, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
           transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 520, damping: 30, mass: 0.6 }}
           style={{ transformOrigin: "50% 100%" }}
           // Keep the text selection alive while pressing a button (21st "Selection Bubble Menu" pattern)
           onMouseDown={(e) => e.preventDefault()}
         >
-          <ToolbarButton
-            label={copied ? "Copied" : "Copy"}
-            onClick={handleCopy}
-            active={copied}
-            icon={
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span
-                  key={copied ? "check" : "copy"}
-                  className="inline-flex"
-                  initial={{ opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.6 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 28 }}
-                >
-                  {copied
-                    ? <Check className="size-4 text-success" strokeWidth={2.25} />
-                    : <Copy className="size-4" strokeWidth={1.75} />}
-                </motion.span>
-              </AnimatePresence>
-            }
-          />
-          <ToolbarButton
-            icon={<BookOpen className="size-4" strokeWidth={1.75} />}
-            label="Define"
-            onClick={handleDefine}
-          />
+          <ToolbarButton label="Copy" hint="Copy selection" onClick={handleCopy} active={copied}>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={copied ? "copied" : "copy"}
+                className="inline-flex items-center gap-1"
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ type: "spring", stiffness: 500, damping: 28 }}
+              >
+                {copied && <Check className="size-3.5 text-success" strokeWidth={2.25} />}
+                {copied ? "Copied" : "Copy"}
+              </motion.span>
+            </AnimatePresence>
+          </ToolbarButton>
+          <ToolbarButton label="Define" hint="Look up in the dictionary" onClick={handleDefine} />
           {onPlayFromParagraph && (
-            <ToolbarButton
-              icon={<Play className="size-4" strokeWidth={1.75} />}
-              label="Read aloud from here"
-              onClick={handlePlay}
-            />
+            <ToolbarButton label="Read" hint="Read aloud from here" onClick={handlePlay} />
           )}
-          {aiCount > 0 && <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-separator-strong" />}
           {onExplain && (
-            <ToolbarButton
-              icon={<Sparkles className="size-4 text-brand" strokeWidth={1.75} />}
-              label="Explain with AI"
-              onClick={handleExplain}
-            />
+            <ToolbarButton label="Ask" hint="Ask AI to explain" onClick={handleExplain} />
           )}
           {onSaveQuote && (
-            <ToolbarButton
-              icon={<Quote className="size-4" strokeWidth={1.75} />}
-              label="Save quote"
-              onClick={handleSaveQuote}
-            />
+            <ToolbarButton label="Quote" hint="Save to quotes" onClick={handleSaveQuote} />
           )}
         </motion.div>
       </TooltipProvider>
@@ -245,28 +226,29 @@ export function SelectionToolbar({ containerRef, onPlayFromParagraph, onExplain,
   );
 }
 
-function ToolbarButton({ icon, label, onClick, active }: {
-  icon: React.ReactNode;
+function ToolbarButton({ label, hint, onClick, active, children }: {
   label: string;
+  hint: string;
   onClick: () => void;
   active?: boolean;
+  children?: React.ReactNode;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={label}
+          aria-label={hint}
           onClick={onClick}
           className={cn(
-            "focus-ring pressable inline-flex size-8 shrink-0 items-center justify-center rounded-full text-label-secondary transition-colors duration-150 hover:bg-fill-tertiary hover:text-label",
-            active && "bg-fill-tertiary text-label",
+            "focus-ring pressable inline-flex h-8 shrink-0 items-center justify-center rounded-full px-2.5 text-xs font-medium text-label-secondary transition-colors duration-150 hover:bg-fill-tertiary hover:text-label",
+            active && "text-label",
           )}
         >
-          {icon}
+          {children ?? label}
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8}>{label}</TooltipContent>
+      <TooltipContent side="top" sideOffset={8}>{hint}</TooltipContent>
     </Tooltip>
   );
 }

@@ -100,7 +100,7 @@ export function SegmentedControl<T extends string>({
               <motion.span
                 layoutId={pillId}
                 transition={reduceMotion ? { duration: 0 } : { type: "spring", bounce: 0.18, duration: 0.42 }}
-                className="absolute inset-0 rounded-full bg-elevated shadow-sm ring-[0.5px] ring-separator-strong"
+                className="absolute inset-0 rounded-full bg-[var(--segment-thumb)] shadow-sm ring-[0.5px] ring-separator-strong"
               />
             )}
             <span className="relative flex items-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
