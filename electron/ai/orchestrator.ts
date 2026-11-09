@@ -125,13 +125,6 @@ interface BulkRun {
   finished: Promise<void>;
 }
 
-const TASK_OF: Record<Exclude<ChapterKind, "knowledge">, TaskId> = {
-  title: "chapter.title",
-  rewrite: "chapter.condense",
-  format: "chapter.format",
-  comments: "chapter.comments",
-};
-
 const VERSION_OF: Record<Exclude<ChapterKind, "knowledge">, number> = {
   title: TITLE_TASK_VERSION,
   rewrite: REWRITE_TASK_VERSION,
