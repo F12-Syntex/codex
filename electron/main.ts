@@ -334,7 +334,9 @@ function createWindow() {
     if (pitch) options.pitch = pitch;
     if (volume) options.volume = volume;
 
-    const maxRetries = 3;
+    // The Edge endpoint intermittently answers 429/503; a rejected synth stops playback, so
+    // back off long enough (0.5s, 1s, 2s, 4s) for the rate limit to clear.
+    const maxRetries = 5;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const tts = new EdgeTTS();
@@ -344,8 +346,8 @@ function createWindow() {
         return { audio: buffer.toString("base64"), wordBoundaries };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (attempt < maxRetries - 1 && (msg.includes("503") || msg.includes("server"))) {
-          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        if (attempt < maxRetries - 1 && (msg.includes("429") || msg.includes("503") || msg.includes("server"))) {
+          await new Promise(r => setTimeout(r, 500 * 2 ** attempt));
           continue;
         }
         throw err;
