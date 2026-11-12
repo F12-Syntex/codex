@@ -15,7 +15,7 @@
  * windows opened later paint the right theme on their first frame instead of flashing dark.
  */
 
-import { useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { FONT_FAMILY_CSS, type ThemeConfig } from "@/lib/theme";
 
 export type SavedTheme = Partial<Pick<ThemeConfig,
@@ -144,4 +144,42 @@ export function useAppTheme({ appearance = false }: UseAppThemeOptions = {}): vo
       undo?.();
     };
   }, [appearance]);
+}
+
+/**
+ * The library's Light/Dark appearance, live (same sources as `useAppTheme`). The reader uses it
+ * to pick its paper when "Match app" is on, so the two windows read as one program.
+ */
+export function useAppAppearance(): "light" | "dark" {
+  const [appearance, setAppearance] = useState<"light" | "dark">("dark");
+
+  useEffect(() => {
+    let alive = true;
+    const apply = (raw: string | null) => {
+      if (!alive) return;
+      setAppearance(parse(raw)?.appearance === "light" ? "light" : "dark");
+    };
+    apply(readCache());
+
+    const load = () => {
+      window.electronAPI?.getSetting("theme")
+        .then((raw) => apply(raw || "{}"))
+        .catch(() => { /* keep the cached appearance */ });
+    };
+    load();
+
+    const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    const onStorage = (e: StorageEvent) => { if (e.key === CACHE_KEY) apply(e.newValue); };
+    window.addEventListener("focus", load);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", load);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  return appearance;
 }

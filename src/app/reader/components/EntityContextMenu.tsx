@@ -165,8 +165,8 @@ export function EntityContextMenu({
 
 
 /**
- * macOS menu item: h-7, accent lozenge that glides between items
- * (shared `menu-highlight`, from 21st.dev "Animated Background").
+ * macOS menu item: h-7, accent lozenge on the focused item
+ * (shared `menu-highlight`).
  */
 function MenuItem({ icon, label, hint, onSelect }: {
   icon: React.ReactNode;

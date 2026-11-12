@@ -22,6 +22,8 @@ export type TTSProvider = "edge";
 
 export interface ReaderSettings {
   readingTheme: ReadingTheme;
+  /** Paper follows the library's Light/Dark appearance; picking a paper turns it off. */
+  paperFollowsApp: boolean;
   ttsProvider: TTSProvider;
   ttsVoice: string;
   ttsRate: number;

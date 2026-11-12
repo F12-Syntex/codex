@@ -26,6 +26,8 @@ import { buildSpeech } from "@shared/pipeline/speech";
 import { getThemeClasses } from "../lib/theme";
 import type { CustomFont } from "../lib/types";
 import { useReaderSettings } from "../hooks/useReaderSettings";
+import { useAppAppearance } from "@/lib/use-app-theme";
+import type { ReadingTheme } from "../lib/types";
 import { useBookmarks } from "../hooks/useBookmarks";
 import { useTTS, isSpeakable, type TTSItem } from "../hooks/useTTS";
 import { useTTSMetrics } from "../hooks/useTTSMetrics";
@@ -124,8 +126,11 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
   const [autoPlayChapter, setAutoPlayChapter] = useState<number | null>(null);
   const [showBranchList, setShowBranchList] = useState(false);
 
-  const { settings, updateSetting, isLoaded } = useReaderSettings();
-  const theme = getThemeClasses(settings.readingTheme);
+  const { settings, updateSetting, updateSettings, isLoaded } = useReaderSettings();
+  // The paper on screen: the library's appearance while "Match app" is on, else the chosen paper.
+  const appAppearance = useAppAppearance();
+  const paper: ReadingTheme = settings.paperFollowsApp ? appAppearance : settings.readingTheme;
+  const theme = getThemeClasses(paper);
 
   // ── AI: per-book prefs, chapter artifacts (orchestrator ensure), settings ──────────
   const { prefs } = useBookAIPrefs(filePath);
@@ -587,7 +592,7 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
   // portals (modals, menus, tooltips) match the reader chrome.
   useLayoutEffect(() => {
     const root = document.documentElement;
-    const light = settings.readingTheme !== "dark";
+    const light = paper !== "dark";
     if (light) root.setAttribute("data-appearance", "light");
     else root.removeAttribute("data-appearance");
     root.style.colorScheme = light ? "light" : "dark";
@@ -595,7 +600,7 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
       root.removeAttribute("data-appearance");
       root.style.removeProperty("color-scheme");
     };
-  }, [settings.readingTheme]);
+  }, [paper]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); }
@@ -818,11 +823,11 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
   return (
     <div
       className={`relative flex h-screen flex-col ${theme.bg} transition-colors duration-500 ease-apple`}
-      data-appearance={settings.readingTheme === "dark" ? undefined : "light"}
+      data-appearance={paper === "dark" ? undefined : "light"}
       // Light papers (White, Sepia) take the light appearance, which also brings its
       // paper-weight elevation (--elev-*), so panels never cast a grey slab.
       style={{
-        "--reader-paper": settings.readingTheme === "dark" ? "var(--canvas)" : theme.bgRaw,
+        "--reader-paper": paper === "dark" ? "var(--canvas)" : theme.bgRaw,
       } as React.CSSProperties}
     >
       {/* Header — floating pills on the paper, no bar */}
@@ -830,12 +835,12 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
         <ReaderHeader
           title={title} author={author} theme={theme}
           chapterTitle={book ? chapterTitle : undefined}
-          readingTheme={settings.readingTheme} maximized={maximized}
+          readingTheme={paper} maximized={maximized}
           isFullscreen={isFullscreen} hasMultipleChapters={totalChapters > 1}
           isImageBook={isImageBook} isBookmarked={!!bookmarkState.currentBookmark}
           isTTSActive={isTTSActive} showTOC={showTOC} showTTS={showTTS}
           showTextSettings={showTextSettings} showAI={showAI}
-          onThemeChange={(t) => updateSetting("readingTheme", t)}
+          onThemeChange={(t) => updateSettings({ readingTheme: t, paperFollowsApp: false })}
           onTOCToggle={toggleTOC} onTTSToggle={toggleTTS}
           onTextSettingsToggle={toggleTextSettings}
           onBookmarkToggle={() => void bookmarkState.toggleBookmark()}
@@ -852,8 +857,10 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
           <TextSettingsPanel
             key="text-settings"
             theme={theme} fontFamily={settings.fontFamily} fontSize={settings.fontSize}
-            readingTheme={settings.readingTheme}
-            onThemeChange={(t) => updateSetting("readingTheme", t)}
+            readingTheme={paper}
+            onThemeChange={(t) => updateSettings({ readingTheme: t, paperFollowsApp: false })}
+            followApp={settings.paperFollowsApp}
+            onFollowAppChange={(on) => updateSettings({ paperFollowsApp: on, readingTheme: paper })}
             lineHeight={settings.lineHeight} paraSpacing={settings.paraSpacing}
             textPadding={settings.textPadding} maxTextWidth={settings.maxTextWidth}
             animatedPageTurn={settings.animatedPageTurn} immersiveMode={settings.immersiveMode}
@@ -943,7 +950,7 @@ export function Reader({ filePath, title, author, initialReveal = null }: Reader
               truncateAfter={branchHere ? sim.truncateAt : null}
               extraParagraphs={extraParagraphs}
               theme={theme}
-              readingTheme={settings.readingTheme}
+              readingTheme={paper}
               fontFamily={settings.fontFamily}
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}

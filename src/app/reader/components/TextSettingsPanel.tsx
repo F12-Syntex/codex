@@ -26,6 +26,9 @@ interface TextSettingsPanelProps {
   /** Paper theme — when provided the panel shows the paper picker. */
   readingTheme?: ReadingTheme;
   onThemeChange?: (theme: ReadingTheme) => void;
+  /** "Match app": the paper follows the library's Light/Dark appearance. */
+  followApp?: boolean;
+  onFollowAppChange?: (on: boolean) => void;
   onFontFamilyChange: (f: string) => void;
   onFontSizeChange: (s: number) => void;
   onLineHeightChange: (lh: number) => void;
@@ -53,6 +56,8 @@ export function TextSettingsPanel({
   customFonts,
   readingTheme,
   onThemeChange,
+  followApp = false,
+  onFollowAppChange,
   onFontFamilyChange,
   onFontSizeChange,
   onLineHeightChange,
@@ -118,6 +123,15 @@ export function TextSettingsPanel({
                 );
               })}
             </div>
+            {onFollowAppChange && (
+              <div className="mt-2 flex min-h-8 items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm text-label">Match app</div>
+                  <div className="truncate text-xs text-label-secondary">Follow the library’s Light or Dark</div>
+                </div>
+                <Switch checked={followApp} onCheckedChange={onFollowAppChange} aria-label="Match app appearance" />
+              </div>
+            )}
           </section>
         )}
 

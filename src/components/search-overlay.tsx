@@ -256,11 +256,7 @@ export function SearchOverlay({ open, onClose, bookData, comicData, onOpenItem }
                               )}
                             >
                               {isSelected && (
-                                <motion.span
-                                  layoutId={highlightId}
-                                  transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 600, damping: 42 }}
-                                  className="absolute inset-0 rounded-lg bg-brand shadow-[0_0_24px_-8px_var(--accent-brand)]"
-                                />
+                                <span aria-hidden className="absolute inset-0 rounded-lg bg-brand" />
                               )}
 
                               {/* Cover */}

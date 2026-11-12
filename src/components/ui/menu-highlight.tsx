@@ -1,17 +1,13 @@
 "use client"
 
 /**
- * Menu highlight — the selection in dropdown / context menus is one accent
- * lozenge that glides between items on a spring (instead of each row
- * flashing on/off). Items report focus (Radix focuses the highlighted item for
- * both pointer and keyboard), the scope renders a shared-layout indicator in
- * whichever item is active.
- * Pattern adapted from 21st.dev "Animated Background" (ibelick, id 1319).
+ * Menu highlight — the accent lozenge behind the focused item of a custom
+ * (non-Radix) menu. It appears on the item instantly, like a macOS menu: a
+ * gliding lozenge lagged behind the text colour and covered neighbouring rows
+ * mid-flight. Radix menus highlight with `data-[highlighted]:bg-brand` instead.
  */
 
 import * as React from "react"
-import { motion, useReducedMotion } from "motion/react"
-
 import { cn } from "@/lib/utils"
 
 type Ctx = {
@@ -66,7 +62,6 @@ export function useMenuHighlight(
 ) {
   const ctx = React.useContext(MenuHighlightContext)
   const id = React.useId()
-  const reduceMotion = useReducedMotion()
   const isActive = ctx?.active === id
 
   const itemProps = {
@@ -82,10 +77,8 @@ export function useMenuHighlight(
 
   const indicator =
     ctx && isActive ? (
-      <motion.span
+      <span
         aria-hidden
-        layoutId={ctx.layoutId}
-        transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40, mass: 0.6 }}
         className={cn(
           "pointer-events-none absolute inset-0 -z-10 rounded-lg",
           variant === "destructive"

@@ -5,19 +5,18 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
-import { MenuHighlightScope, useMenuHighlight } from "@/components/ui/menu-highlight"
 
 /**
  * Dropdown menu — Tahoe menu: thick glass, concentric radii (rounded-xl
- * panel, p-1, rounded-lg rows), a single accent lozenge that glides between
- * rows, springy pop-in from the trigger.
+ * panel, p-1, rounded-lg rows), an accent lozenge that lights the
+ * highlighted row instantly (fill and text change together), springy pop-in from the trigger.
  */
 
 const menuPanel =
   "glass-menu z-50 min-w-48 overflow-x-hidden overflow-y-auto rounded-xl p-1 text-sm text-label outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:duration-150"
 
 const menuRow =
-  "group/menu-item relative isolate flex h-7 cursor-default items-center gap-2 rounded-lg px-2.5 text-sm text-label outline-none select-none transition-colors duration-100 data-[highlighted]:text-brand-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-35 data-[inset]:pl-7 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-label-secondary data-[highlighted]:[&_svg:not([class*='text-'])]:text-brand-fg"
+  "group/menu-item relative isolate flex h-7 cursor-default items-center gap-2 rounded-lg px-2.5 text-sm text-label outline-none select-none data-[highlighted]:bg-brand data-[highlighted]:text-brand-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-35 data-[inset]:pl-7 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-label-secondary data-[highlighted]:[&_svg:not([class*='text-'])]:text-brand-fg"
 
 function DropdownMenu({
   ...props
@@ -62,7 +61,7 @@ function DropdownMenuContent({
         )}
         {...props}
       >
-        <MenuHighlightScope>{children}</MenuHighlightScope>
+        {children}
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   )
@@ -81,14 +80,11 @@ function DropdownMenuItem({
   inset,
   variant = "default",
   children,
-  onFocus,
-  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Item> & {
   inset?: boolean
   variant?: "default" | "destructive"
 }) {
-  const { itemProps, indicator } = useMenuHighlight(variant, { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
@@ -96,13 +92,11 @@ function DropdownMenuItem({
       data-variant={variant}
       className={cn(
         menuRow,
-        "data-[variant=destructive]:text-danger data-[variant=destructive]:data-[highlighted]:text-brand-fg data-[variant=destructive]:[&_svg]:!text-danger data-[variant=destructive]:data-[highlighted]:[&_svg]:!text-brand-fg",
+        "data-[variant=destructive]:text-danger data-[variant=destructive]:data-[highlighted]:bg-danger data-[variant=destructive]:data-[highlighted]:text-brand-fg data-[variant=destructive]:[&_svg]:!text-danger data-[variant=destructive]:data-[highlighted]:[&_svg]:!text-brand-fg",
         className
       )}
       {...props}
-      {...itemProps}
     >
-      {indicator}
       {children}
     </DropdownMenuPrimitive.Item>
   )
@@ -112,20 +106,15 @@ function DropdownMenuCheckboxItem({
   className,
   children,
   checked,
-  onFocus,
-  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
-  const { itemProps, indicator } = useMenuHighlight("default", { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       className={cn(menuRow, "pl-7", className)}
       checked={checked}
       {...props}
-      {...itemProps}
     >
-      {indicator}
       <span className="pointer-events-none absolute left-2 flex size-4 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
           <CheckIcon strokeWidth={2.5} className="size-3.5 text-brand group-data-[highlighted]/menu-item:text-brand-fg" />
@@ -150,19 +139,14 @@ function DropdownMenuRadioGroup({
 function DropdownMenuRadioItem({
   className,
   children,
-  onFocus,
-  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
-  const { itemProps, indicator } = useMenuHighlight("default", { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(menuRow, "pl-7", className)}
       {...props}
-      {...itemProps}
     >
-      {indicator}
       <span className="pointer-events-none absolute left-2 flex size-4 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
           <span className="block size-1.5 rounded-full bg-brand group-data-[highlighted]/menu-item:bg-brand-fg" />
@@ -229,13 +213,10 @@ function DropdownMenuSubTrigger({
   className,
   inset,
   children,
-  onFocus,
-  onBlur,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & {
   inset?: boolean
 }) {
-  const { itemProps, indicator } = useMenuHighlight("default", { onFocus, onBlur })
   return (
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
@@ -246,9 +227,7 @@ function DropdownMenuSubTrigger({
         className
       )}
       {...props}
-      {...itemProps}
     >
-      {indicator}
       {children}
       <ChevronRightIcon className="ml-auto size-3.5 text-label-tertiary group-data-[highlighted]/menu-item:text-brand-fg" />
     </DropdownMenuPrimitive.SubTrigger>
@@ -270,7 +249,7 @@ function DropdownMenuSubContent({
       )}
       {...props}
     >
-      <MenuHighlightScope>{children}</MenuHighlightScope>
+      {children}
     </DropdownMenuPrimitive.SubContent>
   )
 }

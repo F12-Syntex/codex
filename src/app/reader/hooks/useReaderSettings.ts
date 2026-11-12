@@ -8,7 +8,11 @@ function loadFromStorage(): ReaderSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const stored = JSON.parse(raw) as Partial<ReaderSettings>;
+    // Settings saved before "Match app" existed: a paper other than the old default (dark) was a
+    // deliberate choice, so it stays; the default starts following the library.
+    const paperFollowsApp = stored.paperFollowsApp ?? (stored.readingTheme ?? "dark") === "dark";
+    return { ...DEFAULT_SETTINGS, ...stored, paperFollowsApp };
   } catch {
     return DEFAULT_SETTINGS;
   }

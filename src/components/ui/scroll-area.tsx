@@ -18,7 +18,9 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full outline-none"
+        // Radix wraps the content in a `display: table` div that grows to its widest child, so a
+        // long truncating title pushed the whole page wider than the viewport. Pin it to the width.
+        className="size-full outline-none [&>div]:!block [&>div]:!min-w-0"
         style={{ borderRadius: "inherit" }}
       >
         {children}

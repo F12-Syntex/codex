@@ -105,6 +105,13 @@ export function ContentToolbar({
   const scroll = useContext(ToolbarScrollContext);
   const clusterRef = useRef<HTMLDivElement>(null);
   const [clusterWidth, setClusterWidth] = useState(0);
+  // One menu at a time. The cluster is `pointer-events-auto`, so a second trigger stays clickable
+  // while a (modal) menu is open, and Radix then leaves the first one open underneath.
+  const [openMenu, setOpenMenu] = useState<"filter" | "sort" | "organize" | null>(null);
+  const menuProps = (id: "filter" | "sort" | "organize") => ({
+    open: openMenu === id,
+    onOpenChange: (open: boolean) => setOpenMenu((cur) => (open ? id : cur === id ? null : cur)),
+  });
 
   // Embedded: reserve the pinned cluster's width so a long title truncates
   // before it slides under the controls.
@@ -133,7 +140,7 @@ export function ContentToolbar({
   const cluster = (
     <div ref={clusterRef} className="pointer-events-auto flex h-10 shrink-0 items-center gap-2">
       {/* Format filter */}
-      <DropdownMenu>
+      <DropdownMenu {...menuProps("filter")}>
         <DropdownMenuTrigger asChild>
           {/* Toolbar pill — 32px capsule (conventions §6) */}
           <Button
@@ -182,7 +189,7 @@ export function ContentToolbar({
       </DropdownMenu>
 
       {/* Sort — the pill shows the field and its direction */}
-      <DropdownMenu>
+      <DropdownMenu {...menuProps("sort")}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -242,7 +249,7 @@ export function ContentToolbar({
 
       {/* Organize — library AI actions; a pulsing sparkle while tagging runs. */}
       {hasOrganize && (
-        <DropdownMenu>
+        <DropdownMenu {...menuProps("organize")}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"

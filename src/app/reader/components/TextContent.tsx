@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import { User, MessageCircle, Plus, X, Sparkles, ArrowRight } from "lucide-react";
 import type { RenderedPara } from "@shared/pipeline/types";
 import type { BranchChoice } from "@shared/assistant/types";
@@ -274,7 +274,9 @@ export function TextContent({
     if (!outer || !slider) return;
 
     const outerW = outer.clientWidth;
-    const innerW = outerW - padding * 2;
+    // Comment badges hang in the right margin: keep at least that much room beside the page.
+    const sidePad = commentsEnabled ? Math.max(padding, BADGE_GUTTER + 4) : padding;
+    const innerW = outerW - sidePad * 2;
     const innerH = outer.clientHeight - padding * 2;
     // Measure: a column never exceeds maxTextWidth or 70ch. A single-column
     // page is one such column; a two-column spread is two plus the gap.
@@ -286,24 +288,45 @@ export function TextContent({
     setPageWidth(pw);
     setContentHeight(innerH);
 
-    requestAnimationFrame(() => {
-      if (!slider) return;
-      const scrollW = slider.scrollWidth;
-      const s = pw + columnGap;
-      const pages = Math.max(1, Math.ceil(scrollW / s));
-      onMeasure(pages);
+  }, [padding, maxTextWidth, columnGap, fontFamily, fontSize, commentsEnabled]);
 
-      // Detect if all content fits in a single column (only evaluate once per chapter)
-      if (!singleColFrozenRef.current) {
-        const twoColW = Math.max(1, Math.floor((pw - columnGap) / 2));
-        const fits = pages === 1 && scrollW <= twoColW + 20;
-        if (fits) {
-          singleColFrozenRef.current = true;
-          setContentFitsSingleCol(true);
-        }
+  // Count pages from the laid-out DOM. Runs after every commit that can change the layout, so the
+  // count always matches the columns on screen (a count read before the new column width was
+  // committed produced phantom pages — and a blank page when turning back to "the last" one).
+  const countPages = useCallback(() => {
+    const slider = sliderRef.current;
+    if (!slider || pageWidth <= 0 || contentHeight <= 0) return;
+    const scrollW = slider.scrollWidth;
+    const pages = Math.max(1, Math.ceil(scrollW / (pageWidth + columnGap)));
+    onMeasure(pages);
+
+    // Detect if all content fits in a single column (only evaluate once per chapter)
+    if (!singleColFrozenRef.current && shown.length > 0) {
+      const twoColW = Math.max(1, Math.floor((pageWidth - columnGap) / 2));
+      if (pages === 1 && scrollW <= twoColW + 20) {
+        singleColFrozenRef.current = true;
+        setContentFitsSingleCol(true);
       }
-    });
-  }, [padding, maxTextWidth, columnGap, onMeasure, fontFamily, fontSize]);
+    }
+  }, [pageWidth, contentHeight, columnGap, onMeasure, shown.length]);
+
+  useLayoutEffect(() => {
+    countPages();
+  }, [countPages, colWidth, shown, extraParagraphs, streamText, fontFamily, fontSize, lineHeight, paraSpacing, simulateMode, simulateGenerating, simulateInputVisible]);
+
+  // Late layout shifts: web fonts swapping in, images decoding.
+  useEffect(() => {
+    const slider = sliderRef.current;
+    let alive = true;
+    void document.fonts?.ready.then(() => { if (alive) countPages(); });
+    const onLoad = () => countPages();
+    slider?.addEventListener("load", onLoad, true);
+    return () => {
+      alive = false;
+      slider?.removeEventListener("load", onLoad, true);
+    };
+  }, [countPages]);
+
 
   useEffect(() => {
     measure();
@@ -631,7 +654,10 @@ export function TextContent({
       if (!(window.getSelection()?.isCollapsed ?? true)) return;
       e.stopPropagation();
       const paraEl = target.closest<HTMLElement>("[data-para-idx]");
-      onEntityClick(id, target.getBoundingClientRect(), paraEl ? parseInt(paraEl.getAttribute("data-para-idx") ?? "0", 10) : 0);
+      // A name that wraps across lines has one rect per line: anchor to the fragment clicked.
+      const rects = Array.from(target.getClientRects());
+      const hit = rects.find((r) => e.clientX >= r.left - 1 && e.clientX <= r.right + 1 && e.clientY >= r.top - 1 && e.clientY <= r.bottom + 1);
+      onEntityClick(id, hit ?? rects[0] ?? target.getBoundingClientRect(), paraEl ? parseInt(paraEl.getAttribute("data-para-idx") ?? "0", 10) : 0);
     };
     const handleContextMenu = (e: MouseEvent) => {
       const target = entityAt(e);

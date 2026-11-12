@@ -207,7 +207,8 @@ export function SelectionToolbar({ containerRef, filePath, chapterId, chapterInd
           initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.92, filter: "blur(4px)" }}
           animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transitionEnd: { filter: "none" } }}
           transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 520, damping: 30, mass: 0.6 }}
-          style={{ transformOrigin: "50% 100%" }}
+          // Opaque: the pill sits directly on body text, which must not read through it.
+          style={{ transformOrigin: "50% 100%", background: "var(--bg-elevated)" }}
           // Keep the text selection alive while pressing a button (21st "Selection Bubble Menu" pattern)
           onMouseDown={(e) => e.preventDefault()}
         >

@@ -19,6 +19,7 @@ export const FONT_FACE_CSS = readerFontFaceCss();
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
   readingTheme: "dark",
+  paperFollowsApp: true,
   ttsProvider: "edge",
   ttsVoice: "en-US-ChristopherNeural",
   ttsRate: 1.0,

@@ -19,22 +19,20 @@ interface TitleBarProps {
 
 /**
  * Codex mark + wordmark + version — shared with the sidebar header.
- * The navy-and-gold mark sits on a neutral plate so it reads on dark glass.
+ * The ribbon mark carries its own ink tile, so it reads on light and dark glass alike.
  */
 export function CodexIdentity({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <span className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-xs bg-fill-secondary shadow-[inset_0_0_0_0.5px_var(--separator)]">
-        <Image
-          src="/codex-logo.svg"
-          alt=""
-          width={16}
-          height={16}
-          className="pointer-events-none"
-          draggable={false}
-          priority
-        />
-      </span>
+      <Image
+        src="/codex-logo.svg"
+        alt=""
+        width={22}
+        height={22}
+        className="pointer-events-none size-5.5 shrink-0"
+        draggable={false}
+        priority
+      />
       <span className="font-display text-base leading-none font-semibold tracking-tight text-label">Codex</span>
       <Badge variant="outline" className="h-4 px-1.5 text-label-tertiary">
         v{APP_VERSION}

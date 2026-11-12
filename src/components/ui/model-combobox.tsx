@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
+import { Popover } from "radix-ui";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Search } from "lucide-react";
 import type { ModelInfo } from "@shared/ai/types";
@@ -46,9 +47,7 @@ export function ModelCombobox({
 }: ModelComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
   // The catalog comes from the main process (`ai:models`, cached there): from the parent when it
   // has it, else loaded on first open.
@@ -56,25 +55,6 @@ export function ModelCombobox({
   const models = modelsProp && modelsProp.length > 0 ? modelsProp : own.models;
   const fetching = own.loading;
   const loading = fetching && models.length === 0;
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  // Focus search input when opening (the search is reset by the trigger)
-  useEffect(() => {
-    if (!open) return;
-    const t = setTimeout(() => inputRef.current?.focus(), 0);
-    return () => clearTimeout(t);
-  }, [open]);
 
   const filtered = search.trim()
     ? models.filter(
@@ -99,19 +79,23 @@ export function ModelCombobox({
   const displayValue = value ? modelDisplayName(value, models) : modelDisplayName(placeholder, models);
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setSearch("");
+        setOpen(next);
+      }}
+    >
       {/* Trigger button */}
+      <Popover.Trigger asChild>
       <button
         type="button"
         title={value || placeholder}
-        onClick={() => {
-          if (!open) setSearch("");
-          setOpen(!open);
-        }}
         className={cn(
           "pressable focus-ring flex h-8 w-56 items-center justify-between gap-2 rounded-full bg-fill-tertiary pr-2.5 pl-3.5 text-left text-xs shadow-[inset_0_1px_0_0_var(--glass-highlight),inset_0_0_0_0.5px_var(--glass-edge)] hover:bg-fill-secondary",
           open && "bg-fill-secondary",
           value ? "text-label" : "text-label-tertiary",
+          className,
         )}
       >
         <span className="min-w-0 truncate">{displayValue}</span>
@@ -122,12 +106,21 @@ export function ModelCombobox({
           )}
         />
       </button>
+      </Popover.Trigger>
 
-      {/* Dropdown */}
-      {open && (
-        <div
-          className="glass-thick absolute right-0 z-50 mt-2 flex w-80 origin-top-right animate-pop-in flex-col overflow-hidden rounded-xl p-1"
-          style={{ maxHeight: "320px" }}
+      {/* Dropdown — portalled, so a clipping card or the window edge can't cut it off; it flips
+          above the trigger and shrinks to the room available. */}
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            inputRef.current?.focus();
+          }}
+          className="glass-menu z-50 flex w-80 origin-(--radix-popover-content-transform-origin) animate-pop-in flex-col overflow-hidden rounded-xl p-1 outline-none"
+          style={{ maxHeight: "min(320px, var(--radix-popover-content-available-height))" }}
         >
           {/* Search input */}
           <div className="mb-1 flex h-7 shrink-0 items-center gap-2 rounded-full bg-fill-tertiary px-3 shadow-[inset_0_1px_2px_0_var(--bg-inset),inset_0_0_0_0.5px_var(--separator)] focus-within:shadow-[inset_0_0_0_1px_var(--accent-brand),0_0_0_3px_color-mix(in_srgb,var(--accent-brand)_22%,transparent)]">
@@ -143,7 +136,7 @@ export function ModelCombobox({
           </div>
 
           {/* Model list */}
-          <div ref={listRef} className="flex flex-col gap-px overflow-y-auto" style={{ maxHeight: "272px" }}>
+          <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto">
             {loading && (
               <div className="px-3 py-4 text-center text-xs text-label-tertiary">
                 Loading models...
@@ -192,8 +185,8 @@ export function ModelCombobox({
               </div>
             )}
           </div>
-        </div>
-      )}
-    </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
