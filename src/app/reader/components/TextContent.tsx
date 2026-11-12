@@ -263,6 +263,8 @@ export function TextContent({
     ? Math.max(pageWidth, 800)
     : Math.max(1, Math.floor((pageWidth - columnGap) / 2));
   const stride = pageWidth + columnGap;
+  /** Distance between the left edges of adjacent layout columns. */
+  const columnPitch = useSingleCol ? stride : stride / 2;
 
   // ── Layout measurement ──────────────────────────────
 
@@ -743,30 +745,24 @@ export function TextContent({
       const clientRects = Array.from(range.getClientRects());
       if (clientRects.length === 0) { setParaRects([]); return; }
 
-      // Group rects by column — rects in the same column have overlapping horizontal ranges
-      const translated = clientRects.map(r => new DOMRect(
-        r.x - clipperRect.x, r.y - clipperRect.y, r.width, r.height,
-      ));
-      const groups: DOMRect[][] = [];
+      // Group rects by the layout column they sit in. Columns repeat every `columnPitch` px from
+      // the clipper's left edge; comparing fragment centres to each other instead splits one
+      // column in two when a short fragment (an entity name, an indented first word) sits at
+      // the opposite edge from another.
+      const translated = clientRects
+        .filter(r => r.width > 0 && r.height > 0)
+        .map(r => new DOMRect(r.x - clipperRect.x, r.y - clipperRect.y, r.width, r.height));
+      const byColumn = new Map<number, DOMRect[]>();
       for (const rect of translated) {
-        let added = false;
-        for (const group of groups) {
-          const ref = group[0];
-          // Same column if horizontal centers are within half a column width
-          const refCx = ref.x + ref.width / 2;
-          const cx = rect.x + rect.width / 2;
-          if (Math.abs(refCx - cx) < colWidth * 0.6) {
-            group.push(rect);
-            added = true;
-            break;
-          }
-        }
-        if (!added) groups.push([rect]);
+        const col = Math.floor((rect.x + rect.width / 2 + columnGap / 2) / columnPitch);
+        const group = byColumn.get(col);
+        if (group) group.push(rect);
+        else byColumn.set(col, [rect]);
       }
 
       // Merge each group into a single bounding rect
       const pad = 6;
-      const merged = groups.map(group => {
+      const merged = Array.from(byColumn.values()).map(group => {
         const minX = Math.min(...group.map(r => r.x));
         const minY = Math.min(...group.map(r => r.y));
         const maxX = Math.max(...group.map(r => r.x + r.width));
@@ -783,7 +779,7 @@ export function TextContent({
     } catch {
       setParaRects([]);
     }
-  }, [showParaHighlight, ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, colWidth, pageWidth, contentHeight]);
+  }, [showParaHighlight, ttsStatus, ttsParagraphIndex, ttsActiveWordIndex, columnPitch, pageWidth, contentHeight]);
 
   // Word underline rects for "both" mode (overlay approach — no DOM mutation)
   const [bothWordRects, setBothWordRects] = useState<DOMRect[]>([]);
